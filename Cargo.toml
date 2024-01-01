@@ -12,11 +12,14 @@ actix-multipart = "0.6.1"
 actix-rt = "2.9.0"
 actix-web = "4.4.1"
 actix-ws = "0.2.5"
+actix-web-actors = "4.2.0"
+actix-http = "3.5.1"
 
 bollard = "0.15.0"
 dotenvy = "0.15.7"
 env_logger = "0.10.1"
 log = "0.4.20"
+uuid = { version = "1.6.1", features = ["fast-rng"]}
 
 tokio = "1.35.1"
 tokio-stream = "0.1.14"
