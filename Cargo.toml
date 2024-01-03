@@ -21,7 +21,7 @@ bollard = "0.15.0"
 dotenvy = "0.15.7"
 env_logger = "0.10.1"
 log = "0.4.20"
-uuid = { version = "1.6.1", features = ["fast-rng"]}
+uuid = { version = "1.6.1", features = ["fast-rng", "v4"]}
 
 tokio = "1.35.1"
 tokio-stream = "0.1.14"
