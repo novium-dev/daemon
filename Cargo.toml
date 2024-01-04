@@ -30,3 +30,5 @@ serde = { version = "1.0.194", features = ["derive"] }
 
 redis = "0.24.0"
 futures-util = { version = "0.3.30", features = [] }
+tar = "0.4.40"
+xz2 = "0.1.7"
