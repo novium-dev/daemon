@@ -9,6 +9,7 @@ edition = "2021"
 serde = { version = "1.0.203", features = ["derive"] }
 futures-util = "0.3.30"
 env_logger = "0.11.3"
+rand = "0.8.5"
 
 [dependencies.tokio]
 version = "1.38.0"
@@ -17,6 +18,19 @@ features = ["full"]
 [dependencies.axum]
 version = "0.7.5"
 features = ["ws", "json"]
+
+[dependencies.tower-http]
+version = "0.5.2"
+features = ["cors", "auth"]
+
+[dependencies.tower-layer]
+version = "0.3.2"
+
+[dependencies.axum-auth]
+version = "0.7.0"
+
+[dependencies.base64]
+version = "0.22.1"
 
 [dependencies.bollard]
 version = "0.16.1"
@@ -47,3 +61,7 @@ version = "1.6.0"
 
 [dependencies.termion]
 version = "4.0.2"
+
+[dependencies.ed25519-dalek]
+version = "2.1.1"
+features = ["serde", "rand_core"]
