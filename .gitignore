@@ -2,3 +2,4 @@
 .idea/
 mysql/data/
 mysql/sockets/
+storage/
