@@ -37,7 +37,7 @@ version = "0.22.1"
 version = "0.17.0"
 
 [dependencies.diesel]
-version = "2.2.1"
+version = "2.2.2"
 features = ["mysql"]
 
 [dependencies.log]
