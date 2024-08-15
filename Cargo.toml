@@ -34,7 +34,7 @@ version = "0.7.0"
 version = "0.22.1"
 
 [dependencies.bollard]
-version = "0.16.1"
+version = "0.17.0"
 
 [dependencies.diesel]
 version = "2.2.1"
