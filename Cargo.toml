@@ -64,7 +64,7 @@ version = "2.1.1"
 features = ["serde", "rand_core"]
 
 [dependencies.russh]
-version = "0.43.0"
+version = "0.45.0"
 
 [dependencies.russh-sftp]
 version = "2.0.1"
