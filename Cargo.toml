@@ -59,15 +59,21 @@ version = "1.7.1"
 [dependencies.termion]
 version = "4.0.2"
 
+[dependencies.pkcs8]
+version = "0.11.0-rc.1"
+features = ["pem"]
+
 [dependencies.ed25519-dalek]
 version = "2.1.1"
-features = ["serde", "rand_core"]
+features = ["serde", "rand_core", "pkcs8"]
 
 [dependencies.russh]
-version = "0.45.0"
+version = "0.46.0-beta.4"
+features = ["openssl"]
 
 [dependencies.russh-sftp]
 version = "2.0.3"
 
 [dependencies.russh-keys]
-version = "0.45.0"
+version = "0.46.0-beta.3"
+features = ["openssl"]
