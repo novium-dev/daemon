@@ -3,3 +3,5 @@
 mysql/data/
 mysql/sockets/
 storage/
+test/node_modules/
+
