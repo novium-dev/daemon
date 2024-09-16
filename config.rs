@@ -1,5 +1,5 @@
 
-pub const LABEL_NAME: &'static str = "cloud.neumatix.daemon.server";
-pub const IMAGE_NAME: &'static str = "neumatix-daemon-image";
-pub const CONTAINER_PREFIX: &'static str = "neumatix-daemon_";
+pub const LABEL_NAME: &'static str = "cloud.novium.daemon.server";
+pub const IMAGE_NAME: &'static str = "novium-daemon-image";
+pub const CONTAINER_PREFIX: &'static str = "novium-daemon_";
 
