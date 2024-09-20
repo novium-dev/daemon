@@ -61,7 +61,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         websocket_allow_duration: Duration::from_secs(60 * 60 * 24 * 365 * 12).as_millis(), // make like 60 seconds, THIS IS ONLY FOR TESTING.
         origin: String::from("http://localhost:3000"),
         storage_path: String::from("./storage"),
-        btrfs: true,
+        btrfs: false,
         bind: String::from("0.0.0.0:8080"),
         ssh_bind: String::from("0.0.0.0:2022"),
         database: String::from("mysql://localhost/daemon?unix_socket=mysql/sockets/mysqld.sock"),
