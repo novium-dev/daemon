@@ -1,0 +1,443 @@
+use crate::dirfd::DirectoryFDExt;
+use crate::storage::StorageIdentifiers;
+use crate::utils::short_path;
+use crate::DaemonState;
+use axum::async_trait;
+use log::{debug, error};
+use russh_sftp::protocol::{
+    Attrs, Data, FileAttributes, Handle, Name, OpenFlags, Status, StatusCode, Version,
+};
+use std::collections::HashMap;
+use std::fs::{Metadata, Permissions};
+use std::io::{ErrorKind, SeekFrom};
+use std::os::unix::prelude::*;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tokio::fs;
+use tokio::fs::{File, OpenOptions};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+
+pub(crate) struct DaemonSftpSession {
+    pub(crate) state: Arc<DaemonState>,
+    pub(crate) version: Option<u32>,
+    pub(crate) file_handles: HashMap<String, File>,
+    pub(crate) access: HashMap<Vec<String>, StorageIdentifiers>,
+}
+
+#[async_trait]
+impl russh_sftp::server::Handler for DaemonSftpSession {
+    type Error = StatusCode;
+
+    fn unimplemented(&self) -> Self::Error {
+        StatusCode::OpUnsupported
+    }
+
+    async fn init(
+        &mut self,
+        version: u32,
+        extensions: HashMap<String, String>,
+    ) -> Result<Version, Self::Error> {
+        if self.version.is_some() {
+            error!("duplicate SSH_FXP_VERSION packet");
+            return Err(StatusCode::ConnectionLost);
+        }
+
+        self.version = Some(version);
+        debug!("version: {:?}, extensions: {:?}", self.version, extensions);
+        Ok(Version::new())
+    }
+
+    async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
+        match self.file_handles.remove(&handle) {
+            None => Err(StatusCode::NoSuchFile),
+            Some(_handle) => self.success(id),
+        }
+    }
+
+    async fn open(
+        &mut self,
+        id: u32,
+        filename: String,
+        pflags: OpenFlags,
+        attrs: FileAttributes,
+    ) -> Result<Handle, Self::Error> {
+        let mut options = OpenOptions::new();
+        let mut options = options
+            .read(pflags.intersects(OpenFlags::READ))
+            .write(pflags.intersects(OpenFlags::WRITE))
+            .append(pflags.intersects(OpenFlags::APPEND))
+            .create(pflags.intersects(OpenFlags::CREATE))
+            .truncate(pflags.intersects(OpenFlags::TRUNCATE))
+            .create_new(pflags.intersects(OpenFlags::EXCLUDE));
+
+        if let Some(mode) = attrs.permissions {
+            options = options.mode(mode);
+        }
+
+        let file = options
+            .open(self.path(filename).await?)
+            .await
+            .map_err(|err| match err.kind() {
+                ErrorKind::NotFound => StatusCode::NoSuchFile,
+                ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
+                _ => StatusCode::Failure,
+            })?;
+        let handle = file.as_raw_fd().to_string();
+        self.file_handles.insert(handle.clone(), file);
+
+        Ok(Handle { id, handle })
+    }
+
+    async fn opendir(&mut self, id: u32, path: String) -> Result<Handle, Self::Error> {
+        let path = self.path(path).await?;
+        let file = File::opendir(path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        let handle = file.as_raw_fd().to_string();
+        self.file_handles.insert(handle.clone(), file);
+
+        Ok(Handle { id, handle })
+    }
+
+    async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
+        let handle = self.handle(handle)?;
+        let mut readdir = handle.readdir().await.map_err(|_err| StatusCode::Failure)?;
+        let mut files = Vec::new();
+        loop {
+            match readdir.next_entry().await {
+                Ok(Some(entry)) => {
+                    let name = entry.file_name().to_string_lossy().into_owned();
+                    files.push(russh_sftp::protocol::File {
+                        filename: name.clone(),
+                        attrs: entry
+                            .metadata()
+                            .await
+                            .map_err(|_err| StatusCode::Failure)?
+                            .into_fileattributes(),
+                        longname: name,
+                    });
+                }
+                Ok(None) => {
+                    break Ok(Name { id, files });
+                }
+                Err(_err) => break Err(StatusCode::Failure),
+            }
+        }
+    }
+
+    async fn read(
+        &mut self,
+        id: u32,
+        handle: String,
+        offset: u64,
+        len: u32,
+    ) -> Result<Data, Self::Error> {
+        let handle = self.handle(handle)?;
+        handle
+            .seek(SeekFrom::Start(offset))
+            .await
+            .map_err(|err| match err.kind() {
+                ErrorKind::UnexpectedEof => StatusCode::Eof,
+                _ => StatusCode::Failure,
+            })?;
+        let mut buf = vec![0; len as usize];
+
+        let read = handle
+            .read(&mut buf)
+            .await
+            .map_err(|err| match err.kind() {
+                ErrorKind::UnexpectedEof => StatusCode::Eof,
+                _ => StatusCode::Failure,
+            })?;
+        buf.resize(read, 0u8);
+        Ok(Data { id, data: buf })
+    }
+
+    async fn write(
+        &mut self,
+        id: u32,
+        handle: String,
+        offset: u64,
+        data: Vec<u8>,
+    ) -> Result<Status, Self::Error> {
+        let handle = self.handle(handle)?;
+        handle
+            .seek(SeekFrom::Start(offset))
+            .await
+            .map_err(|err| match err.kind() {
+                ErrorKind::UnexpectedEof => StatusCode::Eof,
+                _ => StatusCode::Failure,
+            })?;
+        handle
+            .write_all(&data)
+            .await
+            .map_err(|err| match err.kind() {
+                ErrorKind::UnexpectedEof => StatusCode::Eof,
+                _ => StatusCode::Failure,
+            })?;
+        self.success(id)
+    }
+
+    async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
+        let handle = self.handle(handle)?;
+        let metadata = handle
+            .metadata()
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        Ok(Attrs {
+            id,
+            attrs: metadata.into_fileattributes(),
+        })
+    }
+
+    async fn fsetstat(
+        &mut self,
+        id: u32,
+        handle: String,
+        attrs: FileAttributes,
+    ) -> Result<Status, Self::Error> {
+        let handle = self.handle(handle)?;
+
+        if let Some(mode) = attrs.permissions {
+            handle
+                .set_permissions(Permissions::from_mode(mode))
+                .await
+                .map_err(|_err| StatusCode::Failure)?;
+        }
+
+        if let Some(len) = attrs.size {
+            handle
+                .set_len(len)
+                .await
+                .map_err(|_err| StatusCode::Failure)?;
+        }
+
+        self.success(id)
+    }
+
+    async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
+        let path = self.path(path).await?;
+        let metadata = tokio::fs::symlink_metadata(path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        Ok(Attrs {
+            id,
+            attrs: metadata.into_fileattributes(),
+        })
+    }
+
+    async fn mkdir(
+        &mut self,
+        id: u32,
+        path: String,
+        attrs: FileAttributes,
+    ) -> Result<Status, Self::Error> {
+        let path = self.path(path).await?;
+        fs::create_dir(&path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        if let Some(mode) = attrs.permissions {
+            fs::set_permissions(&path, Permissions::from_mode(mode))
+                .await
+                .map_err(|_err| StatusCode::Failure)?;
+        }
+        self.success(id)
+    }
+
+    async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
+        let path = self.path(path).await?;
+        let metadata = tokio::fs::metadata(path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        Ok(Attrs {
+            id,
+            attrs: metadata.into_fileattributes(),
+        })
+    }
+
+    async fn setstat(
+        &mut self,
+        id: u32,
+        path: String,
+        attrs: FileAttributes,
+    ) -> Result<Status, Self::Error> {
+        let path = self.path(path).await?;
+        let fs = fs::File::open(path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        if let Some(mode) = attrs.permissions {
+            fs.set_permissions(Permissions::from_mode(mode))
+                .await
+                .map_err(|_err| StatusCode::Failure)?;
+        }
+
+        if let Some(len) = attrs.size {
+            fs.set_len(len).await.map_err(|_err| StatusCode::Failure)?;
+        }
+
+        self.success(id)
+    }
+
+    async fn rename(
+        &mut self,
+        id: u32,
+        oldpath: String,
+        newpath: String,
+    ) -> Result<Status, Self::Error> {
+        let old_path = self.path(oldpath).await?;
+        let new_path = self.path(newpath).await?;
+        fs::rename(old_path, new_path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        self.success(id)
+    }
+
+    async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
+        let path = self.path(filename).await?;
+        fs::remove_file(path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        self.success(id)
+    }
+
+    async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
+        let path = self.path(path).await?;
+        fs::remove_dir(path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        self.success(id)
+    }
+
+    async fn symlink(
+        &mut self,
+        id: u32,
+        linkpath: String,
+        targetpath: String,
+    ) -> Result<Status, Self::Error> {
+        let linkpath = self.path(linkpath).await?;
+        let targetpath = PathBuf::from(targetpath);
+        fs::symlink(linkpath, targetpath)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        self.success(id)
+    }
+
+    async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
+        let linkpath = self.path(path).await?;
+        let path = fs::read_link(linkpath)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        Ok(Name {
+            id,
+            files: vec![russh_sftp::protocol::File {
+                filename: path.to_string_lossy().into_owned(),
+                longname: "".to_string(),
+                attrs: FileAttributes::default(),
+            }],
+        })
+    }
+
+    async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
+        let path = self.path(path).await?;
+        let realpath = fs::canonicalize(path)
+            .await
+            .map_err(|_err| StatusCode::Failure)?;
+        Ok(Name {
+            id,
+            files: vec![russh_sftp::protocol::File {
+                filename: self.reverse_path(&realpath).await?,
+                longname: "".to_string(),
+                attrs: FileAttributes::default(),
+            }],
+        })
+    }
+}
+
+impl DaemonSftpSession {
+    async fn path(&self, mut path: String) -> Result<PathBuf, StatusCode> {
+        let ends_with_slash = path.ends_with('/');
+        if ends_with_slash {
+            path.pop();
+        }
+        if path.starts_with('/') {
+            path.remove(0);
+        }
+        let components = path.split('/').collect();
+        let shorten = short_path(components).map_err(|_| StatusCode::NoSuchFile)?;
+
+        let mut temp_prefix = Vec::new();
+        let mut temp_suffix = Vec::new();
+        let mut storage = None;
+        for comp in shorten {
+            match storage {
+                None => {
+                    temp_prefix.push(comp.to_owned());
+                    storage = self.access.get(&temp_prefix);
+                }
+                Some(_storage) => {
+                    temp_suffix.push(comp.to_owned());
+                }
+            }
+        }
+
+        if !temp_suffix.is_empty()
+            && ends_with_slash
+            && !temp_suffix[temp_suffix.len() - 1].ends_with('/')
+        {
+            let index = temp_suffix.len() - 1;
+            temp_suffix[index] = format!("{}/", temp_suffix[index]);
+        }
+
+        match storage {
+            None => Err(StatusCode::NoSuchFile),
+            Some(storage) => {
+                let mut path =
+                    PathBuf::from(&self.state.config.storage_path).join(storage.as_pathbuf());
+                for comp in temp_suffix {
+                    path = path.join(comp);
+                }
+                Ok(path)
+            }
+        }
+    }
+
+    async fn reverse_path(&self, _path: &Path) -> Result<String, StatusCode> {
+        // TODO: Implement reverse_path
+        Err(StatusCode::OpUnsupported)
+    }
+
+    fn handle(&mut self, handle: String) -> Result<&mut File, StatusCode> {
+        match self.file_handles.get_mut(&handle) {
+            None => Err(StatusCode::NoSuchFile),
+            Some(handle) => Ok(handle),
+        }
+    }
+
+    fn success(&self, id: u32) -> Result<Status, StatusCode> {
+        Ok(Status {
+            id,
+            error_message: "Ok".to_owned(),
+            status_code: StatusCode::Ok,
+            language_tag: "en-US".to_owned(),
+        })
+    }
+}
+
+trait IntoFileAttributes {
+    fn into_fileattributes(self) -> FileAttributes;
+}
+
+impl IntoFileAttributes for Metadata {
+    fn into_fileattributes(self) -> FileAttributes {
+        FileAttributes {
+            permissions: Some(self.mode()),
+            size: Some(self.size()),
+            uid: Some(self.uid()),
+            gid: Some(self.gid()),
+            atime: self.atime().try_into().map(Some).unwrap_or(None),
+            mtime: self.mtime().try_into().map(Some).unwrap_or(None),
+            user: None,
+            group: None,
+        }
+    }
+}
