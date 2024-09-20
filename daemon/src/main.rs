@@ -43,7 +43,7 @@ use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
 use tower_http::validate_request::ValidateRequestHeaderLayer;
 use uuid::Uuid;
 
-include!("../config.rs");
+include!("../../config.rs");
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
