@@ -55,7 +55,7 @@ pub(crate) async fn websocket(
     let unix = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|_err| StatusCode::BAD_REQUEST)?;
-    if (timestamp + state.config.websocket_allow_duration) <= unix.as_millis() {
+    if (timestamp + state.config.websocket_allow_duration as u128) <= unix.as_millis() {
         return Err(StatusCode::UNAUTHORIZED);
     }
     debug!("WebSocket authentication passed.");

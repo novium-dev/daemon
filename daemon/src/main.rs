@@ -9,7 +9,7 @@ mod terminal;
 mod utils;
 mod web;
 
-use crate::config::DaemonConfig;
+use crate::config::{DaemonConfig, SSHHostKey};
 use crate::schema::FetchedServer;
 use crate::ssh::DaemonSSHServer;
 use crate::terminal::{ChannelWriteData, TerminalSession};
@@ -19,13 +19,10 @@ use axum::Router;
 use bollard::Docker;
 use diesel::connection::SimpleConnection;
 use diesel::{Connection, MysqlConnection};
-use ed25519_dalek::pkcs8::{DecodePrivateKey, KeypairBytes};
-use ed25519_dalek::SigningKey;
 use env_logger::Env;
 use libc::SIGINT;
 use log::{info, warn};
 use russh::server::{Config, Server as SSHServer};
-use russh_keys::key::KeyPair;
 use signal_hook::iterator::Signals;
 use std::collections::HashMap;
 use std::error::Error;
@@ -34,7 +31,8 @@ use std::pin::Pin;
 use std::process::exit;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::AsyncWrite;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
@@ -50,22 +48,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let env = Env::default().filter_or("LOG_LEVEL", "info");
     env_logger::init_from_env(env);
 
-    let secret_key = KeypairBytes::from_pkcs8_pem(include_str!("test_ed25519.pem")).unwrap();
-    let secret_key = secret_key.secret_key;
-    let test_key = SigningKey::from_bytes(&secret_key);
-
-    let config = DaemonConfig {
-        identifier: String::from("test-node"),
-        token: String::from("test"),
-        websocket_key: test_key.verifying_key(),
-        websocket_allow_duration: Duration::from_secs(60 * 60 * 24 * 365 * 12).as_millis(), // make like 60 seconds, THIS IS ONLY FOR TESTING.
-        origin: String::from("http://localhost:3000"),
-        storage_path: String::from("./storage"),
-        btrfs: false,
-        bind: String::from("0.0.0.0:8080"),
-        ssh_bind: String::from("0.0.0.0:2022"),
-        database: String::from("mysql://localhost/daemon?unix_socket=mysql/sockets/mysqld.sock"),
-    };
+    let mut config_buffer = String::new();
+    File::open("config.toml")
+        .await?
+        .read_to_string(&mut config_buffer)
+        .await
+        .unwrap();
+    let config: DaemonConfig = toml::from_str(&config_buffer)?;
 
     info!("Starting Daemon...");
 
@@ -125,7 +114,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
         DaemonSSHServer { state: state1 }
             .run_on_address(
                 Arc::new(Config {
-                    keys: vec![KeyPair::Ed25519(test_key)],
+                    keys: config1
+                        .ssh_host_key
+                        .iter()
+                        .map(SSHHostKey::as_russh_key)
+                        .collect(),
                     ..Config::default()
                 }),
                 &config1.ssh_bind,
@@ -230,8 +223,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
         });
     }
 
-    let listener = tokio::net::TcpListener::bind(&config.bind).await?;
-    axum::serve(listener, app).await?;
+    if config.ssl.enabled {
+        axum_server::bind_rustls(config.bind.parse()?, config.ssl.as_rustls().await?)
+            .serve(app.into_make_service())
+            .await?;
+    } else {
+        axum_server::bind(config.bind.parse()?)
+            .serve(app.into_make_service())
+            .await?;
+    }
 
     Ok(())
 }
