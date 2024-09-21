@@ -5,6 +5,35 @@ use diesel::{
 };
 use std::collections::HashMap;
 
+#[derive(Clone, Default, Eq, PartialEq)]
+pub struct FetchedDatabase {
+    pub name_suffix: String,
+    pub passwordless: HashMap<u32, i32>,
+    pub users: HashMap<String, DatabaseUser>,
+}
+
+impl Database {
+    #[allow(unused)]
+    pub(crate) fn fetched(self, conn: &mut MysqlConnection) -> Result<FetchedDatabase, Error> {
+        let passwordless = DatabasePasswordless::belonging_to(&self)
+            .load::<DatabasePasswordless>(conn)?
+            .into_iter()
+            .map(|passwordless| (passwordless.server_id, passwordless.permissions))
+            .collect();
+        let users = DatabaseUser::belonging_to(&self)
+            .load::<DatabaseUser>(conn)?
+            .into_iter()
+            .map(|user| (user.name_suffix.clone(), user))
+            .collect();
+
+        Ok(FetchedDatabase {
+            name_suffix: self.name_suffix,
+            passwordless,
+            users,
+        })
+    }
+}
+
 #[derive(Clone, Default)]
 pub(crate) struct FetchedServer {
     pub(crate) id: u32,
@@ -63,6 +92,65 @@ impl Server {
             cap_add,
             cap_drop,
         })
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Insertable, Queryable, Selectable, Identifiable)]
+#[diesel(table_name = databases)]
+#[diesel(primary_key(id))]
+pub(crate) struct Database {
+    pub(crate) id: u32,
+    pub name_suffix: String,
+}
+
+diesel::table! {
+    databases (id) {
+        id -> Unsigned<Integer>,
+        name_suffix -> VarChar,
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Identifiable, Insertable, Queryable, Selectable, Associations)]
+#[diesel(table_name = database_passwordless)]
+#[diesel(belongs_to(Database, foreign_key = database_id))]
+#[diesel(primary_key(id))]
+pub(crate) struct DatabasePasswordless {
+    pub(crate) id: u32,
+    pub(crate) database_id: u32,
+    pub(crate) server_id: u32,
+    pub(crate) permissions: i32,
+}
+
+diesel::table! {
+    database_passwordless (id) {
+        id -> Unsigned<Integer>,
+        database_id -> Unsigned<Integer>,
+        server_id -> Unsigned<Integer>,
+        permissions -> Integer
+    }
+}
+
+#[derive(Clone, Eq, PartialEq, Identifiable, Insertable, Queryable, Selectable, Associations)]
+#[diesel(table_name = database_user)]
+#[diesel(belongs_to(Database, foreign_key = database_id))]
+#[diesel(primary_key(id))]
+pub(crate) struct DatabaseUser {
+    pub(crate) id: u32,
+    pub(crate) database_id: u32,
+    pub(crate) name_suffix: String,
+    pub(crate) password_hash: String,
+    pub(crate) permissions: i32,
+    pub(crate) restricted: Option<String>,
+}
+
+diesel::table! {
+    database_user (id) {
+        id -> Unsigned<Integer>,
+        database_id -> Unsigned<Integer>,
+        name_suffix -> VarChar,
+        password_hash -> VarChar,
+        permissions -> Integer,
+        restricted -> Nullable<VarChar>,
     }
 }
 

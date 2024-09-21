@@ -1,5 +1,6 @@
 #![allow(dead_code)] // TODO: WIP, remove if ready
 
+use crate::schema::FetchedDatabase;
 use diesel::connection::SimpleConnection;
 use diesel::result::Error;
 use diesel::{Connection, MysqlConnection};
@@ -8,20 +9,6 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio::task::JoinError;
-
-#[derive(Default)]
-pub struct FetchedDatabase {
-    pub name_suffix: Option<String>,
-    pub passwordless: HashMap<u32, i32>,
-    pub users: HashMap<String, FetchedDatabaseUser>,
-}
-
-#[derive(Eq, PartialEq, Hash)]
-pub struct FetchedDatabaseUser {
-    pub permissions: i32,
-    pub password_hash: String,
-    pub restricted: Option<Vec<u32>>,
-}
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -64,15 +51,9 @@ impl FetchedDatabase {
         conn: Arc<Mutex<MysqlConnection>>,
         to: FetchedDatabase,
     ) -> Result<(), DatabaseUpdateError> {
-        let name = self.name_suffix.as_ref().unwrap().clone();
+        let name = self.name_suffix.clone();
 
-        if to.name_suffix.is_some()
-            && !self
-                .name_suffix
-                .as_ref()
-                .unwrap()
-                .eq(to.name_suffix.as_ref().unwrap())
-        {
+        if !self.name_suffix.eq(&to.name_suffix) {
             return Err(DatabaseUpdateError::RenameingNotImplemented);
         }
 
@@ -155,8 +136,8 @@ impl FetchedDatabase {
                         }
                         Some(servers) => {
                             let mut extra = data.password_hash.clone();
-                            for server in &servers {
-                                extra += &format!("{}\\0", server);
+                            for server in servers.split(';').map(|str| str.parse::<u32>()) {
+                                extra += &format!("{}\\0", server.map_err(|_err| DatabaseUpdateError::Invalid)?);
                             }
                             extra += "\\0";
                             sql += &format!(
