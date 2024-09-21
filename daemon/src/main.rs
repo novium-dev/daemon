@@ -98,10 +98,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .nest(
             "/user",
-            Router::new().layer(cors).route(
-                "/server/:server_id/terminal",
-                get(web::websocket::terminal::websocket),
-            ),
+            Router::new()
+                .layer(cors)
+                .route(
+                    "/server/:server_id/terminal",
+                    get(web::websocket::terminal::websocket),
+                )
+                .route(
+                    "/server/:server_id/stats",
+                    get(web::websocket::stats::websocket),
+                ),
         )
         .with_state(state.clone());
 
