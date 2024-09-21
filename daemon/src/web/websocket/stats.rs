@@ -13,7 +13,6 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
-#[allow(unused)]
 pub(crate) async fn websocket(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
