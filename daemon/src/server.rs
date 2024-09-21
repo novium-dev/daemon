@@ -1,8 +1,7 @@
 use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
 use crate::storage::StorageIdentifiers;
-use crate::terminal::ChannelWriteData;
-use crate::utils::from_mib;
+use crate::utils::{from_mib, ChannelWriteData};
 use crate::{storage, utils, DaemonState, ServerData};
 use axum::extract::ws::Message;
 use bollard::container::{
@@ -374,6 +373,7 @@ impl FetchedServer {
         let server_id = self.id;
         let mut output = result.output;
         let sender = server_data.sender.deref().clone();
+        let stats_sender = server_data.stats_sender.deref().clone();
         let buffer = server_data.buffer.clone();
         tokio::task::spawn(async move {
             let mut next = Instant::now().add(Duration::from_millis(500));
@@ -391,16 +391,16 @@ impl FetchedServer {
                     }
                     stat = result2.next() => {
                         if let Some(Ok(stats)) = stat {
-                            let _ = sender.send(ChannelWriteData::Stats(<Stats as Into<ServerStats>>::into(stats).with_max(cpu_max, mem_max)));
+                            let _ = stats_sender.send(ChannelWriteData::Stats(<Stats as Into<ServerStats>>::into(stats).with_max(cpu_max, mem_max)));
                         }
                     }
                     _elapsed = tokio::time::sleep_until(next) => {
                         next = Instant::now().add(Duration::from_millis(500));
-                        let sender = sender.clone();
+                        let stats_sender = stats_sender.clone();
                         let docker = docker.clone();
                         let server_data_arc = server_data_arc.clone();
                         tokio::task::spawn(async move {
-                            Self::update_status(server_id, &sender, &docker, &server_data_arc).await;
+                            Self::update_status(server_id, &stats_sender, &docker, &server_data_arc).await;
                         });
                     }
                 }
@@ -416,7 +416,7 @@ impl FetchedServer {
             Self::console(&server_data.sender, buffer.deref_mut(), "\n".to_owned());
             Self::log(&server_data.sender, buffer.deref_mut(), "Server stopped!");
             drop(buffer);
-            let _ = sender.send(ChannelWriteData::Stats(
+            let _ = stats_sender.send(ChannelWriteData::Stats(
                 ServerStats::default().with_max(cpu_max, mem_max),
             ));
             if !do_restart {
@@ -559,11 +559,11 @@ impl FetchedServer {
 
     pub(crate) async fn update_status(
         id: u32,
-        sender: &Sender<ChannelWriteData>,
+        stats_sender: &Sender<ChannelWriteData>,
         docker: &Docker,
         server_data_arc: &Arc<Mutex<ServerData>>,
     ) {
-        if sender.receiver_count() == 0 {
+        if stats_sender.receiver_count() == 0 {
             return;
         }
         let server_data = server_data_arc.lock().await;
@@ -572,7 +572,9 @@ impl FetchedServer {
 
     pub(crate) async fn update_status0(id: u32, docker: &Docker, server_data: &ServerData) {
         if let Ok(state) = Self::state(id, docker, server_data).await {
-            let _ = server_data.sender.send(ChannelWriteData::Status(state));
+            let _ = server_data
+                .stats_sender
+                .send(ChannelWriteData::Status(state));
         }
     }
 }

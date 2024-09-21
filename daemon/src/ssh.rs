@@ -1,17 +1,15 @@
 mod sftp;
 
 use crate::ssh::sftp::DaemonSftpSession;
-use crate::terminal::{
-    new_session, update_size, ChannelWriteData, SessionError, TerminalAdapter, TerminalData,
-};
+use crate::terminal::{new_session, update_size, TerminalData};
+use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{DaemonState, ServerData};
 use axum::async_trait;
 use log::{debug, error};
 use russh::server::{Auth, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId, ChannelStream, Pty};
 use std::collections::HashMap;
-use std::io;
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -187,46 +185,12 @@ impl Handler for DaemonSSHHandler {
                         drop(server_data);
                         tokio::task::spawn(new_session(
                             server_id,
+                            (channel.unwrap().into_stream(), [0u8; 2048]),
                             TerminalData {
                                 sender,
                                 attach_write,
                                 cols,
                                 rows,
-                            },
-                            TerminalAdapter {
-                                state: (channel.unwrap().into_stream(), [0u8; 2048]),
-                                channel_read: |(channel, buffer): &mut (
-                                    ChannelStream<Msg>,
-                                    [u8; 2048],
-                                )| {
-                                    Box::pin(async {
-                                        match channel.read(buffer).await {
-                                            Ok(len) => Ok(Vec::from(&buffer[0..len])),
-                                            Err(err) => Err(SessionError::IO(err)),
-                                        }
-                                    })
-                                },
-                                channel_read_transform: |result| result,
-                                channel_write:
-                                    |(channel, _buffer): &mut (ChannelStream<Msg>, [u8; 2048]),
-                                     data| {
-                                        Box::pin(async move {
-                                            match data {
-                                                ChannelWriteData::Terminal(data) => {
-                                                    channel.write_all(&data).await
-                                                }
-                                                _ => Ok(()),
-                                            }
-                                        })
-                                    },
-                                channel_write_transform: |result: Result<(), io::Error>| {
-                                    result.map_err(SessionError::IO)
-                                },
-                                channel_flush: |(channel, _buffer)| Box::pin(channel.flush()),
-                                channel_close: |(mut channel, _buffer)| {
-                                    Box::pin(async move { channel.shutdown().await })
-                                },
-                                send_ping: false,
                             },
                             self.state.docker.clone(),
                             server_data_arc.clone(),
@@ -326,5 +290,55 @@ impl Handler for DaemonSSHHandler {
             session.channel_failure(channel_id);
         }
         Ok(())
+    }
+}
+
+#[async_trait]
+impl ChannelAdapter<Result<usize, io::Error>, Result<(), io::Error>, Result<(), io::Error>>
+    for (ChannelStream<Msg>, [u8; 2048])
+{
+    async fn read(&mut self) -> Result<usize, io::Error> {
+        self.0.read(&mut self.1).await
+    }
+
+    fn read_transform(&mut self, data: Result<usize, io::Error>) -> Result<Vec<u8>, ChannelError>
+    where
+        Self: Sized,
+    {
+        match data {
+            Ok(size) => Ok(self.1[0..size].to_vec()),
+            Err(err) if err.kind() == ErrorKind::UnexpectedEof => Err(ChannelError::Closed),
+            Err(err) => Err(ChannelError::IO(err)),
+        }
+    }
+
+    async fn write(&mut self, data: ChannelWriteData) -> Result<(), io::Error> {
+        if let ChannelWriteData::Terminal(data) = data {
+            self.0.write_all(&data).await
+        } else {
+            Ok(())
+        }
+    }
+
+    fn write_transform(&mut self, data: Result<(), io::Error>) -> Result<(), ChannelError>
+    where
+        Self: Sized,
+    {
+        data.map_err(ChannelError::IO)
+    }
+
+    async fn flush(&mut self) -> Result<(), io::Error> {
+        self.0.flush().await
+    }
+
+    async fn close(mut self) {
+        let _ = self.0.shutdown().await;
+    }
+
+    fn send_ping() -> bool
+    where
+        Self: Sized,
+    {
+        false
     }
 }

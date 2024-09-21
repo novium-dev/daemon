@@ -12,7 +12,8 @@ mod web;
 use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
 use crate::ssh::DaemonSSHServer;
-use crate::terminal::{ChannelWriteData, TerminalSession};
+use crate::terminal::TerminalSession;
+use crate::utils::ChannelWriteData;
 use axum::http::{HeaderValue, Method};
 use axum::routing::{delete, get, patch, put};
 use axum::Router;
@@ -97,9 +98,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .nest(
             "/user",
-            Router::new()
-                .layer(cors)
-                .route("/server/:server_id/ws", get(web::websocket::websocket)),
+            Router::new().layer(cors).route(
+                "/server/:server_id/terminal",
+                get(web::websocket::terminal::websocket),
+            ),
         )
         .with_state(state.clone());
 
@@ -253,6 +255,7 @@ pub(crate) struct ServerData {
     pub(crate) buffer: Arc<Mutex<Vec<u8>>>,
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,
+    pub(crate) stats_sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) sessions: Arc<Mutex<HashMap<Uuid, TerminalSession>>>,
 }
 
@@ -263,6 +266,7 @@ impl Default for ServerData {
             stopping: false,
             attach_write: Arc::new(Mutex::new(None)),
             sender: Arc::new(Sender::new(400)),
+            stats_sender: Arc::new(Sender::new(400)),
             sessions: Arc::new(Mutex::new(HashMap::new())),
             size: (170, 30),
             buffer: Arc::new(Mutex::new(Vec::new())),

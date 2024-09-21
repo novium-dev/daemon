@@ -1,8 +1,14 @@
 use crate::schema::{servers, FetchedServer, Server};
+use crate::server::{ServerState, ServerStats};
 use crate::ServerData;
+use axum::async_trait;
 use diesel::{ExpressionMethods, MysqlConnection, QueryDsl, RunQueryDsl, SelectableHelper};
 use std::collections::HashMap;
+use std::future::Future;
+use std::io;
+use std::marker::PhantomData;
 use std::ops::DerefMut;
+use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -54,4 +60,120 @@ pub(crate) fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
         }
     }
     Ok(result)
+}
+
+#[derive(Clone)]
+pub(crate) enum ChannelWriteData {
+    Terminal(Vec<u8>),
+    Status(ServerState),
+    Stats(ServerStats),
+    Ping,
+}
+
+#[async_trait]
+pub(crate) trait ChannelAdapter<E: Send + 'static, J: Send + 'static, Q: Send + 'static> {
+    async fn read(&mut self) -> E;
+
+    fn read_transform(&mut self, data: E) -> Result<Vec<u8>, ChannelError>
+    where
+        Self: Sized;
+
+    async fn write(&mut self, data: ChannelWriteData) -> J;
+
+    fn write_transform(&mut self, data: J) -> Result<(), ChannelError>
+    where
+        Self: Sized;
+
+    async fn flush(&mut self) -> Q;
+
+    async fn close(self);
+
+    fn send_ping() -> bool
+    where
+        Self: Sized;
+}
+
+pub(crate) enum ChannelError {
+    Closed,
+    IO(io::Error),
+}
+
+pub struct ChannelInterceptor<
+    A: ChannelAdapter<E, J, Q> + Send,
+    E: Send + 'static,
+    J: Send + 'static,
+    Q: Send + 'static,
+    C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>> + Send + 'static,
+>(A, C, PhantomData<E>, PhantomData<Q>, PhantomData<J>);
+
+impl<
+        C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>>
+            + Send
+            + 'static,
+        A: ChannelAdapter<E, J, Q> + Send,
+        E: Send + 'static,
+        J: Send + 'static,
+        Q: Send + 'static,
+    > ChannelInterceptor<A, E, J, Q, C>
+{
+    #[allow(clippy::default_constructed_unit_structs)]
+    pub(crate) fn new(state: A, intercept: C) -> Self {
+        Self(
+            state,
+            intercept,
+            PhantomData::default(),
+            PhantomData::default(),
+            PhantomData::default(),
+        )
+    }
+}
+
+#[async_trait]
+impl<
+        C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>>
+            + Send
+            + 'static,
+        A: ChannelAdapter<E, J, Q> + Send,
+        E: Send + 'static,
+        J: Send + 'static,
+        Q: Send + 'static,
+    > ChannelAdapter<E, J, Q> for ChannelInterceptor<A, E, J, Q, C>
+{
+    async fn read(&mut self) -> E {
+        let result = self.0.read().await;
+        self.1(&mut self.0, result).await
+    }
+
+    fn read_transform(&mut self, data: E) -> Result<Vec<u8>, ChannelError>
+    where
+        Self: Sized,
+    {
+        self.0.read_transform(data)
+    }
+
+    async fn write(&mut self, data: ChannelWriteData) -> J {
+        self.0.write(data).await
+    }
+
+    fn write_transform(&mut self, data: J) -> Result<(), ChannelError>
+    where
+        Self: Sized,
+    {
+        self.0.write_transform(data)
+    }
+
+    async fn flush(&mut self) -> Q {
+        self.0.flush().await
+    }
+
+    async fn close(self) {
+        self.0.close().await
+    }
+
+    fn send_ping() -> bool
+    where
+        Self: Sized,
+    {
+        A::send_ping()
+    }
 }
