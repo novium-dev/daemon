@@ -9,7 +9,7 @@ mod terminal;
 mod utils;
 mod web;
 
-use crate::config::{DaemonConfig, SSHHostKey};
+use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
 use crate::ssh::DaemonSSHServer;
 use crate::terminal::{ChannelWriteData, TerminalSession};
@@ -111,14 +111,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let state1 = state.clone();
     let config1 = config.clone();
     tokio::task::spawn(async move {
+        let mut keys = Vec::with_capacity(config1.ssh_host_key.len());
+        for key in &config1.ssh_host_key {
+            keys.push(key.as_russh_key().await?);
+        }
         DaemonSSHServer { state: state1 }
             .run_on_address(
                 Arc::new(Config {
-                    keys: config1
-                        .ssh_host_key
-                        .iter()
-                        .map(SSHHostKey::as_russh_key)
-                        .collect(),
+                    keys,
                     ..Config::default()
                 }),
                 &config1.ssh_bind,

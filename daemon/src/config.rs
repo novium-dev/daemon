@@ -2,16 +2,19 @@ use axum_server::tls_rustls::RustlsConfig;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use ed25519_dalek::ed25519::KeypairBytes;
-use ed25519_dalek::pkcs8::DecodePrivateKey;
+use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
+use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey};
 use ed25519_dalek::{SigningKey, VerifyingKey};
 use openssl::rsa::Rsa;
+use rand::rngs::OsRng;
+use russh_keys::encoding::Bytes;
 use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
-use std::fs::File;
-use std::io;
-use std::io::Read;
+use std::io::{self, ErrorKind};
 use std::path::PathBuf;
+use tokio::fs::{File, OpenOptions};
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Deserialize)]
 pub(crate) struct DaemonConfig {
@@ -71,29 +74,62 @@ pub(crate) enum SSHHostKey {
 }
 
 impl SSHHostKey {
-    pub(crate) fn as_russh_key(&self) -> KeyPair {
+    pub(crate) async fn as_russh_key(&self) -> Result<KeyPair, io::Error> {
         let mut buffer = String::new();
-        match self {
-            SSHHostKey::ED25519 { path } => {
-                File::open(path)
-                    .unwrap()
-                    .read_to_string(&mut buffer)
-                    .unwrap();
-
-                let keypair = KeypairBytes::from_pkcs8_pem(&buffer).unwrap();
-                KeyPair::Ed25519(SigningKey::from_bytes(&keypair.secret_key))
-            }
+        Ok(match self {
+            SSHHostKey::ED25519 { path } => KeyPair::Ed25519(match File::open(path).await {
+                Ok(mut file) => {
+                    file.read_to_string(&mut buffer).await?;
+                    let keypair = KeypairBytes::from_pkcs8_pem(&buffer)
+                        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                    SigningKey::from_bytes(&keypair.secret_key)
+                }
+                Err(err) if err.kind() == ErrorKind::NotFound => {
+                    let mut rng = OsRng;
+                    let key = SigningKey::generate(&mut rng);
+                    let mut bytes = [0u8; 64];
+                    let (sk, pk) = bytes.split_at_mut(32);
+                    sk.copy_from_slice(key.as_bytes());
+                    pk.copy_from_slice(key.verifying_key().as_bytes());
+                    let bytes = KeypairBytes::from_bytes(&bytes)
+                        .to_pkcs8_pem(LineEnding::LF)
+                        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                    let mut file = OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(true)
+                        .open(path)
+                        .await?;
+                    file.write_all(bytes.bytes()).await?;
+                    key
+                }
+                Err(err) => {
+                    return Err(err);
+                }
+            }),
             SSHHostKey::RSA { path, hash } => {
-                File::open(path)
-                    .unwrap()
-                    .read_to_string(&mut buffer)
-                    .unwrap();
-
-                let key = Rsa::private_key_from_pem(buffer.as_bytes()).unwrap();
-                let key: RsaPrivate =
-                    RsaPrivate::new_from_der(&key.private_key_to_der().unwrap()).unwrap();
+                let key = match File::open(path).await {
+                    Ok(mut file) => {
+                        file.read_to_string(&mut buffer).await?;
+                        Rsa::private_key_from_pem(buffer.as_bytes()).unwrap()
+                    }
+                    Err(err) if err.kind() == ErrorKind::NotFound => {
+                        let key = Rsa::generate(4096u32)?;
+                        let bytes = key.private_key_to_pem()?;
+                        let mut file = OpenOptions::new()
+                            .create(true)
+                            .write(true)
+                            .truncate(true)
+                            .open(path)
+                            .await?;
+                        file.write_all(&bytes).await?;
+                        key
+                    }
+                    Err(err) => return Err(err),
+                };
+                let key = RsaPrivate::new_from_der(&key.private_key_to_der().unwrap()).unwrap();
                 KeyPair::RSA { key, hash: *hash }
             }
-        }
+        })
     }
 }
