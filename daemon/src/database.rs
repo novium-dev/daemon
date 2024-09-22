@@ -1,18 +1,16 @@
-#![allow(dead_code)] // TODO: WIP, remove if ready
-
-use crate::schema::FetchedDatabase;
+use crate::schema;
+use crate::web::payload::DatabasePayload;
 use diesel::connection::SimpleConnection;
 use diesel::result::Error;
-use diesel::{Connection, MysqlConnection};
+use diesel::{delete, insert_into, MysqlConnection};
+use diesel::{BoolExpressionMethods, ExpressionMethods, RunQueryDsl};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
-use tokio::sync::Mutex;
 use tokio::task::JoinError;
 
 #[allow(unused)]
 #[derive(Debug)]
-pub enum DatabaseUpdateError {
+pub(crate) enum DatabaseUpdateError {
     Diesel(diesel::result::Error),
     Invalid,
     Blocking(JoinError),
@@ -31,25 +29,25 @@ impl From<JoinError> for DatabaseUpdateError {
     }
 }
 
-impl FetchedDatabase {
-    pub async fn update_validated(
+impl DatabasePayload {
+    pub(crate) fn update_validated(
         &mut self,
         id: u32,
-        conn: Arc<Mutex<MysqlConnection>>,
-        to: FetchedDatabase,
+        conn: &mut MysqlConnection,
+        to: DatabasePayload,
     ) -> Result<(), DatabaseUpdateError> {
         for (user, data) in &to.users {
             Self::validate_sql_string(user)?;
             Self::validate_hash(data.restricted.is_some(), &data.password_hash)?;
         }
-        self.update_unvalidated(id, conn, to).await
+        self.update_unvalidated(id, conn, to)
     }
 
-    pub async fn update_unvalidated(
+    pub(crate) fn update_unvalidated(
         &mut self,
         id: u32,
-        conn: Arc<Mutex<MysqlConnection>>,
-        to: FetchedDatabase,
+        conn: &mut MysqlConnection,
+        to: DatabasePayload,
     ) -> Result<(), DatabaseUpdateError> {
         let name = self.name_suffix.clone();
 
@@ -99,90 +97,120 @@ impl FetchedDatabase {
             return Ok(());
         }
 
-        tokio::task::spawn_blocking(move || {
-            let mut conn = conn.blocking_lock();
-            // Unsure if a transaction is even necessary here, but It probably doesn't hurt
-            // stupid, but still the best way
-            conn.transaction(move |conn| {
-                let mut sql = String::new();
+        let mut sql = String::new();
 
-                for user in remove_users {
+        for user in remove_users {
+            sql += &format!(
+                "DROP USER IF EXISTS '{}{}_{}'@'%';",
+                crate::MARIADB_USER_PREFIX,
+                id,
+                user
+            );
+            delete(schema::database_user::dsl::database_user)
+                .filter(
+                    schema::database_user::dsl::database_id
+                        .eq(id)
+                        .and(schema::database_user::dsl::name_suffix.eq(&user)),
+                )
+                .execute(conn)?;
+        }
+        for server in remove_server {
+            sql += &format!(
+                "REVOKE ALL PRIVILEGES ON {}{}_{}.* FROM 'server_{}'@'%';",
+                crate::MARIADB_DATABASE_PREFIX,
+                id,
+                name,
+                server
+            );
+            delete(schema::database_passwordless::dsl::database_passwordless)
+                .filter(
+                    schema::database_passwordless::dsl::database_id
+                        .eq(id)
+                        .and(schema::database_passwordless::dsl::server_id.eq(server)),
+                )
+                .execute(conn)?;
+        }
+        for (user, data) in add_users {
+            match data.restricted {
+                None => {
                     sql += &format!(
-                        "DROP USER IF EXISTS '{}{}_{}'@'%';",
-                        crate::MARIADB_USER_PREFIX,
-                        id,
-                        user
-                    );
-                }
-                for server in remove_server {
-                    sql += &format!(
-                        "REVOKE ALL PRIVILEGES ON {}{}_{}.* FROM 'server_{}'@'%';",
-                        crate::MARIADB_DATABASE_PREFIX,
-                        id,
-                        name,
-                        server
-                    );
-                }
-                for (user, data) in add_users {
-                    match data.restricted {
-                        None => {
-                            sql += &format!(
                                 "CREATE USER '{}{}_{}'@'%' IDENTIFIED WITH 'mysql_native_password' AS '{}';",
                                 crate::MARIADB_USER_PREFIX,
                                 id,
                                 user,
                                 data.password_hash
                             );
-                        }
-                        Some(servers) => {
-                            let mut extra = data.password_hash.clone();
-                            for server in servers.split(';').map(|str| str.parse::<u32>()) {
-                                extra += &format!("{}\\0", server.map_err(|_err| DatabaseUpdateError::Invalid)?);
-                            }
-                            extra += "\\0";
-                            sql += &format!(
-                                "CREATE USER '{}{}_{}'@'%' IDENTIFIED WITH '{}' AS '{}';",
-                                crate::MARIADB_USER_PREFIX,
-                                id,
-                                user,
-                                crate::MARIADB_PLUGIN_NAME,
-                                extra
-                            );
-                        }
-                    }
-                    for perm in Self::permissions(data.permissions) {
-                        sql += &format!(
-                            "GRANT {} ON TABLE {}{}_{}.* TO '{}{}_{}'@'%';",
-                            perm,
-                            crate::MARIADB_DATABASE_PREFIX,
-                            id,
-                            name,
-                            crate::MARIADB_USER_PREFIX,
-                            id,
-                            user
-                        );
-                    }
                 }
-                for (server, permissions) in add_server {
-                    sql += &format!("CREATE USER IF NOT EXISTS 'server_{}'@'%' IDENTIFIED WITH mysql_no_login;", server);
-                    sql += &format!("GRANT PROXY ON 'server_{}'@'%' TO 'server'@'%';", server);
-                    for perm in Self::permissions(permissions) {
-                        sql += &format!(
-                            "GRANT {} ON TABLE {}{}_{}.* TO 'server_{}'@'%';",
-                            perm,
-                            crate::MARIADB_DATABASE_PREFIX,
-                            id,
-                            name,
-                            server
-                        );
+                Some(ref servers) => {
+                    let mut extra = data.password_hash.clone();
+                    for server in servers {
+                        extra += &format!("{}\\0", server);
                     }
+                    extra += "\\0";
+                    sql += &format!(
+                        "CREATE USER '{}{}_{}'@'%' IDENTIFIED WITH '{}' AS '{}';",
+                        crate::MARIADB_USER_PREFIX,
+                        id,
+                        user,
+                        crate::MARIADB_PLUGIN_NAME,
+                        extra
+                    );
                 }
-                sql += "FLUSH PRIVILEGES;";
-                conn.batch_execute(&sql)?;
-                Ok(())
-            })
-        })
-        .await?
+            }
+            for perm in Self::permissions(data.permissions) {
+                sql += &format!(
+                    "GRANT {} ON TABLE {}{}_{}.* TO '{}{}_{}'@'%';",
+                    perm,
+                    crate::MARIADB_DATABASE_PREFIX,
+                    id,
+                    name,
+                    crate::MARIADB_USER_PREFIX,
+                    id,
+                    user
+                );
+            }
+            let restricted = data.restricted.as_ref().map(|servers| {
+                servers
+                    .iter()
+                    .map(|id| id.to_string())
+                    .collect::<Vec<_>>()
+                    .join(";")
+            });
+            insert_into(schema::database_user::dsl::database_user)
+                .values((
+                    schema::database_user::dsl::database_id.eq(id),
+                    schema::database_user::dsl::name_suffix.eq(&user),
+                    schema::database_user::dsl::permissions.eq(data.permissions),
+                    schema::database_user::dsl::restricted.eq(restricted),
+                ))
+                .execute(conn)?;
+        }
+        for (server, permissions) in add_server {
+            sql += &format!(
+                "CREATE USER IF NOT EXISTS 'server_{}'@'%' IDENTIFIED WITH mysql_no_login;",
+                server
+            );
+            sql += &format!("GRANT PROXY ON 'server_{}'@'%' TO 'server'@'%';", server);
+            for perm in Self::permissions(permissions) {
+                sql += &format!(
+                    "GRANT {} ON TABLE {}{}_{}.* TO 'server_{}'@'%';",
+                    perm,
+                    crate::MARIADB_DATABASE_PREFIX,
+                    id,
+                    name,
+                    server
+                );
+            }
+            insert_into(schema::database_passwordless::dsl::database_passwordless)
+                .values((
+                    schema::database_passwordless::dsl::database_id.eq(id),
+                    schema::database_passwordless::dsl::permissions.eq(permissions),
+                ))
+                .execute(conn)?;
+        }
+        sql += "FLUSH PRIVILEGES;";
+        conn.batch_execute(&sql)?;
+        Ok(())
     }
 
     fn validate_hash(sha256: bool, str: &str) -> Result<(), DatabaseUpdateError> {

@@ -13,7 +13,6 @@ pub struct FetchedDatabase {
 }
 
 impl Database {
-    #[allow(unused)]
     pub(crate) fn fetched(self, conn: &mut MysqlConnection) -> Result<FetchedDatabase, Error> {
         let passwordless = DatabasePasswordless::belonging_to(&self)
             .load::<DatabasePasswordless>(conn)?

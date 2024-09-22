@@ -1,3 +1,4 @@
+use crate::schema::FetchedDatabase;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -38,4 +39,51 @@ pub(crate) struct ServerPortEntryPayload {
 #[derive(Serialize)]
 pub(crate) struct IdResponse {
     pub(crate) id: u32,
+}
+
+#[derive(Deserialize, Eq, PartialEq)]
+pub(crate) struct DatabasePayload {
+    pub(crate) name_suffix: String,
+    pub(crate) passwordless: HashMap<u32, i32>,
+    pub(crate) users: HashMap<String, DatabaseUserPayload>,
+}
+
+impl From<FetchedDatabase> for DatabasePayload {
+    fn from(value: FetchedDatabase) -> Self {
+        DatabasePayload {
+            name_suffix: value.name_suffix,
+            passwordless: value.passwordless,
+            users: value
+                .users
+                .into_iter()
+                .map(|(name_suffix, user)| {
+                    let mut restricted = None;
+                    if let Some(str) = user.restricted {
+                        restricted = Some(if str.is_empty() {
+                            Vec::new()
+                        } else {
+                            str.split(';')
+                                .map(|str| str.parse::<u32>().unwrap())
+                                .collect()
+                        });
+                    }
+                    (
+                        name_suffix,
+                        DatabaseUserPayload {
+                            permissions: user.permissions,
+                            password_hash: user.password_hash,
+                            restricted,
+                        },
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+#[derive(Deserialize, Eq, PartialEq, Hash)]
+pub(crate) struct DatabaseUserPayload {
+    pub(crate) password_hash: String,
+    pub(crate) permissions: i32,
+    pub(crate) restricted: Option<Vec<u32>>,
 }

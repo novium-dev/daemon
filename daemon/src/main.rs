@@ -86,14 +86,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .nest(
             "/server",
             Router::new()
-                .route("/", put(web::create_server))
-                .route("/:server_id", get(web::server_info))
-                .route("/:server_id", patch(web::modify_server))
-                .route("/:server_id", delete(web::delete_server))
-                .route("/:server_id/start", get(web::start_server))
-                .route("/:server_id/stop", get(web::stop_server))
-                .route("/:server_id/kill", get(web::kill_server))
-                .route("/:server_id/restart", get(web::restart_server))
+                .route("/", put(web::server::create_server))
+                .route("/:server_id", get(web::server::server_info))
+                .route("/:server_id", patch(web::server::modify_server))
+                .route("/:server_id", delete(web::server::delete_server))
+                .route("/:server_id/start", get(web::server::start_server))
+                .route("/:server_id/stop", get(web::server::stop_server))
+                .route("/:server_id/kill", get(web::server::kill_server))
+                .route("/:server_id/restart", get(web::server::restart_server))
+                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
+        )
+        .nest(
+            "/database",
+            Router::new()
+                .route("/", put(web::database::create_database))
+                .route("/:database_id", patch(web::database::modify_database))
+                .route("/:database_id", delete(web::database::delete_database))
                 .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
         )
         .nest(

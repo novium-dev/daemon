@@ -1,4 +1,4 @@
-use crate::schema::{servers, FetchedServer, Server};
+use crate::schema::{databases, servers, Database, FetchedDatabase, FetchedServer, Server};
 use crate::server::{ServerState, ServerStats};
 use crate::ServerData;
 use axum::async_trait;
@@ -10,10 +10,25 @@ use std::marker::PhantomData;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedMutexGuard};
 
 pub(crate) fn from_mib(mib: u32) -> i64 {
     mib as i64 * 1024 * 1024
+}
+
+pub(crate) async fn database(
+    mut conn: OwnedMutexGuard<MysqlConnection>,
+    database_id: u32,
+) -> Result<(FetchedDatabase, OwnedMutexGuard<MysqlConnection>), diesel::result::Error> {
+    tokio::task::spawn_blocking(move || {
+        let database = databases::dsl::databases
+            .filter(databases::dsl::id.eq(database_id))
+            .select(Database::as_select())
+            .first(conn.deref_mut())?;
+        Ok((database.fetched(conn.deref_mut())?, conn))
+    })
+    .await
+    .unwrap()
 }
 
 pub(crate) async fn server(
