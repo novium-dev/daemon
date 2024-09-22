@@ -1,7 +1,7 @@
 use crate::database::DatabaseUpdateError;
 use crate::utils::database;
 use crate::web::diesel_error_to_http;
-use crate::web::payload::DatabasePayload;
+use crate::web::payload::{DatabasePayload, IdResponse};
 use crate::{schema, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -15,10 +15,10 @@ use std::collections::HashMap;
 pub(crate) async fn create_database(
     State(state): State<DaemonState>,
     Json(payload): Json<DatabasePayload>,
-) -> Result<(), StatusCode> {
+) -> Result<Json<IdResponse>, StatusCode> {
     let mut conn = state.conn.clone().lock_owned().await;
 
-    let result = tokio::task::spawn_blocking(move || {
+    let (database_id, result) = tokio::task::spawn_blocking(move || {
         conn.transaction(|conn| {
             let database_id = insert_dummy(payload.name_suffix.clone(), conn)?;
             conn.batch_execute(&format!(
@@ -36,19 +36,19 @@ pub(crate) async fn create_database(
             if let Err(DatabaseUpdateError::Diesel(err)) = result {
                 return Err(err);
             }
-            Ok(result)
+            Ok((database_id, result))
         })
     })
     .await
     .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .unwrap_or_else(|err| Err(DatabaseUpdateError::Diesel(err)));
+    .unwrap_or_else(|err| (0, Err(DatabaseUpdateError::Diesel(err))));
 
     match result {
         Err(DatabaseUpdateError::Diesel(err)) => Err(diesel_error_to_http(err)),
         Err(DatabaseUpdateError::Invalid) => Err(StatusCode::BAD_REQUEST),
         Err(DatabaseUpdateError::Blocking(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
         Err(DatabaseUpdateError::RenameingNotImplemented) => Err(StatusCode::NOT_IMPLEMENTED),
-        Ok(_) => Ok(()),
+        Ok(_) => Ok(Json(IdResponse { id: database_id })),
     }
 }
 
