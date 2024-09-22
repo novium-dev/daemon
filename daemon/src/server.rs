@@ -32,6 +32,8 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
+pub(crate) const TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024;
+
 impl FetchedServer {
     pub(crate) fn prefix() -> String {
         format!("{}[Daemon] ", Fg(color::Yellow))
@@ -39,6 +41,10 @@ impl FetchedServer {
 
     pub(crate) fn console(sender: &Sender<ChannelWriteData>, buffer: &mut Vec<u8>, msg: String) {
         let bytes = msg.into_bytes();
+        if (buffer.len() + bytes.len()) > TERMINAL_BUFFER_LIMIT {
+            let remove = TERMINAL_BUFFER_LIMIT - (buffer.len() + bytes.len());
+            buffer.drain(0..remove);
+        }
         buffer.extend_from_slice(&bytes);
         let _ = sender.send(ChannelWriteData::Terminal(bytes));
     }
