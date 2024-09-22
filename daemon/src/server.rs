@@ -728,6 +728,10 @@ impl ServerState {
     pub(crate) fn kill(&self) -> bool {
         !matches!(self, ServerState::Stopped)
     }
+
+    pub(crate) fn kill_show(&self) -> bool {
+        matches!(self, ServerState::Stopping | ServerState::Restarting)
+    }
 }
 
 impl Display for ServerState {
@@ -762,7 +766,7 @@ impl ServerState {
         if self.stop() {
             info |= 1 << 1 // set bit 1 (little endian) to 1
         }
-        if self.kill() {
+        if self.kill_show() {
             info |= 1 << 2 // set bit 2 (little endian) to 1
         }
         bytes.push(info);
