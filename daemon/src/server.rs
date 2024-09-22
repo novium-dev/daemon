@@ -183,7 +183,7 @@ impl FetchedServer {
                 match health.status.unwrap() {
                     HealthStatusEnum::EMPTY | HealthStatusEnum::NONE => ServerState::Running,
                     HealthStatusEnum::STARTING => ServerState::Starting,
-                    HealthStatusEnum::HEALTHY => ServerState::Healthy,
+                    HealthStatusEnum::HEALTHY => ServerState::Running,
                     HealthStatusEnum::UNHEALTHY => ServerState::Unhealthy,
                 }
             } else {
@@ -621,7 +621,6 @@ pub(crate) enum ServerState {
 
     // Health-check enabled
     Starting,
-    Healthy,
     Unhealthy,
 
     // Health-check disabled
@@ -739,7 +738,6 @@ impl Display for ServerState {
         f.write_str(match self {
             ServerState::Stopped => "Stopped",
             ServerState::Starting => "Starting",
-            ServerState::Healthy => "Healthy",
             ServerState::Unhealthy => "Unhealthy",
             ServerState::Running => "Running",
             ServerState::Stopping => "Stopping",
