@@ -180,6 +180,7 @@ impl DatabasePayload {
                 .values((
                     schema::database_user::dsl::database_id.eq(id),
                     schema::database_user::dsl::name_suffix.eq(&user),
+                    schema::database_user::dsl::password_hash.eq(data.password_hash),
                     schema::database_user::dsl::permissions.eq(data.permissions),
                     schema::database_user::dsl::restricted.eq(restricted),
                 ))
