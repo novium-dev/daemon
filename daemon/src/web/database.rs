@@ -6,6 +6,7 @@ use crate::{schema, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
+use diesel::connection::SimpleConnection;
 use diesel::{
     delete, insert_into, select, Connection, ExpressionMethods, MysqlConnection, RunQueryDsl,
 };
@@ -20,6 +21,12 @@ pub(crate) async fn create_database(
     let result = tokio::task::spawn_blocking(move || {
         conn.transaction(|conn| {
             let database_id = insert_dummy(payload.name_suffix.clone(), conn)?;
+            conn.batch_execute(&format!(
+                "CREATE DATABASE {}{}_{};",
+                crate::MARIADB_DATABASE_PREFIX,
+                database_id,
+                payload.name_suffix,
+            ))?;
             let result = DatabasePayload {
                 name_suffix: payload.name_suffix.clone(),
                 users: HashMap::new(),
@@ -108,12 +115,18 @@ pub(crate) async fn delete_database(
                 DatabasePayload {
                     passwordless: HashMap::new(),
                     users: HashMap::new(),
-                    name_suffix,
+                    name_suffix: name_suffix.clone(),
                 },
             );
             if let Err(DatabaseUpdateError::Diesel(err)) = result {
                 return Err(err);
             }
+            conn.batch_execute(&format!(
+                "DROP DATABASE {}{}_{};",
+                crate::MARIADB_DATABASE_PREFIX,
+                database_id,
+                name_suffix,
+            ))?;
             delete(schema::databases::dsl::databases)
                 .filter(schema::databases::dsl::id.eq(database_id))
                 .execute(conn)?;
