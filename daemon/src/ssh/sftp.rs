@@ -11,10 +11,9 @@ use std::collections::HashMap;
 use std::fs::{Metadata, Permissions};
 use std::io::{ErrorKind, SeekFrom};
 use std::os::unix::prelude::*;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::fs;
-use tokio::fs::{File, OpenOptions};
+use tokio::fs::{self, File, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 
 pub(crate) struct DaemonSftpSession {
@@ -336,21 +335,6 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
             }],
         })
     }
-
-    async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
-        let path = self.path(path).await?;
-        let realpath = fs::canonicalize(path)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
-        Ok(Name {
-            id,
-            files: vec![russh_sftp::protocol::File {
-                filename: self.reverse_path(&realpath).await?,
-                longname: "".to_string(),
-                attrs: FileAttributes::default(),
-            }],
-        })
-    }
 }
 
 impl DaemonSftpSession {
@@ -399,11 +383,6 @@ impl DaemonSftpSession {
                 Ok(path)
             }
         }
-    }
-
-    async fn reverse_path(&self, _path: &Path) -> Result<String, StatusCode> {
-        // TODO: Implement reverse_path
-        Err(StatusCode::OpUnsupported)
     }
 
     fn handle(&mut self, handle: String) -> Result<&mut File, StatusCode> {
