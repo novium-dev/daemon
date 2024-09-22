@@ -63,7 +63,7 @@ pub(crate) async fn terminal_websocket_handle(
 
     tokio::task::spawn(new_session(
         id,
-        ChannelInterceptor::new(socket, move |socket, mut message| {
+        ChannelInterceptor::new(socket, move |_socket, mut message| {
             let server_data_arc2 = server_data_arc2.clone();
             let docker2 = docker2.clone();
             let cols2 = cols2.clone();
@@ -87,9 +87,6 @@ pub(crate) async fn terminal_websocket_handle(
                             });
                         }
                     }
-                }
-                if let Some(Ok(Message::Ping(data))) = &mut message {
-                    let _ = socket.send(Message::Pong(std::mem::take(data))).await;
                 }
                 message
             })

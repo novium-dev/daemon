@@ -76,7 +76,11 @@ impl ChannelAdapter<Option<Result<Message, Error>>, Result<(), Error>, Result<()
     for WebSocket
 {
     async fn read(&mut self) -> Option<Result<Message, Error>> {
-        self.recv().await
+        let message = self.recv().await;
+        if let Some(Ok(Message::Ping(ref data))) = message {
+            let _ = self.send(Message::Pong(data.clone())).await;
+        }
+        message
     }
 
     fn read_transform(
@@ -90,6 +94,7 @@ impl ChannelAdapter<Option<Result<Message, Error>>, Result<(), Error>, Result<()
             None => Err(ChannelError::Closed),
             Some(Ok(Message::Binary(data))) => Ok(data),
             Some(Ok(Message::Text(data))) => Ok(data.into_bytes()),
+            Some(Ok(Message::Close(_))) => Err(ChannelError::Closed),
             Some(Ok(_)) => Ok(Vec::new()),
             Some(Err(err)) => Err(ChannelError::IO(io::Error::new(ErrorKind::Other, err))),
         }
