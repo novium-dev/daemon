@@ -484,11 +484,24 @@ impl DaemonSftpSession {
                 Ok(handle)
             }
             Some(storage) => {
-                let mut path =
+                let base =
                     PathBuf::from(&self.state.config.storage_path).join(storage.as_pathbuf());
+                let base = tokio::fs::canonicalize(base)
+                    .await
+                    .map_err(|_err| StatusCode::Failure)?;
+
+                let mut path = base.clone();
                 for comp in temp_suffix {
                     path = path.join(comp);
                 }
+
+                let cononical_path = tokio::fs::canonicalize(&path)
+                    .await
+                    .map_err(|_err| StatusCode::Failure)?;
+                if cononical_path.strip_prefix(base).is_err() {
+                    return Err(StatusCode::PermissionDenied); // Trying to escape the allowed directory using symlinks
+                }
+
                 let mut options = OpenOptions::new();
                 let mut options = options
                     .read(pflags.intersects(OpenFlags::READ))
