@@ -8,7 +8,7 @@ use russh_sftp::protocol::{
     Attrs, Data, FileAttributes, FileMode, Handle, Name, OpenFlags, Status, StatusCode, Version,
 };
 use std::collections::HashMap;
-use std::fs::{Metadata, Permissions};
+use std::fs::{Metadata, Permissions, ReadDir};
 use std::io::{ErrorKind, SeekFrom};
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
@@ -492,7 +492,7 @@ impl DaemonSftpSession {
                     path = path.join(comp);
                 }
                 let file = if opendir {
-                    File::opendir(path).await.map_err(|err| {
+                    File::opendir(&path).await.map_err(|err| {
                         if err.kind() == ErrorKind::NotFound {
                             StatusCode::NoSuchFile
                         } else {
@@ -513,15 +513,37 @@ impl DaemonSftpSession {
                         options = options.mode(mode);
                     }
 
-                    options.open(path).await.map_err(|err| match err.kind() {
+                    options.open(&path).await.map_err(|err| match err.kind() {
                         ErrorKind::NotFound => StatusCode::NoSuchFile,
                         ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
                         _ => StatusCode::Failure,
                     })?
                 };
+                let mut read_dir = None;
+                if file
+                    .metadata()
+                    .await
+                    .map_err(|err| match err.kind() {
+                        ErrorKind::NotFound => StatusCode::NoSuchFile,
+                        ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
+                        _ => StatusCode::Failure,
+                    })?
+                    .is_dir()
+                {
+                    read_dir = Some(
+                        tokio::task::spawn_blocking(move || std::fs::read_dir(path))
+                            .await
+                            .map_err(|_err| StatusCode::Failure)?
+                            .map_err(|err| match err.kind() {
+                                ErrorKind::NotFound => StatusCode::NoSuchFile,
+                                ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
+                                _ => StatusCode::Failure,
+                            })?,
+                    );
+                }
                 let handle = file.as_raw_fd().to_string();
                 self.file_handles
-                    .insert(handle.clone(), FileHandle::Regular(file, false));
+                    .insert(handle.clone(), FileHandle::Regular(file, read_dir, false));
                 Ok(handle)
             }
         }
@@ -529,14 +551,14 @@ impl DaemonSftpSession {
 }
 
 pub(crate) enum FileHandle {
-    Regular(File, bool),
+    Regular(File, Option<ReadDir>, bool),
     Internal(Vec<(String, FileAttributes)>, bool),
 }
 
 impl FileHandle {
     async fn fstat(&mut self, id: u32) -> Result<Attrs, StatusCode> {
         match self {
-            FileHandle::Regular(handle, _) => {
+            FileHandle::Regular(handle, _, _) => {
                 let metadata = handle
                     .metadata()
                     .await
@@ -564,28 +586,43 @@ impl FileHandle {
 
     async fn readdir(&mut self) -> Result<Vec<(String, FileAttributes)>, io::Error> {
         match self {
-            FileHandle::Regular(handle, read) => {
+            FileHandle::Regular(_handle, read_dir, read) => {
+                if read_dir.is_none() {
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidInput,
+                        "File is not a directory",
+                    ));
+                }
                 if *read {
                     return Err(io::Error::new(ErrorKind::UnexpectedEof, ""));
                 }
                 *read = true;
-                let mut readdir = handle.readdir().await?;
-                let mut files = Vec::new();
-                loop {
-                    match readdir.next_entry().await {
-                        Ok(Some(entry)) => {
-                            let mut name = entry.file_name().to_string_lossy().into_owned();
-                            if entry.metadata().await?.is_dir() {
-                                name += "/";
+                let mut read_dir_taken = read_dir.take().unwrap();
+                let (read_dir_taken, result) = tokio::task::spawn_blocking(move || {
+                    let mut files = Vec::new();
+                    loop {
+                        match read_dir_taken.next() {
+                            Some(Ok(entry)) => {
+                                let name = entry.file_name().to_string_lossy().into_owned();
+                                let metadata = entry.metadata();
+                                match metadata {
+                                    Ok(metadata) => {
+                                        files.push((name, metadata.into_fileattributes()));
+                                    }
+                                    Err(err) => break (read_dir_taken, Err(err)),
+                                }
                             }
-                            files.push((name, entry.metadata().await?.into_fileattributes()));
+                            Some(Err(err)) => break (read_dir_taken, Err(err)),
+                            None => {
+                                break (read_dir_taken, Ok(files));
+                            }
                         }
-                        Ok(None) => {
-                            break Ok(files);
-                        }
-                        Err(err) => break Err(err),
                     }
-                }
+                })
+                .await
+                .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                *read_dir = Some(read_dir_taken);
+                result
             }
             FileHandle::Internal(dirs, read) => {
                 if *read {
@@ -599,7 +636,7 @@ impl FileHandle {
 
     fn regular_only(&mut self) -> Result<&mut File, StatusCode> {
         match self {
-            FileHandle::Regular(file, _) => Ok(file),
+            FileHandle::Regular(file, _, _) => Ok(file),
             FileHandle::Internal(_, _) => Err(StatusCode::PermissionDenied),
         }
     }

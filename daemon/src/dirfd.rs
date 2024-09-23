@@ -4,23 +4,15 @@
 mod small_c_string;
 
 use crate::dirfd::small_c_string::run_path_with_cstr;
-use libc::{c_int, DIR};
+use libc::c_int;
 use log::debug;
-use std::collections::VecDeque;
-use std::fs::{FileType, ReadDir};
-use std::os::fd::{AsRawFd, FromRawFd};
-use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::{io, mem};
-use tokio::fs::{File, ReadDir as ReadDirTokio};
-use tokio::task::JoinHandle;
-
-const CHUNK_SIZE: usize = 32;
+use std::io;
+use std::os::fd::FromRawFd;
+use std::path::Path;
+use tokio::fs::File;
 
 pub(crate) trait DirectoryFDExt {
     async fn opendir(path: impl AsRef<Path>) -> io::Result<File>;
-
-    async fn readdir(&self) -> io::Result<ReadDirTokio>;
 }
 
 impl DirectoryFDExt for tokio::fs::File {
@@ -41,97 +33,4 @@ impl DirectoryFDExt for tokio::fs::File {
         .await
         .map_err(|_| io::Error::new(io::ErrorKind::Other, "background task failed"))?
     }
-
-    async fn readdir(&self) -> io::Result<ReadDirTokio> {
-        debug!("Unsafe readdir: {}", self.as_raw_fd());
-        let fake_std_inner = FakeStdInnerReadDir {
-            dirp: Dir(self.as_raw_fd() as *mut DIR),
-            root: PathBuf::new(),
-        };
-        let fake_std_readdir = FakeStdReadDirOuter(FakeStdReadDir {
-            #[allow(clippy::arc_with_non_send_sync)]
-            inner: Arc::new(fake_std_inner),
-            end_of_stream: false,
-        });
-        let mut std_readdir =
-            unsafe { mem::transmute::<FakeStdReadDirOuter, ReadDir>(fake_std_readdir) };
-
-        let mut buf = VecDeque::with_capacity(CHUNK_SIZE);
-        let remain = tokio_next_chunk(&mut buf, &mut std_readdir);
-
-        let state = FakeTokioState::Idle(Some((buf, std_readdir, remain)));
-        Ok(unsafe { mem::transmute::<FakeTokioReadDir, ReadDirTokio>(FakeTokioReadDir(state)) })
-    }
-}
-
-#[allow(unused)]
-#[derive(Debug)]
-enum FakeTokioState {
-    Idle(
-        Option<(
-            VecDeque<io::Result<FakeTokioDirEntry>>,
-            std::fs::ReadDir,
-            bool,
-        )>,
-    ),
-    Pending(
-        JoinHandle<(
-            VecDeque<io::Result<FakeTokioDirEntry>>,
-            std::fs::ReadDir,
-            bool,
-        )>,
-    ),
-}
-
-#[allow(unused)]
-struct Dir(*mut libc::DIR);
-
-#[allow(unused)]
-pub struct FakeTokioReadDir(FakeTokioState);
-
-#[allow(unused)]
-#[derive(Debug)]
-pub struct FakeTokioDirEntry {
-    file_type: Option<FileType>,
-    std: Arc<std::fs::DirEntry>,
-}
-
-#[allow(unused)]
-struct FakeStdInnerReadDir {
-    dirp: Dir,
-    root: PathBuf,
-}
-
-#[allow(unused)]
-pub struct FakeStdReadDir {
-    inner: Arc<FakeStdInnerReadDir>,
-    end_of_stream: bool,
-}
-
-#[allow(unused)]
-pub struct FakeStdReadDirOuter(FakeStdReadDir);
-
-fn tokio_next_chunk(
-    buf: &mut VecDeque<io::Result<FakeTokioDirEntry>>,
-    std: &mut std::fs::ReadDir,
-) -> bool {
-    for _ in 0..CHUNK_SIZE {
-        let ret = match std.next() {
-            Some(ret) => ret,
-            None => return false,
-        };
-
-        let success = ret.is_ok();
-
-        buf.push_back(ret.map(|std| FakeTokioDirEntry {
-            file_type: std.file_type().ok(),
-            std: Arc::new(std),
-        }));
-
-        if !success {
-            break;
-        }
-    }
-
-    true
 }
