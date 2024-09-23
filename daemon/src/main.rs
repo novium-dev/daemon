@@ -1,6 +1,5 @@
 mod config;
 mod database;
-mod dirfd;
 mod schema;
 mod server;
 mod ssh;

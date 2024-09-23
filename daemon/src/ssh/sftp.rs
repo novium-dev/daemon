@@ -1,4 +1,3 @@
-use crate::dirfd::DirectoryFDExt;
 use crate::storage::StorageIdentifiers;
 use crate::utils::short_path;
 use crate::DaemonState;
@@ -64,7 +63,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Handle, Self::Error> {
         debug!("Open {} {} {}", id, filename, pflags.bits());
-        let handle = self.open(filename, pflags, attrs, false).await?;
+        let handle = self.open(filename, pflags, attrs).await?;
         debug!("Handle: {}", handle);
         Ok(Handle { id, handle })
     }
@@ -97,7 +96,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn opendir(&mut self, id: u32, path: String) -> Result<Handle, Self::Error> {
         debug!("OpenDir {} {}", id, path);
         let handle = self
-            .open(path, OpenFlags::empty(), FileAttributes::default(), true)
+            .open(path, OpenFlags::READ, FileAttributes::default())
             .await?;
         debug!("Handle: {}", handle);
         Ok(Handle { id, handle })
@@ -431,7 +430,6 @@ impl DaemonSftpSession {
         path: String,
         pflags: OpenFlags,
         attrs: FileAttributes,
-        opendir: bool,
     ) -> Result<String, StatusCode> {
         let (storage, temp_prefix, temp_suffix) = self.path0(path).await?;
         match storage {
@@ -491,34 +489,24 @@ impl DaemonSftpSession {
                 for comp in temp_suffix {
                     path = path.join(comp);
                 }
-                let file = if opendir {
-                    File::opendir(&path).await.map_err(|err| {
-                        if err.kind() == ErrorKind::NotFound {
-                            StatusCode::NoSuchFile
-                        } else {
-                            StatusCode::Failure
-                        }
-                    })?
-                } else {
-                    let mut options = OpenOptions::new();
-                    let mut options = options
-                        .read(pflags.intersects(OpenFlags::READ))
-                        .write(pflags.intersects(OpenFlags::WRITE))
-                        .append(pflags.intersects(OpenFlags::APPEND))
-                        .create(pflags.intersects(OpenFlags::CREATE))
-                        .truncate(pflags.intersects(OpenFlags::TRUNCATE))
-                        .create_new(pflags.intersects(OpenFlags::EXCLUDE));
+                let mut options = OpenOptions::new();
+                let mut options = options
+                    .read(pflags.intersects(OpenFlags::READ))
+                    .write(pflags.intersects(OpenFlags::WRITE))
+                    .append(pflags.intersects(OpenFlags::APPEND))
+                    .create(pflags.intersects(OpenFlags::CREATE))
+                    .truncate(pflags.intersects(OpenFlags::TRUNCATE))
+                    .create_new(pflags.intersects(OpenFlags::EXCLUDE));
 
-                    if let Some(mode) = attrs.permissions {
-                        options = options.mode(mode);
-                    }
+                if let Some(mode) = attrs.permissions {
+                    options = options.mode(mode);
+                }
 
-                    options.open(&path).await.map_err(|err| match err.kind() {
-                        ErrorKind::NotFound => StatusCode::NoSuchFile,
-                        ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
-                        _ => StatusCode::Failure,
-                    })?
-                };
+                let file = options.open(&path).await.map_err(|err| match err.kind() {
+                    ErrorKind::NotFound => StatusCode::NoSuchFile,
+                    ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
+                    _ => StatusCode::Failure,
+                })?;
                 let mut read_dir = None;
                 if file
                     .metadata()
