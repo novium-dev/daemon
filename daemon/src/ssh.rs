@@ -36,7 +36,10 @@ impl Server for DaemonSSHServer {
 
     fn handle_session_error(&mut self, error: <Self::Handler as Handler>::Error) {
         if let russh::Error::IO(ref err) = error {
-            if err.kind() == ErrorKind::UnexpectedEof {
+            if matches!(
+                err.kind(),
+                ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset
+            ) {
                 return;
             }
         }
