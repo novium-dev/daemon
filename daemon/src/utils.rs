@@ -70,7 +70,7 @@ pub(crate) fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
             } else {
                 return Err(());
             }
-        } else {
+        } else if !component.eq(".") {
             result.push(component);
         }
     }

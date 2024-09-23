@@ -1,6 +1,7 @@
 mod sftp;
 
 use crate::ssh::sftp::DaemonSftpSession;
+use crate::storage::StorageIdentifiers;
 use crate::terminal::{new_session, update_size, TerminalData};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{DaemonState, ServerData};
@@ -89,6 +90,7 @@ impl Handler for DaemonSSHHandler {
         _pix_height: u32,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        debug!("Window size change");
         match self.channels.get_mut(&channel_id) {
             Some((_channel, id, cols, rows)) => {
                 let cols = match cols {
@@ -138,6 +140,7 @@ impl Handler for DaemonSSHHandler {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        debug!("Exec");
         let str =
             String::from_utf8(data.to_vec()).map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
         let server_id: u32 = str.parse().map_err(|_err| russh::Error::DecryptionError)?;
@@ -207,15 +210,6 @@ impl Handler for DaemonSSHHandler {
         }
     }
 
-    async fn shell_request(
-        &mut self,
-        channel: ChannelId,
-        session: &mut Session,
-    ) -> Result<(), Self::Error> {
-        session.channel_failure(channel);
-        Ok(())
-    }
-
     async fn pty_request(
         &mut self,
         channel_id: ChannelId,
@@ -227,6 +221,7 @@ impl Handler for DaemonSSHHandler {
         _modes: &[(Pty, u32)],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        debug!("PTY Request");
         if let Some((_channel, _id, cols, rows)) = self.channels.get_mut(&channel_id) {
             match cols {
                 None => *cols = Some(Arc::new(AtomicU32::new(col_width))),
@@ -276,12 +271,15 @@ impl Handler for DaemonSSHHandler {
                         session.channel_failure(channel_id);
                         return Ok(());
                     }
-                    let sftp = DaemonSftpSession {
+                    let mut sftp = DaemonSftpSession {
                         access: HashMap::new(),
                         file_handles: HashMap::new(),
                         state: self.state.clone(),
                         version: None,
                     };
+                    let storage = StorageIdentifiers::Primary(1);
+                    sftp.access.insert(storage.as_vec(), storage);
+
                     session.channel_success(channel_id);
                     russh_sftp::server::run(channel.unwrap().into_stream(), sftp).await;
                 }

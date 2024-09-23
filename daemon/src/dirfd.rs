@@ -5,6 +5,7 @@ mod small_c_string;
 
 use crate::dirfd::small_c_string::run_path_with_cstr;
 use libc::{c_int, DIR};
+use log::debug;
 use std::collections::VecDeque;
 use std::fs::{FileType, ReadDir};
 use std::os::fd::{AsRawFd, FromRawFd};
@@ -24,12 +25,13 @@ pub(crate) trait DirectoryFDExt {
 
 impl DirectoryFDExt for tokio::fs::File {
     async fn opendir(path: impl AsRef<Path>) -> io::Result<File> {
+        debug!("Unsafe opendir");
         let path = path.as_ref().to_owned();
 
         tokio::task::spawn_blocking(move || {
             run_path_with_cstr(&path, &|cstr| unsafe {
                 let dir = libc::opendir(cstr.as_ptr());
-                if dir.is_null() {
+                if (dir as c_int) < 0 {
                     Err(io::Error::last_os_error())
                 } else {
                     Ok(File::from_raw_fd(dir as c_int))
@@ -41,17 +43,18 @@ impl DirectoryFDExt for tokio::fs::File {
     }
 
     async fn readdir(&self) -> io::Result<ReadDirTokio> {
+        debug!("Unsafe readdir: {}", self.as_raw_fd());
         let fake_std_inner = FakeStdInnerReadDir {
             dirp: Dir(self.as_raw_fd() as *mut DIR),
             root: PathBuf::new(),
         };
-        let fake_std_readdir = FakeStdReadDir {
+        let fake_std_readdir = FakeStdReadDirOuter(FakeStdReadDir {
             #[allow(clippy::arc_with_non_send_sync)]
             inner: Arc::new(fake_std_inner),
             end_of_stream: false,
-        };
+        });
         let mut std_readdir =
-            unsafe { mem::transmute::<FakeStdReadDir, ReadDir>(fake_std_readdir) };
+            unsafe { mem::transmute::<FakeStdReadDirOuter, ReadDir>(fake_std_readdir) };
 
         let mut buf = VecDeque::with_capacity(CHUNK_SIZE);
         let remain = tokio_next_chunk(&mut buf, &mut std_readdir);
@@ -89,15 +92,6 @@ pub struct FakeTokioReadDir(FakeTokioState);
 #[allow(unused)]
 #[derive(Debug)]
 pub struct FakeTokioDirEntry {
-    #[cfg(not(any(
-        target_os = "solaris",
-        target_os = "illumos",
-        target_os = "haiku",
-        target_os = "vxworks",
-        target_os = "aix",
-        target_os = "nto",
-        target_os = "vita",
-    )))]
     file_type: Option<FileType>,
     std: Arc<std::fs::DirEntry>,
 }
@@ -114,6 +108,9 @@ pub struct FakeStdReadDir {
     end_of_stream: bool,
 }
 
+#[allow(unused)]
+pub struct FakeStdReadDirOuter(FakeStdReadDir);
+
 fn tokio_next_chunk(
     buf: &mut VecDeque<io::Result<FakeTokioDirEntry>>,
     std: &mut std::fs::ReadDir,
@@ -127,15 +124,6 @@ fn tokio_next_chunk(
         let success = ret.is_ok();
 
         buf.push_back(ret.map(|std| FakeTokioDirEntry {
-            #[cfg(not(any(
-                target_os = "solaris",
-                target_os = "illumos",
-                target_os = "haiku",
-                target_os = "vxworks",
-                target_os = "aix",
-                target_os = "nto",
-                target_os = "vita",
-            )))]
             file_type: std.file_type().ok(),
             std: Arc::new(std),
         }));

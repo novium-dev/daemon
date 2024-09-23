@@ -4,7 +4,7 @@ use std::io::ErrorKind;
 use std::path::PathBuf;
 use tokio::fs;
 
-#[derive(Hash, PartialEq, Clone)]
+#[derive(Hash, PartialEq, Clone, Copy)]
 pub(crate) enum StorageIdentifiers {
     Primary(u32),
 }
