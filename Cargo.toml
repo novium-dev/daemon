@@ -3,5 +3,5 @@ members = ["daemon", "mariadb-plugin"]
 resolver = "2"
 
 [workspace.dependencies]
-libc = "0.2.158"
+libc = "0.2.159"
 bollard = "0.17.1"

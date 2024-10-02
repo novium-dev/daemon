@@ -22,7 +22,7 @@ bollard.workspace = true
 serde = { version = "1.0.208", features = ["derive"] }
 serde_json = "1.0.128"
 
-regex = "1.10.6"
+regex = "1.11.0"
 
 futures-util = "0.3.30"
 env_logger = "0.11.5"
@@ -52,11 +52,11 @@ version = "0.7.1"
 features = ["tls-rustls"]
 
 [dependencies.axum]
-version = "0.7.5"
+version = "0.7.7"
 features = ["json"]
 
 [dependencies.tower-http]
-version = "0.6.0"
+version = "0.6.1"
 features = ["cors", "auth"]
 
 [dependencies.tower-layer]
@@ -84,7 +84,7 @@ version = "0.2.0"
 optional = true
 
 [dependencies.tar]
-version = "0.4.41"
+version = "0.4.42"
 
 [dependencies.bytes]
 version = "1.7.1"
