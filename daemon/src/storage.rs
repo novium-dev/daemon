@@ -1,6 +1,5 @@
 use crate::config::DaemonConfig;
 use std::io;
-use std::io::ErrorKind;
 use std::path::PathBuf;
 use tokio::fs;
 
@@ -33,7 +32,9 @@ pub(crate) async fn ensure_exists(
     let dir = base.join(id.as_pathbuf());
 
     if !dir.try_exists()? {
+        #[cfg(feature = "btrfs")]
         if config.btrfs {
+            use std::io::ErrorKind;
             if let Some(parent) = dir.parent() {
                 fs::create_dir_all(parent).await?;
             }
@@ -43,8 +44,11 @@ pub(crate) async fn ensure_exists(
         } else {
             fs::create_dir_all(&dir).await?;
         }
+        #[cfg(not(feature = "btrfs"))]
+        fs::create_dir_all(&dir).await?;
     }
 
+    #[cfg(feature = "btrfs")]
     if config.btrfs {
         // TODO: Update quota
     }

@@ -1,6 +1,9 @@
+#[cfg(feature = "sftp")]
 mod sftp;
 
+#[cfg(feature = "sftp")]
 use crate::ssh::sftp::DaemonSftpSession;
+#[cfg(feature = "sftp")]
 use crate::storage::StorageIdentifiers;
 use crate::terminal::{new_session, update_size, TerminalData};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
@@ -263,7 +266,8 @@ impl Handler for DaemonSSHHandler {
     ) -> Result<(), Self::Error> {
         debug!("Subsystem Request {}", name);
 
-        if name == "sftp" {
+        if name == "sftp" && cfg!(feature = "sftp") {
+            #[cfg(feature = "sftp")]
             match self.channels.get_mut(&channel_id) {
                 None => {
                     session.channel_failure(channel_id);

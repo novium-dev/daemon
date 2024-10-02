@@ -1,20 +1,16 @@
+#[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use ed25519_dalek::ed25519::KeypairBytes;
-use ed25519_dalek::pkcs8::spki::der::pem::LineEnding;
-use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey};
-use ed25519_dalek::{SigningKey, VerifyingKey};
-use openssl::rsa::Rsa;
-use rand::rngs::OsRng;
+use ed25519_dalek::VerifyingKey;
+#[cfg(feature = "ssh")]
 use russh_keys::encoding::Bytes;
+#[cfg(feature = "ssh")]
 use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
-use std::io::{self, ErrorKind};
+#[cfg(feature = "ssl")]
 use std::path::PathBuf;
-use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Deserialize)]
 pub(crate) struct DaemonConfig {
@@ -25,11 +21,15 @@ pub(crate) struct DaemonConfig {
     pub(crate) websocket_allow_duration: u64,
     pub(crate) origin: String,
     pub(crate) storage_path: String,
+    #[cfg(feature = "btrfs")]
     pub(crate) btrfs: bool,
     pub(crate) bind: String,
+    #[cfg(feature = "ssh")]
     pub(crate) ssh_bind: String,
     pub(crate) database: String,
+    #[cfg(feature = "ssl")]
     pub(crate) ssl: SSLConfig,
+    #[cfg(feature = "ssh")]
     pub(crate) ssh_host_key: Vec<SSHHostKey>,
 }
 
@@ -46,6 +46,7 @@ where
         .map_err(D::Error::custom)
 }
 
+#[cfg(feature = "ssl")]
 #[derive(Deserialize)]
 pub(crate) struct SSLConfig {
     pub(crate) enabled: bool,
@@ -53,8 +54,9 @@ pub(crate) struct SSLConfig {
     pub(crate) certificate: Option<String>,
 }
 
+#[cfg(feature = "ssl")]
 impl SSLConfig {
-    pub(crate) async fn as_rustls(&self) -> Result<RustlsConfig, io::Error> {
+    pub(crate) async fn as_rustls(&self) -> Result<RustlsConfig, std::io::Error> {
         RustlsConfig::from_pem_file(
             PathBuf::from(self.certificate.as_ref().unwrap()),
             PathBuf::from(self.private_key.as_ref().unwrap()),
@@ -63,6 +65,7 @@ impl SSLConfig {
     }
 }
 
+#[cfg(feature = "ssh")]
 #[derive(Deserialize)]
 #[serde(tag = "type")]
 pub(crate) enum SSHHostKey {
@@ -73,8 +76,19 @@ pub(crate) enum SSHHostKey {
     RSA { path: String, hash: SignatureHash },
 }
 
+#[cfg(feature = "ssh")]
 impl SSHHostKey {
-    pub(crate) async fn as_russh_key(&self) -> Result<KeyPair, io::Error> {
+    pub(crate) async fn as_russh_key(&self) -> Result<KeyPair, std::io::Error> {
+        use ed25519_dalek::pkcs8::KeypairBytes;
+        use ed25519_dalek::pkcs8::{DecodePrivateKey, EncodePrivateKey};
+        use ed25519_dalek::SigningKey;
+        use openssl::rsa::Rsa;
+        use pkcs8::LineEnding;
+        use rand::rngs::OsRng;
+        use std::io::{self, ErrorKind};
+        use tokio::fs::{File, OpenOptions};
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
         let mut buffer = String::new();
         Ok(match self {
             SSHHostKey::ED25519 { path } => KeyPair::Ed25519(match File::open(path).await {

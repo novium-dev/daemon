@@ -61,6 +61,7 @@ pub(crate) async fn generic_server_select(
     .unwrap()
 }
 
+#[cfg(feature = "sftp")]
 pub(crate) fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
     let mut result = Vec::new();
     for component in components {

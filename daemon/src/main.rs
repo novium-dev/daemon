@@ -2,6 +2,8 @@ mod config;
 mod database;
 mod schema;
 mod server;
+
+#[cfg(feature = "ssh")]
 mod ssh;
 mod storage;
 mod terminal;
@@ -10,6 +12,7 @@ mod web;
 
 use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
+#[cfg(feature = "ssh")]
 use crate::ssh::DaemonSSHServer;
 use crate::terminal::TerminalSession;
 use crate::utils::ChannelWriteData;
@@ -22,6 +25,7 @@ use diesel::{Connection, MysqlConnection};
 use env_logger::Env;
 use libc::SIGINT;
 use log::{info, warn};
+#[cfg(feature = "ssh")]
 use russh::server::{Config, Server as SSHServer};
 use signal_hook::iterator::Signals;
 use std::collections::HashMap;
@@ -123,23 +127,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
     )?;
     let state = Arc::new(state);
 
-    let state1 = state.clone();
-    let config1 = config.clone();
-    tokio::task::spawn(async move {
-        let mut keys = Vec::with_capacity(config1.ssh_host_key.len());
-        for key in &config1.ssh_host_key {
-            keys.push(key.as_russh_key().await?);
-        }
-        DaemonSSHServer { state: state1 }
-            .run_on_address(
-                Arc::new(Config {
-                    keys,
-                    ..Config::default()
-                }),
-                &config1.ssh_bind,
-            )
-            .await
-    });
+    #[cfg(feature = "ssh")]
+    {
+        let state1 = state.clone();
+        let config1 = config.clone();
+        tokio::task::spawn(async move {
+            let mut keys = Vec::with_capacity(config1.ssh_host_key.len());
+            for key in &config1.ssh_host_key {
+                keys.push(key.as_russh_key().await?);
+            }
+            DaemonSSHServer { state: state1 }
+                .run_on_address(
+                    Arc::new(Config {
+                        keys,
+                        ..Config::default()
+                    }),
+                    &config1.ssh_bind,
+                )
+                .await
+        });
+    }
 
     let state1 = state.clone();
     let mut signal = Signals::new([SIGINT]).unwrap();
@@ -238,15 +245,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
         });
     }
 
+    #[cfg(feature = "ssl")]
     if config.ssl.enabled {
         axum_server::bind_rustls(config.bind.parse()?, config.ssl.as_rustls().await?)
             .serve(app.into_make_service())
             .await?;
-    } else {
-        axum_server::bind(config.bind.parse()?)
-            .serve(app.into_make_service())
-            .await?;
+        return Ok(());
     }
+    axum_server::bind(config.bind.parse()?)
+        .serve(app.into_make_service())
+        .await?;
 
     Ok(())
 }
