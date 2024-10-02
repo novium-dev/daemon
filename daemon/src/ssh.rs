@@ -194,14 +194,37 @@ impl Handler for DaemonSSHHandler {
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         #[cfg(feature = "ssh_debug_auth_bypass")]
         {
+            use crate::schema::servers;
+            use diesel::SelectableHelper;
+            use diesel::{QueryDsl, RunQueryDsl};
+            use std::ops::DerefMut;
+
             if cfg!(feature = "ssh_debug_auth_bypass") {
                 let mut auth = Vec::new();
-                let servers = self.state.servers.lock().await;
-                for server in servers.keys() {
-                    auth.push(PanelAuthServer {
-                        id: *server,
-                        permissions: PanelAuthServerPermissions::all(),
-                    });
+                let conn = self.state.conn.clone();
+                let servers: Result<Vec<crate::schema::Server>, diesel::result::Error> =
+                    tokio::task::spawn_blocking(move || {
+                        let mut conn = conn.blocking_lock();
+                        let server = servers::dsl::servers
+                            .select(crate::schema::Server::as_select())
+                            .load(conn.deref_mut())?;
+                        Ok(server)
+                    })
+                    .await
+                    .map_err(russh::Error::Join)?;
+
+                match servers {
+                    Ok(servers) => {
+                        for server in servers {
+                            auth.push(PanelAuthServer {
+                                id: server.id,
+                                permissions: PanelAuthServerPermissions::all(),
+                            });
+                        }
+                    }
+                    Err(err) => {
+                        return Err(russh::Error::IO(io::Error::new(ErrorKind::Other, err)));
+                    }
                 }
 
                 self.auth = Some(auth);
