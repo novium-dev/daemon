@@ -1,3 +1,4 @@
+use crate::ssh::PanelAuthServerPermissions;
 use crate::storage::StorageIdentifiers;
 use crate::utils::short_path;
 use crate::DaemonState;
@@ -21,7 +22,7 @@ pub(crate) struct DaemonSftpSession {
     pub(crate) state: Arc<DaemonState>,
     pub(crate) version: Option<u32>,
     pub(crate) file_handles: HashMap<String, FileHandle>,
-    pub(crate) access: HashMap<Vec<String>, StorageIdentifiers>,
+    pub(crate) access: HashMap<Vec<String>, (StorageIdentifiers, PanelAuthServerPermissions)>,
 }
 
 #[async_trait]
@@ -71,6 +72,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         debug!("Realpath {} {}", id, path);
         if path.eq(".") || path.eq("/.") {
+            // Required for some sftp clients to get their current path. Otherwise unsupported here
             Ok(Name {
                 id,
                 files: vec![russh_sftp::protocol::File {
@@ -104,7 +106,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
         debug!("ReadDir {} {}", id, handle);
-        let handle = self.handle(handle)?;
+        let handle = self.handle(handle, PanelAuthServerPermissions::SFTP_READ)?;
         let files: Vec<_> = handle
             .readdir()
             .await
@@ -129,7 +131,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         len: u32,
     ) -> Result<Data, Self::Error> {
         debug!("Read {} {}", id, handle);
-        let handle = self.handle(handle)?.regular_only()?;
+        let handle = self
+            .handle(handle, PanelAuthServerPermissions::SFTP_READ)?
+            .regular_only()?;
         handle
             .seek(SeekFrom::Start(offset))
             .await
@@ -158,7 +162,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
         debug!("Write {} {}", id, handle);
-        let handle = self.handle(handle)?.regular_only()?;
+        let handle = self
+            .handle(handle, PanelAuthServerPermissions::SFTP_WRITE)?
+            .regular_only()?;
         handle
             .seek(SeekFrom::Start(offset))
             .await
@@ -178,7 +184,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
         debug!("Fstat {} {}", id, handle);
-        let handle = self.handle(handle)?;
+        let handle = self.handle(handle, PanelAuthServerPermissions::SFTP_READ)?;
         handle.fstat(id).await
     }
 
@@ -189,7 +195,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         debug!("Fsetstat {} {}", id, handle);
-        let handle = self.handle(handle)?.regular_only()?;
+        let handle = self
+            .handle(handle, PanelAuthServerPermissions::SFTP_WRITE)?
+            .regular_only()?;
         if let Some(mode) = attrs.permissions {
             handle
                 .set_permissions(Permissions::from_mode(mode))
@@ -208,7 +216,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Lstat {} {}", id, path);
-        let path = self.path(path).await?;
+        let path = self
+            .path(path, PanelAuthServerPermissions::SFTP_READ)
+            .await?;
         let metadata = tokio::fs::symlink_metadata(path)
             .await
             .map_err(|_err| StatusCode::Failure)?;
@@ -225,7 +235,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         debug!("Mkdir {} {}", id, path);
-        let path = self.path(path).await?;
+        let path = self
+            .path(path, PanelAuthServerPermissions::SFTP_CREATE)
+            .await?;
         fs::create_dir(&path)
             .await
             .map_err(|_err| StatusCode::Failure)?;
@@ -239,7 +251,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Stat {} {}", id, path);
-        let path = self.path(path).await?;
+        let path = self
+            .path(path, PanelAuthServerPermissions::SFTP_READ)
+            .await?;
         let metadata = tokio::fs::metadata(path)
             .await
             .map_err(|_err| StatusCode::Failure)?;
@@ -256,7 +270,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         debug!("Setstat {} {}", id, path);
-        let path = self.path(path).await?;
+        let path = self
+            .path(path, PanelAuthServerPermissions::SFTP_WRITE)
+            .await?;
         let fs = fs::File::open(path)
             .await
             .map_err(|_err| StatusCode::Failure)?;
@@ -280,8 +296,12 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         newpath: String,
     ) -> Result<Status, Self::Error> {
         debug!("Rename {} {} to {}", id, oldpath, newpath);
-        let old_path = self.path(oldpath).await?;
-        let new_path = self.path(newpath).await?;
+        let old_path = self
+            .path(oldpath, PanelAuthServerPermissions::SFTP_DELETE)
+            .await?;
+        let new_path = self
+            .path(newpath, PanelAuthServerPermissions::SFTP_CREATE)
+            .await?;
         fs::rename(old_path, new_path)
             .await
             .map_err(|_err| StatusCode::Failure)?;
@@ -290,7 +310,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
         debug!("Remove {} {}", id, filename);
-        let path = self.path(filename).await?;
+        let path = self
+            .path(filename, PanelAuthServerPermissions::SFTP_DELETE)
+            .await?;
         fs::remove_file(path)
             .await
             .map_err(|_err| StatusCode::Failure)?;
@@ -299,7 +321,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
         debug!("rmdir {} {}", id, path);
-        let path = self.path(path).await?;
+        let path = self
+            .path(path, PanelAuthServerPermissions::SFTP_DELETE)
+            .await?;
         fs::remove_dir(path)
             .await
             .map_err(|_err| StatusCode::Failure)?;
@@ -313,7 +337,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         targetpath: String,
     ) -> Result<Status, Self::Error> {
         debug!("Symlink {} {} {}", id, linkpath, targetpath);
-        let linkpath = self.path(linkpath).await?;
+        let linkpath = self
+            .path(linkpath, PanelAuthServerPermissions::SFTP_CREATE)
+            .await?;
         let targetpath = PathBuf::from(targetpath);
         fs::symlink(linkpath, targetpath)
             .await
@@ -323,7 +349,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         debug!("Readlink {} {}", id, path);
-        let linkpath = self.path(path).await?;
+        let linkpath = self
+            .path(path, PanelAuthServerPermissions::SFTP_READ)
+            .await?;
         let path = fs::read_link(linkpath)
             .await
             .map_err(|_err| StatusCode::Failure)?;
@@ -342,7 +370,14 @@ impl DaemonSftpSession {
     async fn path0(
         &self,
         mut path: String,
-    ) -> Result<(Option<StorageIdentifiers>, Vec<String>, Vec<String>), StatusCode> {
+    ) -> Result<
+        (
+            Option<(StorageIdentifiers, PanelAuthServerPermissions)>,
+            Vec<String>,
+            Vec<String>,
+        ),
+        StatusCode,
+    > {
         debug!("Path0 {}", path);
 
         let ends_with_slash = path.ends_with('/');
@@ -389,12 +424,19 @@ impl DaemonSftpSession {
         Ok((storage.cloned(), temp_prefix, temp_suffix))
     }
 
-    async fn path(&self, path: String) -> Result<PathBuf, StatusCode> {
+    async fn path(
+        &self,
+        path: String,
+        required: PanelAuthServerPermissions,
+    ) -> Result<PathBuf, StatusCode> {
         let (storage, _, temp_suffix) = self.path0(path).await?;
 
         match storage {
             None => Err(StatusCode::NoSuchFile),
-            Some(storage) => {
+            Some((storage, permissions)) => {
+                if !permissions.contains(required) {
+                    return Err(StatusCode::PermissionDenied);
+                }
                 let mut path =
                     PathBuf::from(&self.state.config.storage_path).join(storage.as_pathbuf());
                 for comp in temp_suffix {
@@ -405,10 +447,19 @@ impl DaemonSftpSession {
         }
     }
 
-    fn handle(&mut self, handle: String) -> Result<&mut FileHandle, StatusCode> {
+    fn handle(
+        &mut self,
+        handle: String,
+        permissions: PanelAuthServerPermissions,
+    ) -> Result<&mut FileHandle, StatusCode> {
         match self.file_handles.get_mut(&handle) {
             None => Err(StatusCode::NoSuchFile),
-            Some(handle) => Ok(handle),
+            Some(handle) => {
+                if !handle.permissions(permissions) {
+                    return Err(StatusCode::PermissionDenied);
+                }
+                Ok(handle)
+            }
         }
     }
 
@@ -448,7 +499,11 @@ impl DaemonSftpSession {
                 }
                 if entries.is_empty() {
                     return if temp_prefix.is_empty() {
-                        let handle = FileHandle::Internal(Vec::new(), false);
+                        let handle = FileHandle::Internal(
+                            Vec::new(),
+                            false,
+                            PanelAuthServerPermissions::all(),
+                        );
                         let empty = "empty".to_string();
                         self.file_handles.insert(empty.clone(), handle);
                         Ok(empty)
@@ -475,11 +530,13 @@ impl DaemonSftpSession {
                     })
                     .collect();
                 let handle = format!("internal_{}", Uuid::new_v4());
-                self.file_handles
-                    .insert(handle.clone(), FileHandle::Internal(entries, false));
+                self.file_handles.insert(
+                    handle.clone(),
+                    FileHandle::Internal(entries, false, PanelAuthServerPermissions::all()),
+                );
                 Ok(handle)
             }
-            Some(storage) => {
+            Some((storage, permissions)) => {
                 let base =
                     PathBuf::from(&self.state.config.storage_path).join(storage.as_pathbuf());
                 let base = tokio::fs::canonicalize(base)
@@ -539,8 +596,10 @@ impl DaemonSftpSession {
                     );
                 }
                 let handle = file.as_raw_fd().to_string();
-                self.file_handles
-                    .insert(handle.clone(), FileHandle::Regular(file, read_dir, false));
+                self.file_handles.insert(
+                    handle.clone(),
+                    FileHandle::Regular(file, read_dir, false, permissions),
+                );
                 Ok(handle)
             }
         }
@@ -548,14 +607,26 @@ impl DaemonSftpSession {
 }
 
 pub(crate) enum FileHandle {
-    Regular(File, Option<ReadDir>, bool),
-    Internal(Vec<(String, FileAttributes)>, bool),
+    Regular(File, Option<ReadDir>, bool, PanelAuthServerPermissions),
+    Internal(
+        Vec<(String, FileAttributes)>,
+        bool,
+        PanelAuthServerPermissions,
+    ),
 }
 
 impl FileHandle {
+    fn permissions(&self, required: PanelAuthServerPermissions) -> bool {
+        match self {
+            FileHandle::Internal(_, _, perms) | FileHandle::Regular(_, _, _, perms) => {
+                perms.contains(required)
+            }
+        }
+    }
+
     async fn fstat(&mut self, id: u32) -> Result<Attrs, StatusCode> {
         match self {
-            FileHandle::Regular(handle, _, _) => {
+            FileHandle::Regular(handle, _, _, _) => {
                 let metadata = handle
                     .metadata()
                     .await
@@ -565,7 +636,7 @@ impl FileHandle {
                     attrs: metadata.into_fileattributes(),
                 })
             }
-            FileHandle::Internal(_, _) => Ok(Attrs {
+            FileHandle::Internal(_, _, _) => Ok(Attrs {
                 id,
                 attrs: FileAttributes {
                     permissions: Some(0o755 | FileMode::DIR.bits()),
@@ -583,7 +654,7 @@ impl FileHandle {
 
     async fn readdir(&mut self) -> Result<Vec<(String, FileAttributes)>, io::Error> {
         match self {
-            FileHandle::Regular(_handle, read_dir, read) => {
+            FileHandle::Regular(_handle, read_dir, read, _) => {
                 if read_dir.is_none() {
                     return Err(io::Error::new(
                         ErrorKind::InvalidInput,
@@ -621,7 +692,7 @@ impl FileHandle {
                 *read_dir = Some(read_dir_taken);
                 result
             }
-            FileHandle::Internal(dirs, read) => {
+            FileHandle::Internal(dirs, read, _) => {
                 if *read {
                     return Err(io::Error::new(ErrorKind::UnexpectedEof, ""));
                 }
@@ -633,8 +704,8 @@ impl FileHandle {
 
     fn regular_only(&mut self) -> Result<&mut File, StatusCode> {
         match self {
-            FileHandle::Regular(file, _, _) => Ok(file),
-            FileHandle::Internal(_, _) => Err(StatusCode::PermissionDenied),
+            FileHandle::Regular(file, _, _, _) => Ok(file),
+            FileHandle::Internal(_, _, _) => Err(StatusCode::PermissionDenied),
         }
     }
 }

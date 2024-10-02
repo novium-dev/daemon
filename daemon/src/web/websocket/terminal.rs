@@ -96,6 +96,7 @@ pub(crate) async fn terminal_websocket_handle(
             attach_write,
             rows,
             cols,
+            write: true, // TODO
         },
         docker,
         server_data_arc,

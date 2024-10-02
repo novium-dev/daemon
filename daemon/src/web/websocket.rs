@@ -41,20 +41,28 @@ pub(crate) async fn authenticate(
     let verify = BASE64_STANDARD
         .decode(verify.as_bytes())
         .map_err(|_err| StatusCode::BAD_REQUEST)?;
-    let signature_bytes: [u8; 64] = verify.try_into().map_err(|_err| StatusCode::BAD_REQUEST)?;
-    state
-        .config
-        .websocket_key
-        .verify(
-            format!("{}-{}-{}", state.config.identifier, server_id, timestamp).as_bytes(),
-            &Signature::from_bytes(&signature_bytes),
-        )
-        .map_err(|_err| StatusCode::UNAUTHORIZED)?;
-    let unix = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_err(|_err| StatusCode::BAD_REQUEST)?;
-    if (timestamp + state.config.websocket_allow_duration as u128) <= unix.as_millis() {
+    #[cfg(feature = "websocket_debug_auth_bypass")]
+    if !verify.eq("bypass".as_bytes()) {
         return Err(StatusCode::UNAUTHORIZED);
+    }
+    #[cfg(not(feature = "websocket_debug_auth_bypass"))]
+    {
+        let signature_bytes: [u8; 64] =
+            verify.try_into().map_err(|_err| StatusCode::BAD_REQUEST)?;
+        state
+            .config
+            .websocket_key
+            .verify(
+                format!("{}-{}-{}", state.config.identifier, server_id, timestamp).as_bytes(),
+                &Signature::from_bytes(&signature_bytes),
+            )
+            .map_err(|_err| StatusCode::UNAUTHORIZED)?;
+        let unix = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|_err| StatusCode::BAD_REQUEST)?;
+        if (timestamp + state.config.websocket_allow_duration as u128) <= unix.as_millis() {
+            return Err(StatusCode::UNAUTHORIZED);
+        }
     }
     debug!("WebSocket authentication passed.");
     Ok(())

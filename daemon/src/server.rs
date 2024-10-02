@@ -3,6 +3,7 @@ use crate::schema::FetchedServer;
 use crate::storage::StorageIdentifiers;
 use crate::utils::{from_mib, ChannelWriteData};
 use crate::{storage, utils, DaemonState, ServerData};
+#[cfg(feature = "websocket")]
 use axum::extract::ws::Message;
 use bollard::container::{
     AttachContainerOptions, Config, CreateContainerOptions, ListContainersOptions,
@@ -705,6 +706,7 @@ impl From<Stats> for ServerStats {
 
 const STATS_MAGIC: &str = "STATS!";
 
+#[cfg(feature = "websocket")]
 impl ServerStats {
     pub fn as_websocket_message(&self) -> Message {
         Message::Text(
@@ -760,6 +762,7 @@ struct ServerStateSerialize {
     kill: bool,
 }
 
+#[cfg(feature = "websocket")]
 impl ServerState {
     pub fn as_websocket_message(&self) -> Message {
         let mut bytes = Vec::with_capacity(1);

@@ -8,16 +8,20 @@ use crate::storage::StorageIdentifiers;
 use crate::terminal::{new_session, update_size, TerminalData};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{DaemonState, ServerData};
-use axum::async_trait;
+use axum::{async_trait, http};
+use bitflags::bitflags;
 use log::{debug, error};
 use russh::server::{Auth, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId, ChannelStream, Pty};
+use russh_keys::key::PublicKey;
+use serde::Deserialize;
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -25,6 +29,7 @@ use tokio::time::timeout;
 #[derive(Clone)]
 pub struct DaemonSSHServer {
     pub(crate) state: Arc<DaemonState>,
+    pub(crate) cache_invalidation: Duration,
 }
 
 impl Server for DaemonSSHServer {
@@ -34,6 +39,8 @@ impl Server for DaemonSSHServer {
         DaemonSSHHandler {
             state: self.state.clone(),
             channels: HashMap::new(),
+            publickey_cache: InvalidationCacheMap::new(self.cache_invalidation),
+            auth: None,
         }
     }
 
@@ -57,25 +64,217 @@ pub(crate) type DaemonChannel = (
     Option<Arc<AtomicU32>>,
 );
 
+pub(crate) type PanelAuthResponse = Vec<PanelAuthServer>;
+#[derive(Deserialize, Clone)]
+pub(crate) struct PanelAuthServer {
+    pub(crate) id: u32,
+    pub(crate) permissions: PanelAuthServerPermissions,
+}
+
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+    pub struct PanelAuthServerPermissions: i32 {
+        const TERMINAL_READ = 1 << 0;
+        const TERMINAL_WRITE = 1 << 1;
+
+        const SFTP_READ = 1 << 2;
+        const SFTP_WRITE = 1 << 3;
+        const SFTP_DELETE = 1 << 4;
+        const SFTP_CREATE = 1 << 5;
+    }
+}
+
 pub struct DaemonSSHHandler {
     state: Arc<DaemonState>,
     channels: HashMap<ChannelId, DaemonChannel>,
+    publickey_cache: InvalidationCacheMap<(String, String), PanelAuthResponse>,
+    auth: Option<PanelAuthResponse>,
+}
+
+struct InvalidationCacheMap<T: Clone + Hash + Eq, E: Clone>(HashMap<T, (Instant, E)>, Duration);
+
+#[allow(unused)]
+impl<T: Clone + Hash + Eq, E: Clone> InvalidationCacheMap<T, E> {
+    pub(crate) fn new(invalidation: Duration) -> Self {
+        Self(HashMap::new(), invalidation)
+    }
+
+    pub(crate) fn insert(&mut self, key: T, val: E) {
+        self.update();
+        self.0.insert(key, (Instant::now(), val));
+    }
+
+    pub(crate) fn get(&mut self, key: &T) -> Option<&mut E> {
+        self.update();
+        self.0.get_mut(key).map(|t| &mut t.1)
+    }
+
+    pub(crate) fn remove(&mut self, key: &T) {
+        self.0.remove(key);
+    }
+
+    pub(crate) fn update(&mut self) {
+        for (key, (time, _val)) in self.0.clone() {
+            if time.elapsed() >= self.1 {
+                self.0.remove(&key);
+            }
+        }
+    }
+}
+
+async fn password_auth(
+    state: &DaemonState,
+    user: &str,
+    password: &str,
+) -> Result<PanelAuthResponse, io::Error> {
+    state
+        .client
+        .get(format!(
+            "{}/api/auth/password?node={}",
+            state.config.ssh_auth_url, state.config.identifier
+        ))
+        .basic_auth(user, Some(password))
+        .send()
+        .await
+        .map_err(|err| match err {
+            err if matches!(err.status(), Some(http::StatusCode::UNAUTHORIZED)) => {
+                io::Error::new(ErrorKind::PermissionDenied, err)
+            }
+            err => io::Error::new(ErrorKind::Other, err),
+        })?
+        .json()
+        .await
+        .map_err(|err| io::Error::new(ErrorKind::Other, err))
+}
+
+async fn publickey_auth(
+    state: &DaemonState,
+    user: &str,
+    public_key: &PublicKey,
+) -> Result<PanelAuthResponse, io::Error> {
+    state
+        .client
+        .get(format!(
+            "{}/api/auth/publickey?node={}",
+            state.config.ssh_auth_url, state.config.identifier
+        ))
+        .basic_auth(user, Some(public_key.fingerprint()))
+        .send()
+        .await
+        .map_err(|err| match err {
+            err if matches!(err.status(), Some(http::StatusCode::UNAUTHORIZED)) => {
+                io::Error::new(ErrorKind::PermissionDenied, err)
+            }
+            err => io::Error::new(ErrorKind::Other, err),
+        })?
+        .json()
+        .await
+        .map_err(|err| io::Error::new(ErrorKind::Other, err))
+}
+
+impl InvalidationCacheMap<(String, String), PanelAuthResponse> {
+    pub(crate) async fn get_resolved(
+        &mut self,
+        state: &DaemonState,
+        user: &str,
+        public_key: &PublicKey,
+    ) -> Result<PanelAuthResponse, io::Error> {
+        match self.get(&(user.to_string(), public_key.fingerprint())) {
+            None => publickey_auth(state, user, public_key).await,
+            Some(response) => Ok(response.clone()),
+        }
+    }
 }
 
 #[async_trait]
 impl Handler for DaemonSSHHandler {
     type Error = russh::Error;
 
-    async fn auth_password(&mut self, _user: &str, _password: &str) -> Result<Auth, Self::Error> {
-        Ok(Auth::Accept)
+    async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
+        #[cfg(feature = "ssh_debug_auth_bypass")]
+        {
+            if cfg!(feature = "ssh_debug_auth_bypass") {
+                let mut auth = Vec::new();
+                let servers = self.state.servers.lock().await;
+                for server in servers.keys() {
+                    auth.push(PanelAuthServer {
+                        id: *server,
+                        permissions: PanelAuthServerPermissions::all(),
+                    });
+                }
+
+                self.auth = Some(auth);
+                return Ok(Auth::Accept);
+            }
+        }
+        match password_auth(&self.state, user, password).await {
+            Ok(response) => {
+                self.auth = Some(response);
+                Ok(Auth::Accept)
+            }
+            Err(err) => match err {
+                err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
+                    proceed_with_methods: None,
+                }),
+                err => Err(russh::Error::IO(err)),
+            },
+        }
     }
 
     async fn auth_publickey(
         &mut self,
-        _user: &str,
-        _public_key: &russh_keys::key::PublicKey,
+        user: &str,
+        public_key: &russh_keys::key::PublicKey,
     ) -> Result<Auth, Self::Error> {
-        Ok(Auth::Accept)
+        #[cfg(feature = "ssh_debug_auth_bypass")]
+        {
+            if cfg!(feature = "ssh_debug_auth_bypass") {
+                return Ok(Auth::UnsupportedMethod);
+            }
+        }
+        match self
+            .publickey_cache
+            .get_resolved(&self.state, user, public_key)
+            .await
+        {
+            Ok(response) => {
+                self.auth = Some(response);
+                Ok(Auth::Accept)
+            }
+            Err(err) => match err {
+                err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
+                    proceed_with_methods: None,
+                }),
+                err => Err(russh::Error::IO(err)),
+            },
+        }
+    }
+
+    async fn auth_publickey_offered(
+        &mut self,
+        user: &str,
+        public_key: &PublicKey,
+    ) -> Result<Auth, Self::Error> {
+        #[cfg(feature = "ssh_debug_auth_bypass")]
+        {
+            if cfg!(feature = "ssh_debug_auth_bypass") {
+                return Ok(Auth::UnsupportedMethod);
+            }
+        }
+        match self
+            .publickey_cache
+            .get_resolved(&self.state, user, public_key)
+            .await
+        {
+            Ok(_response) => Ok(Auth::Accept),
+            Err(err) => match err {
+                err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
+                    proceed_with_methods: None,
+                }),
+                err => Err(russh::Error::IO(err)),
+            },
+        }
     }
 
     async fn channel_eof(
@@ -96,6 +295,9 @@ impl Handler for DaemonSSHHandler {
         _pix_height: u32,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if self.auth.is_none() {
+            return Err(russh::Error::NotAuthenticated);
+        }
         debug!("Window size change");
         match self.channels.get_mut(&channel_id) {
             Some((_channel, id, cols, rows)) => {
@@ -146,10 +348,38 @@ impl Handler for DaemonSSHHandler {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if self.auth.is_none() {
+            return Err(russh::Error::NotAuthenticated);
+        }
         debug!("Exec");
         let str =
             String::from_utf8(data.to_vec()).map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
         let server_id: u32 = str.parse().map_err(|_err| russh::Error::DecryptionError)?;
+
+        let auth = self.auth.as_ref().unwrap();
+        let mut allowed = 0u8;
+        for server in auth {
+            if server.id == server_id {
+                if server
+                    .permissions
+                    .contains(PanelAuthServerPermissions::TERMINAL_READ)
+                {
+                    if server
+                        .permissions
+                        .contains(PanelAuthServerPermissions::TERMINAL_WRITE)
+                    {
+                        allowed = 2;
+                    } else {
+                        allowed = 1;
+                    }
+                }
+                break;
+            }
+        }
+        if allowed == 0 {
+            session.channel_failure(channel_id);
+            return Ok(());
+        }
 
         let mut servers = self.state.servers.lock().await;
         let server_data_arc = match servers.get(&server_id) {
@@ -200,6 +430,7 @@ impl Handler for DaemonSSHHandler {
                                 attach_write,
                                 cols,
                                 rows,
+                                write: allowed == 2,
                             },
                             self.state.docker.clone(),
                             server_data_arc.clone(),
@@ -227,6 +458,9 @@ impl Handler for DaemonSSHHandler {
         _modes: &[(Pty, u32)],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if self.auth.is_none() {
+            return Err(russh::Error::NotAuthenticated);
+        }
         debug!("PTY Request");
         if let Some((_channel, _id, cols, rows)) = self.channels.get_mut(&channel_id) {
             match cols {
@@ -264,6 +498,9 @@ impl Handler for DaemonSSHHandler {
         name: &str,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
+        if self.auth.is_none() {
+            return Err(russh::Error::NotAuthenticated);
+        }
         debug!("Subsystem Request {}", name);
 
         if name == "sftp" && cfg!(feature = "sftp") {
@@ -284,8 +521,17 @@ impl Handler for DaemonSSHHandler {
                         state: self.state.clone(),
                         version: None,
                     };
-                    let storage = StorageIdentifiers::Primary(1);
-                    sftp.access.insert(storage.as_vec(), storage);
+
+                    for server in self.auth.as_ref().unwrap() {
+                        if server
+                            .permissions
+                            .contains(PanelAuthServerPermissions::SFTP_READ)
+                        {
+                            let identifier = StorageIdentifiers::Primary(server.id);
+                            sftp.access
+                                .insert(identifier.as_vec(), (identifier, server.permissions));
+                        }
+                    }
 
                     session.channel_success(channel_id);
                     russh_sftp::server::run(channel.unwrap().into_stream(), sftp).await;

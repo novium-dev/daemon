@@ -1,4 +1,5 @@
 mod config;
+#[cfg(feature = "database")]
 mod database;
 mod schema;
 mod server;
@@ -25,6 +26,8 @@ use diesel::{Connection, MysqlConnection};
 use env_logger::Env;
 use libc::SIGINT;
 use log::{info, warn};
+#[cfg(feature = "ssh")]
+use reqwest::Client;
 #[cfg(feature = "ssh")]
 use russh::server::{Config, Server as SSHServer};
 use signal_hook::iterator::Signals;
@@ -78,36 +81,44 @@ async fn main() -> Result<(), Box<dyn Error>> {
         servers: Arc::new(Mutex::new(servers)),
         docker: Arc::new(docker),
         conn: Arc::new(Mutex::new(conn)),
+        #[cfg(feature = "ssh")]
+        client: Client::default(),
     };
 
-    let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&config.origin)?))
-        .allow_methods([Method::GET])
-        .allow_headers(AllowHeaders::any());
+    let mut app = Router::new().nest(
+        "/server",
+        Router::new()
+            .route("/", put(web::server::create_server))
+            .route("/:server_id", get(web::server::server_info))
+            .route("/:server_id", patch(web::server::modify_server))
+            .route("/:server_id", delete(web::server::delete_server))
+            .route("/:server_id/start", get(web::server::start_server))
+            .route("/:server_id/stop", get(web::server::stop_server))
+            .route("/:server_id/kill", get(web::server::kill_server))
+            .route("/:server_id/restart", get(web::server::restart_server))
+            .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
+    );
 
-    let app = Router::new()
-        .nest(
-            "/server",
-            Router::new()
-                .route("/", put(web::server::create_server))
-                .route("/:server_id", get(web::server::server_info))
-                .route("/:server_id", patch(web::server::modify_server))
-                .route("/:server_id", delete(web::server::delete_server))
-                .route("/:server_id/start", get(web::server::start_server))
-                .route("/:server_id/stop", get(web::server::stop_server))
-                .route("/:server_id/kill", get(web::server::kill_server))
-                .route("/:server_id/restart", get(web::server::restart_server))
-                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
-        )
-        .nest(
+    #[cfg(feature = "database")]
+    {
+        app = app.nest(
             "/database",
             Router::new()
                 .route("/", put(web::database::create_database))
                 .route("/:database_id", patch(web::database::modify_database))
                 .route("/:database_id", delete(web::database::delete_database))
                 .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
-        )
-        .nest(
+        );
+    }
+
+    #[cfg(feature = "websocket")]
+    {
+        let cors = CorsLayer::new()
+            .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&config.origin)?))
+            .allow_methods([Method::GET])
+            .allow_headers(AllowHeaders::any());
+
+        app = app.nest(
             "/user",
             Router::new()
                 .layer(cors)
@@ -119,11 +130,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     "/server/:server_id/stats",
                     get(web::websocket::stats::websocket),
                 ),
-        )
-        .with_state(state.clone());
+        );
+    }
+    let app = app.with_state(state.clone());
 
+    state
+        .conn
+        .lock()
+        .await
+        .batch_execute(include_str!("init.sql"))?;
+
+    #[cfg(feature = "database")]
     state.conn.lock().await.batch_execute(
-        &include_str!("init.sql").replace("{{MARIADB_PLUGIN_NAME}}", crate::MARIADB_PLUGIN_NAME),
+        &include_str!("init_database.sql")
+            .replace("{{MARIADB_PLUGIN_NAME}}", crate::MARIADB_PLUGIN_NAME),
     )?;
     let state = Arc::new(state);
 
@@ -136,15 +156,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
             for key in &config1.ssh_host_key {
                 keys.push(key.as_russh_key().await?);
             }
-            DaemonSSHServer { state: state1 }
-                .run_on_address(
-                    Arc::new(Config {
-                        keys,
-                        ..Config::default()
-                    }),
-                    &config1.ssh_bind,
-                )
-                .await
+            DaemonSSHServer {
+                state: state1,
+                cache_invalidation: Duration::from_millis(config1.ssh_auth_cache_duration),
+            }
+            .run_on_address(
+                Arc::new(Config {
+                    keys,
+                    ..Config::default()
+                }),
+                &config1.ssh_bind,
+            )
+            .await
         });
     }
 
@@ -265,6 +288,8 @@ pub(crate) struct DaemonState {
     pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
     pub(crate) docker: Arc<Docker>,
     pub(crate) conn: Arc<Mutex<MysqlConnection>>,
+    #[cfg(feature = "ssh")]
+    pub(crate) client: Client,
 }
 
 pub(crate) type ServerContainerWrite = Pin<Box<dyn AsyncWrite + Send>>;
@@ -294,3 +319,12 @@ impl Default for ServerData {
         }
     }
 }
+
+// Some safeguards
+#[cfg(not(debug_assertions))]
+#[cfg(feature = "ssh_debug_auth_bypass")]
+compile_error!("SSH Auth Bypass was enabled in production!");
+
+#[cfg(not(debug_assertions))]
+#[cfg(feature = "websocket_debug_auth_bypass")]
+compile_error!("Websocket Auth Bypass was enabled in production!");

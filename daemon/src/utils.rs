@@ -1,4 +1,6 @@
-use crate::schema::{databases, servers, Database, FetchedDatabase, FetchedServer, Server};
+#[cfg(feature = "database")]
+use crate::schema::{databases, Database, FetchedDatabase};
+use crate::schema::{servers, FetchedServer, Server};
 use crate::server::{ServerState, ServerStats};
 use crate::ServerData;
 use axum::async_trait;
@@ -10,12 +12,15 @@ use std::marker::PhantomData;
 use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::Arc;
-use tokio::sync::{Mutex, OwnedMutexGuard};
+use tokio::sync::Mutex;
+#[cfg(feature = "database")]
+use tokio::sync::OwnedMutexGuard;
 
 pub(crate) fn from_mib(mib: u32) -> i64 {
     mib as i64 * 1024 * 1024
 }
 
+#[cfg(feature = "database")]
 pub(crate) async fn database(
     mut conn: OwnedMutexGuard<MysqlConnection>,
     database_id: u32,

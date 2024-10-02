@@ -5,6 +5,7 @@ use diesel::{
 };
 use std::collections::HashMap;
 
+#[cfg(feature = "database")]
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct FetchedDatabase {
     pub name_suffix: String,
@@ -12,6 +13,7 @@ pub struct FetchedDatabase {
     pub users: HashMap<String, DatabaseUser>,
 }
 
+#[cfg(feature = "database")]
 impl Database {
     pub(crate) fn fetched(self, conn: &mut MysqlConnection) -> Result<FetchedDatabase, Error> {
         let passwordless = DatabasePasswordless::belonging_to(&self)
@@ -94,6 +96,7 @@ impl Server {
     }
 }
 
+#[cfg(feature = "database")]
 #[derive(Clone, Eq, PartialEq, Insertable, Queryable, Selectable, Identifiable)]
 #[diesel(table_name = databases)]
 #[diesel(primary_key(id))]
@@ -102,6 +105,7 @@ pub(crate) struct Database {
     pub name_suffix: String,
 }
 
+#[cfg(feature = "database")]
 diesel::table! {
     databases (id) {
         id -> Unsigned<Integer>,
@@ -109,6 +113,7 @@ diesel::table! {
     }
 }
 
+#[cfg(feature = "database")]
 #[derive(Clone, Eq, PartialEq, Identifiable, Insertable, Queryable, Selectable, Associations)]
 #[diesel(table_name = database_passwordless)]
 #[diesel(belongs_to(Database, foreign_key = database_id))]
@@ -120,6 +125,7 @@ pub(crate) struct DatabasePasswordless {
     pub(crate) permissions: i32,
 }
 
+#[cfg(feature = "database")]
 diesel::table! {
     database_passwordless (id) {
         id -> Unsigned<Integer>,
@@ -129,6 +135,7 @@ diesel::table! {
     }
 }
 
+#[cfg(feature = "database")]
 #[derive(Clone, Eq, PartialEq, Identifiable, Insertable, Queryable, Selectable, Associations)]
 #[diesel(table_name = database_user)]
 #[diesel(belongs_to(Database, foreign_key = database_id))]
@@ -142,6 +149,7 @@ pub(crate) struct DatabaseUser {
     pub(crate) restricted: Option<String>,
 }
 
+#[cfg(feature = "database")]
 diesel::table! {
     database_user (id) {
         id -> Unsigned<Integer>,

@@ -22,6 +22,7 @@ pub(crate) struct TerminalData {
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) cols: Arc<AtomicU32>,
     pub(crate) rows: Arc<AtomicU32>,
+    pub(crate) write: bool,
 }
 
 pub(crate) async fn new_session<
@@ -37,6 +38,7 @@ pub(crate) async fn new_session<
         attach_write,
         rows,
         cols,
+        write,
     }: TerminalData,
     docker: Arc<Docker>,
     server_data_arc: Arc<Mutex<ServerData>>,
@@ -111,11 +113,13 @@ pub(crate) async fn new_session<
                     Ok(message) => {
                         last_sent = Instant::now();
                         ping_sent = false;
-                        match attach_write.lock().await.deref_mut() {
-                            None => {}
-                            Some(write) => {
-                                let _ = write.write_all(&message).await;
-                                let _ = write.flush().await;
+                        if write {
+                            match attach_write.lock().await.deref_mut() {
+                                None => {}
+                                Some(write) => {
+                                    let _ = write.write_all(&message).await;
+                                    let _ = write.flush().await;
+                                }
                             }
                         }
                     },

@@ -1,3 +1,4 @@
+#[cfg(feature = "database")]
 use crate::schema::FetchedDatabase;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -41,6 +42,7 @@ pub(crate) struct IdResponse {
     pub(crate) id: u32,
 }
 
+#[cfg(feature = "database")]
 #[derive(Deserialize, Eq, PartialEq)]
 pub(crate) struct DatabasePayload {
     pub(crate) name_suffix: String,
@@ -48,6 +50,7 @@ pub(crate) struct DatabasePayload {
     pub(crate) users: HashMap<String, DatabaseUserPayload>,
 }
 
+#[cfg(feature = "database")]
 impl From<FetchedDatabase> for DatabasePayload {
     fn from(value: FetchedDatabase) -> Self {
         DatabasePayload {
@@ -81,6 +84,7 @@ impl From<FetchedDatabase> for DatabasePayload {
     }
 }
 
+#[cfg(feature = "database")]
 #[derive(Deserialize, Eq, PartialEq, Hash)]
 pub(crate) struct DatabaseUserPayload {
     pub(crate) password_hash: String,

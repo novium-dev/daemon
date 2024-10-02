@@ -5,10 +5,15 @@ edition = "2021"
 
 [features]
 ssl = []
-ssh = ["russh", "russh-keys"]
+ssh = ["russh", "russh-keys", "reqwest"]
+ssh_debug_auth_bypass = ["ssh"]
 sftp = ["ssh", "russh-sftp"]
+database = []
+websocket = ["axum/ws"]
+websocket_debug_auth_bypass = ["websocket"]
+
 btrfs = ["btrfsutil"]
-default = ["ssl", "ssh", "sftp", "btrfs"]
+default = ["ssl", "ssh", "sftp", "websocket", "database", "btrfs"]
 
 [dependencies]
 libc.workspace = true
@@ -22,6 +27,15 @@ regex = "1.10.6"
 futures-util = "0.3.30"
 env_logger = "0.11.5"
 rand = "0.8.5"
+
+[dependencies.bitflags]
+version = "2.6.0"
+features = ["serde"]
+
+[dependencies.reqwest]
+version = "0.12.8"
+optional = true
+features = ["json"]
 
 [dependencies.toml]
 version = "0.8.19"
@@ -39,7 +53,7 @@ features = ["tls-rustls"]
 
 [dependencies.axum]
 version = "0.7.5"
-features = ["ws", "json"]
+features = ["json"]
 
 [dependencies.tower-http]
 version = "0.6.0"

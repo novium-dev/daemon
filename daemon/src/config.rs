@@ -31,6 +31,10 @@ pub(crate) struct DaemonConfig {
     pub(crate) ssl: SSLConfig,
     #[cfg(feature = "ssh")]
     pub(crate) ssh_host_key: Vec<SSHHostKey>,
+    #[cfg(feature = "ssh")]
+    pub(crate) ssh_auth_cache_duration: u64,
+    #[cfg(feature = "ssh")]
+    pub(crate) ssh_auth_url: String,
 }
 
 fn deserialize_websocket_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>

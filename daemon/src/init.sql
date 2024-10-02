@@ -41,28 +41,3 @@ CREATE TABLE IF NOT EXISTS `server_ports`
   `protocol` VARCHAR(255) NOT NULL
 );
 
-CREATE TABLE IF NOT EXISTS `databases`
-(
-  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `name_suffix` VARCHAR(255) NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS `database_passwordless`
-(
-  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `database_id` INT(255) UNSIGNED NOT NULL,
-  `server_id` INT(255) UNSIGNED NOT NULL,
-  `permissions` INT(255) NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS `database_user`
-(
-  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `database_id` INT(255) UNSIGNED NOT NULL,
-  `name_suffix` VARCHAR(255) NOT NULL,
-  `password_hash` VARCHAR(255) NOT NULL,
-  `permissions` INT(255) NOT NULL,
-  `restricted` VARCHAR(255)
-);
-
-CREATE USER IF NOT EXISTS 'server'@'%' IDENTIFIED WITH '{{MARIADB_PLUGIN_NAME}}';
