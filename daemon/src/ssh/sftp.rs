@@ -116,11 +116,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
                 }
             })?
             .into_iter()
-            .map(|(name, attrs)| russh_sftp::protocol::File {
-                filename: name.clone(),
-                longname: name,
-                attrs,
-            })
+            .map(|(name, attrs)| russh_sftp::protocol::File::new(name, attrs))
             .collect();
         Ok(Name { id, files })
     }
