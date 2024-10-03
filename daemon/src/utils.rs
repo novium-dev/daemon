@@ -4,7 +4,8 @@ use crate::schema::{servers, FetchedServer, Server};
 use crate::server::{ServerState, ServerStats};
 use crate::ServerData;
 use axum::async_trait;
-use diesel::{ExpressionMethods, MysqlConnection, QueryDsl, RunQueryDsl, SelectableHelper};
+use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
@@ -22,22 +23,19 @@ pub(crate) fn from_mib(mib: u32) -> i64 {
 
 #[cfg(feature = "database")]
 pub(crate) async fn database(
-    mut conn: OwnedMutexGuard<MysqlConnection>,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
     database_id: u32,
-) -> Result<(FetchedDatabase, OwnedMutexGuard<MysqlConnection>), diesel::result::Error> {
-    tokio::task::spawn_blocking(move || {
-        let database = databases::dsl::databases
-            .filter(databases::dsl::id.eq(database_id))
-            .select(Database::as_select())
-            .first(conn.deref_mut())?;
-        Ok((database.fetched(conn.deref_mut())?, conn))
-    })
-    .await
-    .unwrap()
+) -> Result<(FetchedDatabase, OwnedMutexGuard<AsyncMysqlConnection>), diesel::result::Error> {
+    let database = databases::dsl::databases
+        .filter(databases::dsl::id.eq(database_id))
+        .select(Database::as_select())
+        .first(conn.deref_mut())
+        .await?;
+    Ok((database.fetched(conn.deref_mut()).await?, conn))
 }
 
 pub(crate) async fn server(
-    conn: Arc<Mutex<MysqlConnection>>,
+    conn: Arc<Mutex<AsyncMysqlConnection>>,
     servers: &Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>,
     server_id: u32,
 ) -> Result<(FetchedServer, Arc<Mutex<ServerData>>), diesel::result::Error> {
@@ -51,19 +49,16 @@ pub(crate) async fn server(
 }
 
 pub(crate) async fn generic_server_select(
-    conn: Arc<Mutex<MysqlConnection>>,
+    conn: Arc<Mutex<AsyncMysqlConnection>>,
     server_id: u32,
 ) -> Result<FetchedServer, diesel::result::Error> {
-    tokio::task::spawn_blocking(move || {
-        let mut conn = conn.blocking_lock();
-        let server = servers::dsl::servers
-            .filter(servers::dsl::id.eq(server_id))
-            .select(Server::as_select())
-            .first(conn.deref_mut())?;
-        server.fetched(conn.deref_mut())
-    })
-    .await
-    .unwrap()
+    let mut conn = conn.blocking_lock();
+    let server = servers::dsl::servers
+        .filter(servers::dsl::id.eq(server_id))
+        .select(Server::as_select())
+        .first(conn.deref_mut())
+        .await?;
+    server.fetched(conn.deref_mut()).await
 }
 
 #[cfg(feature = "sftp")]

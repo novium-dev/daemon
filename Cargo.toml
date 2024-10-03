@@ -19,6 +19,7 @@ env_logger = "0.11.5"
 signal-hook = "0.3.17"
 openssl = "0.10.66"
 termion = "4.0.2"
+diesel = "2.2.4"
 
 [workspace.dependencies.common]
 path = "common"
@@ -51,8 +52,8 @@ features = ["json", "macros"]
 version = "0.6.1"
 features = ["cors", "auth"]
 
-[workspace.dependencies.diesel]
-version = "2.2.2"
+[workspace.dependencies.diesel-async]
+version = "0.5.0"
 features = ["mysql"]
 
 [workspace.dependencies.uuid]

@@ -23,8 +23,7 @@ use crate::utils::ChannelWriteData;
 use axum::routing::{delete, get, patch, put};
 use axum::Router;
 use bollard::Docker;
-use diesel::connection::SimpleConnection;
-use diesel::{Connection, MysqlConnection};
+use diesel_async::{AsyncConnection, AsyncMysqlConnection, SimpleAsyncConnection};
 use env_logger::Env;
 use libc::SIGINT;
 use log::{info, warn};
@@ -70,7 +69,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let docker = bollard::Docker::connect_with_local_defaults()?;
 
     info!("Establishing Database Connection...");
-    let conn = MysqlConnection::establish(&config.database)?;
+    let conn = AsyncMysqlConnection::establish(&config.database).await?;
 
     info!("Starting Webserver...");
 
@@ -153,13 +152,19 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .conn
         .lock()
         .await
-        .batch_execute(include_str!("init.sql"))?;
+        .batch_execute(include_str!("init.sql"))
+        .await?;
 
     #[cfg(feature = "database")]
-    state.conn.lock().await.batch_execute(
-        &include_str!("init_database.sql")
-            .replace("{{MARIADB_PLUGIN_NAME}}", common::MARIADB_PLUGIN_NAME),
-    )?;
+    state
+        .conn
+        .lock()
+        .await
+        .batch_execute(
+            &include_str!("init_database.sql")
+                .replace("{{MARIADB_PLUGIN_NAME}}", common::MARIADB_PLUGIN_NAME),
+        )
+        .await?;
     let state = Arc::new(state);
 
     #[cfg(feature = "ssh")]
@@ -302,7 +307,7 @@ pub(crate) struct DaemonState {
     pub(crate) config: Arc<DaemonConfig>,
     pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
     pub(crate) docker: Arc<Docker>,
-    pub(crate) conn: Arc<Mutex<MysqlConnection>>,
+    pub(crate) conn: Arc<Mutex<AsyncMysqlConnection>>,
     #[cfg(feature = "ssh")]
     pub(crate) client: Client,
 }

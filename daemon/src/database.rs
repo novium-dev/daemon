@@ -1,9 +1,10 @@
 use crate::schema;
+use axum::async_trait;
 use common::payload::database::DatabasePayload;
-use diesel::connection::SimpleConnection;
 use diesel::result::Error;
-use diesel::{delete, insert_into, MysqlConnection};
-use diesel::{BoolExpressionMethods, ExpressionMethods, RunQueryDsl};
+use diesel::{delete, insert_into};
+use diesel::{BoolExpressionMethods, ExpressionMethods};
+use diesel_async::{AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use tokio::task::JoinError;
@@ -29,18 +30,19 @@ impl From<JoinError> for DatabaseUpdateError {
     }
 }
 
+#[async_trait]
 pub(crate) trait DatabasePayloadFunctionExtension {
-    fn update_validated(
+    async fn update_validated(
         &mut self,
         id: u32,
-        conn: &mut MysqlConnection,
+        conn: &mut AsyncMysqlConnection,
         to: Self,
     ) -> Result<(), DatabaseUpdateError>;
 
-    fn update_unvalidated(
+    async fn update_unvalidated(
         &mut self,
         id: u32,
-        conn: &mut MysqlConnection,
+        conn: &mut AsyncMysqlConnection,
         to: Self,
     ) -> Result<(), DatabaseUpdateError>;
 
@@ -57,24 +59,25 @@ pub(crate) trait DatabasePayloadFunctionExtension {
         Self: Sized;
 }
 
+#[async_trait]
 impl DatabasePayloadFunctionExtension for DatabasePayload {
-    fn update_validated(
+    async fn update_validated(
         &mut self,
         id: u32,
-        conn: &mut MysqlConnection,
+        conn: &mut AsyncMysqlConnection,
         to: DatabasePayload,
     ) -> Result<(), DatabaseUpdateError> {
         for (user, data) in &to.users {
             Self::validate_sql_string(user)?;
             Self::validate_hash(data.restricted.is_some(), &data.password_hash)?;
         }
-        self.update_unvalidated(id, conn, to)
+        self.update_unvalidated(id, conn, to).await
     }
 
-    fn update_unvalidated(
+    async fn update_unvalidated(
         &mut self,
         id: u32,
-        conn: &mut MysqlConnection,
+        conn: &mut AsyncMysqlConnection,
         to: DatabasePayload,
     ) -> Result<(), DatabaseUpdateError> {
         let name = self.name_suffix.clone();
@@ -140,7 +143,8 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                         .eq(id)
                         .and(schema::database_user::dsl::name_suffix.eq(&user)),
                 )
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
         for server in remove_server {
             sql += &format!(
@@ -156,7 +160,8 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                         .eq(id)
                         .and(schema::database_passwordless::dsl::server_id.eq(server)),
                 )
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
         for (user, data) in add_users {
             match data.restricted {
@@ -212,7 +217,8 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                     schema::database_user::dsl::permissions.eq(data.permissions),
                     schema::database_user::dsl::restricted.eq(restricted),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
         for (server, permissions) in add_server {
             sql += &format!(
@@ -235,10 +241,11 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                     schema::database_passwordless::dsl::database_id.eq(id),
                     schema::database_passwordless::dsl::permissions.eq(permissions),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
         sql += "FLUSH PRIVILEGES;";
-        conn.batch_execute(&sql)?;
+        conn.batch_execute(&sql).await?;
         Ok(())
     }
 

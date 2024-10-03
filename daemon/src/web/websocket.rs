@@ -8,13 +8,11 @@ use axum::http::StatusCode;
 use axum::{async_trait, Error};
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use ed25519_dalek::{Signature, Verifier};
 use futures_util::SinkExt;
 use log::debug;
 use serde::Deserialize;
 use std::io;
 use std::io::ErrorKind;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Deserialize)]
 pub(crate) struct WebsocketTerminalQuery {
@@ -31,12 +29,13 @@ pub(crate) struct WebsocketStatsQuery {
 }
 
 pub(crate) async fn authenticate(
-    server_id: u32,
-    state: &DaemonState,
+    #[allow(unused)] server_id: u32,
+    #[allow(unused)] state: &DaemonState,
     timestamp: &str,
     verify: &String,
 ) -> Result<(), StatusCode> {
     debug!("Authenticating WebSocket...");
+    #[allow(unused)]
     let timestamp: u128 = timestamp.parse().map_err(|_err| StatusCode::BAD_REQUEST)?;
     let verify = BASE64_STANDARD
         .decode(verify.as_bytes())
@@ -47,6 +46,9 @@ pub(crate) async fn authenticate(
     }
     #[cfg(not(feature = "websocket_debug_auth_bypass"))]
     {
+        use ed25519_dalek::{Signature, Verifier};
+        use std::time::{SystemTime, UNIX_EPOCH};
+
         let signature_bytes: [u8; 64] =
             verify.try_into().map_err(|_err| StatusCode::BAD_REQUEST)?;
         state

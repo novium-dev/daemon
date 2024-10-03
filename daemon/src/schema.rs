@@ -1,8 +1,9 @@
 use diesel::result::Error;
 use diesel::{
-    define_sql_function, Associations, BelongingToDsl, Identifiable, Insertable, MysqlConnection,
-    Queryable, RunQueryDsl, Selectable,
+    define_sql_function, Associations, BelongingToDsl, Identifiable, Insertable, Queryable,
+    Selectable,
 };
+use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
 use std::collections::HashMap;
 
 #[cfg(feature = "database")]
@@ -15,14 +16,19 @@ pub struct FetchedDatabase {
 
 #[cfg(feature = "database")]
 impl Database {
-    pub(crate) fn fetched(self, conn: &mut MysqlConnection) -> Result<FetchedDatabase, Error> {
+    pub(crate) async fn fetched(
+        self,
+        conn: &mut AsyncMysqlConnection,
+    ) -> Result<FetchedDatabase, Error> {
         let passwordless = DatabasePasswordless::belonging_to(&self)
-            .load::<DatabasePasswordless>(conn)?
+            .load::<DatabasePasswordless>(conn)
+            .await?
             .into_iter()
             .map(|passwordless| (passwordless.server_id, passwordless.permissions))
             .collect();
         let users = DatabaseUser::belonging_to(&self)
-            .load::<DatabaseUser>(conn)?
+            .load::<DatabaseUser>(conn)
+            .await?
             .into_iter()
             .map(|user| (user.name_suffix.clone(), user))
             .collect();
@@ -55,24 +61,30 @@ pub(crate) struct FetchedServer {
 }
 
 impl Server {
-    pub(crate) fn fetched(self, conn: &mut MysqlConnection) -> Result<FetchedServer, Error> {
+    pub(crate) async fn fetched(
+        self,
+        conn: &mut AsyncMysqlConnection,
+    ) -> Result<FetchedServer, Error> {
         let build_args = HashMap::from_iter(
             ServerBuildArg::belonging_to(&self)
-                .load::<ServerBuildArg>(conn)?
+                .load::<ServerBuildArg>(conn)
+                .await?
                 .into_iter()
                 .map(|arg| (arg.key, arg.value)),
         );
 
-        let ports = Port::belonging_to(&self).load::<Port>(conn)?;
+        let ports = Port::belonging_to(&self).load::<Port>(conn).await?;
 
         let cap_add = CapabilityAdd::belonging_to(&self)
-            .load::<CapabilityAdd>(conn)?
+            .load::<CapabilityAdd>(conn)
+            .await?
             .into_iter()
             .map(|cap_add| cap_add.capability)
             .collect();
 
         let cap_drop = CapabilityDrop::belonging_to(&self)
-            .load::<CapabilityDrop>(conn)?
+            .load::<CapabilityDrop>(conn)
+            .await?
             .into_iter()
             .map(|cap_drop| cap_drop.capability)
             .collect();

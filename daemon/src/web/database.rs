@@ -8,10 +8,8 @@ use axum::http::StatusCode;
 use axum::Json;
 use common::payload::database::DatabasePayload;
 use common::payload::IdResponse;
-use diesel::connection::SimpleConnection;
-use diesel::{
-    delete, insert_into, select, Connection, ExpressionMethods, MysqlConnection, RunQueryDsl,
-};
+use diesel::{delete, insert_into, select, ExpressionMethods};
+use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
 use std::collections::HashMap;
 
 pub(crate) async fn create_database(
@@ -20,30 +18,32 @@ pub(crate) async fn create_database(
 ) -> Result<Json<IdResponse>, StatusCode> {
     let mut conn = state.conn.clone().lock_owned().await;
 
-    let (database_id, result) = tokio::task::spawn_blocking(move || {
-        conn.transaction(|conn| {
-            let database_id = insert_dummy(payload.name_suffix.clone(), conn)?;
-            conn.batch_execute(&format!(
-                "CREATE DATABASE {}{}_{};",
-                common::MARIADB_DATABASE_PREFIX,
-                database_id,
-                payload.name_suffix,
-            ))?;
-            let result = DatabasePayload {
-                name_suffix: payload.name_suffix.clone(),
-                users: HashMap::new(),
-                passwordless: HashMap::new(),
-            }
-            .update_validated(database_id, conn, payload);
-            if let Err(DatabaseUpdateError::Diesel(err)) = result {
-                return Err(err);
-            }
-            Ok((database_id, result))
+    let (database_id, result) = conn
+        .transaction(|conn| {
+            Box::pin(async move {
+                let database_id = insert_dummy(payload.name_suffix.clone(), conn).await?;
+                conn.batch_execute(&format!(
+                    "CREATE DATABASE {}{}_{};",
+                    common::MARIADB_DATABASE_PREFIX,
+                    database_id,
+                    payload.name_suffix,
+                ))
+                .await?;
+                let result = DatabasePayload {
+                    name_suffix: payload.name_suffix.clone(),
+                    users: HashMap::new(),
+                    passwordless: HashMap::new(),
+                }
+                .update_validated(database_id, conn, payload)
+                .await;
+                if let Err(DatabaseUpdateError::Diesel(err)) = result {
+                    return Err(err);
+                }
+                Ok((database_id, result))
+            })
         })
-    })
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .unwrap_or_else(|err| (0, Err(DatabaseUpdateError::Diesel(err))));
+        .await
+        .unwrap_or_else(|err| (0, Err(DatabaseUpdateError::Diesel(err))));
 
     match result {
         Err(DatabaseUpdateError::Diesel(err)) => Err(diesel_error_to_http(err)),
@@ -55,14 +55,17 @@ pub(crate) async fn create_database(
 }
 
 // ONLY EXECUTE INSIDE A TRANSACTION
-pub(crate) fn insert_dummy(
+pub(crate) async fn insert_dummy(
     name_suffix: String,
-    conn: &mut MysqlConnection,
+    conn: &mut AsyncMysqlConnection,
 ) -> Result<u32, diesel::result::Error> {
     insert_into(schema::databases::dsl::databases)
         .values((schema::databases::dsl::name_suffix.eq(&name_suffix),))
-        .execute(conn)?;
-    Ok(select(schema::last_insert_id()).get_result::<u64>(conn)? as u32)
+        .execute(conn)
+        .await?;
+    Ok(select(schema::last_insert_id())
+        .get_result::<u64>(conn)
+        .await? as u32)
 }
 
 pub(crate) async fn modify_database(
@@ -76,18 +79,18 @@ pub(crate) async fn modify_database(
         .map_err(diesel_error_to_http)?;
     let mut database = DatabasePayload::from_fetched_database(database);
 
-    let result = tokio::task::spawn_blocking(move || {
-        conn.transaction(|conn| {
-            let result = database.update_validated(database_id, conn, payload);
-            if let Err(DatabaseUpdateError::Diesel(err)) = result {
-                return Err(err);
-            }
-            Ok(result)
+    let result = conn
+        .transaction(|conn| {
+            Box::pin(async move {
+                let result = database.update_validated(database_id, conn, payload).await;
+                if let Err(DatabaseUpdateError::Diesel(err)) = result {
+                    return Err(err);
+                }
+                Ok(result)
+            })
         })
-    })
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .unwrap_or_else(|err| Err(DatabaseUpdateError::Diesel(err)));
+        .await
+        .unwrap_or_else(|err| Err(DatabaseUpdateError::Diesel(err)));
 
     match result {
         Err(DatabaseUpdateError::Diesel(err)) => Err(diesel_error_to_http(err)),
@@ -108,36 +111,40 @@ pub(crate) async fn delete_database(
         .map_err(diesel_error_to_http)?;
     let mut database = DatabasePayload::from_fetched_database(database);
 
-    let result = tokio::task::spawn_blocking(move || {
-        conn.transaction(|conn| {
-            let name_suffix = database.name_suffix.clone();
-            let result = database.update_validated(
-                database_id,
-                conn,
-                DatabasePayload {
-                    passwordless: HashMap::new(),
-                    users: HashMap::new(),
-                    name_suffix: name_suffix.clone(),
-                },
-            );
-            if let Err(DatabaseUpdateError::Diesel(err)) = result {
-                return Err(err);
-            }
-            conn.batch_execute(&format!(
-                "DROP DATABASE {}{}_{};",
-                common::MARIADB_DATABASE_PREFIX,
-                database_id,
-                name_suffix,
-            ))?;
-            delete(schema::databases::dsl::databases)
-                .filter(schema::databases::dsl::id.eq(database_id))
-                .execute(conn)?;
-            Ok(result)
+    let result = conn
+        .transaction(|conn| {
+            Box::pin(async {
+                let name_suffix = database.name_suffix.clone();
+                let result = database
+                    .update_validated(
+                        database_id,
+                        conn,
+                        DatabasePayload {
+                            passwordless: HashMap::new(),
+                            users: HashMap::new(),
+                            name_suffix: name_suffix.clone(),
+                        },
+                    )
+                    .await;
+                if let Err(DatabaseUpdateError::Diesel(err)) = result {
+                    return Err(err);
+                }
+                conn.batch_execute(&format!(
+                    "DROP DATABASE {}{}_{};",
+                    common::MARIADB_DATABASE_PREFIX,
+                    database_id,
+                    name_suffix,
+                ))
+                .await?;
+                delete(schema::databases::dsl::databases)
+                    .filter(schema::databases::dsl::id.eq(database_id))
+                    .execute(conn)
+                    .await?;
+                Ok(result)
+            })
         })
-    })
-    .await
-    .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-    .unwrap_or_else(|err| Err(DatabaseUpdateError::Diesel(err)));
+        .await
+        .unwrap_or_else(|err| Err(DatabaseUpdateError::Diesel(err)));
 
     match result {
         Err(DatabaseUpdateError::Diesel(err)) => Err(diesel_error_to_http(err)),
