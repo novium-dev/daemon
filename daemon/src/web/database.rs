@@ -1,11 +1,13 @@
-use crate::database::DatabaseUpdateError;
+use crate::database::{DatabasePayloadFunctionExtension, DatabaseUpdateError};
 use crate::utils::database;
 use crate::web::diesel_error_to_http;
-use crate::web::payload::{DatabasePayload, IdResponse};
+use crate::web::payload::FromFetchedDatabaseExtension;
 use crate::{schema, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
+use common::payload::database::DatabasePayload;
+use common::payload::IdResponse;
 use diesel::connection::SimpleConnection;
 use diesel::{
     delete, insert_into, select, Connection, ExpressionMethods, MysqlConnection, RunQueryDsl,
@@ -23,7 +25,7 @@ pub(crate) async fn create_database(
             let database_id = insert_dummy(payload.name_suffix.clone(), conn)?;
             conn.batch_execute(&format!(
                 "CREATE DATABASE {}{}_{};",
-                crate::MARIADB_DATABASE_PREFIX,
+                common::MARIADB_DATABASE_PREFIX,
                 database_id,
                 payload.name_suffix,
             ))?;
@@ -72,7 +74,7 @@ pub(crate) async fn modify_database(
     let (database, mut conn) = database(conn, database_id)
         .await
         .map_err(diesel_error_to_http)?;
-    let mut database: DatabasePayload = database.into();
+    let mut database = DatabasePayload::from_fetched_database(database);
 
     let result = tokio::task::spawn_blocking(move || {
         conn.transaction(|conn| {
@@ -104,7 +106,7 @@ pub(crate) async fn delete_database(
     let (database, mut conn) = database(conn, database_id)
         .await
         .map_err(diesel_error_to_http)?;
-    let mut database: DatabasePayload = database.into();
+    let mut database = DatabasePayload::from_fetched_database(database);
 
     let result = tokio::task::spawn_blocking(move || {
         conn.transaction(|conn| {
@@ -123,7 +125,7 @@ pub(crate) async fn delete_database(
             }
             conn.batch_execute(&format!(
                 "DROP DATABASE {}{}_{};",
-                crate::MARIADB_DATABASE_PREFIX,
+                common::MARIADB_DATABASE_PREFIX,
                 database_id,
                 name_suffix,
             ))?;

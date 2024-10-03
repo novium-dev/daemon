@@ -6,6 +6,7 @@ use log::{debug, warn};
 pub(crate) mod database;
 #[cfg(feature = "files")]
 pub(crate) mod files;
+#[cfg(feature = "database")]
 pub(crate) mod payload;
 pub(crate) mod server;
 #[cfg(feature = "websocket")]

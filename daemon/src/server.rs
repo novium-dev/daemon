@@ -64,7 +64,7 @@ impl FetchedServer {
         buffer: &mut Vec<u8>,
         server_data: &mut ServerData,
     ) -> Result<String, ServerStartError> {
-        let name = format!("{}:{}", crate::IMAGE_NAME, self.build_identifier);
+        let name = format!("{}:{}", common::IMAGE_NAME, self.build_identifier);
 
         let images = docker
             .list_images(Some(ListImagesOptions {
@@ -200,7 +200,7 @@ impl FetchedServer {
     }
 
     pub(crate) fn container_name(id: u32) -> String {
-        format!("{}{}", crate::CONTAINER_PREFIX, id)
+        format!("{}{}", common::CONTAINER_PREFIX, id)
     }
 
     pub(crate) async fn start(

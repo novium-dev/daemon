@@ -49,8 +49,6 @@ use tokio::task::JoinSet;
 use tower_http::validate_request::ValidateRequestHeaderLayer;
 use uuid::Uuid;
 
-include!("../../config.rs");
-
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     let env = Env::default().filter_or("LOG_LEVEL", "info");
@@ -160,7 +158,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     #[cfg(feature = "database")]
     state.conn.lock().await.batch_execute(
         &include_str!("init_database.sql")
-            .replace("{{MARIADB_PLUGIN_NAME}}", crate::MARIADB_PLUGIN_NAME),
+            .replace("{{MARIADB_PLUGIN_NAME}}", common::MARIADB_PLUGIN_NAME),
     )?;
     let state = Arc::new(state);
 
