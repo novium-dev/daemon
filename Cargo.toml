@@ -58,7 +58,7 @@ features = ["cors", "auth"]
 
 [workspace.dependencies.diesel-async]
 version = "0.5.0"
-features = ["mysql"]
+features = ["mysql", "r2d2", "bb8"]
 
 [workspace.dependencies.diesel]
 version = "2.2.4"
