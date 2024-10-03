@@ -1,24 +1,30 @@
 #[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
-use base64::prelude::BASE64_STANDARD;
+#[cfg(feature = "websocket")]
+use base64::prelude::*;
+#[cfg(feature = "websocket")]
 use base64::Engine;
+#[cfg(feature = "websocket")]
 use ed25519_dalek::VerifyingKey;
 #[cfg(feature = "ssh")]
 use russh_keys::encoding::Bytes;
 #[cfg(feature = "ssh")]
 use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
-use serde::de::Error;
-use serde::{Deserialize, Deserializer};
+use serde::Deserialize;
 #[cfg(feature = "ssl")]
 use std::path::PathBuf;
 
 #[derive(Deserialize)]
 pub(crate) struct DaemonConfig {
+    #[allow(unused)]
     pub(crate) identifier: String,
     pub(crate) token: String,
+    #[cfg(feature = "websocket")]
     #[serde(deserialize_with = "deserialize_websocket_key")]
     pub(crate) websocket_key: VerifyingKey,
+    #[cfg(feature = "websocket")]
     pub(crate) websocket_allow_duration: u64,
+    #[cfg(feature = "websocket")]
     pub(crate) origin: String,
     pub(crate) storage_path: String,
     #[cfg(feature = "btrfs")]
@@ -37,10 +43,13 @@ pub(crate) struct DaemonConfig {
     pub(crate) ssh_auth_url: String,
 }
 
+#[cfg(feature = "websocket")]
 fn deserialize_websocket_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>
 where
-    D: Deserializer<'de>,
+    D: serde::Deserializer<'de>,
 {
+    use serde::de::Error;
+
     let str = String::deserialize(deserializer)?;
     let mut buffer = Vec::with_capacity(32);
     BASE64_STANDARD

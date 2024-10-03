@@ -7,6 +7,7 @@ mod server;
 #[cfg(feature = "ssh")]
 mod ssh;
 mod storage;
+#[allow(unused)]
 mod terminal;
 mod utils;
 mod web;
@@ -17,7 +18,6 @@ use crate::schema::FetchedServer;
 use crate::ssh::DaemonSSHServer;
 use crate::terminal::TerminalSession;
 use crate::utils::ChannelWriteData;
-use axum::http::{HeaderValue, Method};
 use axum::routing::{delete, get, patch, put};
 use axum::Router;
 use bollard::Docker;
@@ -44,7 +44,6 @@ use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::task::JoinSet;
-use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
 use tower_http::validate_request::ValidateRequestHeaderLayer;
 use uuid::Uuid;
 
@@ -85,6 +84,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         client: Client::default(),
     };
 
+    #[allow(unused_mut)]
     let mut app = Router::new().nest(
         "/server",
         Router::new()
@@ -111,8 +111,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
         );
     }
 
+    #[cfg(feature = "files")]
+    {
+        app = app.nest(
+            "/files/:server_id",
+            Router::new()
+                .route("/ls", get(web::files::server_list_files))
+                .route("/stat", get(web::files::server_stat_file))
+                .route("/rename", get(web::files::server_rename_file))
+                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
+        );
+    }
+
     #[cfg(feature = "websocket")]
     {
+        use axum::http::{HeaderValue, Method};
+        use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
+
         let cors = CorsLayer::new()
             .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&config.origin)?))
             .allow_methods([Method::GET])

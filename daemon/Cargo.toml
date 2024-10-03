@@ -8,12 +8,13 @@ ssl = []
 ssh = ["russh", "russh-keys", "reqwest"]
 ssh_debug_auth_bypass = ["ssh"]
 sftp = ["ssh", "russh-sftp"]
+files = ["sftp"]
 database = []
 websocket = ["axum/ws"]
 websocket_debug_auth_bypass = ["websocket"]
 
 btrfs = ["btrfsutil"]
-default = ["ssl", "ssh", "sftp", "websocket", "database", "btrfs"]
+default = ["ssl", "ssh", "sftp", "websocket", "database", "files", "btrfs"]
 
 [dependencies]
 libc.workspace = true
@@ -53,7 +54,10 @@ features = ["tls-rustls"]
 
 [dependencies.axum]
 version = "0.7.7"
-features = ["json"]
+features = ["json", "macros"]
+
+[dependencies.axum-macros]
+version = "0.4.2"
 
 [dependencies.tower-http]
 version = "0.6.1"

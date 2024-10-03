@@ -1,10 +1,10 @@
 #[cfg(feature = "sftp")]
-mod sftp;
+pub(crate) mod sftp;
 
 #[cfg(feature = "sftp")]
 use crate::ssh::sftp::DaemonSftpSession;
 #[cfg(feature = "sftp")]
-use crate::storage::StorageIdentifiers;
+use crate::storage::StorageIdentifier;
 use crate::terminal::{new_session, update_size, TerminalData};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{DaemonState, ServerData};
@@ -550,7 +550,7 @@ impl Handler for DaemonSSHHandler {
                             .permissions
                             .contains(PanelAuthServerPermissions::SFTP_READ)
                         {
-                            let identifier = StorageIdentifiers::Primary(server.id);
+                            let identifier = StorageIdentifier::Primary(server.id);
                             sftp.access
                                 .insert(identifier.as_vec(), (identifier, server.permissions));
                         }

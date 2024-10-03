@@ -1,7 +1,7 @@
 use crate::schema::FetchedServer;
 use crate::schema::{server_buildargs, server_capadd, server_capdrop, server_ports, servers};
 use crate::server::{ServerState, ServerStopError};
-use crate::storage::StorageIdentifiers;
+use crate::storage::StorageIdentifier;
 use crate::utils::server;
 use crate::web::diesel_error_to_http;
 use crate::web::payload::{IdResponse, ServerPayload};
@@ -106,8 +106,7 @@ pub(crate) async fn delete_server(
             state.servers.lock().await.remove(&server_id);
 
             tokio::task::spawn(async move {
-                let _ =
-                    storage::delete(&state.config, StorageIdentifiers::Primary(server_id)).await;
+                let _ = storage::delete(&state.config, StorageIdentifier::Primary(server_id)).await;
             });
 
             Ok(())

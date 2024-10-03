@@ -1,6 +1,6 @@
 use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
-use crate::storage::StorageIdentifiers;
+use crate::storage::StorageIdentifier;
 use crate::utils::{from_mib, ChannelWriteData};
 use crate::{storage, utils, DaemonState, ServerData};
 #[cfg(feature = "websocket")]
@@ -239,7 +239,7 @@ impl FetchedServer {
         let mut binds = Vec::with_capacity(1);
         binds.push(format!(
             "{}:/work",
-            storage::ensure_exists(config, StorageIdentifiers::Primary(self.id), self.disk)
+            storage::ensure_exists(config, StorageIdentifier::Primary(self.id), self.disk)
                 .await
                 .map_err(ServerStartError::Storage)?
         ));
@@ -704,6 +704,7 @@ impl From<Stats> for ServerStats {
     }
 }
 
+#[allow(unused)]
 const STATS_MAGIC: &str = "STATS!";
 
 #[cfg(feature = "websocket")]
@@ -736,6 +737,7 @@ impl ServerState {
         !matches!(self, ServerState::Stopped)
     }
 
+    #[allow(unused)]
     pub(crate) fn kill_show(&self) -> bool {
         matches!(self, ServerState::Stopping | ServerState::Restarting)
     }

@@ -67,6 +67,26 @@ pub(crate) async fn generic_server_select(
 }
 
 #[cfg(feature = "sftp")]
+pub(crate) fn parse_path(path: &mut String) -> Result<(Vec<&str>, bool), ()> {
+    let ends_with_slash = path.ends_with('/');
+    if ends_with_slash {
+        path.pop();
+    }
+    if path.starts_with('.') {
+        path.remove(0);
+    }
+    if path.starts_with('/') {
+        path.remove(0);
+    }
+    let components = if path.is_empty() {
+        Vec::new()
+    } else {
+        path.split('/').collect()
+    };
+    short_path(components).map(|vec| (vec, ends_with_slash))
+}
+
+#[cfg(feature = "sftp")]
 pub(crate) fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
     let mut result = Vec::new();
     for component in components {
@@ -83,6 +103,7 @@ pub(crate) fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
     Ok(result)
 }
 
+#[allow(unused)]
 #[derive(Clone)]
 pub(crate) enum ChannelWriteData {
     Terminal(Vec<u8>),
@@ -91,6 +112,7 @@ pub(crate) enum ChannelWriteData {
     Ping,
 }
 
+#[allow(unused)]
 #[async_trait]
 pub(crate) trait ChannelAdapter<E: Send + 'static, J: Send + 'static, Q: Send + 'static> {
     async fn read(&mut self) -> E;
@@ -114,11 +136,13 @@ pub(crate) trait ChannelAdapter<E: Send + 'static, J: Send + 'static, Q: Send + 
         Self: Sized;
 }
 
+#[allow(unused)]
 pub(crate) enum ChannelError {
     Closed,
     IO(io::Error),
 }
 
+#[allow(unused)]
 pub struct ChannelInterceptor<
     A: ChannelAdapter<E, J, Q> + Send,
     E: Send + 'static,
@@ -127,6 +151,7 @@ pub struct ChannelInterceptor<
     C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>> + Send + 'static,
 >(A, C, PhantomData<E>, PhantomData<Q>, PhantomData<J>);
 
+#[allow(unused)]
 impl<
         C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>>
             + Send

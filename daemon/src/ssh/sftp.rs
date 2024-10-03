@@ -1,6 +1,6 @@
 use crate::ssh::PanelAuthServerPermissions;
-use crate::storage::StorageIdentifiers;
-use crate::utils::short_path;
+use crate::storage::StorageIdentifier;
+use crate::utils::parse_path;
 use crate::DaemonState;
 use axum::async_trait;
 use log::{debug, error};
@@ -22,7 +22,7 @@ pub(crate) struct DaemonSftpSession {
     pub(crate) state: Arc<DaemonState>,
     pub(crate) version: Option<u32>,
     pub(crate) file_handles: HashMap<String, FileHandle>,
-    pub(crate) access: HashMap<Vec<String>, (StorageIdentifiers, PanelAuthServerPermissions)>,
+    pub(crate) access: HashMap<Vec<String>, (StorageIdentifier, PanelAuthServerPermissions)>,
 }
 
 #[async_trait]
@@ -372,32 +372,16 @@ impl DaemonSftpSession {
         mut path: String,
     ) -> Result<
         (
-            Option<(StorageIdentifiers, PanelAuthServerPermissions)>,
+            Option<(StorageIdentifier, PanelAuthServerPermissions)>,
             Vec<String>,
             Vec<String>,
         ),
         StatusCode,
     > {
         debug!("Path0 {}", path);
-
-        let ends_with_slash = path.ends_with('/');
-        if ends_with_slash {
-            path.pop();
-        }
-        if path.starts_with('.') {
-            path.remove(0);
-        }
-        if path.starts_with('/') {
-            path.remove(0);
-        }
-        let components = if path.is_empty() {
-            Vec::new()
-        } else {
-            path.split('/').collect()
-        };
-
         // Resolving ..
-        let shorten = short_path(components).map_err(|_| StatusCode::NoSuchFile)?;
+        let (shorten, ends_with_slash) =
+            parse_path(&mut path).map_err(|_| StatusCode::NoSuchFile)?;
 
         let mut temp_prefix = Vec::new();
         let mut temp_suffix = Vec::new();
@@ -710,7 +694,7 @@ impl FileHandle {
     }
 }
 
-trait IntoFileAttributes {
+pub(crate) trait IntoFileAttributes {
     fn into_fileattributes(self) -> FileAttributes;
 }
 

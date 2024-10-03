@@ -1,33 +1,31 @@
 use crate::config::DaemonConfig;
-use btrfsutil::subvolume::DeleteFlags;
 use std::io;
-use std::io::ErrorKind;
 use std::path::PathBuf;
 use tokio::fs;
 
 #[derive(Hash, PartialEq, Clone, Copy)]
-pub(crate) enum StorageIdentifiers {
+pub(crate) enum StorageIdentifier {
     Primary(u32),
 }
 
-impl StorageIdentifiers {
+impl StorageIdentifier {
     pub(crate) fn as_pathbuf(&self) -> PathBuf {
         match self {
-            StorageIdentifiers::Primary(id) => PathBuf::from(format!("primary/{}", id)),
+            StorageIdentifier::Primary(id) => PathBuf::from(format!("primary/{}", id)),
         }
     }
 
     #[allow(unused)]
     pub(crate) fn as_vec(&self) -> Vec<String> {
         match self {
-            StorageIdentifiers::Primary(id) => vec!["primary".to_owned(), id.to_string()],
+            StorageIdentifier::Primary(id) => vec!["primary".to_owned(), id.to_string()],
         }
     }
 }
 
 pub(crate) async fn ensure_exists(
     config: &DaemonConfig,
-    id: StorageIdentifiers,
+    id: StorageIdentifier,
     _disk: Option<u64>,
 ) -> Result<String, io::Error> {
     let base = PathBuf::from(&config.storage_path);
@@ -63,12 +61,14 @@ pub(crate) async fn ensure_exists(
     Ok(fs::canonicalize(dir).await?.to_string_lossy().to_string())
 }
 
-pub(crate) async fn delete(config: &DaemonConfig, id: StorageIdentifiers) -> Result<(), io::Error> {
+pub(crate) async fn delete(config: &DaemonConfig, id: StorageIdentifier) -> Result<(), io::Error> {
     let base = PathBuf::from(&config.storage_path);
     let dir = base.join(id.as_pathbuf());
 
     #[cfg(feature = "btrfs")]
     if config.btrfs {
+        use btrfsutil::subvolume::DeleteFlags;
+        use std::io::ErrorKind;
         return tokio::task::spawn_blocking(move || {
             let subvol = btrfsutil::subvolume::Subvolume::get(dir.as_path())
                 .map_err(|err| io::Error::new(ErrorKind::Other, err))?;

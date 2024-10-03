@@ -91,3 +91,14 @@ pub(crate) struct DatabaseUserPayload {
     pub(crate) permissions: i32,
     pub(crate) restricted: Option<Vec<u32>>,
 }
+
+#[cfg(feature = "files")]
+#[derive(Serialize)]
+pub(crate) struct FileResponse {
+    pub(crate) name: String,
+    pub(crate) uid: u32,
+    pub(crate) gid: u32,
+    pub(crate) mode: u32,
+    pub(crate) size: u64,
+    pub(crate) path: Option<String>,
+}
