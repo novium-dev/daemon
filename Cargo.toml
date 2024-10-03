@@ -19,7 +19,7 @@ env_logger = "0.11.5"
 signal-hook = "0.3.17"
 openssl = "0.10.66"
 termion = "4.0.2"
-diesel = "2.2.4"
+
 
 [workspace.dependencies.common]
 path = "common"
@@ -48,6 +48,10 @@ features = ["tls-rustls"]
 version = "0.7.7"
 features = ["json", "macros"]
 
+[workspace.dependencies.axum-extra]
+version = "0.9.4"
+features = ["typed-header"]
+
 [workspace.dependencies.tower-http]
 version = "0.6.1"
 features = ["cors", "auth"]
@@ -55,6 +59,10 @@ features = ["cors", "auth"]
 [workspace.dependencies.diesel-async]
 version = "0.5.0"
 features = ["mysql"]
+
+[workspace.dependencies.diesel]
+version = "2.2.4"
+features = ["mysql", "r2d2", "uuid"]
 
 [workspace.dependencies.uuid]
 version = "1.10.0"
