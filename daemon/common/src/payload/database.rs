@@ -2,7 +2,9 @@ use super::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+#[cfg(not(target_arch = "wasm32"))]
 use bitflags::bitflags;
+#[cfg(target_arch = "wasm32")]
 use tsify::declare;
 
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
