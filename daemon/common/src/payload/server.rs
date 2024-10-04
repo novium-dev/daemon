@@ -47,9 +47,14 @@ pub struct ServerPortEntryPayload {
 #[serde(transparent)]
 pub struct ServerPortsPayload(pub Vec<ServerPortEntryPayload>);
 
-#[cfg(target_arch = "wasm32")]
 impl Into<Vec<ServerPortEntryPayload>> for ServerPortsPayload {
     fn into(self) -> Vec<ServerPortEntryPayload> {
         self.0
+    }
+}
+
+impl From<Vec<ServerPortEntryPayload>> for ServerPortsPayload {
+    fn from(value: Vec<ServerPortEntryPayload>) -> Self {
+        ServerPortsPayload(value)
     }
 }

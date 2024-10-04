@@ -26,10 +26,15 @@ pub struct DatabaseUserPayload {
 #[serde(transparent)]
 pub struct DatabaseUsersPayload(pub HashMap<String, DatabaseUserPayload>);
 
-#[cfg(target_arch = "wasm32")]
 impl Into<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
     fn into(self) -> HashMap<String, DatabaseUserPayload> {
         self.0
+    }
+}
+
+impl From<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
+    fn from(value: HashMap<String, DatabaseUserPayload>) -> Self {
+        DatabaseUsersPayload(value)
     }
 }
 
@@ -40,9 +45,14 @@ impl Into<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
 #[serde(transparent)]
 pub struct DatabasePasswordlessPayload(pub HashMap<u32, i32>);
 
-#[cfg(target_arch = "wasm32")]
 impl Into<HashMap<u32, i32>> for DatabasePasswordlessPayload {
     fn into(self) -> HashMap<u32, i32> {
         self.0
+    }
+}
+
+impl From<HashMap<u32, i32>> for DatabasePasswordlessPayload {
+    fn from(value: HashMap<u32, i32>) -> Self {
+        DatabasePasswordlessPayload(value)
     }
 }
