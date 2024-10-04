@@ -1,12 +1,19 @@
+
 #[cfg(feature = "database")]
 pub mod database;
 #[cfg(feature = "files")]
 pub mod files;
 pub mod server;
 
-use serde::Serialize;
+#[cfg(target_arch = "wasm32")]
+pub use wasm_bindgen::prelude::*;
 
-#[derive(Serialize)]
+use serde::{Deserialize, Serialize};
+
+#[cfg(target_arch = "wasm32")]
+pub use tsify::Tsify;
+
+#[derive(Serialize, Deserialize)]
 pub struct IdResponse {
     pub id: u32,
 }

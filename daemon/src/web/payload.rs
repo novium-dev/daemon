@@ -8,7 +8,7 @@ pub(crate) trait FromFetchedDatabaseExtension {
 impl FromFetchedDatabaseExtension for DatabasePayload {
     fn from_fetched_database(value: FetchedDatabase) -> Self {
         DatabasePayload {
-            name_suffix: value.name_suffix,
+            name_suffix: Some(value.name_suffix),
             passwordless: value.passwordless,
             users: value
                 .users

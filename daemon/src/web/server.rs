@@ -1,6 +1,6 @@
 use crate::schema::FetchedServer;
 use crate::schema::{server_buildargs, server_capadd, server_capdrop, server_ports, servers};
-use crate::server::{ServerState, ServerStopError};
+use crate::server::{InternalServerState, ServerStopError};
 use crate::storage::StorageIdentifier;
 use crate::utils::server;
 use crate::web::diesel_error_to_http;
@@ -319,7 +319,7 @@ pub(crate) async fn restart_server(
 pub(crate) async fn server_info(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
-) -> Result<Json<ServerState>, StatusCode> {
+) -> Result<Json<InternalServerState>, StatusCode> {
     let (server, server_data) = server(state.conn, &state.servers, server_id)
         .await
         .map_err(diesel_error_to_http)?;

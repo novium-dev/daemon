@@ -36,7 +36,7 @@ pub(crate) async fn authenticate(
 ) -> Result<(), StatusCode> {
     debug!("Authenticating WebSocket...");
     #[allow(unused)]
-    let timestamp: u128 = timestamp.parse().map_err(|_err| StatusCode::BAD_REQUEST)?;
+    let timestamp: u64 = timestamp.parse().map_err(|_err| StatusCode::BAD_REQUEST)?;
     let verify = BASE64_STANDARD
         .decode(verify.as_bytes())
         .map_err(|_err| StatusCode::BAD_REQUEST)?;
@@ -62,7 +62,7 @@ pub(crate) async fn authenticate(
         let unix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|_err| StatusCode::BAD_REQUEST)?;
-        if (timestamp + state.config.websocket_allow_duration as u128) <= unix.as_millis() {
+        if (timestamp + state.config.websocket_allow_duration) as u128 <= unix.as_millis() {
             return Err(StatusCode::UNAUTHORIZED);
         }
     }

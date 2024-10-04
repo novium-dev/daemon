@@ -32,6 +32,7 @@ use termion::{clear, color};
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
+use daemon_common::server::PublicServerState;
 
 pub(crate) const TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024;
 
@@ -163,7 +164,7 @@ impl FetchedServer {
         id: u32,
         docker: &Docker,
         server_data: &ServerData,
-    ) -> Result<ServerState, bollard::errors::Error> {
+    ) -> Result<InternalServerState, bollard::errors::Error> {
         let list = docker
             .list_containers(Some(ListContainersOptions {
                 all: true,
@@ -172,29 +173,29 @@ impl FetchedServer {
             }))
             .await?;
         if list.is_empty() {
-            Ok(ServerState::Stopped)
+            Ok(InternalServerState::Stopped)
         } else {
             let inspect = docker
                 .inspect_container(&Self::container_name(id), None)
                 .await?;
             let state = inspect.state.unwrap();
             Ok(if !state.running.unwrap() {
-                ServerState::Stopped
+                InternalServerState::Stopped
             } else if server_data.stopping {
                 if server_data.restart {
-                    ServerState::Restarting
+                    InternalServerState::Restarting
                 } else {
-                    ServerState::Stopping
+                    InternalServerState::Stopping
                 }
             } else if let Some(health) = state.health {
                 match health.status.unwrap() {
-                    HealthStatusEnum::EMPTY | HealthStatusEnum::NONE => ServerState::Running,
-                    HealthStatusEnum::STARTING => ServerState::Starting,
-                    HealthStatusEnum::HEALTHY => ServerState::Running,
-                    HealthStatusEnum::UNHEALTHY => ServerState::Unhealthy,
+                    HealthStatusEnum::EMPTY | HealthStatusEnum::NONE => InternalServerState::Running,
+                    HealthStatusEnum::STARTING => InternalServerState::Starting,
+                    HealthStatusEnum::HEALTHY => InternalServerState::Running,
+                    HealthStatusEnum::UNHEALTHY => InternalServerState::Unhealthy,
                 }
             } else {
-                ServerState::Running
+                InternalServerState::Running
             })
         }
     }
@@ -623,7 +624,7 @@ impl Display for ServerStopError {
 impl Error for ServerStopError {}
 
 #[derive(Clone)]
-pub(crate) enum ServerState {
+pub enum InternalServerState {
     Stopped,
 
     // Health-check enabled
@@ -635,6 +636,41 @@ pub(crate) enum ServerState {
 
     Stopping,
     Restarting,
+}
+
+impl InternalServerState {
+    pub(crate) fn start(&self) -> bool {
+        matches!(self, InternalServerState::Stopped)
+    }
+
+    pub(crate) fn stop(&self) -> bool {
+        !matches!(
+            self,
+            InternalServerState::Stopped | InternalServerState::Stopping | InternalServerState::Restarting
+        )
+    }
+
+    pub(crate) fn kill(&self) -> bool {
+        !matches!(self, InternalServerState::Stopped)
+    }
+
+    #[allow(unused)]
+    pub(crate) fn kill_show(&self) -> bool {
+        matches!(self, InternalServerState::Stopping | InternalServerState::Restarting)
+    }
+}
+
+impl Display for InternalServerState {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            InternalServerState::Stopped => "Stopped",
+            InternalServerState::Starting => "Starting",
+            InternalServerState::Unhealthy => "Unhealthy",
+            InternalServerState::Running => "Running",
+            InternalServerState::Stopping => "Stopping",
+            InternalServerState::Restarting => "Restarting",
+        })
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -721,51 +757,8 @@ impl ServerStats {
     }
 }
 
-impl ServerState {
-    pub(crate) fn start(&self) -> bool {
-        matches!(self, ServerState::Stopped)
-    }
-
-    pub(crate) fn stop(&self) -> bool {
-        !matches!(
-            self,
-            ServerState::Stopped | ServerState::Stopping | ServerState::Restarting
-        )
-    }
-
-    pub(crate) fn kill(&self) -> bool {
-        !matches!(self, ServerState::Stopped)
-    }
-
-    #[allow(unused)]
-    pub(crate) fn kill_show(&self) -> bool {
-        matches!(self, ServerState::Stopping | ServerState::Restarting)
-    }
-}
-
-impl Display for ServerState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            ServerState::Stopped => "Stopped",
-            ServerState::Starting => "Starting",
-            ServerState::Unhealthy => "Unhealthy",
-            ServerState::Running => "Running",
-            ServerState::Stopping => "Stopping",
-            ServerState::Restarting => "Restarting",
-        })
-    }
-}
-
-#[derive(Serialize)]
-struct ServerStateSerialize {
-    label: String,
-    start: bool,
-    stop: bool,
-    kill: bool,
-}
-
 #[cfg(feature = "websocket")]
-impl ServerState {
+impl InternalServerState {
     pub fn as_websocket_message(&self) -> Message {
         let mut bytes = Vec::with_capacity(1);
         let mut info = 0u8;
@@ -784,12 +777,12 @@ impl ServerState {
     }
 }
 
-impl Serialize for ServerState {
+impl Serialize for InternalServerState {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
-        ServerStateSerialize {
+        PublicServerState {
             label: self.to_string(),
             start: self.start(),
             stop: self.stop(),

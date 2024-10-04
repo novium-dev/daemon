@@ -80,9 +80,9 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
         conn: &mut AsyncMysqlConnection,
         to: DatabasePayload,
     ) -> Result<(), DatabaseUpdateError> {
-        let name = self.name_suffix.clone();
+        let name = self.name_suffix.clone().unwrap();
 
-        if !self.name_suffix.eq(&to.name_suffix) {
+        if !self.name_suffix.eq(&to.name_suffix) && to.name_suffix.is_some() {
             return Err(DatabaseUpdateError::RenameingNotImplemented);
         }
 

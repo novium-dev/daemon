@@ -5,7 +5,7 @@ resolver = "2"
 [workspace.dependencies]
 libc = "0.2.159"
 bollard = "0.17.1"
-serde_json = "1.0.128"
+serde_json = "1.0"
 regex = "1.11.0"
 toml = "0.8.19"
 rustls = "0.23.13"
@@ -19,7 +19,8 @@ env_logger = "0.11.5"
 signal-hook = "0.3.17"
 openssl = "0.10.66"
 termion = "4.0.2"
-
+http = "1.1.0"
+async-trait = "0.1.83"
 
 [workspace.dependencies.daemon_common]
 path = "daemon/common"
@@ -36,7 +37,7 @@ version = "2.6.0"
 features = ["serde"]
 
 [workspace.dependencies.serde]
-version = "1.0.210"
+version = "1.0"
 features = ["derive"]
 
 [workspace.dependencies.tokio]

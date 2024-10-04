@@ -1,7 +1,7 @@
 #[cfg(feature = "database")]
 use crate::schema::{databases, Database, FetchedDatabase};
 use crate::schema::{servers, FetchedServer, Server};
-use crate::server::{ServerState, ServerStats};
+use crate::server::{InternalServerState, ServerStats};
 use crate::ServerData;
 use axum::async_trait;
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
@@ -61,7 +61,7 @@ pub(crate) async fn generic_server_select(
     server.fetched(conn.deref_mut()).await
 }
 
-#[cfg(feature = "sftp")]
+#[cfg(any(feature = "sftp", feature = "files"))]
 pub(crate) fn parse_path(path: &mut String) -> Result<(Vec<&str>, bool), ()> {
     let ends_with_slash = path.ends_with('/');
     if ends_with_slash {
@@ -81,7 +81,7 @@ pub(crate) fn parse_path(path: &mut String) -> Result<(Vec<&str>, bool), ()> {
     short_path(components).map(|vec| (vec, ends_with_slash))
 }
 
-#[cfg(feature = "sftp")]
+#[cfg(any(feature = "sftp", feature = "files"))]
 pub(crate) fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
     let mut result = Vec::new();
     for component in components {
@@ -102,7 +102,7 @@ pub(crate) fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
 #[derive(Clone)]
 pub(crate) enum ChannelWriteData {
     Terminal(Vec<u8>),
-    Status(ServerState),
+    Status(InternalServerState),
     Stats(ServerStats),
     Ping,
 }

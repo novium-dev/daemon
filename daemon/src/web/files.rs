@@ -1,4 +1,4 @@
-use crate::ssh::sftp::IntoFileAttributes;
+use std::fs::Metadata;
 use crate::storage::StorageIdentifier;
 use crate::utils::{parse_path, server};
 use crate::web::diesel_error_to_http;
@@ -7,11 +7,11 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use crate::common::payload::files::FileResponse;
-use russh_sftp::protocol::FileAttributes;
 use serde::Deserialize;
-use std::io;
 use std::io::ErrorKind;
+use std::os::unix::prelude::*;
 use std::path::PathBuf;
+use crate::common::files::FileMode;
 
 pub(crate) async fn server_list_files(
     State(state): State<DaemonState>,
@@ -70,18 +70,18 @@ async fn list_files(
             .metadata()
             .await
             .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let is_symlink = metadata.is_symlink();
-        let sftp_attrs = metadata.into_fileattributes();
-        vec.push(
-            sftp_to_http(
-                entry.file_name().to_string_lossy().to_string(),
-                entry.path(),
-                is_symlink,
-                sftp_attrs,
+        let mut link_path = None;
+        if metadata.is_symlink() {
+            link_path = Some(
+                tokio::fs::read_link(&path)
+                    .await.map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?
+                    .to_string_lossy()
+                    .to_string(),
             )
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?,
-        )
+        }
+        vec.push(
+            metadata.into_fileresponse(entry.file_name().to_string_lossy().to_string(), link_path)
+        );
     }
 
     Ok(vec)
@@ -97,15 +97,20 @@ async fn stat_file(storage: StorageIdentifier, path: String) -> Result<FileRespo
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         })?;
 
-    let is_symlink = metadata.is_symlink();
-    let sftp_attrs = metadata.into_fileattributes();
     let filename = match path.file_name() {
         None => return Err(StatusCode::INTERNAL_SERVER_ERROR),
         Some(filename) => filename.to_string_lossy().to_string(),
     };
-    sftp_to_http(filename, &path, is_symlink, sftp_attrs)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)
+    let mut link_path = None;
+    if metadata.is_symlink() {
+        link_path = Some(
+            tokio::fs::read_link(&path)
+                .await.map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?
+                .to_string_lossy()
+                .to_string(),
+        )
+    }
+    Ok(metadata.into_fileresponse(filename, link_path))
 }
 
 async fn rename_file(
@@ -119,31 +124,6 @@ async fn rename_file(
     tokio::fs::rename(from, to).await.map_err(|err| match err {
         err if err.kind() == ErrorKind::NotFound => StatusCode::NOT_FOUND,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
-    })
-}
-
-async fn sftp_to_http(
-    filename: String,
-    filepath: impl AsRef<std::path::Path>,
-    is_symlink: bool,
-    attrs: FileAttributes,
-) -> Result<FileResponse, io::Error> {
-    let mut path = None;
-    if is_symlink {
-        path = Some(
-            tokio::fs::read_link(filepath)
-                .await?
-                .to_string_lossy()
-                .to_string(),
-        )
-    }
-    Ok(FileResponse {
-        name: filename,
-        mode: attrs.permissions.unwrap(),
-        uid: attrs.uid.unwrap(),
-        gid: attrs.gid.unwrap(),
-        size: attrs.size.unwrap_or_default(),
-        path,
     })
 }
 
@@ -198,4 +178,38 @@ pub(crate) struct PathQuery {
 pub(crate) struct RenamePathQuery {
     from: String,
     to: String,
+}
+
+pub trait IntoFileResponse {
+    fn into_fileresponse(self, filename: String, path: Option<String>) -> FileResponse;
+}
+
+impl IntoFileResponse for Metadata {
+    fn into_fileresponse(self, filename: String, path: Option<String>) -> FileResponse {
+        let mut r#type = 0;
+        let file_type = self.file_type();
+        if file_type.is_dir() {
+            r#type |= FileMode::DIR.bits();
+        } else if file_type.is_symlink() {
+            r#type |= FileMode::LNK.bits();
+        } else if file_type.is_socket() {
+            r#type |= FileMode::SOCK.bits();
+        } else if file_type.is_block_device() {
+            r#type |= FileMode::BLK.bits();
+        } else if file_type.is_char_device() {
+            r#type |= FileMode::CHR.bits();
+        } else if file_type.is_fifo() {
+            r#type |= FileMode::FIFO.bits();
+        } else {
+            r#type |= FileMode::REG.bits();
+        }
+        FileResponse {
+            name: filename,
+            path,
+            mode: self.mode() | r#type,
+            size: self.size(),
+            uid: self.uid(),
+            gid: self.gid(),
+        }
+    }
 }

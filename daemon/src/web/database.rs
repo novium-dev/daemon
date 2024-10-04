@@ -17,16 +17,19 @@ pub(crate) async fn create_database(
     Json(payload): Json<DatabasePayload>,
 ) -> Result<Json<IdResponse>, StatusCode> {
     let mut conn = state.conn.clone().lock_owned().await;
+    if payload.name_suffix.is_none() {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     let (database_id, result) = conn
         .transaction(|conn| {
             Box::pin(async move {
-                let database_id = insert_dummy(payload.name_suffix.clone(), conn).await?;
+                let database_id = insert_dummy(payload.name_suffix.as_ref().unwrap().clone(), conn).await?;
                 conn.batch_execute(&format!(
                     "CREATE DATABASE {}{}_{};",
                     crate::common::MARIADB_DATABASE_PREFIX,
                     database_id,
-                    payload.name_suffix,
+                    payload.name_suffix.as_ref().unwrap(),
                 ))
                 .await?;
                 let result = DatabasePayload {
@@ -114,7 +117,6 @@ pub(crate) async fn delete_database(
     let result = conn
         .transaction(|conn| {
             Box::pin(async {
-                let name_suffix = database.name_suffix.clone();
                 let result = database
                     .update_validated(
                         database_id,
@@ -122,7 +124,7 @@ pub(crate) async fn delete_database(
                         DatabasePayload {
                             passwordless: HashMap::new(),
                             users: HashMap::new(),
-                            name_suffix: name_suffix.clone(),
+                            name_suffix: None,
                         },
                     )
                     .await;
@@ -133,7 +135,7 @@ pub(crate) async fn delete_database(
                     "DROP DATABASE {}{}_{};",
                     crate::common::MARIADB_DATABASE_PREFIX,
                     database_id,
-                    name_suffix,
+                    database.name_suffix.unwrap(),
                 ))
                 .await?;
                 delete(schema::databases::dsl::databases)
