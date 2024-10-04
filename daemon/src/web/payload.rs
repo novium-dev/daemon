@@ -1,3 +1,4 @@
+use daemon_common::payload::database::DatabasePermissions;
 use crate::schema::FetchedDatabase;
 use crate::common::payload::database::{DatabasePayload, DatabaseUserPayload};
 
@@ -9,7 +10,7 @@ impl FromFetchedDatabaseExtension for DatabasePayload {
     fn from_fetched_database(value: FetchedDatabase) -> Self {
         DatabasePayload {
             name_suffix: Some(value.name_suffix),
-            passwordless: value.passwordless,
+            passwordless: value.passwordless.into_iter().map(|(k, v)| (k, DatabasePermissions::from_bits_truncate(v))).collect(),
             users: value
                 .users
                 .into_iter()
@@ -27,7 +28,7 @@ impl FromFetchedDatabaseExtension for DatabasePayload {
                     (
                         name_suffix,
                         DatabaseUserPayload {
-                            permissions: user.permissions,
+                            permissions: DatabasePermissions::from_bits_truncate(user.permissions),
                             password_hash: user.password_hash,
                             restricted,
                         },

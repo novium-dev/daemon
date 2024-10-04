@@ -2,11 +2,13 @@ use super::*;
 
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use bitflags::bitflags;
+use tsify::declare;
 
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
 pub struct DatabasePayload {
     pub name_suffix: Option<String>,
-    pub passwordless: HashMap<u32, i32>,
+    pub passwordless: HashMap<u32, DatabasePermissions>,
     pub users: HashMap<String, DatabaseUserPayload>,
 }
 
@@ -15,7 +17,7 @@ pub struct DatabasePayload {
 #[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct DatabaseUserPayload {
     pub password_hash: String,
-    pub permissions: i32,
+    pub permissions: DatabasePermissions,
     pub restricted: Option<Vec<u32>>,
 }
 
@@ -43,16 +45,45 @@ impl From<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
 #[cfg_attr(target_arch = "wasm32", derive(Tsify))]
 #[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(transparent)]
-pub struct DatabasePasswordlessPayload(pub HashMap<u32, i32>);
+pub struct DatabasePasswordlessPayload(pub HashMap<u32, DatabasePermissions>);
 
-impl Into<HashMap<u32, i32>> for DatabasePasswordlessPayload {
-    fn into(self) -> HashMap<u32, i32> {
+#[cfg(not(target_arch = "wasm32"))]
+bitflags! {
+    #[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone, Copy)]
+    pub struct DatabasePermissions: i32 {
+        const SELECT = 1 << 0;
+        const INSERT = 1 << 1;
+        const UPDATE = 1 << 2;
+        const DELETE = 1 << 3;
+        const CREATE = 1 << 4;
+        const DROP = 1 << 5;
+    }
+}
+#[cfg(target_arch = "wasm32")]
+#[declare]
+pub type DatabasePermissions = i32;
+
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen(js_name = DatabasePermissionBits)]
+pub enum WasmDatabasePermissions {
+    SELECT = 1,
+    INSERT = 2,
+    UPDATE = 4,
+    DELETE = 8,
+    CREATE = 16,
+    DROP = 32,
+}
+
+
+impl Into<HashMap<u32, DatabasePermissions>> for DatabasePasswordlessPayload {
+    fn into(self) -> HashMap<u32, DatabasePermissions> {
         self.0
     }
 }
 
-impl From<HashMap<u32, i32>> for DatabasePasswordlessPayload {
-    fn from(value: HashMap<u32, i32>) -> Self {
+impl From<HashMap<u32, DatabasePermissions>> for DatabasePasswordlessPayload {
+    fn from(value: HashMap<u32, DatabasePermissions>) -> Self {
         DatabasePasswordlessPayload(value)
     }
 }
+

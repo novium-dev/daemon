@@ -8,6 +8,7 @@ use diesel_async::{AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use tokio::task::JoinError;
+use daemon_common::payload::database::DatabasePermissions;
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -54,7 +55,7 @@ pub(crate) trait DatabasePayloadFunctionExtension {
     where
         Self: Sized;
 
-    fn permissions(flag: i32) -> HashSet<&'static str>
+    fn permissions(flag: DatabasePermissions) -> HashSet<&'static str>
     where
         Self: Sized;
 }
@@ -214,7 +215,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                     schema::database_user::dsl::database_id.eq(id),
                     schema::database_user::dsl::name_suffix.eq(&user),
                     schema::database_user::dsl::password_hash.eq(data.password_hash),
-                    schema::database_user::dsl::permissions.eq(data.permissions),
+                    schema::database_user::dsl::permissions.eq(data.permissions.bits()),
                     schema::database_user::dsl::restricted.eq(restricted),
                 ))
                 .execute(conn)
@@ -239,7 +240,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
             insert_into(schema::database_passwordless::dsl::database_passwordless)
                 .values((
                     schema::database_passwordless::dsl::database_id.eq(id),
-                    schema::database_passwordless::dsl::permissions.eq(permissions),
+                    schema::database_passwordless::dsl::permissions.eq(permissions.bits()),
                 ))
                 .execute(conn)
                 .await?;
@@ -283,26 +284,9 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
         }
     }
 
-    fn permissions(flag: i32) -> HashSet<&'static str> {
-        let mut set = HashSet::new();
-        if (flag & 1 << 0) != 0 {
-            set.insert("SELECT");
-        }
-        if (flag & 1 << 1) != 0 {
-            set.insert("INSERT");
-        }
-        if (flag & 1 << 2) != 0 {
-            set.insert("UPDATE");
-        }
-        if (flag & 1 << 3) != 0 {
-            set.insert("DELETE");
-        }
-        if (flag & 1 << 4) != 0 {
-            set.insert("CREATE");
-        }
-        if (flag & 1 << 5) != 0 {
-            set.insert("DROP");
-        }
-        set
+    fn permissions(flag: DatabasePermissions) -> HashSet<&'static str> {
+        flag.iter_names()
+            .map(|(k, _)| k)
+            .collect()
     }
 }
