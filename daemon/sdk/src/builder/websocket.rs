@@ -8,6 +8,7 @@ use crate::builder::{DaemonSDKBuilder, DaemonSDKBuilderState};
 
 pub struct WithWebsocketKey(pub(crate) SigningKey);
 
+#[derive(Clone)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct DaemonSDKWithWebsocketKey(pub(crate) Arc<InternalDaemonSDK<WithWebsocketKey>>);
 

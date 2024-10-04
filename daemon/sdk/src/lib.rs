@@ -17,11 +17,10 @@ use serde::{Deserialize, Serialize, Serializer};
 pub use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use tsify::Tsify;
-use wasm_bindgen::__rt::IntoJsResult;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {
-    type Inner: Deref<Target=InternalDaemonSDK<Self>>;
+    type Inner: Deref<Target=InternalDaemonSDK<Self>> + Clone;
 }
 pub(crate) trait DaemonSdkSealed {}
 impl DaemonSDKExtra for () {
@@ -30,6 +29,7 @@ impl DaemonSDKExtra for () {
 impl DaemonSdkSealed for () {}
 
 
+#[derive(Clone)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct DefaultDaemonSDK(pub(crate) Arc<InternalDaemonSDK<()>>);
 
@@ -49,6 +49,7 @@ pub struct InternalDaemonSDK<T: DaemonSDKExtra> {
     extra: T,
 }
 
+#[derive(Clone)]
 pub struct DaemonSDK<T: DaemonSDKExtra>(T::Inner);
 
 impl<T: DaemonSDKExtra> Deref for DaemonSDK<T> {
