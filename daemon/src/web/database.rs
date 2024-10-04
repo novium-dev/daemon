@@ -6,8 +6,8 @@ use crate::{schema, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use common::payload::database::DatabasePayload;
-use common::payload::IdResponse;
+use crate::common::payload::database::DatabasePayload;
+use crate::common::payload::IdResponse;
 use diesel::{delete, insert_into, select, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
 use std::collections::HashMap;
@@ -24,7 +24,7 @@ pub(crate) async fn create_database(
                 let database_id = insert_dummy(payload.name_suffix.clone(), conn).await?;
                 conn.batch_execute(&format!(
                     "CREATE DATABASE {}{}_{};",
-                    common::MARIADB_DATABASE_PREFIX,
+                    crate::common::MARIADB_DATABASE_PREFIX,
                     database_id,
                     payload.name_suffix,
                 ))
@@ -131,7 +131,7 @@ pub(crate) async fn delete_database(
                 }
                 conn.batch_execute(&format!(
                     "DROP DATABASE {}{}_{};",
-                    common::MARIADB_DATABASE_PREFIX,
+                    crate::common::MARIADB_DATABASE_PREFIX,
                     database_id,
                     name_suffix,
                 ))

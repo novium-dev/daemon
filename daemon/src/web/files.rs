@@ -6,7 +6,7 @@ use crate::DaemonState;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use common::payload::files::FileResponse;
+use crate::common::payload::files::FileResponse;
 use russh_sftp::protocol::FileAttributes;
 use serde::Deserialize;
 use std::io;

@@ -14,6 +14,7 @@ mod terminal;
 mod utils;
 mod web;
 
+pub use daemon_common as common;
 use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
 #[cfg(feature = "ssh")]

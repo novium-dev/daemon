@@ -8,8 +8,8 @@ ssl = []
 ssh = ["russh", "russh-keys", "reqwest"]
 ssh_debug_auth_bypass = ["ssh"]
 sftp = ["ssh", "russh-sftp"]
-files = ["sftp", "common/files"]
-database = ["common/database"]
+files = ["sftp", "daemon_common/files"]
+database = ["daemon_common/database"]
 websocket = ["axum/ws"]
 websocket_debug_auth_bypass = ["websocket"]
 
@@ -17,7 +17,7 @@ btrfs = ["btrfsutil"]
 default = ["ssl", "ssh", "sftp", "websocket", "database", "files", "btrfs"]
 
 [dependencies]
-common.workspace = true
+daemon_common.workspace = true
 libc.workspace = true
 bollard.workspace = true
 bitflags.workspace = true

@@ -1,0 +1,8 @@
+[package]
+name = "daemon_sdk"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+daemon_common.workspace = true
+reqwest.workspace = true

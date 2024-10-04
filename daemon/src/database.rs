@@ -1,6 +1,6 @@
 use crate::schema;
 use axum::async_trait;
-use common::payload::database::DatabasePayload;
+use crate::common::payload::database::DatabasePayload;
 use diesel::result::Error;
 use diesel::{delete, insert_into};
 use diesel::{BoolExpressionMethods, ExpressionMethods};
@@ -133,7 +133,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
         for user in remove_users {
             sql += &format!(
                 "DROP USER IF EXISTS '{}{}_{}'@'%';",
-                common::MARIADB_USER_PREFIX,
+                crate::common::MARIADB_USER_PREFIX,
                 id,
                 user
             );
@@ -149,7 +149,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
         for server in remove_server {
             sql += &format!(
                 "REVOKE ALL PRIVILEGES ON {}{}_{}.* FROM 'server_{}'@'%';",
-                common::MARIADB_DATABASE_PREFIX,
+                crate::common::MARIADB_DATABASE_PREFIX,
                 id,
                 name,
                 server
@@ -168,7 +168,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                 None => {
                     sql += &format!(
                                 "CREATE USER '{}{}_{}'@'%' IDENTIFIED WITH 'mysql_native_password' AS '{}';",
-                                common::MARIADB_USER_PREFIX,
+                                crate::common::MARIADB_USER_PREFIX,
                                 id,
                                 user,
                                 data.password_hash
@@ -182,10 +182,10 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                     extra += "\\0";
                     sql += &format!(
                         "CREATE USER '{}{}_{}'@'%' IDENTIFIED WITH '{}' AS '{}';",
-                        common::MARIADB_USER_PREFIX,
+                        crate::common::MARIADB_USER_PREFIX,
                         id,
                         user,
-                        common::MARIADB_PLUGIN_NAME,
+                        crate::common::MARIADB_PLUGIN_NAME,
                         extra
                     );
                 }
@@ -194,10 +194,10 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                 sql += &format!(
                     "GRANT {} ON TABLE {}{}_{}.* TO '{}{}_{}'@'%';",
                     perm,
-                    common::MARIADB_DATABASE_PREFIX,
+                    crate::common::MARIADB_DATABASE_PREFIX,
                     id,
                     name,
-                    common::MARIADB_USER_PREFIX,
+                    crate::common::MARIADB_USER_PREFIX,
                     id,
                     user
                 );
@@ -230,7 +230,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                 sql += &format!(
                     "GRANT {} ON TABLE {}{}_{}.* TO 'server_{}'@'%';",
                     perm,
-                    common::MARIADB_DATABASE_PREFIX,
+                    crate::common::MARIADB_DATABASE_PREFIX,
                     id,
                     name,
                     server
@@ -251,7 +251,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
 
     fn validate_hash(sha256: bool, str: &str) -> Result<(), DatabaseUpdateError> {
         if sha256 {
-            if !str.len() == common::MARIADB_AUTH_HASH_HEX_SIZE {
+            if !str.len() == crate::common::MARIADB_AUTH_HASH_HEX_SIZE {
                 return Err(DatabaseUpdateError::Invalid);
             }
             for c in str[1..].chars() {

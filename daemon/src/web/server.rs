@@ -8,8 +8,8 @@ use crate::{schema, storage, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use common::payload::server::ServerPayload;
-use common::payload::IdResponse;
+use crate::common::payload::server::ServerPayload;
+use crate::common::payload::IdResponse;
 use diesel::dsl::{delete, insert_into, select};
 use diesel::{update, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl};
@@ -28,10 +28,10 @@ pub(crate) async fn create_server(
     let mut conn = state.conn.lock().await;
 
     let id = conn
-        .transaction(|mut conn| {
+        .transaction(|conn| {
             Box::pin(async move {
-                let id = insert_dummy(conn.deref_mut()).await?;
-                modify0(conn.deref_mut(), id, &payload).await?;
+                let id = insert_dummy(conn).await?;
+                modify0(conn, id, &payload).await?;
                 Ok::<u32, diesel::result::Error>(id)
             })
         })
@@ -47,9 +47,9 @@ pub(crate) async fn modify_server(
     Json(payload): Json<ServerPayload>,
 ) -> Result<(), StatusCode> {
     let mut conn = state.conn.lock().await;
-    conn.transaction(|mut conn| {
+    conn.transaction(|conn| {
         Box::pin(async move {
-            modify0(conn.deref_mut(), server_id, &payload).await?;
+            modify0(conn, server_id, &payload).await?;
             Ok::<(), diesel::result::Error>(())
         })
     })

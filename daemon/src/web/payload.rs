@@ -1,5 +1,5 @@
 use crate::schema::FetchedDatabase;
-use common::payload::database::{DatabasePayload, DatabaseUserPayload};
+use crate::common::payload::database::{DatabasePayload, DatabaseUserPayload};
 
 pub(crate) trait FromFetchedDatabaseExtension {
     fn from_fetched_database(value: FetchedDatabase) -> Self;

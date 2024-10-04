@@ -1,0 +1,11 @@
+[package]
+name = "daemon_common"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+database = []
+files = []
+
+[dependencies]
+serde.workspace = true
