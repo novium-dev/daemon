@@ -3,6 +3,17 @@ name = "daemon_sdk"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+files = ["daemon_common/files"]
+database = ["daemon_common/database"]
+websocket = ["ed25519-dalek"]
+
+
 [dependencies]
 daemon_common.workspace = true
 reqwest.workspace = true
+
+[dependencies.ed25519-dalek]
+version = "2.1.1"
+optional = true
+
