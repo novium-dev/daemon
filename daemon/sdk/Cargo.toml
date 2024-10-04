@@ -8,7 +8,7 @@ crate-type = ["rlib", "cdylib"]
 
 [features]
 database = ["daemon_common/database"]
-websocket = ["ed25519-dalek"]
+websocket = ["ed25519-dalek", "pkcs8"]
 default = ["database", "websocket"]
 
 [dependencies]
@@ -30,6 +30,9 @@ tsify = "0.4.5"
 
 
 [dependencies.ed25519-dalek]
-version = "2.1.1"
+workspace = true
 optional = true
 
+[dependencies.pkcs8]
+workspace = true
+optional = true

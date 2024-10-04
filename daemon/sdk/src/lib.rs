@@ -79,7 +79,9 @@ impl<T: DaemonSDKExtra> InternalDaemonSDK<T> {
 pub enum DaemonSDKError {
     Reqwest(reqwest::Error),
     URLParseError(url::ParseError),
-    StatusCode(StatusCode)
+    StatusCode(StatusCode),
+    #[cfg(feature = "websocket")]
+    InvalidWebsocketKey
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -114,6 +116,10 @@ impl Into<wasm::DaemonSDKError> for DaemonSDKError {
             DaemonSDKError::StatusCode(code) => wasm::DaemonSDKError::StatusCode {
                 code: code.as_u16(),
                 message: code.canonical_reason().map(String::from).unwrap_or_default()
+            },
+            #[cfg(feature = "websocket")]
+            DaemonSDKError::InvalidWebsocketKey => wasm::DaemonSDKError::Other {
+                message: "Websocket Key is invalid! (not exactly 32 bytes)".to_owned(),
             }
         }
     }

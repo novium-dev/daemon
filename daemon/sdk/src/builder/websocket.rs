@@ -30,21 +30,21 @@ impl DaemonSDKBuilderState for WithWebsocketKey {
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 pub struct DaemonSDKBuilderWithWebsocket {
-    identifier: String,
-    token: String,
-    base_url: Url,
-    websocket_key: SigningKey,
+    pub(crate) identifier: String,
+    pub(crate) token: String,
+    pub(crate) base_url: Url,
+    pub(crate) websocket_key: SigningKey,
 }
 
 impl DaemonSDKBuilder<()> {
 
-    pub fn with_websocket_key(self, websocket_key: SigningKey) -> Result<DaemonSDKBuilder<WithWebsocketKey>, reqwest::Error> {
-        Ok(DaemonSDKBuilder(DaemonSDKBuilderWithWebsocket {
+    pub fn with_websocket_key(self, websocket_key: SigningKey) -> DaemonSDKBuilder<WithWebsocketKey> {
+        DaemonSDKBuilder(DaemonSDKBuilderWithWebsocket {
             identifier: self.0.identifier,
             token: self.0.token,
             base_url: self.0.base_url,
             websocket_key
-        }))
+        })
     }
 
 }
