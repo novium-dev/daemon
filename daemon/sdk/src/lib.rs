@@ -1,95 +1,128 @@
+use std::error::Error;
+use std::ops::Deref;
+pub use daemon_common as common;
+pub mod server;
+
 #[cfg(feature = "websocket")]
 pub mod websocket;
+#[cfg(feature = "database")]
+pub mod database;
+pub mod builder;
 
-use reqwest::{IntoUrl, Url};
-pub use daemon_common as common;
+use std::sync::Arc;
+use http::{Method, StatusCode};
+use reqwest::{Client, IntoUrl, Response, Url};
+use serde::{Deserialize, Serialize, Serializer};
+#[cfg(target_arch = "wasm32")]
+pub use wasm_bindgen::prelude::*;
+#[cfg(target_arch = "wasm32")]
+use tsify::Tsify;
+use wasm_bindgen::__rt::IntoJsResult;
 
-pub(crate) trait DaemonSDKExtra {}
-impl DaemonSDKExtra for () {}
+#[allow(private_bounds)]
+pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {
+    type Inner: Deref<Target=InternalDaemonSDK<Self>>;
+}
+pub(crate) trait DaemonSdkSealed {}
+impl DaemonSDKExtra for () {
+    type Inner = DefaultDaemonSDK;
+}
+impl DaemonSdkSealed for () {}
 
-trait DaemonSDKBuilderState {}
-pub enum RequiresIdentifier {}
-pub enum RequiresToken {}
-pub enum RequiresBaseURL {}
-impl DaemonSDKBuilderState for RequiresIdentifier {}
-impl DaemonSDKBuilderState for RequiresToken {}
-impl DaemonSDKBuilderState for RequiresBaseURL {}
-impl DaemonSDKBuilderState for () {}
 
-pub struct DaemonSDK<T: DaemonSDKExtra> {
+#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+pub struct DefaultDaemonSDK(pub(crate) Arc<InternalDaemonSDK<()>>);
+
+impl Deref for DefaultDaemonSDK {
+    type Target = InternalDaemonSDK<()>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
+}
+
+pub struct InternalDaemonSDK<T: DaemonSDKExtra> {
+    client: Client,
     identifier: String,
-    token: String,
     base_url: Url,
+    #[allow(unused)]
     extra: T,
 }
 
-pub struct DaemonSDKBuilder<T: DaemonSDKBuilderState> {
-    identifier: Option<String>,
-    token: Option<String>,
-    base_url: Option<Url>,
-    extra: Option<T>,
+pub struct DaemonSDK<T: DaemonSDKExtra>(T::Inner);
+
+impl<T: DaemonSDKExtra> Deref for DaemonSDK<T> {
+    type Target = InternalDaemonSDK<T>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.deref()
+    }
 }
 
-impl<T: DaemonSDKExtra> DaemonSDK<T> {
 
-    pub fn builder() -> DaemonSDKBuilder<RequiresIdentifier> {
-        DaemonSDKBuilder {
-            identifier: None,
-            token: None,
-            base_url: None,
-            extra: None,
+
+impl<T: DaemonSDKExtra> InternalDaemonSDK<T> {
+
+    pub(crate) async fn wrapper(&self, method: Method, path: impl Into<String>, body: Option<&impl Serialize>) -> Result<Response, DaemonSDKError> {
+        let path = path.into();
+        let mut request = self.client.request(method, self.base_url.join(&path).unwrap());
+        if let Some(body) = body {
+            request = request.json(body);
         }
+        request.send().await.map_err(DaemonSDKError::Reqwest)
     }
 
 }
 
-impl DaemonSDKBuilder<RequiresIdentifier> {
-
-    pub fn with_identifier(self, identifier: String) -> DaemonSDKBuilder<RequiresToken> {
-        DaemonSDKBuilder {
-            identifier: Some(identifier),
-            token: None,
-            base_url: None,
-            extra: None,
-        }
-    }
-
+#[derive(Debug)]
+pub enum DaemonSDKError {
+    Reqwest(reqwest::Error),
+    URLParseError(url::ParseError),
+    StatusCode(StatusCode)
 }
 
-impl DaemonSDKBuilder<RequiresToken> {
+#[cfg(target_arch = "wasm32")]
+pub mod wasm {
+    use serde::Serialize;
+    use daemon_common::payload::Tsify;
 
-    pub fn with_token(self, token: String) -> DaemonSDKBuilder<RequiresBaseURL> {
-        DaemonSDKBuilder {
-            identifier: self.identifier,
-            token: Some(token),
-            base_url: None,
-            extra: None,
+    #[derive(Tsify, Serialize)]
+    #[serde(untagged)]
+    #[tsify(into_wasm_abi)]
+    pub enum DaemonSDKError {
+        Other {
+            message: String
+        },
+        StatusCode {
+            message: String,
+            code: u16,
         }
     }
-
 }
 
-impl DaemonSDKBuilder<RequiresBaseURL> {
-
-    pub fn with_url(self, base_url: impl IntoUrl) -> Result<DaemonSDKBuilder<()>, reqwest::Error> {
-        Ok(DaemonSDKBuilder {
-            identifier: self.identifier,
-            token: self.token,
-            base_url: Some(base_url.into_url()?),
-            extra: Some(()),
-        })
-    }
-
-}
-
-impl<T: DaemonSDKExtra + DaemonSDKBuilderState> DaemonSDKBuilder<T> {
-    pub fn build(self) -> DaemonSDK<T> {
-        DaemonSDK {
-            identifier: self.identifier.unwrap(),
-            token: self.token.unwrap(),
-            base_url: self.base_url.unwrap(),
-            extra: self.extra.unwrap()
+#[cfg(target_arch = "wasm32")]
+impl Into<wasm::DaemonSDKError> for DaemonSDKError {
+    fn into(self) -> wasm::DaemonSDKError {
+        match self {
+            DaemonSDKError::Reqwest(error) => wasm::DaemonSDKError::Other {
+                message: error.to_string(),
+            },
+            DaemonSDKError::URLParseError(error) => wasm::DaemonSDKError::Other {
+                message: error.to_string(),
+            },
+            DaemonSDKError::StatusCode(code) => wasm::DaemonSDKError::StatusCode {
+                code: code.as_u16(),
+                message: code.canonical_reason().map(String::from).unwrap_or_default()
+            }
         }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl Into<JsValue> for DaemonSDKError {
+    fn into(self) -> JsValue {
+        let err: wasm::DaemonSDKError = self.into();
+        err.into_js().unwrap().into()
     }
 }
 

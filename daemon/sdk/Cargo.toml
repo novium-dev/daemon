@@ -3,15 +3,31 @@ name = "daemon_sdk"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["rlib", "cdylib"]
+
 [features]
-files = ["daemon_common/files"]
 database = ["daemon_common/database"]
 websocket = ["ed25519-dalek"]
-
+default = ["database", "websocket"]
 
 [dependencies]
 daemon_common.workspace = true
 reqwest.workspace = true
+base64.workspace = true
+http.workspace = true
+serde.workspace = true
+async-trait.workspace = true
+url = "2.5.2"
+duplicate = "2.0.0"
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+serde-wasm-bindgen = "0.6.5"
+wasm-bindgen-futures = "0.4.43"
+tsify = "0.4.5"
+
 
 [dependencies.ed25519-dalek]
 version = "2.1.1"

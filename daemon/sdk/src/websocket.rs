@@ -1,21 +1,45 @@
-use ed25519_dalek::SigningKey;
-use crate::{DaemonSDKBuilder, DaemonSDKBuilderState, DaemonSDKExtra};
+#[cfg(target_arch = "wasm32")]
+use wasm_bindgen::prelude::*;
 
-pub struct WithWebsocketKey(pub(crate) SigningKey);
+use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
+use ed25519_dalek::Signer;
+use crate::InternalDaemonSDK;
+use crate::builder::DaemonSDKBuilder;
+use crate::builder::websocket::{DaemonSDKBuilderWithWebsocket, DaemonSDKWithWebsocketKey, WithWebsocketKey};
 
-impl DaemonSDKExtra for WithWebsocketKey {}
-impl DaemonSDKBuilderState for WithWebsocketKey {}
+pub enum WebsocketType {
+    TERMINAL,
+    STATS
+}
 
-#[cfg(feature = "websocket")]
-impl DaemonSDKBuilder<()> {
+impl InternalDaemonSDK<WithWebsocketKey> {
 
-    pub fn with_websocket_key(self, websocket_key: SigningKey) -> Result<DaemonSDKBuilder<WithWebsocketKey>, reqwest::Error> {
-        Ok(DaemonSDKBuilder {
-            identifier: self.identifier,
-            token: self.token,
-            base_url: self.base_url,
-            extra: Some(WithWebsocketKey(websocket_key)),
-        })
+    pub fn generate_websocket_token(&self, server: u32, timestamp: u64) -> String {
+        BASE64_STANDARD.encode(self.extra.0.sign(format!("{}-{}-{}", self.identifier, server, timestamp).as_bytes()).to_vec())
+    }
+
+    pub fn generate_terminal_websocket_url(&self, r#type: WebsocketType, server: u32, timestamp: u64) -> String {
+        let verify = self.generate_websocket_token(server, timestamp);
+        let mut url = self.base_url.join(&format!("user/server/{}/{}", server, match r#type {
+            WebsocketType::TERMINAL => "terminal",
+            WebsocketType::STATS => "stats"
+        }))
+            .unwrap();
+        url.set_query(Some(&format!("timestamp={}&verify={}", timestamp, verify)));
+        url.to_string()
+    }
+
+}
+
+// WASM
+#[cfg(target_arch = "wasm32")]
+#[wasm_bindgen]
+impl DaemonSDKBuilderWithWebsocket {
+
+    #[wasm_bindgen(js_name = build)]
+    pub fn wasm_build(self) -> DaemonSDKWithWebsocketKey {
+        DaemonSDKBuilder::<WithWebsocketKey>(self).build().0
     }
 
 }
