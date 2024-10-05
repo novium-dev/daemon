@@ -52,6 +52,10 @@ features = ["tls-rustls"]
 version = "0.7.7"
 features = ["json", "macros"]
 
+[workspace.dependencies.axum-extra]
+version = "0.9.4"
+features = ["cookie"]
+
 [workspace.dependencies.tower-http]
 version = "0.6.1"
 features = ["cors", "auth"]
