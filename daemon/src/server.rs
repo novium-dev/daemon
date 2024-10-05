@@ -13,6 +13,7 @@ use bollard::image::{BuildImageOptions, ListImagesOptions};
 use bollard::models::{HealthStatusEnum, PortBinding};
 use bollard::service::HostConfig;
 use bollard::Docker;
+use daemon_common::server::PublicServerState;
 use futures::stream::StreamExt;
 use log::warn;
 use serde::{Serialize, Serializer};
@@ -32,7 +33,6 @@ use termion::{clear, color};
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
-use daemon_common::server::PublicServerState;
 
 pub(crate) const TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024;
 
@@ -189,7 +189,9 @@ impl FetchedServer {
                 }
             } else if let Some(health) = state.health {
                 match health.status.unwrap() {
-                    HealthStatusEnum::EMPTY | HealthStatusEnum::NONE => InternalServerState::Running,
+                    HealthStatusEnum::EMPTY | HealthStatusEnum::NONE => {
+                        InternalServerState::Running
+                    }
                     HealthStatusEnum::STARTING => InternalServerState::Starting,
                     HealthStatusEnum::HEALTHY => InternalServerState::Running,
                     HealthStatusEnum::UNHEALTHY => InternalServerState::Unhealthy,
@@ -646,7 +648,9 @@ impl InternalServerState {
     pub(crate) fn stop(&self) -> bool {
         !matches!(
             self,
-            InternalServerState::Stopped | InternalServerState::Stopping | InternalServerState::Restarting
+            InternalServerState::Stopped
+                | InternalServerState::Stopping
+                | InternalServerState::Restarting
         )
     }
 
@@ -656,7 +660,10 @@ impl InternalServerState {
 
     #[allow(unused)]
     pub(crate) fn kill_show(&self) -> bool {
-        matches!(self, InternalServerState::Stopping | InternalServerState::Restarting)
+        matches!(
+            self,
+            InternalServerState::Stopping | InternalServerState::Restarting
+        )
     }
 }
 

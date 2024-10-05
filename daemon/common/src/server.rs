@@ -1,6 +1,6 @@
-use serde::{Deserialize, Serialize};
 #[cfg(target_arch = "wasm32")]
 use crate::payload::Tsify;
+use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(target_arch = "wasm32", derive(Tsify))]

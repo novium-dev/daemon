@@ -1,10 +1,10 @@
 #[cfg(target_arch = "wasm32")]
 use super::*;
 
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 #[cfg(not(target_arch = "wasm32"))]
 use bitflags::bitflags;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 #[cfg(target_arch = "wasm32")]
 use tsify::declare;
 
@@ -24,16 +24,15 @@ pub struct DatabaseUserPayload {
     pub restricted: Option<Vec<u32>>,
 }
 
-
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(target_arch = "wasm32", derive(Tsify))]
 #[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(transparent)]
 pub struct DatabaseUsersPayload(pub HashMap<String, DatabaseUserPayload>);
 
-impl Into<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
-    fn into(self) -> HashMap<String, DatabaseUserPayload> {
-        self.0
+impl From<DatabaseUsersPayload> for HashMap<String, DatabaseUserPayload> {
+    fn from(value: DatabaseUsersPayload) -> Self {
+        value.0
     }
 }
 
@@ -42,7 +41,6 @@ impl From<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
         DatabaseUsersPayload(value)
     }
 }
-
 
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(target_arch = "wasm32", derive(Tsify))]
@@ -77,10 +75,9 @@ pub enum WasmDatabasePermissions {
     DROP = 32,
 }
 
-
-impl Into<HashMap<u32, DatabasePermissions>> for DatabasePasswordlessPayload {
-    fn into(self) -> HashMap<u32, DatabasePermissions> {
-        self.0
+impl From<DatabasePasswordlessPayload> for HashMap<u32, DatabasePermissions> {
+    fn from(value: DatabasePasswordlessPayload) -> Self {
+        value.0
     }
 }
 
@@ -89,4 +86,3 @@ impl From<HashMap<u32, DatabasePermissions>> for DatabasePasswordlessPayload {
         DatabasePasswordlessPayload(value)
     }
 }
-

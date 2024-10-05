@@ -1,7 +1,7 @@
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 #[cfg(target_arch = "wasm32")]
 use super::*;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize)]
 pub struct ServerPayload {
@@ -48,9 +48,9 @@ pub struct ServerPortEntryPayload {
 #[serde(transparent)]
 pub struct ServerPortsPayload(pub Vec<ServerPortEntryPayload>);
 
-impl Into<Vec<ServerPortEntryPayload>> for ServerPortsPayload {
-    fn into(self) -> Vec<ServerPortEntryPayload> {
-        self.0
+impl From<ServerPortsPayload> for Vec<ServerPortEntryPayload> {
+    fn from(value: ServerPortsPayload) -> Self {
+        value.0
     }
 }
 

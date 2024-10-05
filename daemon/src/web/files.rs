@@ -1,4 +1,5 @@
-use std::fs::Metadata;
+use crate::common::files::FileMode;
+use crate::common::payload::files::FileResponse;
 use crate::storage::StorageIdentifier;
 use crate::utils::{parse_path, server};
 use crate::web::diesel_error_to_http;
@@ -6,12 +7,11 @@ use crate::DaemonState;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use crate::common::payload::files::FileResponse;
 use serde::Deserialize;
+use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
-use crate::common::files::FileMode;
 
 pub(crate) async fn server_list_files(
     State(state): State<DaemonState>,
@@ -74,13 +74,14 @@ async fn list_files(
         if metadata.is_symlink() {
             link_path = Some(
                 tokio::fs::read_link(&path)
-                    .await.map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?
+                    .await
+                    .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?
                     .to_string_lossy()
                     .to_string(),
             )
         }
         vec.push(
-            metadata.into_fileresponse(entry.file_name().to_string_lossy().to_string(), link_path)
+            metadata.into_fileresponse(entry.file_name().to_string_lossy().to_string(), link_path),
         );
     }
 
@@ -105,7 +106,8 @@ async fn stat_file(storage: StorageIdentifier, path: String) -> Result<FileRespo
     if metadata.is_symlink() {
         link_path = Some(
             tokio::fs::read_link(&path)
-                .await.map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?
+                .await
+                .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?
                 .to_string_lossy()
                 .to_string(),
         )

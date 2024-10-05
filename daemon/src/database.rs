@@ -1,6 +1,7 @@
+use crate::common::payload::database::DatabasePayload;
 use crate::schema;
 use axum::async_trait;
-use crate::common::payload::database::DatabasePayload;
+use daemon_common::payload::database::DatabasePermissions;
 use diesel::result::Error;
 use diesel::{delete, insert_into};
 use diesel::{BoolExpressionMethods, ExpressionMethods};
@@ -8,7 +9,6 @@ use diesel_async::{AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use tokio::task::JoinError;
-use daemon_common::payload::database::DatabasePermissions;
 
 #[allow(unused)]
 #[derive(Debug)]
@@ -285,8 +285,6 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
     }
 
     fn permissions(flag: DatabasePermissions) -> HashSet<&'static str> {
-        flag.iter_names()
-            .map(|(k, _)| k)
-            .collect()
+        flag.iter_names().map(|(k, _)| k).collect()
     }
 }

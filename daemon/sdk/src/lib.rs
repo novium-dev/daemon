@@ -1,33 +1,31 @@
-use std::error::Error;
-use std::ops::Deref;
 pub use daemon_common as common;
+use std::ops::Deref;
 pub mod server;
 
-#[cfg(feature = "websocket")]
-pub mod websocket;
+pub mod builder;
 #[cfg(feature = "database")]
 pub mod database;
-pub mod builder;
+#[cfg(feature = "websocket")]
+pub mod websocket;
 
-use std::sync::Arc;
 use http::{Method, StatusCode};
-use reqwest::{Client, IntoUrl, Response, Url};
-use serde::{Deserialize, Serialize, Serializer};
-#[cfg(target_arch = "wasm32")]
-pub use wasm_bindgen::prelude::*;
+use reqwest::{Client, Response, Url};
+use serde::Serialize;
+use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use tsify::Tsify;
+#[cfg(target_arch = "wasm32")]
+pub use wasm_bindgen::prelude::*;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {
-    type Inner: Deref<Target=InternalDaemonSDK<Self>> + Clone;
+    type Inner: Deref<Target = InternalDaemonSDK<Self>> + Clone;
 }
 pub(crate) trait DaemonSdkSealed {}
 impl DaemonSDKExtra for () {
     type Inner = DefaultDaemonSDK;
 }
 impl DaemonSdkSealed for () {}
-
 
 #[derive(Clone)]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
@@ -60,19 +58,22 @@ impl<T: DaemonSDKExtra> Deref for DaemonSDK<T> {
     }
 }
 
-
-
 impl<T: DaemonSDKExtra> InternalDaemonSDK<T> {
-
-    pub(crate) async fn wrapper(&self, method: Method, path: impl Into<String>, body: Option<&impl Serialize>) -> Result<Response, DaemonSDKError> {
+    pub(crate) async fn wrapper(
+        &self,
+        method: Method,
+        path: impl Into<String>,
+        body: Option<&impl Serialize>,
+    ) -> Result<Response, DaemonSDKError> {
         let path = path.into();
-        let mut request = self.client.request(method, self.base_url.join(&path).unwrap());
+        let mut request = self
+            .client
+            .request(method, self.base_url.join(&path).unwrap());
         if let Some(body) = body {
             request = request.json(body);
         }
         request.send().await.map_err(DaemonSDKError::Reqwest)
     }
-
 }
 
 #[derive(Debug)]
@@ -81,25 +82,20 @@ pub enum DaemonSDKError {
     URLParseError(url::ParseError),
     StatusCode(StatusCode),
     #[cfg(feature = "websocket")]
-    InvalidWebsocketKey
+    InvalidWebsocketKey,
 }
 
 #[cfg(target_arch = "wasm32")]
 pub mod wasm {
-    use serde::Serialize;
     use daemon_common::payload::Tsify;
+    use serde::Serialize;
 
     #[derive(Tsify, Serialize)]
     #[serde(untagged)]
     #[tsify(into_wasm_abi)]
     pub enum DaemonSDKError {
-        Other {
-            message: String
-        },
-        StatusCode {
-            message: String,
-            code: u16,
-        }
+        Other { message: String },
+        StatusCode { message: String, code: u16 },
     }
 }
 
@@ -115,12 +111,15 @@ impl Into<wasm::DaemonSDKError> for DaemonSDKError {
             },
             DaemonSDKError::StatusCode(code) => wasm::DaemonSDKError::StatusCode {
                 code: code.as_u16(),
-                message: code.canonical_reason().map(String::from).unwrap_or_default()
+                message: code
+                    .canonical_reason()
+                    .map(String::from)
+                    .unwrap_or_default(),
             },
             #[cfg(feature = "websocket")]
             DaemonSDKError::InvalidWebsocketKey => wasm::DaemonSDKError::Other {
                 message: "Websocket Key is invalid! (not exactly 32 bytes)".to_owned(),
-            }
+            },
         }
     }
 }
@@ -132,4 +131,3 @@ impl Into<JsValue> for DaemonSDKError {
         err.into_js().unwrap().into()
     }
 }
-

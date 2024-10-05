@@ -14,7 +14,6 @@ mod terminal;
 mod utils;
 mod web;
 
-pub use daemon_common as common;
 use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
 #[cfg(feature = "ssh")]
@@ -24,6 +23,7 @@ use crate::utils::ChannelWriteData;
 use axum::routing::{delete, get, patch, put};
 use axum::Router;
 use bollard::Docker;
+pub use daemon_common as common;
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, SimpleAsyncConnection};
 use env_logger::Env;
 use libc::SIGINT;

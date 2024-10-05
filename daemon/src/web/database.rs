@@ -1,3 +1,5 @@
+use crate::common::payload::database::DatabasePayload;
+use crate::common::payload::IdResponse;
 use crate::database::{DatabasePayloadFunctionExtension, DatabaseUpdateError};
 use crate::utils::database;
 use crate::web::diesel_error_to_http;
@@ -6,8 +8,6 @@ use crate::{schema, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
-use crate::common::payload::database::DatabasePayload;
-use crate::common::payload::IdResponse;
 use diesel::{delete, insert_into, select, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
 use std::collections::HashMap;
@@ -24,7 +24,8 @@ pub(crate) async fn create_database(
     let (database_id, result) = conn
         .transaction(|conn| {
             Box::pin(async move {
-                let database_id = insert_dummy(payload.name_suffix.as_ref().unwrap().clone(), conn).await?;
+                let database_id =
+                    insert_dummy(payload.name_suffix.as_ref().unwrap().clone(), conn).await?;
                 conn.batch_execute(&format!(
                     "CREATE DATABASE {}{}_{};",
                     crate::common::MARIADB_DATABASE_PREFIX,

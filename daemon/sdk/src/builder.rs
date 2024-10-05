@@ -1,13 +1,14 @@
+#[cfg(target_arch = "wasm32")]
 use crate::*;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
 #[cfg(feature = "websocket")]
 pub mod websocket;
 
-use std::sync::Arc;
+use crate::{DaemonSDK, DaemonSDKExtra, DaemonSdkSealed, DefaultDaemonSDK, InternalDaemonSDK};
 use http::{HeaderMap, HeaderValue};
 use reqwest::{Client, IntoUrl, Url};
-use crate::{DaemonSDK, DaemonSDKExtra, DaemonSdkSealed, DefaultDaemonSDK, InternalDaemonSDK};
+use std::sync::Arc;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKBuilderState: DaemonSdkSealed {
@@ -47,42 +48,33 @@ pub struct DaemonSDKBuilderRequiresBaseURL {
 pub struct DaemonSDKBuilderBuildable {
     pub(crate) identifier: String,
     pub(crate) token: String,
-    pub(crate) base_url: Url
+    pub(crate) base_url: Url,
 }
 
 pub struct DaemonSDKBuilder<T: DaemonSDKBuilderState>(pub(crate) T::Inner);
 
 impl<T: DaemonSDKExtra> DaemonSDK<T> {
-
     pub fn builder() -> DaemonSDKBuilder<RequiresIdentifier> {
         DaemonSDKBuilder(DaemonSDKBuilderRequiresIdentifier {})
     }
-
 }
 
 impl DaemonSDKBuilder<RequiresIdentifier> {
-
     pub fn with_identifier(self, identifier: String) -> DaemonSDKBuilder<RequiresToken> {
-        DaemonSDKBuilder(DaemonSDKBuilderRequiresToken {
-            identifier
-        })
+        DaemonSDKBuilder(DaemonSDKBuilderRequiresToken { identifier })
     }
-
 }
 
 impl DaemonSDKBuilder<RequiresToken> {
-
     pub fn with_token(self, token: String) -> DaemonSDKBuilder<RequiresBaseURL> {
         DaemonSDKBuilder(DaemonSDKBuilderRequiresBaseURL {
             identifier: self.0.identifier,
-            token
+            token,
         })
     }
-
 }
 
 impl DaemonSDKBuilder<RequiresBaseURL> {
-
     pub fn with_url(self, base_url: impl IntoUrl) -> Result<DaemonSDKBuilder<()>, reqwest::Error> {
         Ok(DaemonSDKBuilder(DaemonSDKBuilderBuildable {
             identifier: self.0.identifier,
@@ -90,36 +82,37 @@ impl DaemonSDKBuilder<RequiresBaseURL> {
             base_url: base_url.into_url()?,
         }))
     }
-
 }
 
 impl DaemonSDKBuilder<()> {
     pub fn build(self) -> DaemonSDK<()> {
-        DaemonSDK(DefaultDaemonSDK(Self::build0(self.0.identifier, self.0.token, self.0.base_url, ())))
+        DaemonSDK(DefaultDaemonSDK(Self::build0(
+            self.0.identifier,
+            self.0.token,
+            self.0.base_url,
+            (),
+        )))
     }
 }
 
 impl<T: DaemonSDKExtra + DaemonSDKBuilderState> DaemonSDKBuilder<T> {
-    pub(crate) fn build0(identifier: String, token: String, base_url: Url, extra: T) -> Arc<InternalDaemonSDK<T>> {
+    pub(crate) fn build0(
+        identifier: String,
+        token: String,
+        base_url: Url,
+        extra: T,
+    ) -> Arc<InternalDaemonSDK<T>> {
         Arc::new(InternalDaemonSDK {
             client: Client::builder()
-                .default_headers(
-                    HeaderMap::from_iter(
-                        [
-                            (
-                                http::header::AUTHORIZATION,
-                                HeaderValue::from_str(&format!("Bearer {}", token)).unwrap()
-                            )
-                        ]
-                    )
-                )
-                .build().unwrap(),
+                .default_headers(HeaderMap::from_iter([(
+                    http::header::AUTHORIZATION,
+                    HeaderValue::from_str(&format!("Bearer {}", token)).unwrap(),
+                )]))
+                .build()
+                .unwrap(),
             identifier,
             base_url,
             extra,
         })
     }
 }
-
-
-

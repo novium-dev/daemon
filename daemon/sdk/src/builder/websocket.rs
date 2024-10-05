@@ -1,10 +1,11 @@
+use crate::builder::{DaemonSDKBuilder, DaemonSDKBuilderState};
+#[cfg(target_arch = "wasm32")]
 use crate::*;
+use crate::{DaemonSDK, DaemonSDKExtra, DaemonSdkSealed, InternalDaemonSDK};
+use ed25519_dalek::SigningKey;
 use std::ops::Deref;
 use std::sync::Arc;
-use ed25519_dalek::SigningKey;
 use url::Url;
-use crate::{DaemonSDK, DaemonSDKExtra, DaemonSdkSealed, InternalDaemonSDK};
-use crate::builder::{DaemonSDKBuilder, DaemonSDKBuilderState};
 
 pub struct WithWebsocketKey(pub(crate) SigningKey);
 
@@ -37,20 +38,26 @@ pub struct DaemonSDKBuilderWithWebsocket {
 }
 
 impl DaemonSDKBuilder<()> {
-
-    pub fn with_websocket_key(self, websocket_key: SigningKey) -> DaemonSDKBuilder<WithWebsocketKey> {
+    pub fn with_websocket_key(
+        self,
+        websocket_key: SigningKey,
+    ) -> DaemonSDKBuilder<WithWebsocketKey> {
         DaemonSDKBuilder(DaemonSDKBuilderWithWebsocket {
             identifier: self.0.identifier,
             token: self.0.token,
             base_url: self.0.base_url,
-            websocket_key
+            websocket_key,
         })
     }
-
 }
 
 impl DaemonSDKBuilder<WithWebsocketKey> {
     pub fn build(self) -> DaemonSDK<WithWebsocketKey> {
-        DaemonSDK(DaemonSDKWithWebsocketKey(Self::build0(self.0.identifier, self.0.token, self.0.base_url, WithWebsocketKey(self.0.websocket_key))))
+        DaemonSDK(DaemonSDKWithWebsocketKey(Self::build0(
+            self.0.identifier,
+            self.0.token,
+            self.0.base_url,
+            WithWebsocketKey(self.0.websocket_key),
+        )))
     }
 }
