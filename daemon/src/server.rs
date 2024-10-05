@@ -544,9 +544,13 @@ impl FetchedServer {
         state: DaemonState,
         duration: Duration,
     ) -> Result<(), ServerStartError> {
-        let (server, server_data) = utils::server(state.conn.clone(), &state.servers, server_id)
-            .await
-            .map_err(ServerStartError::SQL)?;
+        let (server, server_data) = utils::server(
+            state.conn.lock().await.deref_mut(),
+            &state.servers,
+            server_id,
+        )
+        .await
+        .map_err(ServerStartError::SQL)?;
         let mut server_data_locked = server_data.lock().await;
         tokio::time::sleep(duration).await;
         server

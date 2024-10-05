@@ -47,6 +47,10 @@ pub(crate) async fn modify_server(
     Json(payload): Json<ServerPayload>,
 ) -> Result<(), StatusCode> {
     let mut conn = state.conn.lock().await;
+    let _ = server(conn.deref_mut(), &state.servers, server_id)
+        .await
+        .map_err(diesel_error_to_http)?;
+
     conn.transaction(|conn| {
         Box::pin(async move {
             modify0(conn, server_id, &payload).await?;
@@ -63,9 +67,13 @@ pub(crate) async fn delete_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
-    let (server, server_data) = server(state.conn.clone(), &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let (server, server_data) = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
     match timeout(Duration::from_secs(10), server_data.lock_owned()).await {
         Ok(mut server_data_locked) => {
             match server
@@ -231,9 +239,13 @@ pub(crate) async fn start_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
-    let (server, server_data) = server(state.conn.clone(), &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let (server, server_data) = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
 
     tokio::task::spawn(async move {
         let server_data_locked = timeout(Duration::from_millis(100), server_data.lock()).await;
@@ -260,9 +272,13 @@ pub(crate) async fn stop_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
-    let (server, server_data) = server(state.conn, &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let (server, server_data) = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
 
     tokio::task::spawn(async move {
         let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
@@ -280,9 +296,13 @@ pub(crate) async fn kill_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
-    let (server, server_data) = server(state.conn, &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let (server, server_data) = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
 
     tokio::task::spawn(async move {
         let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
@@ -300,9 +320,13 @@ pub(crate) async fn restart_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
-    let (server, server_data) = server(state.conn, &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let (server, server_data) = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
 
     tokio::task::spawn(async move {
         let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
@@ -320,9 +344,13 @@ pub(crate) async fn server_info(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<Json<InternalServerState>, StatusCode> {
-    let (server, server_data) = server(state.conn, &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let (server, server_data) = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
     let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
     match server_data {
         Ok(mut server_data) => Ok(Json(

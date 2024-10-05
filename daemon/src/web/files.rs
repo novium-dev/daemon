@@ -10,6 +10,7 @@ use axum::Json;
 use daemon_common::payload::files::{PathQuery, RenamePathQuery};
 use std::fs::Metadata;
 use std::io::ErrorKind;
+use std::ops::DerefMut;
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
 
@@ -18,9 +19,13 @@ pub(crate) async fn server_list_files(
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<Json<Vec<FileResponse>>, StatusCode> {
-    let _ = server(state.conn.clone(), &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let _ = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
     let storage = StorageIdentifier::Primary(server_id);
     list_files(storage, path).await.map(Json)
 }
@@ -30,9 +35,13 @@ pub(crate) async fn server_stat_file(
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<Json<FileResponse>, StatusCode> {
-    let _ = server(state.conn.clone(), &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let _ = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
     let storage = StorageIdentifier::Primary(server_id);
     stat_file(storage, path).await.map(Json)
 }
@@ -42,9 +51,13 @@ pub(crate) async fn server_rename_file(
     Path((server_id,)): Path<(u32,)>,
     Query(RenamePathQuery { from, to }): Query<RenamePathQuery>,
 ) -> Result<(), StatusCode> {
-    let _ = server(state.conn.clone(), &state.servers, server_id)
-        .await
-        .map_err(diesel_error_to_http)?;
+    let _ = server(
+        state.conn.lock().await.deref_mut(),
+        &state.servers,
+        server_id,
+    )
+    .await
+    .map_err(diesel_error_to_http)?;
     let storage = StorageIdentifier::Primary(server_id);
     rename_file(storage, from, to).await
 }

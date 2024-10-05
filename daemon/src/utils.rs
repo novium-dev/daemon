@@ -36,7 +36,7 @@ pub(crate) async fn database(
 }
 
 pub(crate) async fn server(
-    conn: Arc<Mutex<AsyncMysqlConnection>>,
+    conn: &mut AsyncMysqlConnection,
     servers: &Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>,
     server_id: u32,
 ) -> Result<(FetchedServer, Arc<Mutex<ServerData>>), diesel::result::Error> {
@@ -50,16 +50,15 @@ pub(crate) async fn server(
 }
 
 pub(crate) async fn generic_server_select(
-    conn: Arc<Mutex<AsyncMysqlConnection>>,
+    conn: &mut AsyncMysqlConnection,
     server_id: u32,
 ) -> Result<FetchedServer, diesel::result::Error> {
-    let mut conn = conn.blocking_lock();
     let server = servers::dsl::servers
         .filter(servers::dsl::id.eq(server_id))
         .select(Server::as_select())
-        .first(conn.deref_mut())
+        .first(conn)
         .await?;
-    server.fetched(conn.deref_mut()).await
+    server.fetched(conn).await
 }
 
 #[cfg(any(feature = "sftp", feature = "files"))]
