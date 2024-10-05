@@ -3,7 +3,7 @@ use super::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 use bitflags::bitflags;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::HashMap;
 #[cfg(target_arch = "wasm32")]
 use tsify::declare;
@@ -50,7 +50,7 @@ pub struct DatabasePasswordlessPayload(pub HashMap<u32, DatabasePermissions>);
 
 #[cfg(not(target_arch = "wasm32"))]
 bitflags! {
-    #[derive(Serialize, Deserialize, Eq, PartialEq, Hash, Clone, Copy)]
+    #[derive(Eq, PartialEq, Hash, Clone, Copy)]
     pub struct DatabasePermissions: i32 {
         const SELECT = 1 << 0;
         const INSERT = 1 << 1;
@@ -60,6 +60,27 @@ bitflags! {
         const DROP = 1 << 5;
     }
 }
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Serialize for DatabasePermissions {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serializer.serialize_i32(self.bits())
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<'de> Deserialize<'de> for DatabasePermissions {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        i32::deserialize(deserializer).map(DatabasePermissions::from_bits_truncate)
+    }
+}
+
 #[cfg(target_arch = "wasm32")]
 #[declare]
 pub type DatabasePermissions = i32;

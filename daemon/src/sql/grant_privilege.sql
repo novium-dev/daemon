@@ -1,0 +1,1 @@
+SET @STATEMENT = CONCAT('GRANT ', ?, ' ON TABLE `', ?, '`.* TO ', QUOTE(?), '@', QUOTE(?))

@@ -1,0 +1,1 @@
+SET @STATEMENT = CONCAT('GRANT PROXY ON ', QUOTE(?), '@', QUOTE(?), ' TO ', QUOTE(?), '@', QUOTE(?))

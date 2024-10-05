@@ -1,11 +1,10 @@
 use crate::common::payload::database::DatabasePayload;
-use crate::schema;
+use crate::{schema, sql};
 use axum::async_trait;
-use daemon_common::payload::database::DatabasePermissions;
 use diesel::result::Error;
 use diesel::{delete, insert_into};
 use diesel::{BoolExpressionMethods, ExpressionMethods};
-use diesel_async::{AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
+use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use tokio::task::JoinError;
@@ -52,10 +51,6 @@ pub(crate) trait DatabasePayloadFunctionExtension {
         Self: Sized;
 
     fn validate_sql_string(str: &str) -> Result<(), DatabaseUpdateError>
-    where
-        Self: Sized;
-
-    fn permissions(flag: DatabasePermissions) -> HashSet<&'static str>
     where
         Self: Sized;
 }
@@ -129,15 +124,13 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
             return Ok(());
         }
 
-        let mut sql = String::new();
-
         for user in remove_users {
-            sql += &format!(
-                "DROP USER IF EXISTS '{}{}_{}'@'%';",
-                crate::common::MARIADB_USER_PREFIX,
-                id,
-                user
-            );
+            sql::drop_user(
+                conn,
+                format!("{}{}_{}", crate::common::MARIADB_USER_PREFIX, id, user),
+                "%",
+            )
+            .await?;
             delete(schema::database_user::dsl::database_user)
                 .filter(
                     schema::database_user::dsl::database_id
@@ -148,13 +141,13 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                 .await?;
         }
         for server in remove_server {
-            sql += &format!(
-                "REVOKE ALL PRIVILEGES ON {}{}_{}.* FROM 'server_{}'@'%';",
-                crate::common::MARIADB_DATABASE_PREFIX,
-                id,
-                name,
-                server
-            );
+            sql::revoke_all_privileges(
+                conn,
+                format!("{}{}_{}", crate::common::MARIADB_DATABASE_PREFIX, id, name),
+                format!("server_{}", server),
+                "%",
+            )
+            .await?;
             delete(schema::database_passwordless::dsl::database_passwordless)
                 .filter(
                     schema::database_passwordless::dsl::database_id
@@ -167,13 +160,14 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
         for (user, data) in add_users {
             match data.restricted {
                 None => {
-                    sql += &format!(
-                                "CREATE USER '{}{}_{}'@'%' IDENTIFIED WITH 'mysql_native_password' AS '{}';",
-                                crate::common::MARIADB_USER_PREFIX,
-                                id,
-                                user,
-                                data.password_hash
-                            );
+                    sql::create_user_prehashed(
+                        conn,
+                        format!("{}{}_{}", crate::common::MARIADB_USER_PREFIX, id, user),
+                        "%",
+                        "mysql_native_password",
+                        &data.password_hash,
+                    )
+                    .await?;
                 }
                 Some(ref servers) => {
                     let mut extra = data.password_hash.clone();
@@ -181,28 +175,24 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                         extra += &format!("{}\\0", server);
                     }
                     extra += "\\0";
-                    sql += &format!(
-                        "CREATE USER '{}{}_{}'@'%' IDENTIFIED WITH '{}' AS '{}';",
-                        crate::common::MARIADB_USER_PREFIX,
-                        id,
-                        user,
+                    sql::create_user_prehashed(
+                        conn,
+                        format!("{}{}_{}", crate::common::MARIADB_USER_PREFIX, id, user),
+                        "%",
                         crate::common::MARIADB_PLUGIN_NAME,
-                        extra
-                    );
+                        extra,
+                    )
+                    .await?;
                 }
             }
-            for perm in Self::permissions(data.permissions) {
-                sql += &format!(
-                    "GRANT {} ON TABLE {}{}_{}.* TO '{}{}_{}'@'%';",
-                    perm,
-                    crate::common::MARIADB_DATABASE_PREFIX,
-                    id,
-                    name,
-                    crate::common::MARIADB_USER_PREFIX,
-                    id,
-                    user
-                );
-            }
+            sql::grant_privileges(
+                conn,
+                format!("{}{}_{}", crate::common::MARIADB_DATABASE_PREFIX, id, name),
+                data.permissions,
+                format!("{}{}_{}", crate::common::MARIADB_USER_PREFIX, id, user),
+                "%",
+            )
+            .await?;
             let restricted = data.restricted.as_ref().map(|servers| {
                 servers
                     .iter()
@@ -222,21 +212,16 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                 .await?;
         }
         for (server, permissions) in add_server {
-            sql += &format!(
-                "CREATE USER IF NOT EXISTS 'server_{}'@'%' IDENTIFIED WITH mysql_no_login;",
-                server
-            );
-            sql += &format!("GRANT PROXY ON 'server_{}'@'%' TO 'server'@'%';", server);
-            for perm in Self::permissions(permissions) {
-                sql += &format!(
-                    "GRANT {} ON TABLE {}{}_{}.* TO 'server_{}'@'%';",
-                    perm,
-                    crate::common::MARIADB_DATABASE_PREFIX,
-                    id,
-                    name,
-                    server
-                );
-            }
+            sql::create_user(conn, format!("server_{}", server), "%", "mysql_no_login").await?;
+            sql::grant_proxy(conn, format!("server_{}", server), "%", "server", "%").await?;
+            sql::grant_privileges(
+                conn,
+                format!("{}{}_{}", crate::common::MARIADB_DATABASE_PREFIX, id, name),
+                permissions,
+                format!("server_{}", server),
+                "%",
+            )
+            .await?;
             insert_into(schema::database_passwordless::dsl::database_passwordless)
                 .values((
                     schema::database_passwordless::dsl::database_id.eq(id),
@@ -245,8 +230,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                 .execute(conn)
                 .await?;
         }
-        sql += "FLUSH PRIVILEGES;";
-        conn.batch_execute(&sql).await?;
+        sql::flush_privileges(conn).await?;
         Ok(())
     }
 
@@ -282,9 +266,5 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
         } else {
             Err(DatabaseUpdateError::Invalid)
         }
-    }
-
-    fn permissions(flag: DatabasePermissions) -> HashSet<&'static str> {
-        flag.iter_names().map(|(k, _)| k).collect()
     }
 }

@@ -6,6 +6,7 @@ mod database;
 mod schema;
 mod server;
 
+mod sql;
 #[cfg(feature = "ssh")]
 mod ssh;
 mod storage;
@@ -24,7 +25,7 @@ use axum::routing::{delete, get, patch, put};
 use axum::Router;
 use bollard::Docker;
 pub use daemon_common as common;
-use diesel_async::{AsyncConnection, AsyncMysqlConnection, SimpleAsyncConnection};
+use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use env_logger::Env;
 use libc::SIGINT;
 use log::{info, warn};
@@ -149,23 +150,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     }
     let app = app.with_state(state.clone());
 
-    state
-        .conn
-        .lock()
-        .await
-        .batch_execute(include_str!("init.sql"))
-        .await?;
-
-    #[cfg(feature = "database")]
-    state
-        .conn
-        .lock()
-        .await
-        .batch_execute(
-            &include_str!("init_database.sql")
-                .replace("{{MARIADB_PLUGIN_NAME}}", common::MARIADB_PLUGIN_NAME),
-        )
-        .await?;
+    sql::init(state.conn.lock().await.deref_mut()).await?;
     let state = Arc::new(state);
 
     #[cfg(feature = "ssh")]
