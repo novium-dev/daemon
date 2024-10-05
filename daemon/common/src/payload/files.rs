@@ -13,3 +13,14 @@ pub struct FileResponse {
     pub size: u64,
     pub path: Option<String>,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct PathQuery {
+    pub path: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct RenamePathQuery {
+    pub from: String,
+    pub to: String,
+}

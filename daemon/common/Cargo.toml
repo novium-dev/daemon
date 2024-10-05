@@ -9,10 +9,25 @@ crate-type = ["rlib", "staticlib"]
 [features]
 database = []
 files = []
+websocket = ["axum", "serde_json"]
+docker = ["bollard"]
 
 [dependencies]
 serde.workspace = true
 bitflags.workspace = true
+
+[dependencies.bollard]
+workspace = true
+optional = true
+
+[dependencies.serde_json]
+workspace = true
+optional = true
+
+[dependencies.axum]
+workspace = true
+features = ["ws"]
+optional = true
 
 [target.'cfg(target_arch = "wasm32")'.dependencies]
 wasm-bindgen = "0.2"

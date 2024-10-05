@@ -10,14 +10,13 @@ ssh_debug_auth_bypass = ["ssh"]
 sftp = ["ssh", "russh-sftp"]
 files = ["daemon_common/files"]
 database = ["daemon_common/database"]
-websocket = ["axum/ws"]
+websocket = ["axum/ws", "daemon_common/websocket"]
 websocket_debug_auth_bypass = ["websocket"]
 
 btrfs = ["btrfsutil"]
 default = ["ssl", "ssh", "sftp", "websocket", "database", "files", "btrfs"]
 
 [dependencies]
-daemon_common.workspace = true
 libc.workspace = true
 bollard.workspace = true
 bitflags.workspace = true
@@ -50,6 +49,10 @@ futures-util = "0.3.30"
 futures = "0.3.30"
 tar = "0.4.42"
 bytes = "1.7.2"
+
+[dependencies.daemon_common]
+workspace = true
+features = ["docker"]
 
 [dependencies.reqwest]
 workspace = true

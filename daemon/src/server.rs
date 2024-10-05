@@ -13,7 +13,7 @@ use bollard::image::{BuildImageOptions, ListImagesOptions};
 use bollard::models::{HealthStatusEnum, PortBinding};
 use bollard::service::HostConfig;
 use bollard::Docker;
-use daemon_common::server::PublicServerState;
+use daemon_common::server::{PublicServerState, ServerStats};
 use futures::stream::StreamExt;
 use log::warn;
 use serde::{Serialize, Serializer};
@@ -188,16 +188,22 @@ impl FetchedServer {
                     InternalServerState::Stopping
                 }
             } else if let Some(health) = state.health {
+                let healthcheck = health
+                    .log
+                    .map(|mut log| log.pop())
+                    .unwrap_or_default()
+                    .map(|result| result.output)
+                    .unwrap_or_default();
+
                 match health.status.unwrap() {
-                    HealthStatusEnum::EMPTY | HealthStatusEnum::NONE => {
-                        InternalServerState::Running
-                    }
-                    HealthStatusEnum::STARTING => InternalServerState::Starting,
-                    HealthStatusEnum::HEALTHY => InternalServerState::Running,
-                    HealthStatusEnum::UNHEALTHY => InternalServerState::Unhealthy,
+                    HealthStatusEnum::STARTING => InternalServerState::Starting(healthcheck),
+                    HealthStatusEnum::HEALTHY
+                    | HealthStatusEnum::EMPTY
+                    | HealthStatusEnum::NONE => InternalServerState::Running(healthcheck),
+                    HealthStatusEnum::UNHEALTHY => InternalServerState::Unhealthy(healthcheck),
                 }
             } else {
-                InternalServerState::Running
+                InternalServerState::Running(None)
             })
         }
     }
@@ -630,11 +636,10 @@ pub enum InternalServerState {
     Stopped,
 
     // Health-check enabled
-    Starting,
-    Unhealthy,
+    Starting(Option<String>),
+    Unhealthy(Option<String>),
 
-    // Health-check disabled
-    Running,
+    Running(Option<String>),
 
     Stopping,
     Restarting,
@@ -671,116 +676,19 @@ impl Display for InternalServerState {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
             InternalServerState::Stopped => "Stopped",
-            InternalServerState::Starting => "Starting",
-            InternalServerState::Unhealthy => "Unhealthy",
-            InternalServerState::Running => "Running",
+            InternalServerState::Starting(_) => "Starting",
+            InternalServerState::Unhealthy(_) => "Unhealthy",
+            InternalServerState::Running(_) => "Running",
             InternalServerState::Stopping => "Stopping",
             InternalServerState::Restarting => "Restarting",
         })
     }
 }
 
-#[derive(Clone, Serialize)]
-pub(crate) struct ServerStats {
-    cpu: f32,
-    mem: f32,
-    cpu_max: f32,
-    mem_max: f32,
-}
-
-impl Default for ServerStats {
-    fn default() -> Self {
-        Self {
-            cpu: -1f32,
-            mem: -1f32,
-            cpu_max: -1f32,
-            mem_max: -1f32,
-        }
-    }
-}
-
-impl ServerStats {
-    pub fn with_max(self, cpu: f32, mem: f32) -> Self {
-        Self {
-            cpu: self.cpu,
-            mem: self.mem,
-            cpu_max: cpu,
-            mem_max: mem,
-        }
-    }
-}
-
-impl From<Stats> for ServerStats {
-    fn from(value: Stats) -> Self {
-        let mut cpu = -1f32;
-        let mut mem = -1f32;
-
-        let system_delta = value.cpu_stats.system_cpu_usage.unwrap_or_default() as f64
-            - value.precpu_stats.system_cpu_usage.unwrap_or_default() as f64;
-        let cpu_delta = value.cpu_stats.cpu_usage.total_usage as f64
-            - value.precpu_stats.cpu_usage.total_usage as f64;
-
-        if value.cpu_stats.online_cpus.is_some() && system_delta > 0f64 && cpu_delta > 0f64 {
-            cpu = (((cpu_delta / system_delta)
-                * value.cpu_stats.online_cpus.unwrap_or_default() as f64
-                * 10000f64)
-                .round()
-                / 100f64) as f32;
-        }
-
-        if let Some(usage) = value.memory_stats.usage {
-            let mut usage = usage as f64;
-            usage /= 1024f64;
-            usage /= 1024f64;
-            usage *= 100f64;
-            usage = usage.round();
-            usage /= 100f64;
-            if usage <= f32::MAX as f64 {
-                mem = usage as f32;
-            }
-        }
-        Self {
-            cpu,
-            mem,
-            ..Self::default()
-        }
-    }
-}
-
-#[allow(unused)]
-const STATS_MAGIC: &str = "STATS!";
-
-#[cfg(feature = "websocket")]
-impl ServerStats {
-    pub fn as_websocket_message(&self) -> Message {
-        Message::Text(
-            format!(
-                "{}{}",
-                STATS_MAGIC.to_owned(),
-                serde_json::to_string(self).unwrap()
-            )
-            .to_owned(),
-        )
-    }
-}
-
 #[cfg(feature = "websocket")]
 impl InternalServerState {
     pub fn as_websocket_message(&self) -> Message {
-        let mut bytes = Vec::with_capacity(1);
-        let mut info = 0u8;
-        if self.start() {
-            info |= 1 << 0 // set bit 0 (little endian) to 1
-        }
-        if self.stop() {
-            info |= 1 << 1 // set bit 1 (little endian) to 1
-        }
-        if self.kill_show() {
-            info |= 1 << 2 // set bit 2 (little endian) to 1
-        }
-        bytes.push(info);
-        bytes.extend(self.to_string().into_bytes());
-        Message::Text(String::from_utf8(bytes).unwrap())
+        Message::Text(serde_json::to_string(self).unwrap())
     }
 }
 
@@ -791,6 +699,13 @@ impl Serialize for InternalServerState {
     {
         PublicServerState {
             label: self.to_string(),
+            healthcheck: match self {
+                InternalServerState::Starting(healthcheck)
+                | InternalServerState::Unhealthy(healthcheck)
+                | InternalServerState::Running(healthcheck) => healthcheck,
+                _ => &None,
+            }
+            .clone(),
             start: self.start(),
             stop: self.stop(),
             kill: self.kill(),

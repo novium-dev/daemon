@@ -1,9 +1,10 @@
 #[cfg(feature = "database")]
 use crate::schema::{databases, Database, FetchedDatabase};
 use crate::schema::{servers, FetchedServer, Server};
-use crate::server::{InternalServerState, ServerStats};
+use crate::server::InternalServerState;
 use crate::ServerData;
 use axum::async_trait;
+use daemon_common::server::ServerStats;
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
 use std::collections::HashMap;

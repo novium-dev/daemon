@@ -7,7 +7,7 @@ use crate::DaemonState;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
-use serde::Deserialize;
+use daemon_common::payload::files::{PathQuery, RenamePathQuery};
 use std::fs::Metadata;
 use std::io::ErrorKind;
 use std::os::unix::prelude::*;
@@ -169,17 +169,6 @@ async fn path0(
         path = path.join(component);
     }
     Ok(path)
-}
-
-#[derive(Deserialize)]
-pub(crate) struct PathQuery {
-    path: String,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct RenamePathQuery {
-    from: String,
-    to: String,
 }
 
 pub trait IntoFileResponse {
