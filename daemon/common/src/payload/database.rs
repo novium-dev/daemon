@@ -3,7 +3,9 @@ use super::*;
 
 #[cfg(not(target_arch = "wasm32"))]
 use bitflags::bitflags;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
+#[cfg(not(target_arch = "wasm32"))]
+use serde::{Deserializer, Serializer};
 use std::collections::HashMap;
 #[cfg(target_arch = "wasm32")]
 use tsify::declare;
