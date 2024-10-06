@@ -7,6 +7,7 @@ use base64::Engine;
 use ed25519_dalek::Signer;
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
+#[derive(Copy, Clone)]
 pub enum WebsocketType {
     TERMINAL,
     STATS,
@@ -14,11 +15,33 @@ pub enum WebsocketType {
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl DaemonSDKWithWebsocketKey {
-    pub fn generate_websocket_token(&self, server: u32, timestamp: u64) -> String {
+    fn generate_websocket_token(
+        &self,
+        r#type: WebsocketType,
+        server: u32,
+        timestamp: u64,
+        write: bool,
+    ) -> String {
         BASE64_STANDARD.encode(
             self.extra
                 .0
-                .sign(format!("{}-{}-{}", self.identifier, server, timestamp).as_bytes())
+                .sign(
+                    format!(
+                        "{}-{}-{}-{}{}",
+                        match r#type {
+                            WebsocketType::TERMINAL => "terminal",
+                            WebsocketType::STATS => "stats",
+                        },
+                        self.identifier,
+                        server,
+                        timestamp,
+                        match r#type {
+                            WebsocketType::TERMINAL => format!("-{}", write),
+                            _ => String::new(),
+                        }
+                    )
+                    .as_bytes(),
+                )
                 .to_vec(),
         )
     }
@@ -28,8 +51,10 @@ impl DaemonSDKWithWebsocketKey {
         r#type: WebsocketType,
         server: u32,
         timestamp: u64,
+        write: Option<bool>,
     ) -> String {
-        let verify = self.generate_websocket_token(server, timestamp);
+        let write = write.unwrap_or_default();
+        let verify = self.generate_websocket_token(r#type, server, timestamp, write);
         let mut url = self
             .base_url
             .join(&format!(
@@ -41,7 +66,15 @@ impl DaemonSDKWithWebsocketKey {
                 }
             ))
             .unwrap();
-        url.set_query(Some(&format!("timestamp={}&verify={}", timestamp, verify)));
+        url.set_query(Some(&format!(
+            "timestamp={}&verify={}{}",
+            timestamp,
+            verify,
+            match r#type {
+                WebsocketType::TERMINAL => format!("&write={}", write),
+                _ => String::new(),
+            }
+        )));
         url.to_string()
     }
 }

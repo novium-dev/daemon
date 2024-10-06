@@ -17,7 +17,16 @@ pub(crate) async fn websocket(
     query: Query<WebsocketTerminalQuery>,
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, StatusCode> {
-    authenticate(server_id, &state, &query.timestamp, &query.verify).await?;
+    let write = query.write;
+    authenticate(
+        "terminal",
+        server_id,
+        &state,
+        &query.timestamp,
+        &query.verify,
+        Some(format!("-{}", write)),
+    )
+    .await?;
 
     let mut servers = state.servers.lock().await;
     let server = match servers.get(&server_id) {
@@ -37,6 +46,7 @@ pub(crate) async fn websocket(
             socket,
             Arc::new(AtomicU32::new(query.cols)),
             Arc::new(AtomicU32::new(query.rows)),
+            write,
         )
     }))
 }
@@ -50,6 +60,7 @@ pub(crate) async fn terminal_websocket_handle(
     socket: WebSocket,
     cols: Arc<AtomicU32>,
     rows: Arc<AtomicU32>,
+    write: bool,
 ) {
     let server_data = server_data_arc.lock().await;
     let sender = server_data.sender.clone();
@@ -96,7 +107,7 @@ pub(crate) async fn terminal_websocket_handle(
             attach_write,
             rows,
             cols,
-            write: true, // TODO
+            write,
         },
         docker,
         server_data_arc,

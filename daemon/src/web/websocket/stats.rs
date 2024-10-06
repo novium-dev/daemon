@@ -19,7 +19,15 @@ pub(crate) async fn websocket(
     query: Query<WebsocketStatsQuery>,
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, StatusCode> {
-    authenticate(server_id, &state, &query.timestamp, &query.verify).await?;
+    authenticate(
+        "stats",
+        server_id,
+        &state,
+        &query.timestamp,
+        &query.verify,
+        None,
+    )
+    .await?;
 
     let mut servers = state.servers.lock().await;
     let server = match servers.get(&server_id) {

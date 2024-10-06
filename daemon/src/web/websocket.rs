@@ -20,6 +20,7 @@ pub(crate) struct WebsocketTerminalQuery {
     timestamp: String,
     cols: u32,
     rows: u32,
+    write: bool,
 }
 
 #[derive(Deserialize)]
@@ -29,10 +30,12 @@ pub(crate) struct WebsocketStatsQuery {
 }
 
 pub(crate) async fn authenticate(
+    name: &str,
     #[allow(unused)] server_id: u32,
     #[allow(unused)] state: &DaemonState,
     timestamp: &str,
     verify: &String,
+    #[allow(unused)] extra: Option<String>,
 ) -> Result<(), StatusCode> {
     debug!("Authenticating WebSocket...");
     #[allow(unused)]
@@ -55,7 +58,15 @@ pub(crate) async fn authenticate(
             .config
             .websocket_key
             .verify(
-                format!("{}-{}-{}", state.config.identifier, server_id, timestamp).as_bytes(),
+                format!(
+                    "{}-{}-{}-{}{}",
+                    name,
+                    state.config.identifier,
+                    server_id,
+                    timestamp,
+                    extra.unwrap_or_default()
+                )
+                .as_bytes(),
                 &Signature::from_bytes(&signature_bytes),
             )
             .map_err(|_err| StatusCode::UNAUTHORIZED)?;
