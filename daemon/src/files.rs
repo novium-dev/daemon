@@ -132,6 +132,29 @@ pub(crate) async fn write_file(
     Ok(())
 }
 
+pub(crate) async fn delete_file(
+    storage: StorageIdentifier,
+    path: String,
+    recursive: bool,
+) -> Result<(), StatusCode> {
+    let path = path0(storage, path, true).await?;
+    if recursive {
+        tokio::fs::remove_dir_all(path).await
+    } else {
+        tokio::fs::remove_file(path).await
+    }
+    .map_err(|err| match err {
+        err if err
+            .raw_os_error()
+            .is_some_and(|err| err == libc::EISDIR || err == libc::ENOTDIR) =>
+        {
+            StatusCode::BAD_REQUEST
+        }
+        _err => StatusCode::INTERNAL_SERVER_ERROR,
+    })?;
+    Ok(())
+}
+
 async fn path0(
     storage: StorageIdentifier,
     mut path: String,

@@ -124,6 +124,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .route("/rename", get(web::files::server_rename_file))
                 .route("/copy", get(web::files::server_copy_file))
                 .route("/file", put(web::files::server_write_file))
+                .route("/delete", get(web::files::server_delete_file))
                 .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
         );
     }
@@ -331,10 +332,11 @@ impl Default for ServerData {
 }
 
 // Some safeguards
-#[cfg(not(debug_assertions))]
-#[cfg(feature = "ssh_debug_auth_bypass")]
+#[cfg(not(target_os = "linux"))]
+compile_error!("This daemon only runs on Linux.");
+
+#[cfg(all(not(debug_assertions), feature = "ssh_debug_auth_bypass"))]
 compile_error!("SSH Auth Bypass was enabled in production!");
 
-#[cfg(not(debug_assertions))]
-#[cfg(feature = "websocket_debug_auth_bypass")]
+#[cfg(all(not(debug_assertions), feature = "websocket_debug_auth_bypass"))]
 compile_error!("Websocket Auth Bypass was enabled in production!");

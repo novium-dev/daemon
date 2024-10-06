@@ -24,3 +24,9 @@ pub struct TwoPathQuery {
     pub from: String,
     pub to: String,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct PathDirectoryQuery {
+    pub path: String,
+    pub recursive: bool,
+}
