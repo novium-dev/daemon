@@ -11,7 +11,6 @@ use std::collections::HashMap;
 use std::future::Future;
 use std::io;
 use std::marker::PhantomData;
-use std::ops::DerefMut;
 use std::pin::Pin;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -30,9 +29,9 @@ pub(crate) async fn database(
     let database = databases::dsl::databases
         .filter(databases::dsl::id.eq(database_id))
         .select(Database::as_select())
-        .first(conn.deref_mut())
+        .first(&mut conn)
         .await?;
-    Ok((database.fetched(conn.deref_mut()).await?, conn))
+    Ok((database.fetched(&mut conn).await?, conn))
 }
 
 pub(crate) async fn server(

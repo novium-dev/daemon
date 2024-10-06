@@ -1,4 +1,3 @@
-use crate::common;
 use daemon_common::payload::database::DatabasePermissions;
 use diesel::sql_types::Text;
 use diesel_async::{AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
@@ -7,15 +6,15 @@ pub(crate) async fn init(conn: &mut AsyncMysqlConnection) -> Result<(), diesel::
     conn.batch_execute(include_str!("sql/init.sql")).await?;
 
     #[cfg(feature = "database")]
-    conn.batch_execute(
-        &include_str!("sql/init_database.sql")
-            .replace("{{MARIADB_PLUGIN_NAME}}", common::MARIADB_PLUGIN_NAME),
-    )
+    conn.batch_execute(&include_str!("sql/init_database.sql").replace(
+        "{{MARIADB_PLUGIN_NAME}}",
+        crate::common::MARIADB_PLUGIN_NAME,
+    ))
     .await?;
     Ok(())
 }
 
-#[cfg(feature = "database")]
+#[allow(unused)]
 pub(crate) async fn create_user(
     conn: &mut AsyncMysqlConnection,
     user: impl Into<String>,
@@ -32,7 +31,7 @@ pub(crate) async fn create_user(
     Ok(())
 }
 
-#[cfg(feature = "database")]
+#[allow(unused)]
 pub(crate) async fn create_user_prehashed(
     conn: &mut AsyncMysqlConnection,
     user: impl Into<String>,
@@ -51,7 +50,7 @@ pub(crate) async fn create_user_prehashed(
     Ok(())
 }
 
-#[cfg(feature = "database")]
+#[allow(unused)]
 pub(crate) async fn drop_user(
     conn: &mut AsyncMysqlConnection,
     user: impl Into<String>,
@@ -66,7 +65,7 @@ pub(crate) async fn drop_user(
     Ok(())
 }
 
-#[cfg(feature = "database")]
+#[allow(unused)]
 pub(crate) async fn grant_privileges(
     conn: &mut AsyncMysqlConnection,
     table: impl Into<String>,
@@ -83,7 +82,7 @@ pub(crate) async fn grant_privileges(
     Ok(())
 }
 
-#[cfg(feature = "database")]
+#[allow(unused)]
 pub(crate) async fn grant_privilege(
     conn: &mut AsyncMysqlConnection,
     table: impl Into<String>,
@@ -102,7 +101,7 @@ pub(crate) async fn grant_privilege(
     Ok(())
 }
 
-#[cfg(feature = "database")]
+#[allow(unused)]
 pub(crate) async fn revoke_all_privileges(
     conn: &mut AsyncMysqlConnection,
     table: impl Into<String>,
@@ -119,7 +118,7 @@ pub(crate) async fn revoke_all_privileges(
     Ok(())
 }
 
-#[cfg(feature = "database")]
+#[allow(unused)]
 pub(crate) async fn grant_proxy(
     conn: &mut AsyncMysqlConnection,
     user: impl Into<String>,
@@ -138,7 +137,7 @@ pub(crate) async fn grant_proxy(
     Ok(())
 }
 
-#[cfg(feature = "database")]
+#[allow(unused)]
 pub(crate) async fn flush_privileges(
     conn: &mut AsyncMysqlConnection,
 ) -> Result<(), diesel::result::Error> {

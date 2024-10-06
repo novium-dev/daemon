@@ -49,6 +49,7 @@ futures-util = "0.3.30"
 futures = "0.3.30"
 tar = "0.4.42"
 bytes = "1.7.2"
+tokio-util = "0.7.12"
 
 [dependencies.daemon_common]
 workspace = true
