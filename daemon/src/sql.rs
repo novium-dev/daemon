@@ -82,8 +82,7 @@ pub(crate) async fn grant_privileges(
     Ok(())
 }
 
-#[allow(unused)]
-pub(crate) async fn grant_privilege(
+async fn grant_privilege(
     conn: &mut AsyncMysqlConnection,
     table: impl Into<String>,
     privilege: impl Into<String>,
