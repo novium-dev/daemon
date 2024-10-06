@@ -122,6 +122,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .route("/ls", get(web::files::server_list_files))
                 .route("/stat", get(web::files::server_stat_file))
                 .route("/rename", get(web::files::server_rename_file))
+                .route("/copy", get(web::files::server_copy_file))
                 .route("/file", put(web::files::server_write_file))
                 .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
         );

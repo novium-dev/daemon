@@ -97,6 +97,19 @@ pub(crate) async fn rename_file(
     })
 }
 
+pub(crate) async fn copy_file(
+    storage: StorageIdentifier,
+    from: String,
+    to: String,
+) -> Result<(), StatusCode> {
+    let from = path0(storage, from, false).await?;
+    let to = path0(storage, to, true).await?;
+    tokio::fs::copy(from, to)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(())
+}
+
 pub(crate) async fn write_file(
     storage: StorageIdentifier,
     path: String,

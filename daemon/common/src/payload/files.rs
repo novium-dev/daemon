@@ -20,7 +20,7 @@ pub struct PathQuery {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct RenamePathQuery {
+pub struct TwoPathQuery {
     pub from: String,
     pub to: String,
 }
