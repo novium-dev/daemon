@@ -4,12 +4,12 @@ use crate::database::{DatabasePayloadFunctionExtension, DatabaseUpdateError};
 use crate::utils::database;
 use crate::web::diesel_error_to_http;
 use crate::web::payload::FromFetchedDatabaseExtension;
-use crate::{schema, DaemonState};
+use crate::{schema, sql, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 use diesel::{delete, insert_into, select, ExpressionMethods};
-use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl, SimpleAsyncConnection};
+use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl};
 use std::collections::HashMap;
 
 pub(crate) async fn create_database(
@@ -20,18 +20,23 @@ pub(crate) async fn create_database(
     if payload.name_suffix.is_none() {
         return Err(StatusCode::BAD_REQUEST);
     }
+    DatabasePayload::validate_sql_string(payload.name_suffix.as_ref().unwrap())
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
 
     let (database_id, result) = conn
         .transaction(|conn| {
             Box::pin(async move {
                 let database_id =
                     insert_dummy(payload.name_suffix.as_ref().unwrap().clone(), conn).await?;
-                conn.batch_execute(&format!(
-                    "CREATE DATABASE {}{}_{};",
-                    crate::common::MARIADB_DATABASE_PREFIX,
-                    database_id,
-                    payload.name_suffix.as_ref().unwrap(),
-                ))
+                sql::create_database(
+                    conn,
+                    format!(
+                        "{}{}_{}",
+                        crate::common::MARIADB_DATABASE_PREFIX,
+                        database_id,
+                        payload.name_suffix.as_ref().unwrap()
+                    ),
+                )
                 .await?;
                 let result = DatabasePayload {
                     name_suffix: payload.name_suffix.clone(),
@@ -132,12 +137,15 @@ pub(crate) async fn delete_database(
                 if let Err(DatabaseUpdateError::Diesel(err)) = result {
                     return Err(err);
                 }
-                conn.batch_execute(&format!(
-                    "DROP DATABASE {}{}_{};",
-                    crate::common::MARIADB_DATABASE_PREFIX,
-                    database_id,
-                    database.name_suffix.unwrap(),
-                ))
+                sql::drop_database(
+                    conn,
+                    format!(
+                        "{}{}_{}",
+                        crate::common::MARIADB_DATABASE_PREFIX,
+                        database_id,
+                        database.name_suffix.unwrap()
+                    ),
+                )
                 .await?;
                 delete(schema::databases::dsl::databases)
                     .filter(schema::databases::dsl::id.eq(database_id))

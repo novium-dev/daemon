@@ -137,6 +137,32 @@ pub(crate) async fn grant_proxy(
 }
 
 #[allow(unused)]
+pub(crate) async fn create_database(
+    conn: &mut AsyncMysqlConnection,
+    name: impl Into<String>,
+) -> Result<(), diesel::result::Error> {
+    diesel::sql_query(include_str!("sql/create_database.sql"))
+        .bind::<Text, _>(name.into())
+        .execute(conn)
+        .await?;
+    execute_statement(conn).await?;
+    Ok(())
+}
+
+#[allow(unused)]
+pub(crate) async fn drop_database(
+    conn: &mut AsyncMysqlConnection,
+    name: impl Into<String>,
+) -> Result<(), diesel::result::Error> {
+    diesel::sql_query(include_str!("sql/drop_database.sql"))
+        .bind::<Text, _>(name.into())
+        .execute(conn)
+        .await?;
+    execute_statement(conn).await?;
+    Ok(())
+}
+
+#[allow(unused)]
 pub(crate) async fn flush_privileges(
     conn: &mut AsyncMysqlConnection,
 ) -> Result<(), diesel::result::Error> {
