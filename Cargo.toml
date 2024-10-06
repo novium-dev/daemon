@@ -66,11 +66,15 @@ features = ["mysql", "r2d2", "bb8"]
 
 [workspace.dependencies.diesel]
 version = "2.2.4"
-features = ["mysql", "r2d2", "uuid"]
+features = ["mysql", "r2d2", "uuid", "chrono", "serde_json"]
+
+[workspace.dependencies.chrono]
+version = "0.4.38"
+features = ["serde"]
 
 [workspace.dependencies.uuid]
 version = "1.10.0"
-features = ["v4"]
+features = ["serde", "v4"]
 
 [workspace.dependencies.pkcs8]
 version = "0.11.0-rc.1"
