@@ -145,7 +145,7 @@ pub(crate) async fn delete_file(
     }
     .map_err(|err| match err {
         err if err
-            .raw_os_error()
+            .raw_os_error() // TODO: feature io_error_more will be available with rust 1.82 or 1.83. Use this instead if it is available
             .is_some_and(|err| err == libc::EISDIR || err == libc::ENOTDIR) =>
         {
             StatusCode::BAD_REQUEST
