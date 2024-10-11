@@ -30,7 +30,7 @@ pub use daemon_common as common;
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use env_logger::Env;
 use libc::SIGINT;
-use log::{error, info, warn};
+use log::{info, warn};
 #[cfg(feature = "ssh")]
 use reqwest::Client;
 #[cfg(feature = "ssh")]
@@ -71,6 +71,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         if !matches!(config.storage.method, StorageMethod::Btrfs)
             && matches!(config.backup.method, BackupMethod::Btrfs { .. })
         {
+            use log::error;
             error!("You can't use backup method \"btrfs\" with non-btrfs storage method.");
             return Ok(());
         }

@@ -1,4 +1,3 @@
-use async_compression::Level;
 #[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
 #[cfg(all(feature = "websocket", not(feature = "websocket_debug_auth_bypass")))]
@@ -10,8 +9,6 @@ use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
 use serde::Deserialize;
 #[cfg(feature = "ssl")]
 use std::path::PathBuf;
-use std::pin::Pin;
-use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite};
 
 #[derive(Deserialize)]
 pub(crate) struct DaemonConfig {
@@ -48,6 +45,7 @@ pub(crate) struct StorageConfig {
     pub(crate) method: StorageMethod,
 }
 
+#[cfg(feature = "backups")]
 #[derive(Deserialize)]
 pub(crate) struct BackupConfig {
     pub(crate) path: String,
@@ -99,10 +97,10 @@ pub(crate) enum ArchiveCompression {
 #[cfg(feature = "backups")]
 impl ArchiveCompression {
     #[allow(unused)]
-    pub(crate) fn create_decoder<R: AsyncBufRead + Send + Sync + 'static>(
+    pub(crate) fn create_decoder<R: tokio::io::AsyncBufRead + Send + Sync + 'static>(
         &self,
         read: R,
-    ) -> Pin<Box<dyn AsyncRead + Send + Sync + 'static>> {
+    ) -> std::pin::Pin<Box<dyn tokio::io::AsyncRead + Send + Sync + 'static>> {
         use async_compression::tokio::bufread::*;
         match self {
             ArchiveCompression::None => Box::pin(read),
@@ -116,11 +114,12 @@ impl ArchiveCompression {
         }
     }
 
-    pub(crate) fn create_encoder<W: AsyncWrite + Send + Sync + 'static>(
+    pub(crate) fn create_encoder<W: tokio::io::AsyncWrite + Send + Sync + 'static>(
         &self,
         write: W,
-    ) -> Pin<Box<dyn AsyncWrite + Send + Sync + 'static>> {
+    ) -> std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Sync + 'static>> {
         use async_compression::tokio::write::*;
+        use async_compression::Level;
         match self {
             ArchiveCompression::None => Box::pin(write),
             ArchiveCompression::Zstd { level } => {
