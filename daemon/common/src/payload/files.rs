@@ -30,3 +30,9 @@ pub struct PathDirectoryQuery {
     pub path: String,
     pub recursive: bool,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct PathSymlinkQuery {
+    pub path: String,
+    pub content: String,
+}

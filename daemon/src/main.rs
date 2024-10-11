@@ -125,6 +125,8 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .route("/copy", get(web::files::server_copy_file))
                 .route("/file", put(web::files::server_write_file))
                 .route("/delete", get(web::files::server_delete_file))
+                .route("/mkdir", get(web::files::server_mkdir))
+                .route("/symlink", get(web::files::server_symlink))
                 .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
         );
     }

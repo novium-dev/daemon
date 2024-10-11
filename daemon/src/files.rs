@@ -132,6 +132,36 @@ pub(crate) async fn write_file(
     Ok(())
 }
 
+pub(crate) async fn mkdir_file(
+    storage: StorageIdentifier,
+    path: String,
+    recursive: bool,
+) -> Result<(), StatusCode> {
+    if recursive {
+        // unstable, difficult to check -> avoid security risks
+        return Err(StatusCode::NOT_IMPLEMENTED);
+    }
+    let path = path0(storage, path, true).await?;
+    tokio::fs::create_dir(path).await.map_err(|err| {
+        if err.kind() == ErrorKind::AlreadyExists {
+            StatusCode::OK
+        } else {
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    })
+}
+
+pub(crate) async fn symlink_file(
+    storage: StorageIdentifier,
+    path: String,
+    content: String,
+) -> Result<(), StatusCode> {
+    let path = path0(storage, path, true).await?;
+    tokio::fs::symlink(PathBuf::from(content), path)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
 pub(crate) async fn delete_file(
     storage: StorageIdentifier,
     path: String,
