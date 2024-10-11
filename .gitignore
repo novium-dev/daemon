@@ -2,6 +2,6 @@
 .idea/
 mysql/data/
 mysql/sockets/
-storage/
+/storage/
 test/node_modules/
 .vscode/
