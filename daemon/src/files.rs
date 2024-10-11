@@ -1,6 +1,6 @@
 use crate::storage::StorageIdentifier;
 use crate::utils::parse_path;
-use axum::body::BodyDataStream;
+use axum::body::{Body, BodyDataStream};
 use axum::http::StatusCode;
 use daemon_common::files::FileMode;
 use daemon_common::payload::files::FileResponse;
@@ -12,7 +12,7 @@ use std::os::unix::prelude::*;
 use std::path::PathBuf;
 use tokio::fs::OpenOptions;
 use tokio::io::BufWriter;
-use tokio_util::io::StreamReader;
+use tokio_util::io::{ReaderStream, StreamReader};
 
 pub(crate) async fn list_files(
     storage: StorageIdentifier,
@@ -108,6 +108,21 @@ pub(crate) async fn copy_file(
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(())
+}
+
+pub(crate) async fn download_file(
+    storage: StorageIdentifier,
+    path: String,
+) -> Result<Body, StatusCode> {
+    let path = path0(storage, path, true).await?;
+    let file = OpenOptions::new()
+        .read(true)
+        .open(&path)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let stream = ReaderStream::new(file);
+    let body = axum::body::Body::from_stream(stream);
+    Ok(body)
 }
 
 pub(crate) async fn write_file(
