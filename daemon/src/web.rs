@@ -8,6 +8,7 @@ pub(crate) mod database;
 pub(crate) mod files;
 #[cfg(feature = "database")]
 pub(crate) mod payload;
+pub(crate) mod resource;
 pub(crate) mod server;
 #[cfg(feature = "websocket")]
 pub(crate) mod websocket;

@@ -1,3 +1,4 @@
+use async_compression::Level;
 #[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
 #[cfg(all(feature = "websocket", not(feature = "websocket_debug_auth_bypass")))]
@@ -9,6 +10,8 @@ use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
 use serde::Deserialize;
 #[cfg(feature = "ssl")]
 use std::path::PathBuf;
+use std::pin::Pin;
+use tokio::io::{AsyncBufRead, AsyncRead, AsyncWrite};
 
 #[derive(Deserialize)]
 pub(crate) struct DaemonConfig {
@@ -22,9 +25,9 @@ pub(crate) struct DaemonConfig {
     pub(crate) websocket_allow_duration: u64,
     #[cfg(feature = "websocket")]
     pub(crate) origin: String,
-    pub(crate) storage_path: String,
-    #[cfg(feature = "btrfs")]
-    pub(crate) btrfs: bool,
+    pub(crate) storage: StorageConfig,
+    #[cfg(feature = "backups")]
+    pub(crate) backup: BackupConfig,
     pub(crate) bind: String,
     #[cfg(feature = "ssh")]
     pub(crate) ssh_bind: String,
@@ -37,6 +40,125 @@ pub(crate) struct DaemonConfig {
     pub(crate) ssh_auth_cache_duration: u64,
     #[cfg(feature = "ssh")]
     pub(crate) ssh_auth_url: String,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct StorageConfig {
+    pub(crate) path: String,
+    pub(crate) method: StorageMethod,
+}
+
+#[derive(Deserialize)]
+pub(crate) struct BackupConfig {
+    pub(crate) path: String,
+    pub(crate) method: BackupMethod,
+}
+
+#[derive(Deserialize)]
+pub(crate) enum StorageMethod {
+    #[serde(rename = "directory")]
+    Directory,
+    #[cfg(feature = "btrfs")]
+    #[serde(rename = "btrfs")]
+    Btrfs,
+}
+
+#[cfg(feature = "backups")]
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+pub(crate) enum BackupMethod {
+    #[serde(rename = "archive")]
+    Archive { compression: ArchiveCompression },
+    #[cfg(feature = "btrfs")]
+    #[serde(rename = "btrfs")]
+    Btrfs { jit_compression: ArchiveCompression },
+}
+
+#[cfg(feature = "backups")]
+#[derive(Deserialize, Copy, Clone)]
+#[serde(tag = "type")]
+pub(crate) enum ArchiveCompression {
+    #[serde(rename = "none")]
+    None,
+    #[serde(rename = "zstd")]
+    Zstd { level: i32 },
+    #[serde(rename = "xz")]
+    Xz { level: i32 },
+    #[serde(rename = "zlib")]
+    Zlib { level: i32 },
+    #[serde(rename = "gzip")]
+    Gzip { level: i32 },
+    #[serde(rename = "lzma")]
+    Lzma { level: i32 },
+    #[serde(rename = "brotli")]
+    Brotli { level: i32 },
+    #[serde(rename = "bzip2")]
+    Bzip2 { level: i32 },
+}
+
+#[cfg(feature = "backups")]
+impl ArchiveCompression {
+    #[allow(unused)]
+    pub(crate) fn create_decoder<R: AsyncBufRead + Send + Sync + 'static>(
+        &self,
+        read: R,
+    ) -> Pin<Box<dyn AsyncRead + Send + Sync + 'static>> {
+        use async_compression::tokio::bufread::*;
+        match self {
+            ArchiveCompression::None => Box::pin(read),
+            ArchiveCompression::Zstd { .. } => Box::pin(ZstdDecoder::new(read)),
+            ArchiveCompression::Xz { .. } => Box::pin(XzDecoder::new(read)),
+            ArchiveCompression::Zlib { .. } => Box::pin(ZlibDecoder::new(read)),
+            ArchiveCompression::Gzip { .. } => Box::pin(GzipDecoder::new(read)),
+            ArchiveCompression::Lzma { .. } => Box::pin(LzmaDecoder::new(read)),
+            ArchiveCompression::Brotli { .. } => Box::pin(BrotliDecoder::new(read)),
+            ArchiveCompression::Bzip2 { .. } => Box::pin(BzDecoder::new(read)),
+        }
+    }
+
+    pub(crate) fn create_encoder<W: AsyncWrite + Send + Sync + 'static>(
+        &self,
+        write: W,
+    ) -> Pin<Box<dyn AsyncWrite + Send + Sync + 'static>> {
+        use async_compression::tokio::write::*;
+        match self {
+            ArchiveCompression::None => Box::pin(write),
+            ArchiveCompression::Zstd { level } => {
+                Box::pin(ZstdEncoder::with_quality(write, Level::Precise(*level)))
+            }
+            ArchiveCompression::Xz { level } => {
+                Box::pin(XzEncoder::with_quality(write, Level::Precise(*level)))
+            }
+            ArchiveCompression::Zlib { level } => {
+                Box::pin(ZlibEncoder::with_quality(write, Level::Precise(*level)))
+            }
+            ArchiveCompression::Gzip { level } => {
+                Box::pin(GzipEncoder::with_quality(write, Level::Precise(*level)))
+            }
+            ArchiveCompression::Lzma { level } => {
+                Box::pin(LzmaEncoder::with_quality(write, Level::Precise(*level)))
+            }
+            ArchiveCompression::Brotli { level } => {
+                Box::pin(BrotliEncoder::with_quality(write, Level::Precise(*level)))
+            }
+            ArchiveCompression::Bzip2 { level } => {
+                Box::pin(BzEncoder::with_quality(write, Level::Precise(*level)))
+            }
+        }
+    }
+
+    pub(crate) fn ext(&self) -> &'static str {
+        match self {
+            ArchiveCompression::None => "",
+            ArchiveCompression::Zstd { .. } => ".zst",
+            ArchiveCompression::Xz { .. } => ".xz",
+            ArchiveCompression::Zlib { .. } => ".zz",
+            ArchiveCompression::Gzip { .. } => ".gz",
+            ArchiveCompression::Lzma { .. } => ".lzma",
+            ArchiveCompression::Brotli { .. } => ".br",
+            ArchiveCompression::Bzip2 { .. } => ".bz2",
+        }
+    }
 }
 
 #[cfg(all(feature = "websocket", not(feature = "websocket_debug_auth_bypass")))]

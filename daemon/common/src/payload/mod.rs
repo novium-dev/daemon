@@ -2,6 +2,7 @@
 pub mod database;
 #[cfg(feature = "files")]
 pub mod files;
+pub mod resource;
 pub mod server;
 
 #[cfg(target_arch = "wasm32")]

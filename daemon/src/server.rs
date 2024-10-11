@@ -27,12 +27,12 @@ use std::ops::{Add, Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use tar::{Builder, Header};
 use termion::color::Fg;
 use termion::{clear, color};
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
+use tokio_tar::{Builder, Header};
 
 pub(crate) const TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024;
 
@@ -86,9 +86,10 @@ impl FetchedServer {
                 header.set_cksum();
                 let mut ar = Builder::new(Vec::new());
                 ar.append(&header, dockerfile)
+                    .await
                     .map_err(ServerStartError::IO)?;
-                ar.finish().map_err(ServerStartError::IO)?;
-                ar.into_inner().map_err(ServerStartError::IO)?
+                ar.finish().await.map_err(ServerStartError::IO)?;
+                ar.into_inner().await.map_err(ServerStartError::IO)?
             };
 
             let mut image = docker.build_image(
@@ -248,7 +249,7 @@ impl FetchedServer {
         let mut binds = Vec::with_capacity(1);
         binds.push(format!(
             "{}:/work",
-            storage::ensure_exists(config, StorageIdentifier::Primary(self.id), self.disk)
+            storage::ensure_exists(config, StorageIdentifier::Primary(self.id), Some(self.disk))
                 .await
                 .map_err(ServerStartError::Storage)?
         ));

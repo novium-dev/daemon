@@ -30,7 +30,7 @@ pub use daemon_common as common;
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use env_logger::Env;
 use libc::SIGINT;
-use log::{info, warn};
+use log::{error, info, warn};
 #[cfg(feature = "ssh")]
 use reqwest::Client;
 #[cfg(feature = "ssh")]
@@ -65,6 +65,17 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap();
     let config: DaemonConfig = toml::from_str(&config_buffer)?;
 
+    #[cfg(all(feature = "btrfs", feature = "backups"))]
+    {
+        use crate::config::{BackupMethod, StorageMethod};
+        if !matches!(config.storage.method, StorageMethod::Btrfs)
+            && matches!(config.backup.method, BackupMethod::Btrfs { .. })
+        {
+            error!("You can't use backup method \"btrfs\" with non-btrfs storage method.");
+            return Ok(());
+        }
+    }
+
     info!("Starting Daemon...");
 
     let servers = HashMap::new();
@@ -88,19 +99,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
     };
 
     #[allow(unused_mut)]
-    let mut app = Router::new().nest(
-        "/server",
-        Router::new()
-            .route("/", put(web::server::create_server))
-            .route("/:server_id", get(web::server::server_info))
-            .route("/:server_id", patch(web::server::modify_server))
-            .route("/:server_id", delete(web::server::delete_server))
-            .route("/:server_id/start", get(web::server::start_server))
-            .route("/:server_id/stop", get(web::server::stop_server))
-            .route("/:server_id/kill", get(web::server::kill_server))
-            .route("/:server_id/restart", get(web::server::restart_server))
-            .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
-    );
+    let mut app = Router::new()
+        .nest(
+            "/server",
+            Router::new()
+                .route("/", put(web::server::create_server))
+                .route("/:server_id", get(web::server::server_info))
+                .route("/:server_id", patch(web::server::modify_server))
+                .route("/:server_id", delete(web::server::delete_server))
+                .route("/:server_id/start", get(web::server::start_server))
+                .route("/:server_id/stop", get(web::server::stop_server))
+                .route("/:server_id/kill", get(web::server::kill_server))
+                .route("/:server_id/restart", get(web::server::restart_server))
+                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
+        )
+        .route("/resource", get(web::resource::get));
 
     #[cfg(feature = "database")]
     {

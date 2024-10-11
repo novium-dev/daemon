@@ -10,9 +10,13 @@ use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
+use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
-use std::pin::Pin;
+use std::pin::{pin, Pin};
 use std::sync::Arc;
+use std::task::{Context, Poll};
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
+use tokio::sync::mpsc::{Receiver, Sender};
 use tokio::sync::Mutex;
 #[cfg(feature = "database")]
 use tokio::sync::OwnedMutexGuard;
@@ -215,5 +219,74 @@ impl<
         Self: Sized,
     {
         A::send_ping()
+    }
+}
+
+#[allow(unused)]
+pub(crate) struct ChannelStreamReceiver(pub(crate) Receiver<([u8; 4096], usize)>);
+#[allow(unused)]
+pub(crate) struct ChannelStreamSender(pub(crate) Option<Sender<([u8; 4096], usize)>>);
+
+impl AsyncRead for ChannelStreamReceiver {
+    fn poll_read(
+        mut self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<io::Result<()>> {
+        self.0.poll_recv(cx).map(|opt| match opt {
+            None => Ok(()),
+            Some((buffer, len)) => {
+                buf.set_filled(len);
+                buf.filled_mut().clone_from_slice(&buffer[0..len]);
+                Ok(())
+            }
+        })
+    }
+}
+
+impl ChannelStreamSender {
+    async fn write(self: Pin<&mut Self>, buf: &[u8]) -> Result<usize, Error> {
+        match self.0 {
+            None => Ok(0),
+            Some(ref sender) => {
+                let mut written = 0;
+                while written < buf.len() {
+                    let mut buffer = [0; 4096];
+                    let len = if (buf.len() - written) <= 4096 {
+                        buf.len() - written
+                    } else {
+                        4096
+                    };
+                    buffer.clone_from_slice(&buf[written..(written + len)]);
+                    sender
+                        .send((buffer, len))
+                        .await
+                        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                    written += len;
+                }
+                Ok(written)
+            }
+        }
+    }
+}
+
+impl AsyncWrite for ChannelStreamSender {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<Result<usize, Error>> {
+        use futures_util::Future;
+        let mut pinned = pin!(self.write(buf));
+        pinned.as_mut().poll(cx)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        Poll::Ready(Ok(()))
+    }
+
+    fn poll_shutdown(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
+        self.0.take();
+        Poll::Ready(Ok(()))
     }
 }
