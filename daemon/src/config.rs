@@ -49,6 +49,7 @@ pub(crate) struct StorageConfig {
 pub(crate) struct BackupConfig {
     pub(crate) path: String,
     pub(crate) method: BackupMethod,
+    pub(crate) rt_compression: ArchiveCompression,
 }
 
 #[derive(Deserialize)]

@@ -14,7 +14,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
 use tokio_tar::{Archive, Builder};
 use tokio_util::io::ReaderStream;
 
-use crate::config::{BackupMethod, DaemonConfig};
+use crate::config::{ArchiveCompression, BackupMethod, DaemonConfig};
 use crate::storage::StorageIdentifier;
 use crate::utils::{storage_read, storage_write, StorageError};
 use crate::{storage, DaemonState};
@@ -266,25 +266,63 @@ async fn backup_to_stream0(
         BackupMethod::Btrfs {
             ref jit_compression,
         } => {
-            use tokio::io::AsyncWriteExt;
             let compression = *jit_compression;
             let target = target_dir.join(timestamp.to_string());
-            let (sender, recv) = tokio::io::duplex(1024 * 1024);
-            tokio::task::spawn(async move {
-                let encoder = compression.create_encoder(sender);
-                let mut archive = Builder::new(encoder);
-                archive.follow_symlinks(false);
-                archive
-                    .append_dir_all_exclude("", &target, exclude, false)
-                    .await?;
-                archive.finish().await?;
-                archive.into_inner().await.unwrap().shutdown().await?;
-                Ok::<(), io::Error>(())
-            });
-            let stream = ReaderStream::new(recv);
-            Ok(Body::from_stream(stream))
+            stream_realtime1(compression, target, exclude).await
         }
     }
+}
+
+pub(crate) async fn stream_realtime(
+    state: &DaemonState,
+    id: StorageIdentifier,
+) -> Result<Body, StatusCode> {
+    let (path, lock, backup_exclude) = storage_read(
+        &state.config,
+        state.conn.lock().await.deref_mut(),
+        &state.storages,
+        id,
+        true,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
+    let body = stream_realtime0(&state.config, path, backup_exclude)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    drop(lock);
+    Ok(body)
+}
+
+#[inline(always)]
+async fn stream_realtime0(
+    config: &DaemonConfig,
+    path: String,
+    #[allow(unused)] exclude: HashSet<String>,
+) -> Result<Body, io::Error> {
+    stream_realtime1(config.backup.rt_compression, PathBuf::from(path), exclude).await
+}
+
+async fn stream_realtime1(
+    compression: ArchiveCompression,
+    target: PathBuf,
+    exclude: HashSet<String>,
+) -> Result<Body, io::Error> {
+    use tokio::io::AsyncWriteExt;
+
+    let (sender, recv) = tokio::io::duplex(1024 * 1024);
+    tokio::task::spawn(async move {
+        let encoder = compression.create_encoder(sender);
+        let mut archive = Builder::new(encoder);
+        archive.follow_symlinks(false);
+        archive
+            .append_dir_all_exclude("", &target, exclude, false)
+            .await?;
+        archive.finish().await?;
+        archive.into_inner().await.unwrap().shutdown().await?;
+        Ok::<(), io::Error>(())
+    });
+    let stream = ReaderStream::new(recv);
+    Ok(Body::from_stream(stream))
 }
 
 pub(crate) async fn delete_backup(

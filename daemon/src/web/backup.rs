@@ -25,10 +25,9 @@ pub(crate) async fn server_download_backup(
     Path((server_id, backup_id)): Path<(u32, i64)>,
 ) -> Result<Body, StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
-    let body = storage::backup::backup_to_stream(&state, storage, backup_id)
+    storage::backup::backup_to_stream(&state, storage, backup_id)
         .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(body)
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub(crate) async fn server_user_download_backup(
@@ -50,6 +49,28 @@ pub(crate) async fn server_user_download_backup(
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(body)
+}
+
+pub(crate) async fn server_backup_realtime(
+    State(state): State<DaemonState>,
+    Path((server_id,)): Path<(u32,)>,
+) -> Result<Body, StatusCode> {
+    let storage = StorageIdentifier::Primary(server_id);
+    storage::backup::stream_realtime(&state, storage)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
+}
+
+pub(crate) async fn server_user_backup_realtime(
+    State(state): State<DaemonState>,
+    Path((server_id,)): Path<(u32,)>,
+    Query(GenericUserQuery { timestamp, verify }): Query<GenericUserQuery>,
+) -> Result<Body, StatusCode> {
+    authenticate_user("backup_rt", server_id, &state, &timestamp, &verify, None).await?;
+    let storage = StorageIdentifier::Primary(server_id);
+    storage::backup::stream_realtime(&state, storage)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
 pub(crate) async fn server_delete_backup(

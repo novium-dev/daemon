@@ -157,6 +157,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             Router::new()
                 .route("/", get(web::backup::server_list_backups))
                 .route("/", put(web::backup::server_create_backup))
+                .route("/rt", get(web::backup::server_backup_realtime))
                 .route("/:backup_id", get(web::backup::server_download_backup))
                 .route("/:backup_id", delete(web::backup::server_delete_backup))
                 .route(
@@ -202,10 +203,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
         #[cfg(feature = "backups")]
         {
-            user_router = user_router.route(
-                "/backup/:server_id",
-                get(web::backup::server_user_download_backup),
-            );
+            user_router = user_router
+                .route("/backup/rt", get(web::backup::server_user_backup_realtime))
+                .route(
+                    "/backup/:server_id",
+                    get(web::backup::server_user_download_backup),
+                );
         }
 
         app = app.nest("/user", user_router);
