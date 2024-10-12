@@ -6,7 +6,7 @@ use crate::ssh::sftp::DaemonSftpSession;
 #[cfg(feature = "sftp")]
 use crate::storage::StorageIdentifier;
 use crate::terminal::{new_session, update_size, TerminalData};
-use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
+use crate::utils::{storage_read, ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{DaemonState, ServerData};
 use axum::{async_trait, http};
 use bitflags::bitflags;
@@ -19,6 +19,7 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
+use std::ops::DerefMut;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -548,8 +549,20 @@ impl Handler for DaemonSSHHandler {
                             .contains(PanelAuthServerPermissions::SFTP_READ)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
-                            sftp.access
-                                .insert(identifier.as_vec(), (identifier, server.permissions));
+                            if let Ok((_path, lock)) = storage_read(
+                                &self.state.config,
+                                self.state.conn.lock().await.deref_mut(),
+                                &self.state.storages,
+                                identifier,
+                                true,
+                            )
+                            .await
+                            {
+                                sftp.access.insert(
+                                    identifier.as_vec(),
+                                    (identifier, server.permissions, lock),
+                                );
+                            }
                         }
                     }
 

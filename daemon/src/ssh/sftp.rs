@@ -16,13 +16,21 @@ use std::sync::Arc;
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
+use tokio::sync::OwnedRwLockReadGuard;
 use uuid::Uuid;
 
 pub(crate) struct DaemonSftpSession {
     pub(crate) state: Arc<DaemonState>,
     pub(crate) version: Option<u32>,
     pub(crate) file_handles: HashMap<String, FileHandle>,
-    pub(crate) access: HashMap<Vec<String>, (StorageIdentifier, PanelAuthServerPermissions)>,
+    pub(crate) access: HashMap<
+        Vec<String>,
+        (
+            StorageIdentifier,
+            PanelAuthServerPermissions,
+            OwnedRwLockReadGuard<()>,
+        ),
+    >,
 }
 
 #[async_trait]
@@ -405,7 +413,11 @@ impl DaemonSftpSession {
             let index = temp_suffix.len() - 1;
             temp_suffix[index] = format!("{}/", temp_suffix[index]);
         }
-        Ok((storage.cloned(), temp_prefix, temp_suffix))
+        Ok((
+            storage.map(|(id, perms, _)| (*id, *perms)),
+            temp_prefix,
+            temp_suffix,
+        ))
     }
 
     async fn path(
