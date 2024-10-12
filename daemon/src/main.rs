@@ -122,7 +122,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .route("/:server_id/restart", get(web::server::restart_server))
                 .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
         )
-        .route("/resource", get(web::resource::get));
+        .route("/resource", get(web::resource::resource_get));
 
     #[cfg(feature = "database")]
     {

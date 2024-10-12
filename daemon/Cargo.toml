@@ -45,12 +45,13 @@ openssl.workspace = true
 termion.workspace = true
 pkcs8.workspace = true
 ed25519-dalek.workspace = true
+chrono.workspace = true
 
 futures-util = "0.3.31"
 futures = "0.3.30"
 bytes = "1.7.2"
 tokio-util = "0.7.12"
-chrono = "0.4.38"
+sysinfo = "0.32.0"
 
 [dependencies.daemon_common]
 workspace = true
