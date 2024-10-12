@@ -13,12 +13,12 @@ use tokio::io::BufWriter;
 use tokio::sync::OwnedMutexGuard;
 use tokio_util::io::{ReaderStream, StreamReader};
 
-use daemon_common::files::FileMode;
-use daemon_common::payload::files::FileResponse;
-
+use crate::config::DaemonConfig;
 use crate::storage::StorageIdentifier;
 use crate::utils::{parse_path, storage_read, StorageError};
 use crate::DaemonState;
+use daemon_common::files::FileMode;
+use daemon_common::payload::files::FileResponse;
 
 pub(crate) async fn list_files(
     state: &DaemonState,
@@ -30,17 +30,18 @@ pub(crate) async fn list_files(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    let files = list_files0(storage, path).await?;
+    let files = list_files0(&state.config, storage, path).await?;
     drop(lock);
     Ok(files)
 }
 
 #[inline(always)]
 async fn list_files0(
+    config: &DaemonConfig,
     storage: StorageIdentifier,
     path: String,
 ) -> Result<Vec<FileResponse>, StatusCode> {
-    let path = path0(storage, path, false).await?;
+    let path = path0(config, storage, path, false).await?;
 
     let mut read_dir = tokio::fs::read_dir(&path).await.map_err(|err| match err {
         err if err.kind() == ErrorKind::NotFound => StatusCode::NOT_FOUND,
@@ -85,14 +86,18 @@ pub(crate) async fn stat_file(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    let file = stat_file0(storage, path).await?;
+    let file = stat_file0(&state.config, storage, path).await?;
     drop(lock);
     Ok(file)
 }
 
 #[inline(always)]
-async fn stat_file0(storage: StorageIdentifier, path: String) -> Result<FileResponse, StatusCode> {
-    let path = path0(storage, path, false).await?;
+async fn stat_file0(
+    config: &DaemonConfig,
+    storage: StorageIdentifier,
+    path: String,
+) -> Result<FileResponse, StatusCode> {
+    let path = path0(config, storage, path, true).await?;
 
     let metadata = tokio::fs::symlink_metadata(&path)
         .await
@@ -129,19 +134,20 @@ pub(crate) async fn rename_file(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    rename_file0(storage, from, to).await?;
+    rename_file0(&state.config, storage, from, to).await?;
     drop(lock);
     Ok(())
 }
 
 #[inline(always)]
 async fn rename_file0(
+    config: &DaemonConfig,
     storage: StorageIdentifier,
     from: String,
     to: String,
 ) -> Result<(), StatusCode> {
-    let from = path0(storage, from, false).await?;
-    let to = path0(storage, to, true).await?;
+    let from = path0(config, storage, from, false).await?;
+    let to = path0(config, storage, to, true).await?;
 
     tokio::fs::rename(from, to).await.map_err(|err| match err {
         err if err.kind() == ErrorKind::NotFound => StatusCode::NOT_FOUND,
@@ -160,19 +166,20 @@ pub(crate) async fn copy_file(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    copy_file0(storage, from, to).await?;
+    copy_file0(&state.config, storage, from, to).await?;
     drop(lock);
     Ok(())
 }
 
 #[inline(always)]
 async fn copy_file0(
+    config: &DaemonConfig,
     storage: StorageIdentifier,
     from: String,
     to: String,
 ) -> Result<(), StatusCode> {
-    let from = path0(storage, from, false).await?;
-    let to = path0(storage, to, true).await?;
+    let from = path0(config, storage, from, false).await?;
+    let to = path0(config, storage, to, true).await?;
     tokio::fs::copy(from, to)
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -189,14 +196,18 @@ pub(crate) async fn download_file(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    let body = download_file0(storage, path).await?;
+    let body = download_file0(&state.config, storage, path).await?;
     drop(lock);
     Ok(body)
 }
 
 #[inline(always)]
-async fn download_file0(storage: StorageIdentifier, path: String) -> Result<Body, StatusCode> {
-    let path = path0(storage, path, true).await?;
+async fn download_file0(
+    config: &DaemonConfig,
+    storage: StorageIdentifier,
+    path: String,
+) -> Result<Body, StatusCode> {
+    let path = path0(config, storage, path, true).await?;
     let file = OpenOptions::new()
         .read(true)
         .open(&path)
@@ -218,18 +229,19 @@ pub(crate) async fn write_file(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    write_file0(storage, path, stream).await?;
+    write_file0(&state.config, storage, path, stream).await?;
     drop(lock);
     Ok(())
 }
 
 #[inline(always)]
 async fn write_file0(
+    config: &DaemonConfig,
     storage: StorageIdentifier,
     path: String,
     stream: BodyDataStream,
 ) -> Result<(), StatusCode> {
-    let path = path0(storage, path, true).await?;
+    let path = path0(config, storage, path, true).await?;
     let file = OpenOptions::new()
         .create(true)
         .truncate(true)
@@ -257,13 +269,14 @@ pub(crate) async fn mkdir_file(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    mkdir_file0(storage, path, recursive).await?;
+    mkdir_file0(&state.config, storage, path, recursive).await?;
     drop(lock);
     Ok(())
 }
 
 #[inline(always)]
 async fn mkdir_file0(
+    config: &DaemonConfig,
     storage: StorageIdentifier,
     path: String,
     recursive: bool,
@@ -272,7 +285,7 @@ async fn mkdir_file0(
         // unstable, difficult to check -> avoid security risks
         return Err(StatusCode::NOT_IMPLEMENTED);
     }
-    let path = path0(storage, path, true).await?;
+    let path = path0(config, storage, path, true).await?;
     tokio::fs::create_dir(path).await.map_err(|err| {
         if err.kind() == ErrorKind::AlreadyExists {
             StatusCode::OK
@@ -293,18 +306,19 @@ pub(crate) async fn symlink_file(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    symlink_file0(storage, path, content).await?;
+    symlink_file0(&state.config, storage, path, content).await?;
     drop(lock);
     Ok(())
 }
 
 #[inline(always)]
 async fn symlink_file0(
+    config: &DaemonConfig,
     storage: StorageIdentifier,
     path: String,
     content: String,
 ) -> Result<(), StatusCode> {
-    let path = path0(storage, path, true).await?;
+    let path = path0(config, storage, path, true).await?;
     tokio::fs::symlink(PathBuf::from(content), path)
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
@@ -321,18 +335,19 @@ pub(crate) async fn delete_file(
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
-    delete_file0(storage, path, recursive).await?;
+    delete_file0(&state.config, storage, path, recursive).await?;
     drop(lock);
     Ok(())
 }
 
 #[inline(always)]
 async fn delete_file0(
+    config: &DaemonConfig,
     storage: StorageIdentifier,
     path: String,
     recursive: bool,
 ) -> Result<(), StatusCode> {
-    let path = path0(storage, path, true).await?;
+    let path = path0(config, storage, path, true).await?;
     if recursive {
         tokio::fs::remove_dir_all(path).await
     } else {
@@ -351,6 +366,7 @@ async fn delete_file0(
 }
 
 async fn path0(
+    config: &DaemonConfig,
     storage: StorageIdentifier,
     mut path: String,
     check_parent: bool,
@@ -369,7 +385,7 @@ async fn path0(
         r#final = Some(components.remove(components.len() - 1));
     }
 
-    let mut base = storage.as_pathbuf();
+    let mut base = PathBuf::from(&config.storage.path).join(storage.as_pathbuf());
     let mut path = base.clone();
     base = tokio::fs::canonicalize(base)
         .await
