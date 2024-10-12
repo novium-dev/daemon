@@ -2,6 +2,8 @@ use axum::http::StatusCode;
 use diesel::result::Error;
 use log::{debug, warn};
 
+#[cfg(feature = "backups")]
+pub(crate) mod backup;
 #[cfg(feature = "database")]
 pub(crate) mod database;
 #[cfg(feature = "files")]

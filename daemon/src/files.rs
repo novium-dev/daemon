@@ -1,9 +1,11 @@
 use crate::storage::StorageIdentifier;
-use crate::utils::parse_path;
+use crate::utils::{parse_path, storage_read, StorageError};
+use crate::DaemonState;
 use axum::body::{Body, BodyDataStream};
 use axum::http::StatusCode;
 use daemon_common::files::FileMode;
 use daemon_common::payload::files::FileResponse;
+use diesel_async::AsyncMysqlConnection;
 use futures_util::TryStreamExt;
 use std::fs::Metadata;
 use std::io;
@@ -12,9 +14,26 @@ use std::os::unix::prelude::*;
 use std::path::PathBuf;
 use tokio::fs::OpenOptions;
 use tokio::io::BufWriter;
+use tokio::sync::OwnedMutexGuard;
 use tokio_util::io::{ReaderStream, StreamReader};
 
 pub(crate) async fn list_files(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
+    storage: StorageIdentifier,
+    path: String,
+) -> Result<Vec<FileResponse>, StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    let files = list_files0(storage, path).await?;
+    drop(lock);
+    Ok(files)
+}
+
+#[inline(always)]
+async fn list_files0(
     storage: StorageIdentifier,
     path: String,
 ) -> Result<Vec<FileResponse>, StatusCode> {
@@ -54,9 +73,22 @@ pub(crate) async fn list_files(
 }
 
 pub(crate) async fn stat_file(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
     storage: StorageIdentifier,
     path: String,
 ) -> Result<FileResponse, StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    let file = stat_file0(storage, path).await?;
+    drop(lock);
+    Ok(file)
+}
+
+#[inline(always)]
+async fn stat_file0(storage: StorageIdentifier, path: String) -> Result<FileResponse, StatusCode> {
     let path = path0(storage, path, false).await?;
 
     let metadata = tokio::fs::symlink_metadata(&path)
@@ -84,6 +116,23 @@ pub(crate) async fn stat_file(
 }
 
 pub(crate) async fn rename_file(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
+    storage: StorageIdentifier,
+    from: String,
+    to: String,
+) -> Result<(), StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    rename_file0(storage, from, to).await?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn rename_file0(
     storage: StorageIdentifier,
     from: String,
     to: String,
@@ -98,6 +147,23 @@ pub(crate) async fn rename_file(
 }
 
 pub(crate) async fn copy_file(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
+    storage: StorageIdentifier,
+    from: String,
+    to: String,
+) -> Result<(), StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    copy_file0(storage, from, to).await?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn copy_file0(
     storage: StorageIdentifier,
     from: String,
     to: String,
@@ -111,9 +177,22 @@ pub(crate) async fn copy_file(
 }
 
 pub(crate) async fn download_file(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
     storage: StorageIdentifier,
     path: String,
 ) -> Result<Body, StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    let body = download_file0(storage, path).await?;
+    drop(lock);
+    Ok(body)
+}
+
+#[inline(always)]
+async fn download_file0(storage: StorageIdentifier, path: String) -> Result<Body, StatusCode> {
     let path = path0(storage, path, true).await?;
     let file = OpenOptions::new()
         .read(true)
@@ -126,6 +205,23 @@ pub(crate) async fn download_file(
 }
 
 pub(crate) async fn write_file(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
+    storage: StorageIdentifier,
+    path: String,
+    stream: BodyDataStream,
+) -> Result<(), StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    write_file0(storage, path, stream).await?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn write_file0(
     storage: StorageIdentifier,
     path: String,
     stream: BodyDataStream,
@@ -148,6 +244,23 @@ pub(crate) async fn write_file(
 }
 
 pub(crate) async fn mkdir_file(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
+    storage: StorageIdentifier,
+    path: String,
+    recursive: bool,
+) -> Result<(), StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    mkdir_file0(storage, path, recursive).await?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn mkdir_file0(
     storage: StorageIdentifier,
     path: String,
     recursive: bool,
@@ -167,6 +280,23 @@ pub(crate) async fn mkdir_file(
 }
 
 pub(crate) async fn symlink_file(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
+    storage: StorageIdentifier,
+    path: String,
+    content: String,
+) -> Result<(), StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    symlink_file0(storage, path, content).await?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn symlink_file0(
     storage: StorageIdentifier,
     path: String,
     content: String,
@@ -178,6 +308,23 @@ pub(crate) async fn symlink_file(
 }
 
 pub(crate) async fn delete_file(
+    state: &DaemonState,
+    mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
+    storage: StorageIdentifier,
+    path: String,
+    recursive: bool,
+) -> Result<(), StatusCode> {
+    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+        .await
+        .map_err(StorageError::into_http)?;
+    drop(conn);
+    delete_file0(storage, path, recursive).await?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn delete_file0(
     storage: StorageIdentifier,
     path: String,
     recursive: bool,

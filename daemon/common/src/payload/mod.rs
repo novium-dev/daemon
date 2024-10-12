@@ -17,3 +17,8 @@ pub use tsify::Tsify;
 pub struct IdResponse {
     pub id: u32,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct TimeIdResponse {
+    pub id: i64,
+}

@@ -4,8 +4,6 @@ use crate::files::{
     symlink_file, write_file,
 };
 use crate::storage::StorageIdentifier;
-use crate::utils::server;
-use crate::web::diesel_error_to_http;
 use crate::DaemonState;
 use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
@@ -14,22 +12,16 @@ use axum::Json;
 use daemon_common::payload::files::{
     PathDirectoryQuery, PathQuery, PathSymlinkQuery, TwoPathQuery,
 };
-use std::ops::DerefMut;
 
 pub(crate) async fn server_list_files(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<Json<Vec<FileResponse>>, StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
-    )
-    .await
-    .map_err(diesel_error_to_http)?;
     let storage = StorageIdentifier::Primary(server_id);
-    list_files(storage, path).await.map(Json)
+    list_files(&state, state.conn.clone().lock_owned().await, storage, path)
+        .await
+        .map(Json)
 }
 
 pub(crate) async fn server_stat_file(
@@ -37,15 +29,10 @@ pub(crate) async fn server_stat_file(
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<Json<FileResponse>, StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
-    )
-    .await
-    .map_err(diesel_error_to_http)?;
     let storage = StorageIdentifier::Primary(server_id);
-    stat_file(storage, path).await.map(Json)
+    stat_file(&state, state.conn.clone().lock_owned().await, storage, path)
+        .await
+        .map(Json)
 }
 
 pub(crate) async fn server_rename_file(
@@ -53,15 +40,15 @@ pub(crate) async fn server_rename_file(
     Path((server_id,)): Path<(u32,)>,
     Query(TwoPathQuery { from, to }): Query<TwoPathQuery>,
 ) -> Result<(), StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
+    let storage = StorageIdentifier::Primary(server_id);
+    rename_file(
+        &state,
+        state.conn.clone().lock_owned().await,
+        storage,
+        from,
+        to,
     )
     .await
-    .map_err(diesel_error_to_http)?;
-    let storage = StorageIdentifier::Primary(server_id);
-    rename_file(storage, from, to).await
 }
 
 pub(crate) async fn server_copy_file(
@@ -69,15 +56,15 @@ pub(crate) async fn server_copy_file(
     Path((server_id,)): Path<(u32,)>,
     Query(TwoPathQuery { from, to }): Query<TwoPathQuery>,
 ) -> Result<(), StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
+    let storage = StorageIdentifier::Primary(server_id);
+    copy_file(
+        &state,
+        state.conn.clone().lock_owned().await,
+        storage,
+        from,
+        to,
     )
     .await
-    .map_err(diesel_error_to_http)?;
-    let storage = StorageIdentifier::Primary(server_id);
-    copy_file(storage, from, to).await
 }
 
 pub(crate) async fn server_download_file(
@@ -85,15 +72,8 @@ pub(crate) async fn server_download_file(
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<Body, StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
-    )
-    .await
-    .map_err(diesel_error_to_http)?;
     let storage = StorageIdentifier::Primary(server_id);
-    download_file(storage, path).await
+    download_file(&state, state.conn.clone().lock_owned().await, storage, path).await
 }
 
 pub(crate) async fn server_write_file(
@@ -102,15 +82,15 @@ pub(crate) async fn server_write_file(
     Query(PathQuery { path }): Query<PathQuery>,
     request: Request,
 ) -> Result<(), StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
+    let storage = StorageIdentifier::Primary(server_id);
+    write_file(
+        &state,
+        state.conn.clone().lock_owned().await,
+        storage,
+        path,
+        request.into_body().into_data_stream(),
     )
     .await
-    .map_err(diesel_error_to_http)?;
-    let storage = StorageIdentifier::Primary(server_id);
-    write_file(storage, path, request.into_body().into_data_stream()).await
 }
 
 pub(crate) async fn server_delete_file(
@@ -118,15 +98,15 @@ pub(crate) async fn server_delete_file(
     Path((server_id,)): Path<(u32,)>,
     Query(PathDirectoryQuery { path, recursive }): Query<PathDirectoryQuery>,
 ) -> Result<(), StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
+    let storage = StorageIdentifier::Primary(server_id);
+    delete_file(
+        &state,
+        state.conn.clone().lock_owned().await,
+        storage,
+        path,
+        recursive,
     )
     .await
-    .map_err(diesel_error_to_http)?;
-    let storage = StorageIdentifier::Primary(server_id);
-    delete_file(storage, path, recursive).await
 }
 
 pub(crate) async fn server_mkdir(
@@ -134,15 +114,15 @@ pub(crate) async fn server_mkdir(
     Path((server_id,)): Path<(u32,)>,
     Query(PathDirectoryQuery { path, recursive }): Query<PathDirectoryQuery>,
 ) -> Result<(), StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
+    let storage = StorageIdentifier::Primary(server_id);
+    mkdir_file(
+        &state,
+        state.conn.clone().lock_owned().await,
+        storage,
+        path,
+        recursive,
     )
     .await
-    .map_err(diesel_error_to_http)?;
-    let storage = StorageIdentifier::Primary(server_id);
-    mkdir_file(storage, path, recursive).await
 }
 
 pub(crate) async fn server_symlink(
@@ -150,13 +130,13 @@ pub(crate) async fn server_symlink(
     Path((server_id,)): Path<(u32,)>,
     Query(PathSymlinkQuery { path, content }): Query<PathSymlinkQuery>,
 ) -> Result<(), StatusCode> {
-    let _ = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
+    let storage = StorageIdentifier::Primary(server_id);
+    symlink_file(
+        &state,
+        state.conn.clone().lock_owned().await,
+        storage,
+        path,
+        content,
     )
     .await
-    .map_err(diesel_error_to_http)?;
-    let storage = StorageIdentifier::Primary(server_id);
-    symlink_file(storage, path, content).await
 }

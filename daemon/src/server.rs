@@ -1,8 +1,7 @@
-use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
 use crate::storage::StorageIdentifier;
-use crate::utils::{from_mib, ChannelWriteData};
-use crate::{storage, utils, DaemonState, ServerData};
+use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
+use crate::{utils, DaemonState, ServerData};
 #[cfg(feature = "websocket")]
 use axum::extract::ws::Message;
 use bollard::container::{
@@ -30,7 +29,7 @@ use std::time::Duration;
 use termion::color::Fg;
 use termion::{clear, color};
 use tokio::sync::broadcast::Sender;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OwnedRwLockReadGuard};
 use tokio::time::Instant;
 use tokio_tar::{Builder, Header};
 
@@ -215,9 +214,9 @@ impl FetchedServer {
 
     pub(crate) async fn start(
         &self,
-        config: &DaemonConfig,
         docker: Arc<Docker>,
         server_data: &mut ServerData,
+        (storage_path, storage_lock): (String, OwnedRwLockReadGuard<()>),
         server_data_arc: Arc<Mutex<ServerData>>,
         state: DaemonState,
     ) -> Result<(), ServerStartError> {
@@ -247,12 +246,7 @@ impl FetchedServer {
             .await?;
 
         let mut binds = Vec::with_capacity(1);
-        binds.push(format!(
-            "{}:/work",
-            storage::ensure_exists(config, StorageIdentifier::Primary(self.id), Some(self.disk))
-                .await
-                .map_err(ServerStartError::Storage)?
-        ));
+        binds.push(format!("{}:/work", storage_path));
 
         let networks = HashMap::new();
 
@@ -422,6 +416,7 @@ impl FetchedServer {
                     }
                 }
             }
+            drop(storage_lock);
             let mut server_data = server_data_arc.lock().await;
             server_data.stopping = false;
             let do_restart = server_data.restart;
@@ -545,21 +540,27 @@ impl FetchedServer {
         state: DaemonState,
         duration: Duration,
     ) -> Result<(), ServerStartError> {
-        let (server, server_data) = utils::server(
-            state.conn.lock().await.deref_mut(),
-            &state.servers,
-            server_id,
-        )
-        .await
-        .map_err(ServerStartError::SQL)?;
+        let mut conn = state.conn.lock().await;
+        let (server, server_data) = utils::server(&mut conn, &state.servers, server_id)
+            .await
+            .map_err(ServerStartError::SQL)?;
         let mut server_data_locked = server_data.lock().await;
         tokio::time::sleep(duration).await;
+        let storage = storage_read(
+            &state.config,
+            &mut conn,
+            &state.storages,
+            StorageIdentifier::Primary(server_id),
+            false,
+        )
+        .await
+        .map_err(ServerStartError::Storage)?;
         server
             .start_pinned(
-                &state.config,
                 state.docker.clone(),
                 server_data_locked.deref_mut(),
                 server_data.clone(),
+                storage,
                 state.clone(),
             )
             .await?;
@@ -568,13 +569,13 @@ impl FetchedServer {
 
     fn start_pinned<'a>(
         &'a self,
-        config: &'a DaemonConfig,
         docker: Arc<Docker>,
         server_data: &'a mut ServerData,
         server_data_arc: Arc<Mutex<ServerData>>,
+        storage: (String, OwnedRwLockReadGuard<()>),
         state: DaemonState,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
-        Box::pin(self.start(config, docker, server_data, server_data_arc, state))
+        Box::pin(self.start(docker, server_data, storage, server_data_arc, state))
         // It needs to be pinned to be called recursively
     }
 
@@ -604,7 +605,7 @@ impl FetchedServer {
 #[derive(Debug)]
 pub(crate) enum ServerStartError {
     Docker(bollard::errors::Error),
-    Storage(io::Error),
+    Storage(StorageError),
     IO(io::Error),
     AlreadyRunning,
     #[allow(clippy::upper_case_acronyms)]

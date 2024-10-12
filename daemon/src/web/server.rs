@@ -2,9 +2,9 @@ use crate::common::payload::server::ServerPayload;
 use crate::common::payload::IdResponse;
 use crate::schema::FetchedServer;
 use crate::schema::{server_buildargs, server_capadd, server_capdrop, server_ports, servers};
-use crate::server::{InternalServerState, ServerStopError};
+use crate::server::{InternalServerState, ServerStartError, ServerStopError};
 use crate::storage::StorageIdentifier;
-use crate::utils::server;
+use crate::utils::{server, storage_read};
 use crate::web::diesel_error_to_http;
 use crate::{schema, storage, DaemonState};
 use axum::extract::{Path, State};
@@ -239,28 +239,49 @@ pub(crate) async fn start_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
-    let (server, server_data) = server(
-        state.conn.lock().await.deref_mut(),
-        &state.servers,
-        server_id,
-    )
-    .await
-    .map_err(diesel_error_to_http)?;
+    let mut conn = state.conn.clone().lock_owned().await;
+    let (server, server_data) = server(&mut conn, &state.servers, server_id)
+        .await
+        .map_err(diesel_error_to_http)?;
 
     tokio::task::spawn(async move {
-        let server_data_locked = timeout(Duration::from_millis(100), server_data.lock()).await;
-        if let Ok(mut server_data_locked) = server_data_locked {
-            if let Err(err) = server
-                .start(
+        let (server_data_locked, storage_locked) = tokio::join!(
+            timeout(Duration::from_millis(100), server_data.lock()),
+            timeout(
+                Duration::from_millis(100),
+                storage_read(
                     &state.config,
-                    state.docker.clone(),
-                    server_data_locked.deref_mut(),
-                    server_data.clone(),
-                    state.clone(),
+                    &mut conn,
+                    &state.storages,
+                    StorageIdentifier::Primary(server_id),
+                    false
                 )
-                .await
-            {
-                warn!("Failed to start server: {:?}", err);
+            ),
+        );
+        if let Ok(mut server_data_locked) = server_data_locked {
+            if let Ok(storage) = storage_locked {
+                match storage {
+                    Ok(storage) => {
+                        if let Err(err) = server
+                            .start(
+                                state.docker.clone(),
+                                server_data_locked.deref_mut(),
+                                storage,
+                                server_data.clone(),
+                                state.clone(),
+                            )
+                            .await
+                        {
+                            warn!("Failed to start server: {:?}", err);
+                        }
+                    }
+                    Err(err) => {
+                        warn!(
+                            "Failed to start server: {:?}",
+                            ServerStartError::Storage(err)
+                        );
+                    }
+                }
             }
         }
     });

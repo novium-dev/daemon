@@ -21,6 +21,7 @@ use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
 #[cfg(feature = "ssh")]
 use crate::ssh::DaemonSSHServer;
+use crate::storage::StorageIdentifier;
 use crate::terminal::TerminalSession;
 use crate::utils::ChannelWriteData;
 use axum::routing::{delete, get, patch, put};
@@ -47,7 +48,7 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinSet;
 use tower_http::validate_request::ValidateRequestHeaderLayer;
 use uuid::Uuid;
@@ -93,6 +94,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
     let state = DaemonState {
         config: config.clone(),
         servers: Arc::new(Mutex::new(servers)),
+        storages: Arc::new(Mutex::new(HashMap::new())),
         docker: Arc::new(docker),
         conn: Arc::new(Mutex::new(conn)),
         #[cfg(feature = "ssh")]
@@ -142,6 +144,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .route("/delete", get(web::files::server_delete_file))
                 .route("/mkdir", get(web::files::server_mkdir))
                 .route("/symlink", get(web::files::server_symlink))
+                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
+        );
+    }
+    #[cfg(feature = "backups")]
+    {
+        app = app.nest(
+            "/backup/:server_id",
+            Router::new()
+                .route("/", get(web::backup::server_list_backups))
+                .route("/", put(web::backup::server_create_backup))
+                .route("/:backup_id", get(web::backup::server_download_backup))
+                .route("/:backup_id", delete(web::backup::server_delete_backup))
                 .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
         );
     }
@@ -314,6 +328,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 pub(crate) struct DaemonState {
     pub(crate) config: Arc<DaemonConfig>,
     pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
+    pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>>,
     pub(crate) docker: Arc<Docker>,
     pub(crate) conn: Arc<Mutex<AsyncMysqlConnection>>,
     #[cfg(feature = "ssh")]

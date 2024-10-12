@@ -1,29 +1,51 @@
 use crate::config::{BackupMethod, DaemonConfig};
 use crate::storage::StorageIdentifier;
-use crate::utils::{ChannelStreamReceiver, ChannelStreamSender};
+use crate::utils::{storage_read, StorageError};
+use crate::DaemonState;
+use axum::body::Body;
+use chrono::Utc;
+use reqwest::StatusCode;
 use std::io;
 use std::io::ErrorKind;
+use std::ops::DerefMut;
 use std::path::PathBuf;
-use std::pin::Pin;
-use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs::{File, OpenOptions};
-use tokio::io::AsyncRead;
+use tokio::io::AsyncWriteExt;
+use tokio_util::io::ReaderStream;
 
-#[allow(unused)]
 pub(crate) async fn create_backup(
-    config: &DaemonConfig,
+    state: &DaemonState,
     id: StorageIdentifier,
-) -> Result<u64, io::Error> {
-    let base = PathBuf::from(&config.storage.path);
-    let dir = base.join(id.as_pathbuf());
+) -> Result<i64, StatusCode> {
+    let (path, lock) = storage_read(
+        &state.config,
+        state.conn.lock().await.deref_mut(),
+        &state.storages,
+        id,
+        true,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
+
+    let id = create_backup0(&state.config, path, id)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    drop(lock);
+    Ok(id)
+}
+
+#[inline(always)]
+pub(crate) async fn create_backup0(
+    config: &DaemonConfig,
+    path: String,
+    id: StorageIdentifier,
+) -> Result<i64, io::Error> {
+    let dir = PathBuf::from(path);
     let target_dir = PathBuf::from(&config.backup.path).join(id.as_pathbuf());
     if !tokio::fs::try_exists(&target_dir).await? {
         tokio::fs::create_dir_all(&target_dir).await?;
     }
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_millis() as u64;
+    let timestamp = Utc::now().timestamp_millis();
     match config.backup.method {
         BackupMethod::Archive { ref compression } => {
             let file = OpenOptions::new()
@@ -56,17 +78,106 @@ pub(crate) async fn create_backup(
     Ok(timestamp)
 }
 
-#[allow(unused)]
+pub(crate) async fn list_backups(
+    state: &DaemonState,
+    id: StorageIdentifier,
+) -> Result<Vec<i64>, StatusCode> {
+    let (_path, lock) = storage_read(
+        &state.config,
+        state.conn.lock().await.deref_mut(),
+        &state.storages,
+        id,
+        true,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
+    let vec = list_backups0(state, id)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    drop(lock);
+    Ok(vec)
+}
+
+#[inline(always)]
+async fn list_backups0(state: &DaemonState, id: StorageIdentifier) -> Result<Vec<i64>, io::Error> {
+    let mut entries = Vec::new();
+    let target_dir = PathBuf::from(&state.config.backup.path).join(id.as_pathbuf());
+    match state.config.backup.method {
+        BackupMethod::Archive { ref compression } => {
+            let mut readdir = tokio::fs::read_dir(&target_dir).await?;
+            while let Some(entry) = readdir.next_entry().await? {
+                if !entry.file_type().await?.is_file() {
+                    continue;
+                }
+                let filename = entry.file_name().to_string_lossy().to_string();
+                if !filename.ends_with(&format!(".tar{}", compression.ext())) {
+                    continue;
+                }
+                let entry = &filename[0..filename.len() - (4 + compression.ext().len())];
+                let entry: Result<i64, _> = entry.parse();
+                match entry {
+                    Ok(entry) => {
+                        entries.push(entry);
+                    }
+                    Err(_) => continue,
+                }
+            }
+        }
+        #[cfg(feature = "btrfs")]
+        BackupMethod::Btrfs { .. } => {
+            let mut readdir = tokio::fs::read_dir(&target_dir).await?;
+            while let Some(entry) = readdir.next_entry().await? {
+                if !entry.file_type().await?.is_dir() {
+                    continue;
+                }
+                let filename = entry.file_name().to_string_lossy().to_string();
+                let entry: Result<i64, _> = filename.parse();
+                match entry {
+                    Ok(entry) => {
+                        entries.push(entry);
+                    }
+                    Err(_) => continue,
+                }
+            }
+        }
+    }
+    Ok(entries)
+}
+
 pub(crate) async fn backup_to_stream(
+    state: &DaemonState,
+    id: StorageIdentifier,
+    backup: i64,
+) -> Result<Body, StatusCode> {
+    let (_path, lock) = storage_read(
+        &state.config,
+        state.conn.lock().await.deref_mut(),
+        &state.storages,
+        id,
+        true,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
+    let body = backup_to_stream0(&state.config, id, backup)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    drop(lock);
+    Ok(body)
+}
+
+#[inline(always)]
+async fn backup_to_stream0(
     config: &DaemonConfig,
     id: StorageIdentifier,
-    timestamp: u64,
-) -> Result<Pin<Box<dyn AsyncRead + Send + Sync + 'static>>, io::Error> {
+    timestamp: i64,
+) -> Result<Body, io::Error> {
     let target_dir = PathBuf::from(&config.backup.path).join(id.as_pathbuf());
     match config.backup.method {
         BackupMethod::Archive { ref compression } => {
             let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
-            Ok(Box::pin(File::open(target).await?))
+            Ok(Body::from_stream(ReaderStream::new(
+                File::open(target).await?,
+            )))
         }
         #[cfg(feature = "btrfs")]
         BackupMethod::Btrfs {
@@ -74,24 +185,47 @@ pub(crate) async fn backup_to_stream(
         } => {
             let compression = *jit_compression;
             let target = target_dir.join(timestamp.to_string());
-            let (sender, recv) = tokio::sync::mpsc::channel(2);
+            let (sender, recv) = tokio::io::duplex(1024 * 1024);
             tokio::task::spawn(async move {
-                let encoder = compression.create_encoder(ChannelStreamSender(Some(sender)));
+                let encoder = compression.create_encoder(sender);
                 let mut archive = tokio_tar::Builder::new(encoder);
-                archive.append_dir_all(".", &target).await?;
+                archive.append_dir_all("", &target).await?;
                 archive.finish().await?;
+                archive.into_inner().await.unwrap().shutdown().await?;
                 Ok::<(), io::Error>(())
             });
-            Ok(Box::pin(ChannelStreamReceiver(recv)))
+            let stream = ReaderStream::new(recv);
+            Ok(Body::from_stream(stream))
         }
     }
 }
 
-#[allow(unused)]
 pub(crate) async fn delete_backup(
+    state: &DaemonState,
+    id: StorageIdentifier,
+    backup: i64,
+) -> Result<(), StatusCode> {
+    let (_path, lock) = storage_read(
+        &state.config,
+        state.conn.lock().await.deref_mut(),
+        &state.storages,
+        id,
+        true,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
+    delete_backup0(&state.config, id, backup)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn delete_backup0(
     config: &DaemonConfig,
     id: StorageIdentifier,
-    timestamp: u64,
+    timestamp: i64,
 ) -> Result<(), io::Error> {
     let target_dir = PathBuf::from(&config.backup.path).join(id.as_pathbuf());
     match config.backup.method {

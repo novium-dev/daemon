@@ -1,25 +1,27 @@
+use crate::config::DaemonConfig;
 #[cfg(feature = "database")]
 use crate::schema::{databases, Database, FetchedDatabase};
 use crate::schema::{servers, FetchedServer, Server};
 use crate::server::InternalServerState;
+use crate::storage::{ensure_exists, StorageIdentifier};
+use crate::web::diesel_error_to_http;
 use crate::ServerData;
 use axum::async_trait;
+use axum::http::StatusCode;
 use daemon_common::server::ServerStats;
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
 use std::collections::HashMap;
 use std::future::Future;
 use std::io;
-use std::io::{Error, ErrorKind};
 use std::marker::PhantomData;
-use std::pin::{pin, Pin};
+use std::pin::Pin;
 use std::sync::Arc;
-use std::task::{Context, Poll};
-use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::sync::mpsc::{Receiver, Sender};
-use tokio::sync::Mutex;
+use std::time::Duration;
 #[cfg(feature = "database")]
 use tokio::sync::OwnedMutexGuard;
+use tokio::sync::{Mutex, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
+use tokio::time::error::Elapsed;
 
 pub(crate) fn from_mib(mib: u32) -> i64 {
     mib as i64 * 1024 * 1024
@@ -50,6 +52,87 @@ pub(crate) async fn server(
         .entry(server_id)
         .or_insert_with(|| Arc::new(Mutex::new(ServerData::default())));
     Ok((server, servers.get(&server_id).unwrap().clone()))
+}
+
+async fn storage_lock(
+    conn: &mut AsyncMysqlConnection,
+    storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
+    storage: StorageIdentifier,
+) -> Result<(Option<u64>, Arc<RwLock<()>>), diesel::result::Error> {
+    let disk = match storage {
+        StorageIdentifier::Primary(server_id) => {
+            let server = generic_server_select(conn, server_id).await?;
+            server.disk
+        }
+    };
+    let mut storages = storages.lock().await;
+    let lock = match storages.get(&storage) {
+        None => {
+            let lock = Arc::new(RwLock::new(()));
+            storages.insert(storage, lock.clone());
+            lock
+        }
+        Some(lock) => lock.clone(),
+    };
+    Ok((disk, lock))
+}
+
+pub(crate) async fn storage_read(
+    config: &DaemonConfig,
+    conn: &mut AsyncMysqlConnection,
+    storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
+    storage: StorageIdentifier,
+    timeout: bool,
+) -> Result<(String, OwnedRwLockReadGuard<()>), StorageError> {
+    let (disk, lock) = storage_lock(conn, storages, storage)
+        .await
+        .map_err(StorageError::Diesel)?;
+    let path = ensure_exists(config, storage, disk)
+        .await
+        .map_err(StorageError::IO)?;
+    if timeout {
+        Ok((
+            path,
+            tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
+                .await
+                .map_err(StorageError::Timeout)?,
+        ))
+    } else {
+        Ok((path, lock.read_owned().await))
+    }
+}
+
+#[allow(unused)]
+pub(crate) async fn storage_write(
+    config: &DaemonConfig,
+    conn: &mut AsyncMysqlConnection,
+    storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
+    storage: StorageIdentifier,
+) -> Result<(String, OwnedRwLockWriteGuard<()>), StorageError> {
+    let (disk, lock) = storage_lock(conn, storages, storage)
+        .await
+        .map_err(StorageError::Diesel)?;
+    let path = ensure_exists(config, storage, disk)
+        .await
+        .map_err(StorageError::IO)?;
+    Ok((path, lock.write_owned().await))
+}
+
+#[derive(Debug)]
+pub(crate) enum StorageError {
+    Diesel(diesel::result::Error),
+    IO(io::Error),
+    Timeout(Elapsed),
+}
+
+impl StorageError {
+    pub(crate) fn into_http(self) -> StatusCode {
+        match self {
+            StorageError::Diesel(err) => diesel_error_to_http(err),
+            StorageError::IO(_err) => StatusCode::INTERNAL_SERVER_ERROR,
+            StorageError::Timeout(_) => StatusCode::SERVICE_UNAVAILABLE,
+        }
+    }
 }
 
 pub(crate) async fn generic_server_select(
@@ -219,74 +302,5 @@ impl<
         Self: Sized,
     {
         A::send_ping()
-    }
-}
-
-#[allow(unused)]
-pub(crate) struct ChannelStreamReceiver(pub(crate) Receiver<([u8; 4096], usize)>);
-#[allow(unused)]
-pub(crate) struct ChannelStreamSender(pub(crate) Option<Sender<([u8; 4096], usize)>>);
-
-impl AsyncRead for ChannelStreamReceiver {
-    fn poll_read(
-        mut self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &mut ReadBuf<'_>,
-    ) -> Poll<io::Result<()>> {
-        self.0.poll_recv(cx).map(|opt| match opt {
-            None => Ok(()),
-            Some((buffer, len)) => {
-                buf.set_filled(len);
-                buf.filled_mut().clone_from_slice(&buffer[0..len]);
-                Ok(())
-            }
-        })
-    }
-}
-
-impl ChannelStreamSender {
-    async fn write(self: Pin<&mut Self>, buf: &[u8]) -> Result<usize, Error> {
-        match self.0 {
-            None => Ok(0),
-            Some(ref sender) => {
-                let mut written = 0;
-                while written < buf.len() {
-                    let mut buffer = [0; 4096];
-                    let len = if (buf.len() - written) <= 4096 {
-                        buf.len() - written
-                    } else {
-                        4096
-                    };
-                    buffer.clone_from_slice(&buf[written..(written + len)]);
-                    sender
-                        .send((buffer, len))
-                        .await
-                        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
-                    written += len;
-                }
-                Ok(written)
-            }
-        }
-    }
-}
-
-impl AsyncWrite for ChannelStreamSender {
-    fn poll_write(
-        self: Pin<&mut Self>,
-        cx: &mut Context<'_>,
-        buf: &[u8],
-    ) -> Poll<Result<usize, Error>> {
-        use futures_util::Future;
-        let mut pinned = pin!(self.write(buf));
-        pinned.as_mut().poll(cx)
-    }
-
-    fn poll_flush(self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        Poll::Ready(Ok(()))
-    }
-
-    fn poll_shutdown(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Result<(), Error>> {
-        self.0.take();
-        Poll::Ready(Ok(()))
     }
 }

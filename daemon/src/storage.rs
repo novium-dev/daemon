@@ -6,7 +6,7 @@ use std::io;
 use std::path::PathBuf;
 use tokio::fs;
 
-#[derive(Hash, PartialEq, Clone, Copy)]
+#[derive(Hash, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum StorageIdentifier {
     Primary(u32),
 }
@@ -29,7 +29,7 @@ impl StorageIdentifier {
 pub(crate) async fn ensure_exists(
     config: &DaemonConfig,
     id: StorageIdentifier,
-    _disk: Option<Option<u64>>,
+    _disk: Option<u64>,
 ) -> Result<String, io::Error> {
     let base = PathBuf::from(&config.storage.path);
     let dir = base.join(id.as_pathbuf());

@@ -3,5 +3,6 @@
 mysql/data/
 mysql/sockets/
 /storage/
+/backups/
 test/node_modules/
 .vscode/
