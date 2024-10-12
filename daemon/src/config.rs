@@ -3,7 +3,6 @@ use std::path::PathBuf;
 
 #[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
-#[cfg(all(feature = "websocket", not(feature = "user_debug_auth_bypass")))]
 use ed25519_dalek::VerifyingKey;
 #[cfg(feature = "ssh")]
 use russh_keys::encoding::Bytes;
@@ -19,8 +18,8 @@ pub(crate) struct DaemonConfig {
     #[allow(unused)]
     #[serde(deserialize_with = "deserialize_user_key")]
     pub(crate) user_key: VerifyingKey,
+    #[allow(unused)]
     pub(crate) user_allow_duration: u64,
-    #[cfg(feature = "websocket")]
     pub(crate) origin: String,
     pub(crate) storage: StorageConfig,
     #[cfg(feature = "backups")]

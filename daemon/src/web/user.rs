@@ -6,12 +6,14 @@ use serde::Deserialize;
 
 use crate::DaemonState;
 
+#[allow(unused)]
 #[derive(Deserialize)]
 pub(crate) struct GenericUserQuery {
     pub(crate) verify: String,
     pub(crate) timestamp: String,
 }
 
+#[allow(unused)]
 pub(crate) async fn authenticate_user(
     name: &str,
     #[allow(unused)] server_id: u32,

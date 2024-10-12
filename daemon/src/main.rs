@@ -176,6 +176,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .allow_methods([Method::GET])
             .allow_headers(AllowHeaders::any());
 
+        #[allow(unused_mut)]
         let mut user_router = Router::new().layer(cors);
 
         #[cfg(feature = "websocket")]
