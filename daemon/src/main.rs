@@ -204,9 +204,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         #[cfg(feature = "backups")]
         {
             user_router = user_router
-                .route("/backup/rt", get(web::backup::server_user_backup_realtime))
                 .route(
-                    "/backup/:server_id",
+                    "/backup/:server_id/rt",
+                    get(web::backup::server_user_backup_realtime),
+                )
+                .route(
+                    "/backup/:server_id/:backup_id",
                     get(web::backup::server_user_download_backup),
                 );
         }
@@ -223,20 +226,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let state1 = state.clone();
         let config1 = config.clone();
         tokio::task::spawn(async move {
-            let mut keys = Vec::with_capacity(config1.ssh_host_key.len());
-            for key in &config1.ssh_host_key {
+            let mut keys = Vec::with_capacity(config1.ssh.host_key.len());
+            for key in &config1.ssh.host_key {
                 keys.push(key.as_russh_key().await?);
             }
             DaemonSSHServer {
                 state: state1,
-                cache_invalidation: Duration::from_millis(config1.ssh_auth_cache_duration),
+                cache_invalidation: Duration::from_millis(config1.ssh.auth_cache_duration),
             }
             .run_on_address(
                 Arc::new(Config {
                     keys,
                     ..Config::default()
                 }),
-                &config1.ssh_bind,
+                &config1.ssh.bind,
             )
             .await
         });

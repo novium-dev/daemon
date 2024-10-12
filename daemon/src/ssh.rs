@@ -135,7 +135,7 @@ async fn password_auth(
         .client
         .get(format!(
             "{}/api/auth/password?node={}",
-            state.config.ssh_auth_url, state.config.identifier
+            state.config.ssh.auth_url, state.config.identifier
         ))
         .basic_auth(user, Some(password))
         .send()
@@ -160,7 +160,7 @@ async fn publickey_auth(
         .client
         .get(format!(
             "{}/api/auth/publickey?node={}",
-            state.config.ssh_auth_url, state.config.identifier
+            state.config.ssh.auth_url, state.config.identifier
         ))
         .basic_auth(user, Some(public_key.fingerprint()))
         .send()

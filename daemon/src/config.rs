@@ -25,23 +25,26 @@ pub(crate) struct DaemonConfig {
     #[cfg(feature = "backups")]
     pub(crate) backup: BackupConfig,
     pub(crate) bind: String,
-    #[cfg(feature = "ssh")]
-    pub(crate) ssh_bind: String,
     pub(crate) database: String,
     #[cfg(feature = "ssl")]
     pub(crate) ssl: SSLConfig,
     #[cfg(feature = "ssh")]
-    pub(crate) ssh_host_key: Vec<SSHHostKey>,
-    #[cfg(feature = "ssh")]
-    pub(crate) ssh_auth_cache_duration: u64,
-    #[cfg(feature = "ssh")]
-    pub(crate) ssh_auth_url: String,
+    pub(crate) ssh: SSHConfig,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct StorageConfig {
     pub(crate) path: String,
     pub(crate) method: StorageMethod,
+}
+
+#[cfg(feature = "ssh")]
+#[derive(Deserialize)]
+pub(crate) struct SSHConfig {
+    pub(crate) bind: String,
+    pub(crate) host_key: Vec<SSHHostKey>,
+    pub(crate) auth_cache_duration: u64,
+    pub(crate) auth_url: String,
 }
 
 #[cfg(feature = "backups")]
