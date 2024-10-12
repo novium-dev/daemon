@@ -1,17 +1,19 @@
-use crate::config::{BackupMethod, DaemonConfig};
-use crate::storage::StorageIdentifier;
-use crate::utils::{storage_read, StorageError};
-use crate::DaemonState;
-use axum::body::Body;
-use chrono::Utc;
-use reqwest::StatusCode;
 use std::io;
-use std::io::ErrorKind;
 use std::ops::DerefMut;
 use std::path::PathBuf;
+
+use axum::body::Body;
+use axum::http::StatusCode;
+use chrono::Utc;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::AsyncWriteExt;
+use tokio::io::BufReader;
+use tokio_tar::Archive;
 use tokio_util::io::ReaderStream;
+
+use crate::config::{BackupMethod, DaemonConfig};
+use crate::storage::StorageIdentifier;
+use crate::utils::{storage_read, storage_write, StorageError};
+use crate::{storage, DaemonState};
 
 pub(crate) async fn create_backup(
     state: &DaemonState,
@@ -35,7 +37,7 @@ pub(crate) async fn create_backup(
 }
 
 #[inline(always)]
-pub(crate) async fn create_backup0(
+async fn create_backup0(
     config: &DaemonConfig,
     path: String,
     id: StorageIdentifier,
@@ -63,6 +65,7 @@ pub(crate) async fn create_backup0(
         BackupMethod::Btrfs { .. } => {
             use btrfsutil::subvolume::SnapshotFlags;
             use btrfsutil::BtrfsUtilError;
+            use std::io::ErrorKind;
 
             tokio::task::spawn_blocking(move || {
                 let subvol = btrfsutil::subvolume::Subvolume::get(dir.as_path())?;
@@ -76,6 +79,73 @@ pub(crate) async fn create_backup0(
         }
     }
     Ok(timestamp)
+}
+
+pub(crate) async fn restore_backup(
+    state: &DaemonState,
+    id: StorageIdentifier,
+    backup: i64,
+) -> Result<(), StatusCode> {
+    let (path, lock, disk) = storage_write(
+        &state.config,
+        state.conn.lock().await.deref_mut(),
+        &state.storages,
+        id,
+        true,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
+
+    restore_backup0(&state.config, id, path, backup, disk)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn restore_backup0(
+    config: &DaemonConfig,
+    id: StorageIdentifier,
+    path: String,
+    timestamp: i64,
+    disk: Option<u64>,
+) -> Result<(), io::Error> {
+    let dir = PathBuf::from(path);
+    let target_dir = PathBuf::from(&config.backup.path).join(id.as_pathbuf());
+    match config.backup.method {
+        BackupMethod::Archive { ref compression } => {
+            let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
+            let file = File::open(target).await?;
+            let decoder = compression.create_decoder(BufReader::new(file));
+            let mut archive = Archive::new(decoder);
+            storage::delete(config, id).await?;
+            storage::ensure_exists(config, id, disk).await?;
+            archive.unpack(&dir).await?;
+        }
+        #[cfg(feature = "btrfs")]
+        BackupMethod::Btrfs { .. } => {
+            use btrfsutil::subvolume::{DeleteFlags, SnapshotFlags, Subvolume};
+            use std::io::ErrorKind;
+            let target = target_dir.join(timestamp.to_string());
+            tokio::task::spawn_blocking(move || {
+                let snapshot = Subvolume::get(target.as_path())
+                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                let storage = Subvolume::get(dir.as_path())
+                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                storage
+                    .delete(Some(DeleteFlags::RECURSIVE))
+                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                snapshot
+                    .snapshot(dir.as_path(), Some(SnapshotFlags::empty()), None)
+                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                Ok::<(), io::Error>(())
+            })
+            .await
+            .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+        }
+    }
+    Ok(())
 }
 
 pub(crate) async fn list_backups(
@@ -183,6 +253,7 @@ async fn backup_to_stream0(
         BackupMethod::Btrfs {
             ref jit_compression,
         } => {
+            use tokio::io::AsyncWriteExt;
             let compression = *jit_compression;
             let target = target_dir.join(timestamp.to_string());
             let (sender, recv) = tokio::io::duplex(1024 * 1024);

@@ -1,5 +1,44 @@
 #![forbid(unsafe_code)]
 
+use std::collections::HashMap;
+use std::error::Error;
+use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
+use std::process::exit;
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::routing::{delete, get, patch, put};
+use axum::Router;
+use bollard::Docker;
+use diesel_async::{AsyncConnection, AsyncMysqlConnection};
+use env_logger::Env;
+use libc::SIGINT;
+use log::{info, warn};
+#[cfg(feature = "ssh")]
+use reqwest::Client;
+#[cfg(feature = "ssh")]
+use russh::server::{Config, Server as SSHServer};
+use signal_hook::iterator::Signals;
+use tokio::fs::File;
+use tokio::io::{AsyncReadExt, AsyncWrite};
+use tokio::runtime::Handle;
+use tokio::sync::broadcast::Sender;
+use tokio::sync::{Mutex, RwLock};
+use tokio::task::JoinSet;
+use tower_http::validate_request::ValidateRequestHeaderLayer;
+use uuid::Uuid;
+
+pub use daemon_common as common;
+
+use crate::config::DaemonConfig;
+use crate::schema::FetchedServer;
+#[cfg(feature = "ssh")]
+use crate::ssh::DaemonSSHServer;
+use crate::storage::StorageIdentifier;
+use crate::terminal::TerminalSession;
+use crate::utils::ChannelWriteData;
+
 mod config;
 #[cfg(feature = "database")]
 mod database;
@@ -16,42 +55,6 @@ mod storage;
 mod terminal;
 mod utils;
 mod web;
-
-use crate::config::DaemonConfig;
-use crate::schema::FetchedServer;
-#[cfg(feature = "ssh")]
-use crate::ssh::DaemonSSHServer;
-use crate::storage::StorageIdentifier;
-use crate::terminal::TerminalSession;
-use crate::utils::ChannelWriteData;
-use axum::routing::{delete, get, patch, put};
-use axum::Router;
-use bollard::Docker;
-pub use daemon_common as common;
-use diesel_async::{AsyncConnection, AsyncMysqlConnection};
-use env_logger::Env;
-use libc::SIGINT;
-use log::{info, warn};
-#[cfg(feature = "ssh")]
-use reqwest::Client;
-#[cfg(feature = "ssh")]
-use russh::server::{Config, Server as SSHServer};
-use signal_hook::iterator::Signals;
-use std::collections::HashMap;
-use std::error::Error;
-use std::ops::{Deref, DerefMut};
-use std::pin::Pin;
-use std::process::exit;
-use std::sync::Arc;
-use std::time::Duration;
-use tokio::fs::File;
-use tokio::io::{AsyncReadExt, AsyncWrite};
-use tokio::runtime::Handle;
-use tokio::sync::broadcast::Sender;
-use tokio::sync::{Mutex, RwLock};
-use tokio::task::JoinSet;
-use tower_http::validate_request::ValidateRequestHeaderLayer;
-use uuid::Uuid;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -156,6 +159,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .route("/", put(web::backup::server_create_backup))
                 .route("/:backup_id", get(web::backup::server_download_backup))
                 .route("/:backup_id", delete(web::backup::server_delete_backup))
+                .route(
+                    "/:backup_id/restore",
+                    get(web::backup::server_restore_backup),
+                )
                 .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
         );
     }

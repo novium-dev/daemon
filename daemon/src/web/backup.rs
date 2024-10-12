@@ -1,10 +1,12 @@
-use crate::storage::StorageIdentifier;
-use crate::{storage, DaemonState};
 use axum::body::Body;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
+
 use daemon_common::payload::TimeIdResponse;
+
+use crate::storage::StorageIdentifier;
+use crate::{storage, DaemonState};
 
 pub(crate) async fn server_create_backup(
     State(state): State<DaemonState>,
@@ -44,4 +46,12 @@ pub(crate) async fn server_list_backups(
 ) -> Result<Json<Vec<i64>>, StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     Ok(Json(storage::backup::list_backups(&state, storage).await?))
+}
+
+pub(crate) async fn server_restore_backup(
+    State(state): State<DaemonState>,
+    Path((server_id, backup_id)): Path<(u32, i64)>,
+) -> Result<(), StatusCode> {
+    let storage = StorageIdentifier::Primary(server_id);
+    storage::backup::restore_backup(&state, storage, backup_id).await
 }

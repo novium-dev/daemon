@@ -1,3 +1,22 @@
+use std::collections::HashMap;
+use std::future::Future;
+use std::io;
+use std::marker::PhantomData;
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+
+use axum::async_trait;
+use axum::http::StatusCode;
+use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
+use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
+#[cfg(feature = "database")]
+use tokio::sync::OwnedMutexGuard;
+use tokio::sync::{Mutex, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
+use tokio::time::error::Elapsed;
+
+use daemon_common::server::ServerStats;
+
 use crate::config::DaemonConfig;
 #[cfg(feature = "database")]
 use crate::schema::{databases, Database, FetchedDatabase};
@@ -6,22 +25,6 @@ use crate::server::InternalServerState;
 use crate::storage::{ensure_exists, StorageIdentifier};
 use crate::web::diesel_error_to_http;
 use crate::ServerData;
-use axum::async_trait;
-use axum::http::StatusCode;
-use daemon_common::server::ServerStats;
-use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
-use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
-use std::collections::HashMap;
-use std::future::Future;
-use std::io;
-use std::marker::PhantomData;
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
-#[cfg(feature = "database")]
-use tokio::sync::OwnedMutexGuard;
-use tokio::sync::{Mutex, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
-use tokio::time::error::Elapsed;
 
 pub(crate) fn from_mib(mib: u32) -> i64 {
     mib as i64 * 1024 * 1024
@@ -108,14 +111,25 @@ pub(crate) async fn storage_write(
     conn: &mut AsyncMysqlConnection,
     storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
     storage: StorageIdentifier,
-) -> Result<(String, OwnedRwLockWriteGuard<()>), StorageError> {
+    timeout: bool,
+) -> Result<(String, OwnedRwLockWriteGuard<()>, Option<u64>), StorageError> {
     let (disk, lock) = storage_lock(conn, storages, storage)
         .await
         .map_err(StorageError::Diesel)?;
     let path = ensure_exists(config, storage, disk)
         .await
         .map_err(StorageError::IO)?;
-    Ok((path, lock.write_owned().await))
+    if timeout {
+        Ok((
+            path,
+            tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
+                .await
+                .map_err(StorageError::Timeout)?,
+            disk,
+        ))
+    } else {
+        Ok((path, lock.write_owned().await, disk))
+    }
 }
 
 #[allow(unused)]
