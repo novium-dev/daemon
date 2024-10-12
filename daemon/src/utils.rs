@@ -118,6 +118,7 @@ pub(crate) async fn storage_write(
     Ok((path, lock.write_owned().await))
 }
 
+#[allow(unused)]
 #[derive(Debug)]
 pub(crate) enum StorageError {
     Diesel(diesel::result::Error),
@@ -125,6 +126,7 @@ pub(crate) enum StorageError {
     Timeout(Elapsed),
 }
 
+#[allow(unused)]
 impl StorageError {
     pub(crate) fn into_http(self) -> StatusCode {
         match self {
