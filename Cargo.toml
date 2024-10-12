@@ -18,7 +18,7 @@ rand = "0.8.5"
 env_logger = "0.11.5"
 signal-hook = "0.3.17"
 openssl = "0.10.66"
-termion = "4.0.2"
+termion = "4.0.3"
 http = "1.1.0"
 async-trait = "0.1.83"
 
