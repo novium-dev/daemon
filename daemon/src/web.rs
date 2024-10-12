@@ -12,7 +12,8 @@ pub(crate) mod files;
 pub(crate) mod payload;
 pub(crate) mod resource;
 pub(crate) mod server;
-mod user;
+#[cfg(feature = "user")]
+pub(crate) mod user;
 #[cfg(feature = "websocket")]
 pub(crate) mod websocket;
 

@@ -171,6 +171,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         );
     }
 
+    #[cfg(feature = "user")]
     {
         use axum::http::{HeaderValue, Method};
         use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};

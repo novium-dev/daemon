@@ -18,8 +18,10 @@ pub(crate) struct DaemonConfig {
     #[allow(unused)]
     #[serde(deserialize_with = "deserialize_user_key")]
     pub(crate) user_key: VerifyingKey,
+    #[cfg(feature = "user")]
     #[allow(unused)]
     pub(crate) user_allow_duration: u64,
+    #[cfg(feature = "user")]
     pub(crate) origin: String,
     pub(crate) storage: StorageConfig,
     #[cfg(feature = "backups")]

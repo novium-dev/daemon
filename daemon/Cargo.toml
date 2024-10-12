@@ -11,9 +11,10 @@ sftp = ["ssh", "russh-sftp"]
 files = ["daemon_common/files"]
 backups = ["async-compression"]
 database = ["daemon_common/database"]
-websocket = ["axum/ws", "daemon_common/websocket"]
-user_debug_auth_bypass = ["websocket"]
+websocket = ["axum/ws", "daemon_common/websocket", "user"]
+user_debug_auth_bypass = ["user"]
 btrfs = ["btrfsutil"]
+user = []
 
 default = ["ssl", "ssh", "sftp", "websocket", "database", "files", "backups"]
 

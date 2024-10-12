@@ -1,12 +1,11 @@
 use axum::body::Body;
-use axum::extract::{Path, Query, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
 
 use daemon_common::payload::TimeIdResponse;
 
 use crate::storage::StorageIdentifier;
-use crate::web::user::{authenticate_user, GenericUserQuery};
 use crate::{storage, DaemonState};
 
 pub(crate) async fn server_create_backup(
@@ -30,12 +29,13 @@ pub(crate) async fn server_download_backup(
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[cfg(feature = "user")]
 pub(crate) async fn server_user_download_backup(
     State(state): State<DaemonState>,
     Path((server_id, backup_id)): Path<(u32, i64)>,
-    Query(GenericUserQuery { timestamp, verify }): Query<GenericUserQuery>,
+    axum::extract::Query(crate::web::user::GenericUserQuery { timestamp, verify }): axum::extract::Query<crate::web::user::GenericUserQuery>,
 ) -> Result<Body, StatusCode> {
-    authenticate_user(
+    crate::web::user::authenticate_user(
         "backup",
         server_id,
         &state,
@@ -61,12 +61,14 @@ pub(crate) async fn server_backup_realtime(
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[cfg(feature = "user")]
 pub(crate) async fn server_user_backup_realtime(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
-    Query(GenericUserQuery { timestamp, verify }): Query<GenericUserQuery>,
+    axum::extract::Query(crate::web::user::GenericUserQuery { timestamp, verify }): axum::extract::Query<crate::web::user::GenericUserQuery>,
 ) -> Result<Body, StatusCode> {
-    authenticate_user("backup_rt", server_id, &state, &timestamp, &verify, None).await?;
+    crate::web::user::authenticate_user("backup_rt", server_id, &state, &timestamp, &verify, None)
+        .await?;
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::stream_realtime(&state, storage)
         .await
