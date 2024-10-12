@@ -5,8 +5,9 @@ use std::path::PathBuf;
 use axum::body::Body;
 use axum::http::StatusCode;
 use chrono::Utc;
+use log::debug;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::BufReader;
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio_tar::Archive;
 use tokio_util::io::ReaderStream;
 
@@ -31,7 +32,10 @@ pub(crate) async fn create_backup(
 
     let id = create_backup0(&state.config, path, id)
         .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .map_err(|err| {
+            debug!("Backup creation failed: {:?}", err);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
     drop(lock);
     Ok(id)
 }
@@ -61,6 +65,7 @@ async fn create_backup0(
             archive.follow_symlinks(false);
             archive.append_dir_all("", &dir).await?;
             archive.finish().await?;
+            archive.into_inner().await.unwrap().shutdown().await?;
         }
         #[cfg(feature = "btrfs")]
         BackupMethod::Btrfs { .. } => {
@@ -261,6 +266,7 @@ async fn backup_to_stream0(
             tokio::task::spawn(async move {
                 let encoder = compression.create_encoder(sender);
                 let mut archive = tokio_tar::Builder::new(encoder);
+                archive.follow_symlinks(false);
                 archive.append_dir_all("", &target).await?;
                 archive.finish().await?;
                 archive.into_inner().await.unwrap().shutdown().await?;
