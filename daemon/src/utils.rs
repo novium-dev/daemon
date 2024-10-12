@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::io;
 use std::marker::PhantomData;
@@ -61,11 +61,11 @@ async fn storage_lock(
     conn: &mut AsyncMysqlConnection,
     storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
     storage: StorageIdentifier,
-) -> Result<(Option<u64>, Arc<RwLock<()>>), diesel::result::Error> {
-    let disk = match storage {
+) -> Result<(Option<u64>, Arc<RwLock<()>>, HashSet<String>), diesel::result::Error> {
+    let (disk, backup_exclude) = match storage {
         StorageIdentifier::Primary(server_id) => {
             let server = generic_server_select(conn, server_id).await?;
-            server.disk
+            (server.disk, server.backup_exclude)
         }
     };
     let mut storages = storages.lock().await;
@@ -77,7 +77,7 @@ async fn storage_lock(
         }
         Some(lock) => lock.clone(),
     };
-    Ok((disk, lock))
+    Ok((disk, lock, backup_exclude))
 }
 
 pub(crate) async fn storage_read(
@@ -86,8 +86,8 @@ pub(crate) async fn storage_read(
     storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
     storage: StorageIdentifier,
     timeout: bool,
-) -> Result<(String, OwnedRwLockReadGuard<()>), StorageError> {
-    let (disk, lock) = storage_lock(conn, storages, storage)
+) -> Result<(String, OwnedRwLockReadGuard<()>, HashSet<String>), StorageError> {
+    let (disk, lock, backup_exclude) = storage_lock(conn, storages, storage)
         .await
         .map_err(StorageError::Diesel)?;
     let path = ensure_exists(config, storage, disk)
@@ -99,9 +99,10 @@ pub(crate) async fn storage_read(
             tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
                 .await
                 .map_err(StorageError::Timeout)?,
+            backup_exclude,
         ))
     } else {
-        Ok((path, lock.read_owned().await))
+        Ok((path, lock.read_owned().await, backup_exclude))
     }
 }
 
@@ -113,7 +114,7 @@ pub(crate) async fn storage_write(
     storage: StorageIdentifier,
     timeout: bool,
 ) -> Result<(String, OwnedRwLockWriteGuard<()>, Option<u64>), StorageError> {
-    let (disk, lock) = storage_lock(conn, storages, storage)
+    let (disk, lock, _) = storage_lock(conn, storages, storage)
         .await
         .map_err(StorageError::Diesel)?;
     let path = ensure_exists(config, storage, disk)

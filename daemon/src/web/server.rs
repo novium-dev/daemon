@@ -1,12 +1,6 @@
-use crate::common::payload::server::ServerPayload;
-use crate::common::payload::IdResponse;
-use crate::schema::FetchedServer;
-use crate::schema::{server_buildargs, server_capadd, server_capdrop, server_ports, servers};
-use crate::server::{InternalServerState, ServerStartError, ServerStopError};
-use crate::storage::StorageIdentifier;
-use crate::utils::{server, storage_read};
-use crate::web::diesel_error_to_http;
-use crate::{schema, storage, DaemonState};
+use std::ops::DerefMut;
+use std::time::Duration;
+
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -14,9 +8,19 @@ use diesel::dsl::{delete, insert_into, select};
 use diesel::{update, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl};
 use log::{error, warn};
-use std::ops::DerefMut;
-use std::time::Duration;
 use tokio::time::timeout;
+
+use crate::common::payload::server::ServerPayload;
+use crate::common::payload::IdResponse;
+use crate::schema::FetchedServer;
+use crate::schema::{
+    server_backup_exclude, server_buildargs, server_capadd, server_capdrop, server_ports, servers,
+};
+use crate::server::{InternalServerState, ServerStartError, ServerStopError};
+use crate::storage::StorageIdentifier;
+use crate::utils::{server, storage_read};
+use crate::web::diesel_error_to_http;
+use crate::{schema, storage, DaemonState};
 
 pub(crate) async fn create_server(
     State(state): State<DaemonState>,
@@ -183,6 +187,10 @@ pub(crate) async fn modify0(
             .filter(server_buildargs::dsl::server_id.eq(server_id))
             .execute(conn)
             .await?;
+        delete(server_backup_exclude::dsl::server_backup_exclude)
+            .filter(server_backup_exclude::dsl::server_id.eq(server_id))
+            .execute(conn)
+            .await?;
 
         for cap in &build.cap_add {
             insert_into(server_capadd::dsl::server_capadd)
@@ -208,6 +216,15 @@ pub(crate) async fn modify0(
                     server_buildargs::dsl::server_id.eq(server_id),
                     server_buildargs::dsl::key.eq(key),
                     server_buildargs::dsl::value.eq(value),
+                ))
+                .execute(conn)
+                .await?;
+        }
+        for exclude in &build.backup_exclude {
+            insert_into(server_backup_exclude::dsl::server_backup_exclude)
+                .values((
+                    server_backup_exclude::dsl::server_id.eq(server_id),
+                    server_backup_exclude::dsl::exclude.eq(exclude),
                 ))
                 .execute(conn)
                 .await?;

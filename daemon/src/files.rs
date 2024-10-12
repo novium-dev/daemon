@@ -1,21 +1,24 @@
-use crate::storage::StorageIdentifier;
-use crate::utils::{parse_path, storage_read, StorageError};
-use crate::DaemonState;
-use axum::body::{Body, BodyDataStream};
-use axum::http::StatusCode;
-use daemon_common::files::FileMode;
-use daemon_common::payload::files::FileResponse;
-use diesel_async::AsyncMysqlConnection;
-use futures_util::TryStreamExt;
 use std::fs::Metadata;
 use std::io;
 use std::io::ErrorKind;
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
+
+use axum::body::{Body, BodyDataStream};
+use axum::http::StatusCode;
+use diesel_async::AsyncMysqlConnection;
+use futures_util::TryStreamExt;
 use tokio::fs::OpenOptions;
 use tokio::io::BufWriter;
 use tokio::sync::OwnedMutexGuard;
 use tokio_util::io::{ReaderStream, StreamReader};
+
+use daemon_common::files::FileMode;
+use daemon_common::payload::files::FileResponse;
+
+use crate::storage::StorageIdentifier;
+use crate::utils::{parse_path, storage_read, StorageError};
+use crate::DaemonState;
 
 pub(crate) async fn list_files(
     state: &DaemonState,
@@ -23,7 +26,7 @@ pub(crate) async fn list_files(
     storage: StorageIdentifier,
     path: String,
 ) -> Result<Vec<FileResponse>, StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
@@ -78,7 +81,7 @@ pub(crate) async fn stat_file(
     storage: StorageIdentifier,
     path: String,
 ) -> Result<FileResponse, StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
@@ -122,7 +125,7 @@ pub(crate) async fn rename_file(
     from: String,
     to: String,
 ) -> Result<(), StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
@@ -153,7 +156,7 @@ pub(crate) async fn copy_file(
     from: String,
     to: String,
 ) -> Result<(), StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
@@ -182,7 +185,7 @@ pub(crate) async fn download_file(
     storage: StorageIdentifier,
     path: String,
 ) -> Result<Body, StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
@@ -211,7 +214,7 @@ pub(crate) async fn write_file(
     path: String,
     stream: BodyDataStream,
 ) -> Result<(), StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
@@ -250,7 +253,7 @@ pub(crate) async fn mkdir_file(
     path: String,
     recursive: bool,
 ) -> Result<(), StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
@@ -286,7 +289,7 @@ pub(crate) async fn symlink_file(
     path: String,
     content: String,
 ) -> Result<(), StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);
@@ -314,7 +317,7 @@ pub(crate) async fn delete_file(
     path: String,
     recursive: bool,
 ) -> Result<(), StatusCode> {
-    let (_path, lock) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
+    let (_path, lock, _) = storage_read(&state.config, &mut conn, &state.storages, storage, true)
         .await
         .map_err(StorageError::into_http)?;
     drop(conn);

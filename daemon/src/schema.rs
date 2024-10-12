@@ -1,10 +1,11 @@
+use std::collections::{HashMap, HashSet};
+
 use diesel::result::Error;
 use diesel::{
     define_sql_function, Associations, BelongingToDsl, Identifiable, Insertable, Queryable,
     Selectable,
 };
 use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
-use std::collections::HashMap;
 
 #[cfg(feature = "database")]
 #[derive(Clone, Default, Eq, PartialEq)]
@@ -48,6 +49,7 @@ pub(crate) struct FetchedServer {
     pub(crate) build_dockerfile: String,
     pub(crate) build_args: HashMap<String, String>,
     pub(crate) build_identifier: String,
+    pub(crate) backup_exclude: HashSet<String>,
 
     pub(crate) cpu: Option<f32>,
     pub(crate) ram: Option<u32>,
@@ -72,6 +74,13 @@ impl Server {
                 .into_iter()
                 .map(|arg| (arg.key, arg.value)),
         );
+        let backup_exclude = HashSet::from_iter(
+            ServerBackupExclude::belonging_to(&self)
+                .load::<ServerBackupExclude>(conn)
+                .await?
+                .into_iter()
+                .map(|arg| arg.exclude),
+        );
 
         let ports = Port::belonging_to(&self).load::<Port>(conn).await?;
 
@@ -94,6 +103,7 @@ impl Server {
             build_dockerfile: self.build_dockerfile,
             build_args,
             build_identifier: self.build_identifier,
+            backup_exclude,
 
             cpu: self.cpu,
             ram: self.ram,
@@ -235,6 +245,24 @@ diesel::table! {
         id -> Unsigned<Integer>,
         server_id -> Unsigned<Integer>,
         capability -> VarChar,
+    }
+}
+
+#[derive(Identifiable, Insertable, Queryable, Selectable, Associations)]
+#[diesel(table_name = server_backup_exclude)]
+#[diesel(belongs_to(Server, foreign_key = server_id))]
+#[diesel(primary_key(id))]
+pub(crate) struct ServerBackupExclude {
+    pub(crate) id: u32,
+    pub(crate) server_id: u32,
+    pub(crate) exclude: String,
+}
+
+diesel::table! {
+    server_backup_exclude (id) {
+        id -> Unsigned<Integer>,
+        server_id -> Unsigned<Integer>,
+        exclude -> VarChar,
     }
 }
 

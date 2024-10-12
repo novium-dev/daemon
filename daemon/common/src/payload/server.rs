@@ -1,7 +1,9 @@
+use std::collections::{HashMap, HashSet};
+
+use serde::{Deserialize, Serialize};
+
 #[cfg(target_arch = "wasm32")]
 use super::*;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize)]
 pub struct ServerPayload {
@@ -27,6 +29,8 @@ pub struct ServerBuildPayload {
     pub identifier: String,
     pub dockerfile: String,
     pub build_args: HashMap<String, String>,
+
+    pub backup_exclude: HashSet<String>,
 
     pub cap_add: Vec<String>,
     pub cap_drop: Vec<String>,

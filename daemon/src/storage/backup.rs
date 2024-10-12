@@ -1,14 +1,17 @@
+use std::collections::HashSet;
 use std::io;
 use std::ops::DerefMut;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use axum::async_trait;
 use axum::body::Body;
 use axum::http::StatusCode;
 use chrono::Utc;
 use log::debug;
+use tokio::fs;
 use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncWriteExt, BufReader};
-use tokio_tar::Archive;
+use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
+use tokio_tar::{Archive, Builder};
 use tokio_util::io::ReaderStream;
 
 use crate::config::{BackupMethod, DaemonConfig};
@@ -20,7 +23,7 @@ pub(crate) async fn create_backup(
     state: &DaemonState,
     id: StorageIdentifier,
 ) -> Result<i64, StatusCode> {
-    let (path, lock) = storage_read(
+    let (path, lock, backup_exclude) = storage_read(
         &state.config,
         state.conn.lock().await.deref_mut(),
         &state.storages,
@@ -30,7 +33,7 @@ pub(crate) async fn create_backup(
     .await
     .map_err(StorageError::into_http)?;
 
-    let id = create_backup0(&state.config, path, id)
+    let id = create_backup0(&state.config, path, id, backup_exclude)
         .await
         .map_err(|err| {
             debug!("Backup creation failed: {:?}", err);
@@ -45,6 +48,7 @@ async fn create_backup0(
     config: &DaemonConfig,
     path: String,
     id: StorageIdentifier,
+    exclude: HashSet<String>,
 ) -> Result<i64, io::Error> {
     let dir = PathBuf::from(path);
     let target_dir = PathBuf::from(&config.backup.path).join(id.as_pathbuf());
@@ -63,7 +67,9 @@ async fn create_backup0(
             let encoder = compression.create_encoder(file);
             let mut archive = tokio_tar::Builder::new(encoder);
             archive.follow_symlinks(false);
-            archive.append_dir_all("", &dir).await?;
+            archive
+                .append_dir_all_exclude("", &dir, exclude, false)
+                .await?;
             archive.finish().await?;
             archive.into_inner().await.unwrap().shutdown().await?;
         }
@@ -158,7 +164,7 @@ pub(crate) async fn list_backups(
     state: &DaemonState,
     id: StorageIdentifier,
 ) -> Result<Vec<i64>, StatusCode> {
-    let (_path, lock) = storage_read(
+    let (_path, lock, _) = storage_read(
         &state.config,
         state.conn.lock().await.deref_mut(),
         &state.storages,
@@ -225,7 +231,7 @@ pub(crate) async fn backup_to_stream(
     id: StorageIdentifier,
     backup: i64,
 ) -> Result<Body, StatusCode> {
-    let (_path, lock) = storage_read(
+    let (_path, lock, backup_exclude) = storage_read(
         &state.config,
         state.conn.lock().await.deref_mut(),
         &state.storages,
@@ -234,7 +240,7 @@ pub(crate) async fn backup_to_stream(
     )
     .await
     .map_err(StorageError::into_http)?;
-    let body = backup_to_stream0(&state.config, id, backup)
+    let body = backup_to_stream0(&state.config, id, backup, backup_exclude)
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
@@ -246,6 +252,7 @@ async fn backup_to_stream0(
     config: &DaemonConfig,
     id: StorageIdentifier,
     timestamp: i64,
+    #[allow(unused)] exclude: HashSet<String>,
 ) -> Result<Body, io::Error> {
     let target_dir = PathBuf::from(&config.backup.path).join(id.as_pathbuf());
     match config.backup.method {
@@ -265,9 +272,11 @@ async fn backup_to_stream0(
             let (sender, recv) = tokio::io::duplex(1024 * 1024);
             tokio::task::spawn(async move {
                 let encoder = compression.create_encoder(sender);
-                let mut archive = tokio_tar::Builder::new(encoder);
+                let mut archive = Builder::new(encoder);
                 archive.follow_symlinks(false);
-                archive.append_dir_all("", &target).await?;
+                archive
+                    .append_dir_all_exclude("", &target, exclude, false)
+                    .await?;
                 archive.finish().await?;
                 archive.into_inner().await.unwrap().shutdown().await?;
                 Ok::<(), io::Error>(())
@@ -283,7 +292,7 @@ pub(crate) async fn delete_backup(
     id: StorageIdentifier,
     backup: i64,
 ) -> Result<(), StatusCode> {
-    let (_path, lock) = storage_read(
+    let (_path, lock, _) = storage_read(
         &state.config,
         state.conn.lock().await.deref_mut(),
         &state.storages,
@@ -329,4 +338,65 @@ async fn delete_backup0(
         }
     }
     Ok(())
+}
+
+#[async_trait]
+trait AppendDirAllExclude {
+    async fn append_dir_all_exclude<P, Q>(
+        &mut self,
+        path: P,
+        src_path: Q,
+        exclude: HashSet<String>,
+        follow: bool,
+    ) -> Result<(), io::Error>
+    where
+        P: AsRef<Path> + Send,
+        Q: AsRef<Path> + Send;
+}
+
+#[async_trait]
+impl<W: AsyncWrite + Unpin + Send> AppendDirAllExclude for Builder<W> {
+    async fn append_dir_all_exclude<P, Q>(
+        &mut self,
+        path: P,
+        src_path: Q,
+        exclude: HashSet<String>,
+        follow: bool,
+    ) -> Result<(), io::Error>
+    where
+        P: AsRef<Path> + Send,
+        Q: AsRef<Path> + Send,
+    {
+        let mut stack = vec![(src_path.as_ref().to_path_buf(), true, false)];
+        while let Some((src, is_dir, is_symlink)) = stack.pop() {
+            let dest = path
+                .as_ref()
+                .join(src.strip_prefix(src_path.as_ref()).unwrap());
+            let mut dest_str = dest.to_string_lossy().to_string();
+            if is_dir && !dest_str.ends_with("/") {
+                dest_str += "/";
+            }
+            if exclude.contains(&dest_str) {
+                continue;
+            }
+            // In case of a symlink pointing to a directory, is_dir is false, but src.is_dir() will return true
+            if is_dir || (is_symlink && follow && src.is_dir()) {
+                let mut entries = fs::read_dir(&src).await?;
+                while let Some(entry) = entries.next_entry().await.transpose() {
+                    let entry = entry?;
+                    let file_type = entry.file_type().await?;
+                    stack.push((entry.path(), file_type.is_dir(), file_type.is_symlink()));
+                }
+                if dest != Path::new("") {
+                    self.append_dir(&dest, src).await?;
+                }
+            } else if !follow && is_symlink {
+                self.append_path_with_name(&src, &dest).await?;
+            } else {
+                self.append_file(&dest, &mut fs::File::open(src).await?)
+                    .await?;
+            }
+        }
+        Ok(())
+    }
 }

@@ -1,7 +1,14 @@
-use crate::schema::FetchedServer;
-use crate::storage::StorageIdentifier;
-use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
-use crate::{utils, DaemonState, ServerData};
+use std::collections::{HashMap, HashSet};
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
+use std::future::Future;
+use std::io;
+use std::io::ErrorKind;
+use std::ops::{Add, Deref, DerefMut};
+use std::pin::Pin;
+use std::sync::Arc;
+use std::time::Duration;
+
 #[cfg(feature = "websocket")]
 use axum::extract::ws::Message;
 use bollard::container::{
@@ -12,26 +19,22 @@ use bollard::image::{BuildImageOptions, ListImagesOptions};
 use bollard::models::{HealthStatusEnum, PortBinding};
 use bollard::service::HostConfig;
 use bollard::Docker;
-use daemon_common::server::{PublicServerState, ServerStats};
 use futures::stream::StreamExt;
 use log::warn;
 use serde::{Serialize, Serializer};
-use std::collections::HashMap;
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
-use std::future::Future;
-use std::io;
-use std::io::ErrorKind;
-use std::ops::{Add, Deref, DerefMut};
-use std::pin::Pin;
-use std::sync::Arc;
-use std::time::Duration;
 use termion::color::Fg;
 use termion::{clear, color};
 use tokio::sync::broadcast::Sender;
 use tokio::sync::{Mutex, OwnedRwLockReadGuard};
 use tokio::time::Instant;
 use tokio_tar::{Builder, Header};
+
+use daemon_common::server::{PublicServerState, ServerStats};
+
+use crate::schema::FetchedServer;
+use crate::storage::StorageIdentifier;
+use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
+use crate::{utils, DaemonState, ServerData};
 
 pub(crate) const TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024;
 
@@ -216,7 +219,7 @@ impl FetchedServer {
         &self,
         docker: Arc<Docker>,
         server_data: &mut ServerData,
-        (storage_path, storage_lock): (String, OwnedRwLockReadGuard<()>),
+        (storage_path, storage_lock, _): (String, OwnedRwLockReadGuard<()>, HashSet<String>),
         server_data_arc: Arc<Mutex<ServerData>>,
         state: DaemonState,
     ) -> Result<(), ServerStartError> {
@@ -572,7 +575,7 @@ impl FetchedServer {
         docker: Arc<Docker>,
         server_data: &'a mut ServerData,
         server_data_arc: Arc<Mutex<ServerData>>,
-        storage: (String, OwnedRwLockReadGuard<()>),
+        storage: (String, OwnedRwLockReadGuard<()>, HashSet<String>),
         state: DaemonState,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
         Box::pin(self.start(docker, server_data, storage, server_data_arc, state))

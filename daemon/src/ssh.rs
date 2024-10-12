@@ -1,20 +1,3 @@
-#[cfg(feature = "sftp")]
-pub(crate) mod sftp;
-
-#[cfg(feature = "sftp")]
-use crate::ssh::sftp::DaemonSftpSession;
-#[cfg(feature = "sftp")]
-use crate::storage::StorageIdentifier;
-use crate::terminal::{new_session, update_size, TerminalData};
-use crate::utils::{storage_read, ChannelAdapter, ChannelError, ChannelWriteData};
-use crate::{DaemonState, ServerData};
-use axum::{async_trait, http};
-use bitflags::bitflags;
-use log::{debug, error};
-use russh::server::{Auth, Handler, Msg, Server, Session};
-use russh::{Channel, ChannelId, ChannelStream, Pty};
-use russh_keys::key::PublicKey;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io::{self, ErrorKind};
@@ -23,9 +6,28 @@ use std::ops::DerefMut;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+
+use axum::{async_trait, http};
+use bitflags::bitflags;
+use log::{debug, error};
+use russh::server::{Auth, Handler, Msg, Server, Session};
+use russh::{Channel, ChannelId, ChannelStream, Pty};
+use russh_keys::key::PublicKey;
+use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
+
+#[cfg(feature = "sftp")]
+use crate::ssh::sftp::DaemonSftpSession;
+#[cfg(feature = "sftp")]
+use crate::storage::StorageIdentifier;
+use crate::terminal::{new_session, update_size, TerminalData};
+use crate::utils::{storage_read, ChannelAdapter, ChannelError, ChannelWriteData};
+use crate::{DaemonState, ServerData};
+
+#[cfg(feature = "sftp")]
+pub(crate) mod sftp;
 
 #[derive(Clone)]
 pub struct DaemonSSHServer {
@@ -549,7 +551,7 @@ impl Handler for DaemonSSHHandler {
                             .contains(PanelAuthServerPermissions::SFTP_READ)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
-                            if let Ok((_path, lock)) = storage_read(
+                            if let Ok((_path, lock, _)) = storage_read(
                                 &self.state.config,
                                 self.state.conn.lock().await.deref_mut(),
                                 &self.state.storages,
