@@ -59,7 +59,7 @@ async fn create_backup0(
             let encoder = compression.create_encoder(file);
             let mut archive = tokio_tar::Builder::new(encoder);
             archive.follow_symlinks(false);
-            archive.append_dir_all(".", &dir).await?;
+            archive.append_dir_all("", &dir).await?;
             archive.finish().await?;
         }
         #[cfg(feature = "btrfs")]
