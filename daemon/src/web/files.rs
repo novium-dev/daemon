@@ -1,17 +1,20 @@
+use axum::body::Body;
+use axum::extract::{Path, Query, Request, State};
+use axum::http::StatusCode;
+use axum::Json;
+
+use daemon_common::payload::files::{
+    PathDirectoryQuery, PathQuery, PathSymlinkQuery, PathUserQuery, TwoPathQuery,
+};
+
 use crate::common::payload::files::FileResponse;
 use crate::files::{
     copy_file, delete_file, download_file, list_files, mkdir_file, rename_file, stat_file,
     symlink_file, write_file,
 };
 use crate::storage::StorageIdentifier;
+use crate::web::user::authenticate_user;
 use crate::DaemonState;
-use axum::body::Body;
-use axum::extract::{Path, Query, Request, State};
-use axum::http::StatusCode;
-use axum::Json;
-use daemon_common::payload::files::{
-    PathDirectoryQuery, PathQuery, PathSymlinkQuery, TwoPathQuery,
-};
 
 pub(crate) async fn server_list_files(
     State(state): State<DaemonState>,
@@ -72,6 +75,28 @@ pub(crate) async fn server_download_file(
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<Body, StatusCode> {
+    let storage = StorageIdentifier::Primary(server_id);
+    download_file(&state, state.conn.clone().lock_owned().await, storage, path).await
+}
+
+pub(crate) async fn server_user_download_file(
+    State(state): State<DaemonState>,
+    Path((server_id,)): Path<(u32,)>,
+    Query(PathUserQuery {
+        path,
+        verify,
+        timestamp,
+    }): Query<PathUserQuery>,
+) -> Result<Body, StatusCode> {
+    authenticate_user(
+        "file",
+        server_id,
+        &state,
+        &timestamp,
+        &verify,
+        Some(format!("-{}", path)),
+    )
+    .await?;
     let storage = StorageIdentifier::Primary(server_id);
     download_file(&state, state.conn.clone().lock_owned().await, storage, path).await
 }

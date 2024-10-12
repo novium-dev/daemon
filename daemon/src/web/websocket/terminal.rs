@@ -1,15 +1,18 @@
-use crate::terminal::{new_session, update_size, TerminalData};
-use crate::utils::ChannelInterceptor;
-use crate::web::websocket::{authenticate, WebsocketTerminalQuery};
-use crate::{DaemonState, ServerData};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::Arc;
+
 use axum::extract::ws::{Message, WebSocket};
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use bollard::Docker;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::Arc;
 use tokio::sync::Mutex;
+
+use crate::terminal::{new_session, update_size, TerminalData};
+use crate::utils::ChannelInterceptor;
+use crate::web::user::authenticate_user;
+use crate::web::websocket::WebsocketTerminalQuery;
+use crate::{DaemonState, ServerData};
 
 pub(crate) async fn websocket(
     State(state): State<DaemonState>,
@@ -18,7 +21,7 @@ pub(crate) async fn websocket(
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, StatusCode> {
     let write = query.write;
-    authenticate(
+    authenticate_user(
         "terminal",
         server_id,
         &state,

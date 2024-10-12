@@ -1,25 +1,27 @@
-use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
-use crate::web::websocket::{authenticate, WebsocketStatsQuery};
-use crate::{DaemonState, ServerData};
+use std::sync::Arc;
+use std::time::Duration;
+
 use axum::extract::ws::WebSocket;
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use log::warn;
-use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
+use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
+use crate::web::user::{authenticate_user, GenericUserQuery};
+use crate::{DaemonState, ServerData};
+
 pub(crate) async fn websocket(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
-    query: Query<WebsocketStatsQuery>,
+    query: Query<GenericUserQuery>,
     ws: WebSocketUpgrade,
 ) -> Result<impl IntoResponse, StatusCode> {
-    authenticate(
+    authenticate_user(
         "stats",
         server_id,
         &state,

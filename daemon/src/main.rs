@@ -163,11 +163,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     "/:backup_id/restore",
                     get(web::backup::server_restore_backup),
                 )
-                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
+                .layer(ValidateRequestHeaderLayer::bearer(&config.token)),
         );
     }
 
-    #[cfg(feature = "websocket")]
     {
         use axum::http::{HeaderValue, Method};
         use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
@@ -177,10 +176,11 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .allow_methods([Method::GET])
             .allow_headers(AllowHeaders::any());
 
-        app = app.nest(
-            "/user",
-            Router::new()
-                .layer(cors)
+        let mut user_router = Router::new().layer(cors);
+
+        #[cfg(feature = "websocket")]
+        {
+            user_router = user_router
                 .route(
                     "/server/:server_id/terminal",
                     get(web::websocket::terminal::websocket),
@@ -188,8 +188,26 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 .route(
                     "/server/:server_id/stats",
                     get(web::websocket::stats::websocket),
-                ),
-        );
+                );
+        }
+
+        #[cfg(feature = "files")]
+        {
+            user_router = user_router.route(
+                "/files/:server_id/file",
+                get(web::files::server_user_download_file),
+            );
+        }
+
+        #[cfg(feature = "backups")]
+        {
+            user_router = user_router.route(
+                "/backup/:server_id",
+                get(web::backup::server_user_download_backup),
+            );
+        }
+
+        app = app.nest("/user", user_router);
     }
     let app = app.with_state(state.clone());
 
@@ -377,5 +395,5 @@ compile_error!("This daemon only runs on Linux.");
 #[cfg(all(not(debug_assertions), feature = "ssh_debug_auth_bypass"))]
 compile_error!("SSH Auth Bypass was enabled in production!");
 
-#[cfg(all(not(debug_assertions), feature = "websocket_debug_auth_bypass"))]
+#[cfg(all(not(debug_assertions), feature = "user_debug_auth_bypass"))]
 compile_error!("Websocket Auth Bypass was enabled in production!");

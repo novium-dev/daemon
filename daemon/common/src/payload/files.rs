@@ -1,6 +1,7 @@
+use serde::{Deserialize, Serialize};
+
 #[cfg(target_arch = "wasm32")]
 use super::*;
-use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 #[cfg_attr(target_arch = "wasm32", derive(Tsify))]
@@ -12,6 +13,13 @@ pub struct FileResponse {
     pub mode: u32,
     pub size: u64,
     pub path: Option<String>,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct PathUserQuery {
+    pub path: String,
+    pub verify: String,
+    pub timestamp: String,
 }
 
 #[derive(Serialize, Deserialize)]

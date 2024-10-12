@@ -1,25 +1,25 @@
 #[cfg(feature = "ssl")]
+use std::path::PathBuf;
+
+#[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
-#[cfg(all(feature = "websocket", not(feature = "websocket_debug_auth_bypass")))]
+#[cfg(all(feature = "websocket", not(feature = "user_debug_auth_bypass")))]
 use ed25519_dalek::VerifyingKey;
 #[cfg(feature = "ssh")]
 use russh_keys::encoding::Bytes;
 #[cfg(feature = "ssh")]
 use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
 use serde::Deserialize;
-#[cfg(feature = "ssl")]
-use std::path::PathBuf;
 
 #[derive(Deserialize)]
 pub(crate) struct DaemonConfig {
     #[allow(unused)]
     pub(crate) identifier: String,
     pub(crate) token: String,
-    #[cfg(all(feature = "websocket", not(feature = "websocket_debug_auth_bypass")))]
-    #[serde(deserialize_with = "deserialize_websocket_key")]
-    pub(crate) websocket_key: VerifyingKey,
-    #[cfg(all(feature = "websocket", not(feature = "websocket_debug_auth_bypass")))]
-    pub(crate) websocket_allow_duration: u64,
+    #[allow(unused)]
+    #[serde(deserialize_with = "deserialize_user_key")]
+    pub(crate) user_key: VerifyingKey,
+    pub(crate) user_allow_duration: u64,
     #[cfg(feature = "websocket")]
     pub(crate) origin: String,
     pub(crate) storage: StorageConfig,
@@ -160,8 +160,7 @@ impl ArchiveCompression {
     }
 }
 
-#[cfg(all(feature = "websocket", not(feature = "websocket_debug_auth_bypass")))]
-fn deserialize_websocket_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>
+fn deserialize_user_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>
 where
     D: serde::Deserializer<'de>,
 {

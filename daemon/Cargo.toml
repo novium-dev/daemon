@@ -12,10 +12,10 @@ files = ["daemon_common/files"]
 backups = ["async-compression"]
 database = ["daemon_common/database"]
 websocket = ["axum/ws", "daemon_common/websocket"]
-websocket_debug_auth_bypass = ["websocket"]
-
+user_debug_auth_bypass = ["websocket"]
 btrfs = ["btrfsutil"]
-default = ["ssl", "ssh", "sftp", "websocket", "database", "files", "backups", "btrfs"]
+
+default = ["ssl", "ssh", "sftp", "websocket", "database", "files", "backups"]
 
 [dependencies]
 libc.workspace = true

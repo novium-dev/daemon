@@ -1,18 +1,15 @@
-pub(crate) mod stats;
-pub(crate) mod terminal;
-
-use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
-use crate::DaemonState;
-use axum::extract::ws::{Message, WebSocket};
-use axum::http::StatusCode;
-use axum::{async_trait, Error};
-use base64::prelude::BASE64_STANDARD;
-use base64::Engine;
-use futures_util::SinkExt;
-use log::debug;
-use serde::Deserialize;
 use std::io;
 use std::io::ErrorKind;
+
+use axum::extract::ws::{Message, WebSocket};
+use axum::{async_trait, Error};
+use futures_util::SinkExt;
+use serde::Deserialize;
+
+use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
+
+pub(crate) mod stats;
+pub(crate) mod terminal;
 
 #[derive(Deserialize)]
 pub(crate) struct WebsocketTerminalQuery {
@@ -21,64 +18,6 @@ pub(crate) struct WebsocketTerminalQuery {
     cols: u32,
     rows: u32,
     write: bool,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct WebsocketStatsQuery {
-    verify: String,
-    timestamp: String,
-}
-
-pub(crate) async fn authenticate(
-    name: &str,
-    #[allow(unused)] server_id: u32,
-    #[allow(unused)] state: &DaemonState,
-    timestamp: &str,
-    verify: &String,
-    #[allow(unused)] extra: Option<String>,
-) -> Result<(), StatusCode> {
-    debug!("Authenticating WebSocket...");
-    #[allow(unused)]
-    let timestamp: u64 = timestamp.parse().map_err(|_err| StatusCode::BAD_REQUEST)?;
-    let verify = BASE64_STANDARD
-        .decode(verify.as_bytes())
-        .map_err(|_err| StatusCode::BAD_REQUEST)?;
-    #[cfg(feature = "websocket_debug_auth_bypass")]
-    if !verify.eq("bypass".as_bytes()) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
-    #[cfg(not(feature = "websocket_debug_auth_bypass"))]
-    {
-        use ed25519_dalek::{Signature, Verifier};
-        use std::time::{SystemTime, UNIX_EPOCH};
-
-        let signature_bytes: [u8; 64] =
-            verify.try_into().map_err(|_err| StatusCode::BAD_REQUEST)?;
-        state
-            .config
-            .websocket_key
-            .verify(
-                format!(
-                    "{}-{}-{}-{}{}",
-                    name,
-                    state.config.identifier,
-                    server_id,
-                    timestamp,
-                    extra.unwrap_or_default()
-                )
-                .as_bytes(),
-                &Signature::from_bytes(&signature_bytes),
-            )
-            .map_err(|_err| StatusCode::UNAUTHORIZED)?;
-        let unix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|_err| StatusCode::BAD_REQUEST)?;
-        if (timestamp + state.config.websocket_allow_duration) as u128 <= unix.as_millis() {
-            return Err(StatusCode::UNAUTHORIZED);
-        }
-    }
-    debug!("WebSocket authentication passed.");
-    Ok(())
 }
 
 impl ChannelWriteData {
