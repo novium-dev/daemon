@@ -58,7 +58,10 @@ mod web;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
+    #[cfg(not(debug_assertions))]
     let env = Env::default().filter_or("LOG_LEVEL", "info");
+    #[cfg(debug_assertions)]
+    let env = Env::default().filter_or("LOG_LEVEL", "debug");
     env_logger::init_from_env(env);
 
     let mut config_buffer = String::new();

@@ -10,7 +10,7 @@ use russh_keys::encoding::Bytes;
 use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub(crate) struct DaemonConfig {
     #[allow(unused)]
     pub(crate) identifier: String,
@@ -32,14 +32,14 @@ pub(crate) struct DaemonConfig {
     pub(crate) ssh: SSHConfig,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub(crate) struct StorageConfig {
     pub(crate) path: String,
     pub(crate) method: StorageMethod,
 }
 
 #[cfg(feature = "ssh")]
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub(crate) struct SSHConfig {
     pub(crate) bind: String,
     pub(crate) host_key: Vec<SSHHostKey>,
@@ -48,14 +48,14 @@ pub(crate) struct SSHConfig {
 }
 
 #[cfg(feature = "backups")]
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub(crate) struct BackupConfig {
     pub(crate) path: String,
     pub(crate) method: BackupMethod,
     pub(crate) rt_compression: ArchiveCompression,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Deserialize)]
 pub(crate) enum StorageMethod {
     #[serde(rename = "directory")]
     Directory,
@@ -65,7 +65,7 @@ pub(crate) enum StorageMethod {
 }
 
 #[cfg(feature = "backups")]
-#[derive(Deserialize)]
+#[derive(Clone, Copy, Deserialize)]
 #[serde(tag = "type")]
 pub(crate) enum BackupMethod {
     #[serde(rename = "archive")]
@@ -181,7 +181,7 @@ where
 }
 
 #[cfg(feature = "ssl")]
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 pub(crate) struct SSLConfig {
     pub(crate) enabled: bool,
     pub(crate) private_key: Option<String>,
@@ -200,7 +200,7 @@ impl SSLConfig {
 }
 
 #[cfg(feature = "ssh")]
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
 #[serde(tag = "type")]
 pub(crate) enum SSHHostKey {
     #[serde(rename = "ed25519")]

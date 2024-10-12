@@ -431,8 +431,7 @@ impl<W: AsyncWrite + Unpin + Send> AppendDirAllExclude for Builder<W> {
             } else if !follow && is_symlink {
                 self.append_path_with_name(&src, &dest).await?;
             } else {
-                self.append_file(&dest, &mut fs::File::open(src).await?)
-                    .await?;
+                self.append_file(&dest, &mut File::open(src).await?).await?;
             }
         }
         Ok(())
