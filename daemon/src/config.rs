@@ -1,7 +1,4 @@
-use std::collections::HashMap;
-#[cfg(feature = "ssl")]
-use std::path::PathBuf;
-
+use async_compression::Level;
 #[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
 use ed25519_dalek::VerifyingKey;
@@ -9,14 +6,19 @@ use ed25519_dalek::VerifyingKey;
 use russh_keys::encoding::Bytes;
 #[cfg(feature = "ssh")]
 use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
+use serde::de::{Error, Visitor};
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::fmt::Formatter;
+#[cfg(feature = "ssl")]
+use std::path::PathBuf;
 
 #[derive(Clone, Deserialize)]
 pub(crate) struct DaemonConfig {
     #[allow(unused)]
     pub(crate) identifier: String,
     pub(crate) token: String,
-    #[allow(unused)]
+    #[cfg(feature = "user")]
     #[serde(deserialize_with = "deserialize_user_key")]
     pub(crate) user_key: VerifyingKey,
     #[cfg(feature = "user")]
@@ -99,19 +101,47 @@ pub(crate) enum ArchiveCompression {
     #[serde(rename = "none")]
     None,
     #[serde(rename = "zstd")]
-    Zstd { level: i32 },
+    Zstd {
+        #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(default = "default_level")]
+        level: Level,
+    },
     #[serde(rename = "xz")]
-    Xz { level: i32 },
+    Xz {
+        #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(default = "default_level")]
+        level: Level,
+    },
     #[serde(rename = "zlib")]
-    Zlib { level: i32 },
+    Zlib {
+        #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(default = "default_level")]
+        level: Level,
+    },
     #[serde(rename = "gzip")]
-    Gzip { level: i32 },
+    Gzip {
+        #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(default = "default_level")]
+        level: Level,
+    },
     #[serde(rename = "lzma")]
-    Lzma { level: i32 },
+    Lzma {
+        #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(default = "default_level")]
+        level: Level,
+    },
     #[serde(rename = "brotli")]
-    Brotli { level: i32 },
+    Brotli {
+        #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(default = "default_level")]
+        level: Level,
+    },
     #[serde(rename = "bzip2")]
-    Bzip2 { level: i32 },
+    Bzip2 {
+        #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(default = "default_level")]
+        level: Level,
+    },
 }
 
 #[cfg(feature = "backups")]
@@ -139,30 +169,25 @@ impl ArchiveCompression {
         write: W,
     ) -> std::pin::Pin<Box<dyn tokio::io::AsyncWrite + Send + Sync + 'static>> {
         use async_compression::tokio::write::*;
-        use async_compression::Level;
         match self {
             ArchiveCompression::None => Box::pin(write),
             ArchiveCompression::Zstd { level } => {
-                Box::pin(ZstdEncoder::with_quality(write, Level::Precise(*level)))
+                Box::pin(ZstdEncoder::with_quality(write, *level))
             }
-            ArchiveCompression::Xz { level } => {
-                Box::pin(XzEncoder::with_quality(write, Level::Precise(*level)))
-            }
+            ArchiveCompression::Xz { level } => Box::pin(XzEncoder::with_quality(write, *level)),
             ArchiveCompression::Zlib { level } => {
-                Box::pin(ZlibEncoder::with_quality(write, Level::Precise(*level)))
+                Box::pin(ZlibEncoder::with_quality(write, *level))
             }
             ArchiveCompression::Gzip { level } => {
-                Box::pin(GzipEncoder::with_quality(write, Level::Precise(*level)))
+                Box::pin(GzipEncoder::with_quality(write, *level))
             }
             ArchiveCompression::Lzma { level } => {
-                Box::pin(LzmaEncoder::with_quality(write, Level::Precise(*level)))
+                Box::pin(LzmaEncoder::with_quality(write, *level))
             }
             ArchiveCompression::Brotli { level } => {
-                Box::pin(BrotliEncoder::with_quality(write, Level::Precise(*level)))
+                Box::pin(BrotliEncoder::with_quality(write, *level))
             }
-            ArchiveCompression::Bzip2 { level } => {
-                Box::pin(BzEncoder::with_quality(write, Level::Precise(*level)))
-            }
+            ArchiveCompression::Bzip2 { level } => Box::pin(BzEncoder::with_quality(write, *level)),
         }
     }
 
@@ -180,6 +205,58 @@ impl ArchiveCompression {
     }
 }
 
+#[cfg(feature = "backups")]
+fn default_level() -> Level {
+    Level::Default
+}
+
+#[cfg(feature = "backups")]
+fn deserialize_compression_level<'de, D>(deserializer: D) -> Result<Level, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    struct CompressionLevelVisitor;
+    impl<'de> Visitor<'de> for CompressionLevelVisitor {
+        type Value = Level;
+
+        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+            write!(
+                formatter,
+                "an integer or \"fastest\", \"default\", \"best\""
+            )
+        }
+
+        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Level::Precise(v as i32))
+        }
+
+        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            Ok(Level::Precise(v as i32))
+        }
+
+        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        where
+            E: Error,
+        {
+            match v {
+                "fastest" => Ok(Level::Fastest),
+                "default" => Ok(Level::Default),
+                "best" => Ok(Level::Best),
+                _ => Err(E::custom("Invalid compression level")),
+            }
+        }
+    }
+    let visitor = CompressionLevelVisitor;
+    deserializer.deserialize_any(visitor)
+}
+
+#[cfg(feature = "user")]
 fn deserialize_user_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>
 where
     D: serde::Deserializer<'de>,

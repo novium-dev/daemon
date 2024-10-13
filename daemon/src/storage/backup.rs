@@ -14,6 +14,7 @@ use axum::http::StatusCode;
 use chrono::Utc;
 use daemon_common::payload::backup::BackupResponseEntry;
 use log::debug;
+use serde_json::json;
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
@@ -339,9 +340,10 @@ pub(crate) async fn stream_realtime(
     )
     .await
     .map_err(StorageError::into_http)?;
-    let compression: ArchiveCompression =
-        serde_json::from_value(serde_json::Value::String(compression))
-            .map_err(|_err| StatusCode::BAD_REQUEST)?;
+    let compression: ArchiveCompression = serde_json::from_value(json!({
+        "type": compression
+    }))
+    .map_err(|_err| StatusCode::BAD_REQUEST)?;
 
     let body = stream_realtime0(path, backup_exclude, compression)
         .await
