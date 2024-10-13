@@ -541,7 +541,6 @@ impl Handler for DaemonSSHHandler {
                     let mut sftp = DaemonSftpSession {
                         access: HashMap::new(),
                         file_handles: HashMap::new(),
-                        state: self.state.clone(),
                         version: None,
                     };
 
@@ -551,7 +550,7 @@ impl Handler for DaemonSSHHandler {
                             .contains(PanelAuthServerPermissions::SFTP_READ)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
-                            if let Ok((_path, lock, _)) = storage_read(
+                            if let Ok((_path, lock, _, storage)) = storage_read(
                                 &self.state.config,
                                 self.state.conn.lock().await.deref_mut(),
                                 &self.state.storages,
@@ -562,7 +561,7 @@ impl Handler for DaemonSSHHandler {
                             {
                                 sftp.access.insert(
                                     identifier.as_vec(),
-                                    (identifier, server.permissions, lock),
+                                    (identifier, storage.clone(), server.permissions, lock),
                                 );
                             }
                         }

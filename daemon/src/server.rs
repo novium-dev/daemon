@@ -31,6 +31,7 @@ use tokio_tar::{Builder, Header};
 
 use daemon_common::server::{PublicServerState, ServerStats};
 
+use crate::config::StorageEntry;
 use crate::schema::FetchedServer;
 use crate::storage::StorageIdentifier;
 use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
@@ -219,7 +220,12 @@ impl FetchedServer {
         &self,
         docker: Arc<Docker>,
         server_data: &mut ServerData,
-        (storage_path, storage_lock, _): (String, OwnedRwLockReadGuard<()>, HashSet<String>),
+        (storage_path, storage_lock, _, _): (
+            String,
+            OwnedRwLockReadGuard<()>,
+            HashSet<String>,
+            &StorageEntry,
+        ),
         server_data_arc: Arc<Mutex<ServerData>>,
         state: DaemonState,
     ) -> Result<(), ServerStartError> {
@@ -575,7 +581,12 @@ impl FetchedServer {
         docker: Arc<Docker>,
         server_data: &'a mut ServerData,
         server_data_arc: Arc<Mutex<ServerData>>,
-        storage: (String, OwnedRwLockReadGuard<()>, HashSet<String>),
+        storage: (
+            String,
+            OwnedRwLockReadGuard<()>,
+            HashSet<String>,
+            &'a StorageEntry,
+        ),
         state: DaemonState,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
         Box::pin(self.start(docker, server_data, storage, server_data_arc, state))

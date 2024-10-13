@@ -24,17 +24,26 @@ use crate::{schema, storage, DaemonState};
 
 pub(crate) async fn create_server(
     State(state): State<DaemonState>,
-    Json(payload): Json<ServerPayload>,
+    Json(mut payload): Json<ServerPayload>,
 ) -> Result<Json<IdResponse>, StatusCode> {
-    if payload.resource.is_none() || payload.build.is_none() || payload.ports.is_none() {
+    if payload.resource.is_none()
+        || payload.build.is_none()
+        || payload.ports.is_none()
+        || payload.storage.is_none()
+    {
         return Err(StatusCode::BAD_REQUEST);
     }
+    state
+        .config
+        .storage
+        .get(payload.storage.as_ref().unwrap())
+        .ok_or(StatusCode::NOT_FOUND)?;
     let mut conn = state.conn.lock().await;
 
     let id = conn
-        .transaction(|conn| {
+        .transaction(move |conn| {
             Box::pin(async move {
-                let id = insert_dummy(conn).await?;
+                let id = insert_dummy(conn, payload.storage.take().unwrap()).await?;
                 modify0(conn, id, &payload).await?;
                 Ok::<u32, diesel::result::Error>(id)
             })
@@ -55,6 +64,9 @@ pub(crate) async fn modify_server(
         .await
         .map_err(diesel_error_to_http)?;
 
+    if payload.storage.is_some() {
+        return Err(StatusCode::NOT_IMPLEMENTED);
+    }
     conn.transaction(|conn| {
         Box::pin(async move {
             modify0(conn, server_id, &payload).await?;
@@ -125,7 +137,9 @@ pub(crate) async fn delete_server(
             state.servers.lock().await.remove(&server_id);
 
             tokio::task::spawn(async move {
-                let _ = storage::delete(&state.config, StorageIdentifier::Primary(server_id)).await;
+                if let Some(storage) = state.config.storage.get(&server.storage) {
+                    let _ = storage::delete(storage, StorageIdentifier::Primary(server_id)).await;
+                }
             });
 
             Ok(())
@@ -137,9 +151,10 @@ pub(crate) async fn delete_server(
 // ONLY EXECUTE INSIDE A TRANSACTION
 pub(crate) async fn insert_dummy(
     conn: &mut AsyncMysqlConnection,
+    storage: String,
 ) -> Result<u32, diesel::result::Error> {
     insert_into(servers::dsl::servers)
-        .default_values()
+        .values(servers::dsl::storage.eq(storage))
         .execute(conn)
         .await?;
     Ok(select(schema::last_insert_id())

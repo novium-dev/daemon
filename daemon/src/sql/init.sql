@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS `servers`
   `cpu` FLOAT(255,2),
   `ram` INT(255) UNSIGNED,
   `swap` INT(255) UNSIGNED,
-  `disk` INT(255) UNSIGNED
+  `disk` INT(255) UNSIGNED,
+  `storage` VARCHAR(255) NOT NULL DEFAULT 'local'
 );
 
 CREATE TABLE IF NOT EXISTS `server_capadd`

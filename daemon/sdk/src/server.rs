@@ -31,6 +31,7 @@ impl DeamonSDKStruct {
 
     pub async fn create_server(
         &self,
+        storage: String,
         resource: ServerResourcePayload,
         build: ServerBuildPayload,
         ports: ServerPortsPayload,
@@ -40,6 +41,7 @@ impl DeamonSDKStruct {
                 Method::PUT,
                 "server",
                 Some(&ServerPayload {
+                    storage: Some(storage),
                     resource: Some(resource),
                     build: Some(build),
                     ports: Some(ports.0),
@@ -68,6 +70,7 @@ impl DeamonSDKStruct {
                 Method::PATCH,
                 format!("server/{}", server),
                 Some(&ServerPayload {
+                    storage: None,
                     resource,
                     build,
                     ports: ports.map(|payload| payload.0),

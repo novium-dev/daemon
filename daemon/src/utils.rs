@@ -17,7 +17,7 @@ use tokio::time::error::Elapsed;
 
 use daemon_common::server::ServerStats;
 
-use crate::config::DaemonConfig;
+use crate::config::{DaemonConfig, StorageEntry};
 #[cfg(feature = "database")]
 use crate::schema::{databases, Database, FetchedDatabase};
 use crate::schema::{servers, FetchedServer, Server};
@@ -57,15 +57,31 @@ pub(crate) async fn server(
     Ok((server, servers.get(&server_id).unwrap().clone()))
 }
 
-async fn storage_lock(
+async fn storage_lock<'a>(
+    config: &'a DaemonConfig,
     conn: &mut AsyncMysqlConnection,
     storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
     storage: StorageIdentifier,
-) -> Result<(Option<u64>, Arc<RwLock<()>>, HashSet<String>), diesel::result::Error> {
-    let (disk, backup_exclude) = match storage {
+) -> Result<
+    (
+        Option<u64>,
+        Arc<RwLock<()>>,
+        HashSet<String>,
+        &'a StorageEntry,
+    ),
+    diesel::result::Error,
+> {
+    let (disk, backup_exclude, entry) = match storage {
         StorageIdentifier::Primary(server_id) => {
             let server = generic_server_select(conn, server_id).await?;
-            (server.disk, server.backup_exclude)
+            (
+                server.disk,
+                server.backup_exclude,
+                config
+                    .storage
+                    .get(&server.storage)
+                    .ok_or(diesel::result::Error::NotFound)?,
+            )
         }
     };
     let mut storages = storages.lock().await;
@@ -77,20 +93,28 @@ async fn storage_lock(
         }
         Some(lock) => lock.clone(),
     };
-    Ok((disk, lock, backup_exclude))
+    Ok((disk, lock, backup_exclude, entry))
 }
 
-pub(crate) async fn storage_read(
-    config: &DaemonConfig,
+pub(crate) async fn storage_read<'a>(
+    config: &'a DaemonConfig,
     conn: &mut AsyncMysqlConnection,
     storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
     storage: StorageIdentifier,
     timeout: bool,
-) -> Result<(String, OwnedRwLockReadGuard<()>, HashSet<String>), StorageError> {
-    let (disk, lock, backup_exclude) = storage_lock(conn, storages, storage)
+) -> Result<
+    (
+        String,
+        OwnedRwLockReadGuard<()>,
+        HashSet<String>,
+        &'a StorageEntry,
+    ),
+    StorageError,
+> {
+    let (disk, lock, backup_exclude, entry) = storage_lock(config, conn, storages, storage)
         .await
         .map_err(StorageError::Diesel)?;
-    let path = ensure_exists(config, storage, disk)
+    let path = ensure_exists(storage, entry, disk)
         .await
         .map_err(StorageError::IO)?;
     if timeout {
@@ -100,24 +124,33 @@ pub(crate) async fn storage_read(
                 .await
                 .map_err(StorageError::Timeout)?,
             backup_exclude,
+            entry,
         ))
     } else {
-        Ok((path, lock.read_owned().await, backup_exclude))
+        Ok((path, lock.read_owned().await, backup_exclude, entry))
     }
 }
 
 #[allow(unused)]
-pub(crate) async fn storage_write(
-    config: &DaemonConfig,
+pub(crate) async fn storage_write<'a>(
+    config: &'a DaemonConfig,
     conn: &mut AsyncMysqlConnection,
     storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
     storage: StorageIdentifier,
     timeout: bool,
-) -> Result<(String, OwnedRwLockWriteGuard<()>, Option<u64>), StorageError> {
-    let (disk, lock, _) = storage_lock(conn, storages, storage)
+) -> Result<
+    (
+        String,
+        OwnedRwLockWriteGuard<()>,
+        Option<u64>,
+        &'a StorageEntry,
+    ),
+    StorageError,
+> {
+    let (disk, lock, _, entry) = storage_lock(config, conn, storages, storage)
         .await
         .map_err(StorageError::Diesel)?;
-    let path = ensure_exists(config, storage, disk)
+    let path = ensure_exists(storage, entry, disk)
         .await
         .map_err(StorageError::IO)?;
     if timeout {
@@ -127,9 +160,10 @@ pub(crate) async fn storage_write(
                 .await
                 .map_err(StorageError::Timeout)?,
             disk,
+            entry,
         ))
     } else {
-        Ok((path, lock.write_owned().await, disk))
+        Ok((path, lock.write_owned().await, disk, entry))
     }
 }
 

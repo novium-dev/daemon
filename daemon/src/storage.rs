@@ -1,7 +1,7 @@
 #[cfg(feature = "backups")]
 pub(crate) mod backup;
 
-use crate::config::{DaemonConfig, StorageMethod};
+use crate::config::{StorageEntry, StorageMethod};
 use std::io;
 use std::path::PathBuf;
 use tokio::fs;
@@ -27,15 +27,15 @@ impl StorageIdentifier {
 }
 
 pub(crate) async fn ensure_exists(
-    config: &DaemonConfig,
     id: StorageIdentifier,
+    storage: &StorageEntry,
     _disk: Option<u64>,
 ) -> Result<String, io::Error> {
-    let base = PathBuf::from(&config.storage.path);
+    let base = PathBuf::from(&storage.path);
     let dir = base.join(id.as_pathbuf());
 
     if !dir.try_exists()? {
-        match config.storage.method {
+        match &storage.method {
             StorageMethod::Directory => {
                 fs::create_dir_all(&dir).await?;
             }
@@ -59,18 +59,18 @@ pub(crate) async fn ensure_exists(
     }
 
     #[cfg(feature = "btrfs")]
-    if let StorageMethod::Btrfs = config.storage.method {
+    if let StorageMethod::Btrfs = &storage.method {
         // TODO: Update quota
     }
     Ok(fs::canonicalize(dir).await?.to_string_lossy().to_string())
 }
 
-pub(crate) async fn delete(config: &DaemonConfig, id: StorageIdentifier) -> Result<(), io::Error> {
-    let base = PathBuf::from(&config.storage.path);
+pub(crate) async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(), io::Error> {
+    let base = PathBuf::from(&storage.path);
     let dir = base.join(id.as_pathbuf());
 
     #[cfg(feature = "btrfs")]
-    if let StorageMethod::Btrfs = config.storage.method {
+    if let StorageMethod::Btrfs = storage.method {
         use btrfsutil::subvolume::DeleteFlags;
         use std::io::ErrorKind;
         return tokio::task::spawn_blocking(move || {

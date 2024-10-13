@@ -7,6 +7,7 @@ use super::*;
 
 #[derive(Serialize, Deserialize)]
 pub struct ServerPayload {
+    pub storage: Option<String>,
     pub resource: Option<ServerResourcePayload>,
     pub build: Option<ServerBuildPayload>,
     pub ports: Option<Vec<ServerPortEntryPayload>>,

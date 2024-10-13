@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 #[cfg(feature = "ssl")]
 use std::path::PathBuf;
 
@@ -23,9 +24,9 @@ pub(crate) struct DaemonConfig {
     pub(crate) user_allow_duration: u64,
     #[cfg(feature = "user")]
     pub(crate) origin: String,
-    pub(crate) storage: StorageConfig,
+    pub(crate) storage: HashMap<String, StorageEntry>,
     #[cfg(feature = "backups")]
-    pub(crate) backup: BackupConfig,
+    pub(crate) backup: HashMap<String, BackupEntry>,
     pub(crate) bind: String,
     pub(crate) database: String,
     #[cfg(feature = "ssl")]
@@ -35,7 +36,7 @@ pub(crate) struct DaemonConfig {
 }
 
 #[derive(Clone, Deserialize)]
-pub(crate) struct StorageConfig {
+pub(crate) struct StorageEntry {
     pub(crate) path: String,
     pub(crate) method: StorageMethod,
 }
@@ -51,10 +52,9 @@ pub(crate) struct SSHConfig {
 
 #[cfg(feature = "backups")]
 #[derive(Clone, Deserialize)]
-pub(crate) struct BackupConfig {
+pub(crate) struct BackupEntry {
     pub(crate) path: String,
     pub(crate) method: BackupMethod,
-    pub(crate) rt_compression: ArchiveCompression,
 }
 
 #[derive(Clone, Copy, Deserialize)]

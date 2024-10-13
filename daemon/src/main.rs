@@ -72,18 +72,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .unwrap();
     let config: DaemonConfig = toml::from_str(&config_buffer)?;
 
-    #[cfg(all(feature = "btrfs", feature = "backups"))]
-    {
-        use crate::config::{BackupMethod, StorageMethod};
-        if !matches!(config.storage.method, StorageMethod::Btrfs)
-            && matches!(config.backup.method, BackupMethod::Btrfs { .. })
-        {
-            use log::error;
-            error!("You can't use backup method \"btrfs\" with non-btrfs storage method.");
-            return Ok(());
-        }
-    }
-
     info!("Starting Daemon...");
 
     let servers = HashMap::new();
@@ -159,12 +147,18 @@ async fn main() -> Result<(), Box<dyn Error>> {
             "/backup/:server_id",
             Router::new()
                 .route("/", get(web::backup::server_list_backups))
-                .route("/", put(web::backup::server_create_backup))
                 .route("/rt", get(web::backup::server_backup_realtime))
-                .route("/:backup_id", get(web::backup::server_download_backup))
-                .route("/:backup_id", delete(web::backup::server_delete_backup))
+                .route("/:backup_storage", put(web::backup::server_create_backup))
                 .route(
-                    "/:backup_id/restore",
+                    "/:backup_storage/:backup_id",
+                    get(web::backup::server_download_backup),
+                )
+                .route(
+                    "/:backup_storage/:backup_id",
+                    delete(web::backup::server_delete_backup),
+                )
+                .route(
+                    "/:backup_storage/:backup_id/restore",
                     get(web::backup::server_restore_backup),
                 )
                 .layer(ValidateRequestHeaderLayer::bearer(&config.token)),
@@ -213,7 +207,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                     get(web::backup::server_user_backup_realtime),
                 )
                 .route(
-                    "/backup/:server_id/:backup_id",
+                    "/backup/:server_id/:backup_storage/:backup_id",
                     get(web::backup::server_user_download_backup),
                 );
         }

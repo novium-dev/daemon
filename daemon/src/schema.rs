@@ -60,6 +60,7 @@ pub(crate) struct FetchedServer {
     pub(crate) cap_drop: Vec<String>,
 
     pub(crate) ports: Vec<Port>,
+    pub(crate) storage: String,
 }
 
 impl Server {
@@ -114,6 +115,8 @@ impl Server {
 
             cap_add,
             cap_drop,
+
+            storage: self.storage,
         })
     }
 }
@@ -195,7 +198,9 @@ pub(crate) struct Server {
     pub(crate) cpu: Option<f32>,  // in Threads
     pub(crate) ram: Option<u32>,  // in MiB
     pub(crate) swap: Option<u32>, // in MiB
-    pub(crate) disk: Option<u64>, // in MiB, only working when using btrfs
+    pub(crate) disk: Option<u64>, // in MiB
+
+    pub(crate) storage: String,
 }
 
 diesel::table! {
@@ -209,6 +214,8 @@ diesel::table! {
         ram -> Nullable<Unsigned<Integer>>,
         swap -> Nullable<Unsigned<Integer>>,
         disk -> Nullable<Unsigned<BigInt>>,
+
+        storage -> VarChar,
     }
 }
 

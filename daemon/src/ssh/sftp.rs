@@ -1,7 +1,7 @@
+use crate::config::StorageEntry;
 use crate::ssh::PanelAuthServerPermissions;
 use crate::storage::StorageIdentifier;
 use crate::utils::parse_path;
-use crate::DaemonState;
 use axum::async_trait;
 use log::{debug, error};
 use russh_sftp::protocol::{
@@ -12,7 +12,6 @@ use std::fs::{Metadata, Permissions, ReadDir};
 use std::io::{ErrorKind, SeekFrom};
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
-use std::sync::Arc;
 use tokio::fs::{self, File, OpenOptions};
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
@@ -20,13 +19,13 @@ use tokio::sync::OwnedRwLockReadGuard;
 use uuid::Uuid;
 
 pub(crate) struct DaemonSftpSession {
-    pub(crate) state: Arc<DaemonState>,
     pub(crate) version: Option<u32>,
     pub(crate) file_handles: HashMap<String, FileHandle>,
     pub(crate) access: HashMap<
         Vec<String>,
         (
             StorageIdentifier,
+            StorageEntry,
             PanelAuthServerPermissions,
             OwnedRwLockReadGuard<()>,
         ),
@@ -380,7 +379,7 @@ impl DaemonSftpSession {
         mut path: String,
     ) -> Result<
         (
-            Option<(StorageIdentifier, PanelAuthServerPermissions)>,
+            Option<(StorageIdentifier, &StorageEntry, PanelAuthServerPermissions)>,
             Vec<String>,
             Vec<String>,
         ),
@@ -414,7 +413,7 @@ impl DaemonSftpSession {
             temp_suffix[index] = format!("{}/", temp_suffix[index]);
         }
         Ok((
-            storage.map(|(id, perms, _)| (*id, *perms)),
+            storage.map(|(id, storage, perms, _)| (*id, storage, *perms)),
             temp_prefix,
             temp_suffix,
         ))
@@ -429,12 +428,11 @@ impl DaemonSftpSession {
 
         match storage {
             None => Err(StatusCode::NoSuchFile),
-            Some((storage, permissions)) => {
+            Some((id, storage, permissions)) => {
                 if !permissions.contains(required) {
                     return Err(StatusCode::PermissionDenied);
                 }
-                let mut path =
-                    PathBuf::from(&self.state.config.storage.path).join(storage.as_pathbuf());
+                let mut path = PathBuf::from(&storage.path).join(id.as_pathbuf());
                 for comp in temp_suffix {
                     path = path.join(comp);
                 }
@@ -532,9 +530,8 @@ impl DaemonSftpSession {
                 );
                 Ok(handle)
             }
-            Some((storage, permissions)) => {
-                let base =
-                    PathBuf::from(&self.state.config.storage.path).join(storage.as_pathbuf());
+            Some((id, storage, permissions)) => {
+                let base = PathBuf::from(&storage.path).join(id.as_pathbuf());
                 let base = tokio::fs::canonicalize(base)
                     .await
                     .map_err(|_err| StatusCode::Failure)?;
