@@ -4,7 +4,7 @@ use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};
 use bollard::Docker;
 use log::warn;
-use std::ops::DerefMut;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
@@ -54,7 +54,9 @@ pub(crate) async fn new_session<
     update_size(id, &docker, server_data_arc.clone()).await;
     let buffer = buffer.lock().await;
     state
-        .write(ChannelWriteData::Terminal(buffer.clone()))
+        .write(ChannelWriteData::Terminal(Vec::from_iter(
+            buffer.iter().cloned(),
+        )))
         .await;
     drop(buffer);
 

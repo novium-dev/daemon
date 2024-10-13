@@ -1,6 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::error::Error;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
@@ -371,7 +371,7 @@ pub(crate) struct ServerData {
     pub(crate) restart: bool,
     pub(crate) stopping: bool,
     pub(crate) size: (u32, u32),
-    pub(crate) buffer: Arc<Mutex<Vec<u8>>>,
+    pub(crate) buffer: Arc<Mutex<VecDeque<u8>>>,
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) stats_sender: Arc<Sender<ChannelWriteData>>,
@@ -388,7 +388,7 @@ impl Default for ServerData {
             stats_sender: Arc::new(Sender::new(400)),
             sessions: Arc::new(Mutex::new(HashMap::new())),
             size: (170, 30),
-            buffer: Arc::new(Mutex::new(Vec::new())),
+            buffer: Arc::new(Mutex::new(VecDeque::new())),
         }
     }
 }

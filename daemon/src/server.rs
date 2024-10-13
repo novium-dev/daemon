@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
@@ -37,24 +37,30 @@ use crate::storage::StorageIdentifier;
 use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
 use crate::{utils, DaemonState, ServerData};
 
-pub(crate) const TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024;
+pub(crate) const TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024; // 1 MiB
 
 impl FetchedServer {
     pub(crate) fn prefix() -> String {
         format!("{}[Daemon] ", Fg(color::Yellow))
     }
 
-    pub(crate) fn console(sender: &Sender<ChannelWriteData>, buffer: &mut Vec<u8>, msg: String) {
+    pub(crate) fn console(
+        sender: &Sender<ChannelWriteData>,
+        buffer: &mut VecDeque<u8>,
+        msg: String,
+    ) {
         let bytes = msg.into_bytes();
         if (buffer.len() + bytes.len()) > TERMINAL_BUFFER_LIMIT {
             let remove = TERMINAL_BUFFER_LIMIT - (buffer.len() + bytes.len());
-            buffer.drain(0..remove);
+            for _ in 0..remove {
+                buffer.pop_front();
+            }
         }
-        buffer.extend_from_slice(&bytes);
+        buffer.extend(&bytes);
         let _ = sender.send(ChannelWriteData::Terminal(bytes));
     }
 
-    pub(crate) fn log(sender: &Sender<ChannelWriteData>, buffer: &mut Vec<u8>, msg: &str) {
+    pub(crate) fn log(sender: &Sender<ChannelWriteData>, buffer: &mut VecDeque<u8>, msg: &str) {
         Self::console(
             sender,
             buffer,
@@ -65,7 +71,7 @@ impl FetchedServer {
     pub(crate) async fn prepare_image(
         &self,
         docker: &Docker,
-        buffer: &mut Vec<u8>,
+        buffer: &mut VecDeque<u8>,
         server_data: &mut ServerData,
     ) -> Result<String, ServerStartError> {
         let name = format!("{}:{}", crate::common::IMAGE_NAME, self.build_identifier);
