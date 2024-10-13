@@ -8,8 +8,9 @@ crate-type = ["rlib", "cdylib"]
 
 [features]
 database = ["daemon_common/database"]
-websocket = ["ed25519-dalek", "pkcs8"]
-default = ["database", "websocket"]
+user = ["ed25519-dalek", "pkcs8"]
+websocket = ["user"]
+default = ["database", "user", "websocket"]
 
 [dependencies]
 daemon_common.workspace = true

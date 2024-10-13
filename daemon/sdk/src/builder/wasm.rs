@@ -1,6 +1,4 @@
-use crate::builder::websocket::{
-    DaemonSDKBuilderWithWebsocket, DaemonSDKWithWebsocketKey, WithWebsocketKey,
-};
+use crate::builder::user::{DaemonSDKBuilderWithUserKey, DaemonSDKWithUserKey, WithUserKey};
 use crate::builder::{
     DaemonSDKBuilder, DaemonSDKBuilderBuildable, DaemonSDKBuilderRequiresBaseURL,
     DaemonSDKBuilderRequiresIdentifier, DaemonSDKBuilderRequiresToken,
@@ -9,9 +7,9 @@ use crate::*;
 use crate::{DaemonSDK, DaemonSDKError, DefaultDaemonSDK};
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-#[cfg(feature = "websocket")]
+#[cfg(feature = "user")]
 use ed25519_dalek::pkcs8::{DecodePrivateKey, KeypairBytes};
-#[cfg(feature = "websocket")]
+#[cfg(feature = "user")]
 use ed25519_dalek::SigningKey;
 use reqwest::Url;
 
@@ -65,41 +63,41 @@ impl DaemonSDKBuilderBuildable {
     }
 }
 
-#[cfg(feature = "websocket")]
+#[cfg(feature = "user")]
 #[wasm_bindgen]
 impl DaemonSDKBuilderBuildable {
-    #[wasm_bindgen(js_name = with_websocket_key_from_pem)]
-    pub fn wasm_with_websocket_key_from_pem(
+    #[wasm_bindgen(js_name = with_user_key_from_pem)]
+    pub fn wasm_with_user_key_from_pem(
         self,
         key: String,
-    ) -> Result<DaemonSDKBuilderWithWebsocket, DaemonSDKError> {
+    ) -> Result<DaemonSDKBuilderWithUserKey, DaemonSDKError> {
         let bytes =
             KeypairBytes::from_pkcs8_pem(&key).map_err(|_| DaemonSDKError::InvalidWebsocketKey)?;
-        self.wasm_with_websocket_key(bytes.secret_key.to_vec())
+        self.wasm_with_user_key(bytes.secret_key.to_vec())
     }
 
-    #[wasm_bindgen(js_name = with_websocket_key_from_base64)]
-    pub fn wasm_with_websocket_key_from_base64(
+    #[wasm_bindgen(js_name = with_user_key_from_base64)]
+    pub fn wasm_with_user_key_from_base64(
         self,
         key: String,
-    ) -> Result<DaemonSDKBuilderWithWebsocket, DaemonSDKError> {
+    ) -> Result<DaemonSDKBuilderWithUserKey, DaemonSDKError> {
         let mut vec = Vec::with_capacity(32);
         BASE64_STANDARD
             .decode_vec(key, &mut vec)
             .map_err(|_| DaemonSDKError::InvalidWebsocketKey)?;
-        self.wasm_with_websocket_key(vec)
+        self.wasm_with_user_key(vec)
     }
 
-    #[wasm_bindgen(js_name = with_websocket_key)]
-    pub fn wasm_with_websocket_key(
+    #[wasm_bindgen(js_name = with_user_key)]
+    pub fn wasm_with_user_key(
         self,
         key: Vec<u8>,
-    ) -> Result<DaemonSDKBuilderWithWebsocket, DaemonSDKError> {
-        Ok(DaemonSDKBuilderWithWebsocket {
+    ) -> Result<DaemonSDKBuilderWithUserKey, DaemonSDKError> {
+        Ok(DaemonSDKBuilderWithUserKey {
             identifier: self.identifier,
             token: self.token,
             base_url: self.base_url,
-            websocket_key: SigningKey::from_bytes(
+            user_key: SigningKey::from_bytes(
                 &key.try_into()
                     .map_err(|_| DaemonSDKError::InvalidWebsocketKey)?,
             ),
@@ -107,11 +105,11 @@ impl DaemonSDKBuilderBuildable {
     }
 }
 
-#[cfg(feature = "websocket")]
+#[cfg(feature = "user")]
 #[wasm_bindgen]
-impl DaemonSDKBuilderWithWebsocket {
+impl DaemonSDKBuilderWithUserKey {
     #[wasm_bindgen(js_name = build)]
-    pub fn wasm_build(self) -> DaemonSDKWithWebsocketKey {
-        DaemonSDKBuilder::<WithWebsocketKey>(self).build().0
+    pub fn wasm_build(self) -> DaemonSDKWithUserKey {
+        DaemonSDKBuilder::<WithUserKey>(self).build().0
     }
 }

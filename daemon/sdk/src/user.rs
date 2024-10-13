@@ -1,11 +1,13 @@
+use std::clone::Clone;
 #[cfg(target_arch = "wasm32")]
 use wasm_bindgen::prelude::*;
 
-use crate::builder::websocket::DaemonSDKWithWebsocketKey;
+use crate::builder::user::DaemonSDKWithUserKey;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use ed25519_dalek::Signer;
 
+#[cfg(feature = "websocket")]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Copy, Clone)]
 pub enum WebsocketType {
@@ -14,13 +16,13 @@ pub enum WebsocketType {
 }
 
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-impl DaemonSDKWithWebsocketKey {
-    fn generate_websocket_token(
+impl DaemonSDKWithUserKey {
+    fn generate_token(
         &self,
-        r#type: WebsocketType,
+        name: &str,
         server: u32,
         timestamp: u64,
-        write: bool,
+        extra: Option<String>,
     ) -> String {
         BASE64_STANDARD.encode(
             self.extra
@@ -28,17 +30,11 @@ impl DaemonSDKWithWebsocketKey {
                 .sign(
                     format!(
                         "{}-{}-{}-{}{}",
-                        match r#type {
-                            WebsocketType::TERMINAL => "terminal",
-                            WebsocketType::STATS => "stats",
-                        },
+                        name,
                         self.identifier,
                         server,
                         timestamp,
-                        match r#type {
-                            WebsocketType::TERMINAL => format!("-{}", write),
-                            _ => String::new(),
-                        }
+                        extra.unwrap_or_default()
                     )
                     .as_bytes(),
                 )
@@ -46,15 +42,28 @@ impl DaemonSDKWithWebsocketKey {
         )
     }
 
+    #[cfg(feature = "websocket")]
     pub fn generate_websocket_url(
         &self,
         r#type: WebsocketType,
         server: u32,
         timestamp: u64,
         write: Option<bool>,
+        rows: Option<u16>,
+        cols: Option<u16>,
     ) -> String {
-        let write = write.unwrap_or_default();
-        let verify = self.generate_websocket_token(r#type, server, timestamp, write);
+        let verify = self.generate_token(
+            match r#type {
+                WebsocketType::TERMINAL => "terminal",
+                WebsocketType::STATS => "stats",
+            },
+            server,
+            timestamp,
+            match r#type {
+                WebsocketType::TERMINAL => Some(format!("-{}", write.unwrap())),
+                WebsocketType::STATS => None,
+            },
+        );
         let mut url = self
             .base_url
             .join(&format!(
@@ -71,7 +80,12 @@ impl DaemonSDKWithWebsocketKey {
             timestamp,
             verify,
             match r#type {
-                WebsocketType::TERMINAL => format!("&write={}", write),
+                WebsocketType::TERMINAL => format!(
+                    "&write={}&cols={}&rows={}",
+                    write.unwrap(),
+                    cols.unwrap(),
+                    rows.unwrap()
+                ),
                 _ => String::new(),
             }
         )));

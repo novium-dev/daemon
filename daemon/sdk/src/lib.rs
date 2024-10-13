@@ -5,8 +5,9 @@ pub mod server;
 pub mod builder;
 #[cfg(feature = "database")]
 pub mod database;
-#[cfg(feature = "websocket")]
-pub mod websocket;
+pub mod resource;
+#[cfg(feature = "user")]
+pub mod user;
 
 use http::{Method, StatusCode};
 use reqwest::{Client, Response, Url};

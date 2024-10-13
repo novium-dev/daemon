@@ -1,9 +1,9 @@
 #[cfg(target_arch = "wasm32")]
 use crate::*;
+#[cfg(feature = "websocket")]
+pub mod user;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;
-#[cfg(feature = "websocket")]
-pub mod websocket;
 
 use crate::{DaemonSDK, DaemonSDKExtra, DaemonSdkSealed, DefaultDaemonSDK, InternalDaemonSDK};
 use http::{HeaderMap, HeaderValue};
