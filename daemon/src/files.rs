@@ -394,7 +394,7 @@ async fn path0(
         r#final = Some(components.remove(components.len() - 1));
     }
 
-    let mut base = PathBuf::from(&storage.path).join(id.as_pathbuf());
+    let mut base = PathBuf::from(storage.path()).join(id.as_pathbuf());
     let mut path = base.clone();
     base = tokio::fs::canonicalize(base)
         .await

@@ -1,9 +1,10 @@
 use std::collections::HashSet;
 use std::io;
+use std::io::ErrorKind;
 use std::ops::DerefMut;
 use std::path::{Path, PathBuf};
 
-use crate::config::{ArchiveCompression, BackupEntry, BackupMethod, StorageEntry};
+use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::utils::{storage_read, storage_write, StorageError};
 use crate::{storage, DaemonState};
@@ -24,7 +25,7 @@ pub(crate) async fn create_backup(
     id: StorageIdentifier,
     backup_storage: &String,
 ) -> Result<i64, StatusCode> {
-    let (path, lock, backup_exclude, _) = storage_read(
+    let (path, lock, backup_exclude, storage) = storage_read(
         &state.config,
         state.conn.lock().await.deref_mut(),
         &state.storages,
@@ -40,11 +41,15 @@ pub(crate) async fn create_backup(
         .get(backup_storage)
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    let id = create_backup0(path, id, backup, backup_exclude)
+    let id = create_backup0(path, id, backup, storage, backup_exclude)
         .await
         .map_err(|err| {
             debug!("Backup creation failed: {:?}", err);
-            StatusCode::INTERNAL_SERVER_ERROR
+            if err.kind() == ErrorKind::InvalidInput {
+                StatusCode::UNPROCESSABLE_ENTITY
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
         })?;
     drop(lock);
     Ok(id)
@@ -55,16 +60,19 @@ async fn create_backup0(
     path: String,
     id: StorageIdentifier,
     backup: &BackupEntry,
+    #[allow(unused)] storage: &StorageEntry,
     exclude: HashSet<String>,
 ) -> Result<i64, io::Error> {
     let dir = PathBuf::from(path);
-    let target_dir = PathBuf::from(&backup.path).join(id.as_pathbuf());
+    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     if !tokio::fs::try_exists(&target_dir).await? {
         tokio::fs::create_dir_all(&target_dir).await?;
     }
     let timestamp = Utc::now().timestamp_millis();
-    match backup.method {
-        BackupMethod::Archive { ref compression } => {
+    match backup {
+        BackupEntry::Archive {
+            ref compression, ..
+        } => {
             let file = OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -81,10 +89,15 @@ async fn create_backup0(
             archive.into_inner().await.unwrap().shutdown().await?;
         }
         #[cfg(feature = "btrfs")]
-        BackupMethod::Btrfs { .. } => {
+        BackupEntry::Btrfs { group, .. } => {
             use btrfsutil::subvolume::SnapshotFlags;
             use btrfsutil::BtrfsUtilError;
             use std::io::ErrorKind;
+
+            if !matches!(storage, StorageEntry::Btrfs { group: storage_group, .. } if storage_group.eq(group))
+            {
+                return Err(io::Error::new(ErrorKind::InvalidInput, "Group mismatch!"));
+            }
 
             tokio::task::spawn_blocking(move || {
                 let subvol = btrfsutil::subvolume::Subvolume::get(dir.as_path())?;
@@ -139,9 +152,11 @@ async fn restore_backup0(
     disk: Option<u64>,
 ) -> Result<(), io::Error> {
     let dir = PathBuf::from(path);
-    let target_dir = PathBuf::from(&backup.path).join(id.as_pathbuf());
-    match backup.method {
-        BackupMethod::Archive { ref compression } => {
+    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
+    match backup {
+        BackupEntry::Archive {
+            ref compression, ..
+        } => {
             let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
             let file = File::open(target).await?;
             let decoder = compression.create_decoder(BufReader::new(file));
@@ -151,7 +166,7 @@ async fn restore_backup0(
             archive.unpack(&dir).await?;
         }
         #[cfg(feature = "btrfs")]
-        BackupMethod::Btrfs { .. } => {
+        BackupEntry::Btrfs { .. } => {
             use btrfsutil::subvolume::{DeleteFlags, SnapshotFlags, Subvolume};
             use std::io::ErrorKind;
             let target = target_dir.join(timestamp.to_string());
@@ -202,9 +217,11 @@ async fn list_backups0(
 ) -> Result<Vec<BackupResponseEntry>, io::Error> {
     let mut entries = Vec::new();
     for (name, backup_storage) in &state.config.backup {
-        let target_dir = PathBuf::from(&backup_storage.path).join(id.as_pathbuf());
-        match backup_storage.method {
-            BackupMethod::Archive { ref compression } => {
+        let target_dir = PathBuf::from(backup_storage.path()).join(id.as_pathbuf());
+        match backup_storage {
+            BackupEntry::Archive {
+                ref compression, ..
+            } => {
                 let mut readdir = tokio::fs::read_dir(&target_dir).await?;
                 while let Some(entry) = readdir.next_entry().await? {
                     if !entry.file_type().await?.is_file() {
@@ -228,7 +245,7 @@ async fn list_backups0(
                 }
             }
             #[cfg(feature = "btrfs")]
-            BackupMethod::Btrfs { .. } => {
+            BackupEntry::Btrfs { .. } => {
                 let mut readdir = tokio::fs::read_dir(&target_dir).await?;
                 while let Some(entry) = readdir.next_entry().await? {
                     if !entry.file_type().await?.is_dir() {
@@ -286,17 +303,20 @@ async fn backup_to_stream0(
     backup: &BackupEntry,
     #[allow(unused)] exclude: HashSet<String>,
 ) -> Result<Body, io::Error> {
-    let target_dir = PathBuf::from(&backup.path).join(id.as_pathbuf());
-    match backup.method {
-        BackupMethod::Archive { ref compression } => {
+    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
+    match backup {
+        BackupEntry::Archive {
+            ref compression, ..
+        } => {
             let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
             Ok(Body::from_stream(ReaderStream::new(
                 File::open(target).await?,
             )))
         }
         #[cfg(feature = "btrfs")]
-        BackupMethod::Btrfs {
+        BackupEntry::Btrfs {
             ref jit_compression,
+            ..
         } => {
             let compression = *jit_compression;
             let target = target_dir.join(timestamp.to_string());
@@ -395,14 +415,16 @@ async fn delete_backup0(
     timestamp: i64,
     backup: &BackupEntry,
 ) -> Result<(), io::Error> {
-    let target_dir = PathBuf::from(&backup.path).join(id.as_pathbuf());
-    match backup.method {
-        BackupMethod::Archive { ref compression } => {
+    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
+    match backup {
+        BackupEntry::Archive {
+            ref compression, ..
+        } => {
             let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
             tokio::fs::remove_file(target).await?;
         }
         #[cfg(feature = "btrfs")]
-        BackupMethod::Btrfs { .. } => {
+        BackupEntry::Btrfs { .. } => {
             use btrfsutil::subvolume::DeleteFlags;
             use std::io::ErrorKind;
             return tokio::task::spawn_blocking(move || {

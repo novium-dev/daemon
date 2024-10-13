@@ -35,12 +35,6 @@ pub(crate) struct DaemonConfig {
     pub(crate) ssh: SSHConfig,
 }
 
-#[derive(Clone, Deserialize)]
-pub(crate) struct StorageEntry {
-    pub(crate) path: String,
-    pub(crate) method: StorageMethod,
-}
-
 #[cfg(feature = "ssh")]
 #[derive(Clone, Deserialize)]
 pub(crate) struct SSHConfig {
@@ -50,31 +44,52 @@ pub(crate) struct SSHConfig {
     pub(crate) auth_url: String,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(tag = "method")]
+pub(crate) enum StorageEntry {
+    #[serde(rename = "directory")]
+    Directory { path: String },
+    #[cfg(feature = "btrfs")]
+    #[serde(rename = "btrfs")]
+    Btrfs { group: String, path: String },
+}
+
+impl StorageEntry {
+    pub(crate) fn path(&self) -> &String {
+        match self {
+            StorageEntry::Directory { path } => path,
+            #[cfg(feature = "btrfs")]
+            StorageEntry::Btrfs { path, .. } => path,
+        }
+    }
+}
+
 #[cfg(feature = "backups")]
 #[derive(Clone, Deserialize)]
-pub(crate) struct BackupEntry {
-    pub(crate) path: String,
-    pub(crate) method: BackupMethod,
-}
-
-#[derive(Clone, Copy, Deserialize)]
-pub(crate) enum StorageMethod {
-    #[serde(rename = "directory")]
-    Directory,
-    #[cfg(feature = "btrfs")]
-    #[serde(rename = "btrfs")]
-    Btrfs,
-}
-
-#[cfg(feature = "backups")]
-#[derive(Clone, Copy, Deserialize)]
-#[serde(tag = "type")]
-pub(crate) enum BackupMethod {
+#[serde(tag = "method")]
+pub(crate) enum BackupEntry {
     #[serde(rename = "archive")]
-    Archive { compression: ArchiveCompression },
+    Archive {
+        compression: ArchiveCompression,
+        path: String,
+    },
     #[cfg(feature = "btrfs")]
     #[serde(rename = "btrfs")]
-    Btrfs { jit_compression: ArchiveCompression },
+    Btrfs {
+        jit_compression: ArchiveCompression,
+        path: String,
+        group: String,
+    },
+}
+
+impl BackupEntry {
+    pub(crate) fn path(&self) -> &String {
+        match self {
+            BackupEntry::Archive { path, .. } => path,
+            #[cfg(feature = "btrfs")]
+            BackupEntry::Btrfs { path, .. } => path,
+        }
+    }
 }
 
 #[cfg(feature = "backups")]

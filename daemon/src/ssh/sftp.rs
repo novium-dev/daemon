@@ -432,7 +432,7 @@ impl DaemonSftpSession {
                 if !permissions.contains(required) {
                     return Err(StatusCode::PermissionDenied);
                 }
-                let mut path = PathBuf::from(&storage.path).join(id.as_pathbuf());
+                let mut path = PathBuf::from(storage.path()).join(id.as_pathbuf());
                 for comp in temp_suffix {
                     path = path.join(comp);
                 }
@@ -531,7 +531,7 @@ impl DaemonSftpSession {
                 Ok(handle)
             }
             Some((id, storage, permissions)) => {
-                let base = PathBuf::from(&storage.path).join(id.as_pathbuf());
+                let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
                 let base = tokio::fs::canonicalize(base)
                     .await
                     .map_err(|_err| StatusCode::Failure)?;
