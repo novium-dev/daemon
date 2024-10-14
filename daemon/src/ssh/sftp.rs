@@ -113,7 +113,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
         debug!("ReadDir {} {}", id, handle);
-        let handle = self.handle(handle, PanelAuthServerPermissions::SFTP_READ)?;
+        let handle = self.handle(handle, PanelAuthServerPermissions::FILES_READ)?;
         let files: Vec<_> = handle
             .readdir()
             .await
@@ -139,7 +139,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Data, Self::Error> {
         debug!("Read {} {}", id, handle);
         let handle = self
-            .handle(handle, PanelAuthServerPermissions::SFTP_READ)?
+            .handle(handle, PanelAuthServerPermissions::FILES_READ)?
             .regular_only()?;
         handle
             .seek(SeekFrom::Start(offset))
@@ -170,7 +170,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Write {} {}", id, handle);
         let handle = self
-            .handle(handle, PanelAuthServerPermissions::SFTP_WRITE)?
+            .handle(handle, PanelAuthServerPermissions::FILES_WRITE)?
             .regular_only()?;
         handle
             .seek(SeekFrom::Start(offset))
@@ -191,7 +191,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
         debug!("Fstat {} {}", id, handle);
-        let handle = self.handle(handle, PanelAuthServerPermissions::SFTP_READ)?;
+        let handle = self.handle(handle, PanelAuthServerPermissions::FILES_READ)?;
         handle.fstat(id).await
     }
 
@@ -203,7 +203,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Fsetstat {} {}", id, handle);
         let handle = self
-            .handle(handle, PanelAuthServerPermissions::SFTP_WRITE)?
+            .handle(handle, PanelAuthServerPermissions::FILES_WRITE)?
             .regular_only()?;
         if let Some(mode) = attrs.permissions {
             handle
@@ -224,7 +224,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Lstat {} {}", id, path);
         let path = self
-            .path(path, PanelAuthServerPermissions::SFTP_READ)
+            .path(path, PanelAuthServerPermissions::FILES_READ)
             .await?;
         let metadata = tokio::fs::symlink_metadata(path)
             .await
@@ -243,7 +243,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Mkdir {} {}", id, path);
         let path = self
-            .path(path, PanelAuthServerPermissions::SFTP_CREATE)
+            .path(path, PanelAuthServerPermissions::FILES_CREATE)
             .await?;
         fs::create_dir(&path)
             .await
@@ -259,7 +259,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Stat {} {}", id, path);
         let path = self
-            .path(path, PanelAuthServerPermissions::SFTP_READ)
+            .path(path, PanelAuthServerPermissions::FILES_READ)
             .await?;
         let metadata = tokio::fs::metadata(path)
             .await
@@ -278,7 +278,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Setstat {} {}", id, path);
         let path = self
-            .path(path, PanelAuthServerPermissions::SFTP_WRITE)
+            .path(path, PanelAuthServerPermissions::FILES_WRITE)
             .await?;
         let fs = fs::File::open(path)
             .await
@@ -304,10 +304,10 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Rename {} {} to {}", id, oldpath, newpath);
         let old_path = self
-            .path(oldpath, PanelAuthServerPermissions::SFTP_DELETE)
+            .path(oldpath, PanelAuthServerPermissions::FILES_DELETE)
             .await?;
         let new_path = self
-            .path(newpath, PanelAuthServerPermissions::SFTP_CREATE)
+            .path(newpath, PanelAuthServerPermissions::FILES_CREATE)
             .await?;
         fs::rename(old_path, new_path)
             .await
@@ -318,7 +318,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
         debug!("Remove {} {}", id, filename);
         let path = self
-            .path(filename, PanelAuthServerPermissions::SFTP_DELETE)
+            .path(filename, PanelAuthServerPermissions::FILES_DELETE)
             .await?;
         fs::remove_file(path)
             .await
@@ -329,7 +329,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
         debug!("rmdir {} {}", id, path);
         let path = self
-            .path(path, PanelAuthServerPermissions::SFTP_DELETE)
+            .path(path, PanelAuthServerPermissions::FILES_DELETE)
             .await?;
         fs::remove_dir(path)
             .await
@@ -345,7 +345,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Symlink {} {} {}", id, linkpath, targetpath);
         let linkpath = self
-            .path(linkpath, PanelAuthServerPermissions::SFTP_CREATE)
+            .path(linkpath, PanelAuthServerPermissions::FILES_CREATE)
             .await?;
         let targetpath = PathBuf::from(targetpath);
         fs::symlink(linkpath, targetpath)
@@ -357,7 +357,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         debug!("Readlink {} {}", id, path);
         let linkpath = self
-            .path(path, PanelAuthServerPermissions::SFTP_READ)
+            .path(path, PanelAuthServerPermissions::FILES_READ)
             .await?;
         let path = fs::read_link(linkpath)
             .await

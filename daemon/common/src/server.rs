@@ -2,6 +2,7 @@
 use crate::payload::Tsify;
 #[cfg(feature = "websocket")]
 use axum::extract::ws::Message;
+use bitflags::bitflags;
 #[cfg(feature = "docker")]
 use bollard::container::Stats;
 use serde::{Deserialize, Serialize};
@@ -106,5 +107,19 @@ impl ServerStats {
             )
             .to_owned(),
         )
+    }
+}
+
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+    pub struct PanelAuthServerPermissions: i32 {
+        const TERMINAL_READ = 1 << 0;
+        const TERMINAL_WRITE = 1 << 1;
+
+        const FILES_READ = 1 << 2;
+        const FILES_WRITE = 1 << 3;
+        const FILES_DELETE = 1 << 4;
+        const FILES_CREATE = 1 << 5;
     }
 }

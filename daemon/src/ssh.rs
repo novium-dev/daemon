@@ -7,8 +7,15 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+#[cfg(feature = "sftp")]
+use crate::ssh::sftp::DaemonSftpSession;
+#[cfg(feature = "sftp")]
+use crate::storage::StorageIdentifier;
+use crate::terminal::{new_session, update_size, TerminalData};
+use crate::utils::{storage_read, ChannelAdapter, ChannelError, ChannelWriteData};
+use crate::{DaemonState, ServerData};
 use axum::{async_trait, http};
-use bitflags::bitflags;
+use daemon_common::server::PanelAuthServerPermissions;
 use log::{debug, error};
 use russh::server::{Auth, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId, ChannelStream, Pty};
@@ -17,14 +24,6 @@ use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
-
-#[cfg(feature = "sftp")]
-use crate::ssh::sftp::DaemonSftpSession;
-#[cfg(feature = "sftp")]
-use crate::storage::StorageIdentifier;
-use crate::terminal::{new_session, update_size, TerminalData};
-use crate::utils::{storage_read, ChannelAdapter, ChannelError, ChannelWriteData};
-use crate::{DaemonState, ServerData};
 
 #[cfg(feature = "sftp")]
 pub(crate) mod sftp;
@@ -72,20 +71,6 @@ pub(crate) type PanelAuthResponse = Vec<PanelAuthServer>;
 pub(crate) struct PanelAuthServer {
     pub(crate) id: u32,
     pub(crate) permissions: PanelAuthServerPermissions,
-}
-
-bitflags! {
-    #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-    pub struct PanelAuthServerPermissions: i32 {
-        const TERMINAL_READ = 1 << 0;
-        const TERMINAL_WRITE = 1 << 1;
-
-        const SFTP_READ = 1 << 2;
-        const SFTP_WRITE = 1 << 3;
-        const SFTP_DELETE = 1 << 4;
-        const SFTP_CREATE = 1 << 5;
-    }
 }
 
 pub struct DaemonSSHHandler {
@@ -547,7 +532,7 @@ impl Handler for DaemonSSHHandler {
                     for server in self.auth.as_ref().unwrap() {
                         if server
                             .permissions
-                            .contains(PanelAuthServerPermissions::SFTP_READ)
+                            .contains(PanelAuthServerPermissions::FILES_READ)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
                             if let Ok((_path, lock, _, storage)) = storage_read(
