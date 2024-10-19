@@ -51,11 +51,11 @@ pub struct InternalDaemonSDK<T: DaemonSDKExtra> {
 #[derive(Clone)]
 pub struct DaemonSDK<T: DaemonSDKExtra>(T::Inner);
 
-impl<T: DaemonSDKExtra> Deref for DaemonSDK<T> {
-    type Target = InternalDaemonSDK<T>;
+impl Deref for DaemonSDK<()> {
+    type Target = DefaultDaemonSDK;
 
     fn deref(&self) -> &Self::Target {
-        self.0.deref()
+        &self.0
     }
 }
 

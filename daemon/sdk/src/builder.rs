@@ -53,7 +53,7 @@ pub struct DaemonSDKBuilderBuildable {
 
 pub struct DaemonSDKBuilder<T: DaemonSDKBuilderState>(pub(crate) T::Inner);
 
-impl<T: DaemonSDKExtra> DaemonSDK<T> {
+impl DaemonSDK<()> {
     pub fn builder() -> DaemonSDKBuilder<RequiresIdentifier> {
         DaemonSDKBuilder(DaemonSDKBuilderRequiresIdentifier {})
     }
