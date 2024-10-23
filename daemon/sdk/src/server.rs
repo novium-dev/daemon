@@ -1,7 +1,7 @@
 #[cfg(feature = "user")]
 use crate::builder::user::DaemonSDKWithUserKey;
-use crate::DaemonSDKError;
 use crate::DefaultDaemonSDK;
+use crate::{DaemonSDKError, RequestBody};
 use daemon_common::payload::server::{
     ServerBuildPayload, ServerPayload, ServerPortsPayload, ServerResourcePayload,
 };
@@ -21,7 +21,12 @@ pub(crate) struct DaemonSDKStruct;
 impl DeamonSDKStruct {
     pub async fn get_server(&self, server: u32) -> Result<PublicServerState, DaemonSDKError> {
         let response = self
-            .wrapper(Method::GET, format!("server/{}", server), None::<&()>)
+            .wrapper(
+                Method::GET,
+                format!("server/{}", server),
+                RequestBody::<()>::None,
+                None::<&()>,
+            )
             .await?;
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
@@ -40,12 +45,13 @@ impl DeamonSDKStruct {
             .wrapper(
                 Method::PUT,
                 "server",
-                Some(&ServerPayload {
+                RequestBody::Json(ServerPayload {
                     storage: Some(storage),
                     resource: Some(resource),
                     build: Some(build),
                     ports: Some(ports.0),
                 }),
+                None::<&()>,
             )
             .await?;
         if !response.status().is_success() {
@@ -69,12 +75,13 @@ impl DeamonSDKStruct {
             .wrapper(
                 Method::PATCH,
                 format!("server/{}", server),
-                Some(&ServerPayload {
+                RequestBody::Json(ServerPayload {
                     storage: None,
                     resource,
                     build,
                     ports: ports.map(|payload| payload.0),
                 }),
+                None::<&()>,
             )
             .await?;
         if !response.status().is_success() {
@@ -85,7 +92,12 @@ impl DeamonSDKStruct {
 
     pub async fn delete_server(&self, server: u32) -> Result<(), DaemonSDKError> {
         let response = self
-            .wrapper(Method::DELETE, format!("server/{}", server), None::<&()>)
+            .wrapper(
+                Method::DELETE,
+                format!("server/{}", server),
+                RequestBody::<()>::None,
+                None::<&()>,
+            )
             .await?;
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
@@ -95,7 +107,12 @@ impl DeamonSDKStruct {
 
     pub async fn start_server(&self, server: u32) -> Result<(), DaemonSDKError> {
         let response = self
-            .wrapper(Method::GET, format!("server/{}/start", server), None::<&()>)
+            .wrapper(
+                Method::GET,
+                format!("server/{}/start", server),
+                RequestBody::<()>::None,
+                None::<&()>,
+            )
             .await?;
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
@@ -108,6 +125,7 @@ impl DeamonSDKStruct {
             .wrapper(
                 Method::GET,
                 format!("server/{}/restart", server),
+                RequestBody::<()>::None,
                 None::<&()>,
             )
             .await?;
@@ -119,7 +137,12 @@ impl DeamonSDKStruct {
 
     pub async fn stop_server(&self, server: u32) -> Result<(), DaemonSDKError> {
         let response = self
-            .wrapper(Method::GET, format!("server/{}/stop", server), None::<&()>)
+            .wrapper(
+                Method::GET,
+                format!("server/{}/stop", server),
+                RequestBody::<()>::None,
+                None::<&()>,
+            )
             .await?;
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
@@ -129,7 +152,12 @@ impl DeamonSDKStruct {
 
     pub async fn kill_server(&self, server: u32) -> Result<(), DaemonSDKError> {
         let response = self
-            .wrapper(Method::GET, format!("server/{}/kill", server), None::<&()>)
+            .wrapper(
+                Method::GET,
+                format!("server/{}/kill", server),
+                RequestBody::<()>::None,
+                None::<&()>,
+            )
             .await?;
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));

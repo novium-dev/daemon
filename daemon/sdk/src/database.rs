@@ -1,8 +1,6 @@
 #[cfg(feature = "websocket")]
 use crate::builder::user::DaemonSDKWithUserKey;
 use crate::DaemonSDKError;
-use crate::DefaultDaemonSDK;
-#[cfg(target_arch = "wasm32")]
 use crate::*;
 use daemon_common::payload::database::{
     DatabasePasswordlessPayload, DatabasePayload, DatabaseUsersPayload,
@@ -28,11 +26,12 @@ impl DaemonSDKStruct {
             .wrapper(
                 Method::PUT,
                 "database",
-                Some(&DatabasePayload {
+                RequestBody::Json(DatabasePayload {
                     name_suffix: Some(name_suffix),
                     users: users.0,
                     passwordless: passwordless.0,
                 }),
+                None::<&()>,
             )
             .await?;
         if !response.status().is_success() {
@@ -55,11 +54,12 @@ impl DaemonSDKStruct {
             .wrapper(
                 Method::PATCH,
                 format!("database/{}", database),
-                Some(&DatabasePayload {
+                RequestBody::Json(DatabasePayload {
                     name_suffix: None,
                     users: users.0,
                     passwordless: passwordless.0,
                 }),
+                None::<&()>,
             )
             .await?;
         if !response.status().is_success() {
@@ -73,6 +73,7 @@ impl DaemonSDKStruct {
             .wrapper(
                 Method::DELETE,
                 format!("database/{}", database),
+                RequestBody::<()>::None,
                 None::<&()>,
             )
             .await?;

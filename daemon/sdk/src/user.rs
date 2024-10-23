@@ -85,20 +85,29 @@ impl DaemonSDKWithUserKey {
                 }
             ))
             .unwrap();
-        url.set_query(Some(&format!(
-            "timestamp={}&verify={}{}",
-            timestamp,
-            verify,
-            match r#type {
-                WebsocketType::TERMINAL => format!(
-                    "&write={}&cols={}&rows={}",
-                    write.unwrap(),
-                    cols.unwrap(),
-                    rows.unwrap()
-                ),
-                _ => String::new(),
-            }
-        )));
+        url.query_pairs_mut()
+            .append_pair("timestamp", &timestamp.to_string())
+            .append_pair("verify", &verify);
+        if let WebsocketType::TERMINAL = r#type {
+            url.query_pairs_mut()
+                .append_pair("write", &write.unwrap().to_string())
+                .append_pair("cols", &cols.unwrap().to_string())
+                .append_pair("rows", &rows.unwrap().to_string());
+        }
+        url.to_string()
+    }
+
+    #[cfg(feature = "files")]
+    pub fn generate_file_download_url(&self, server: u32, timestamp: u64, path: String) -> String {
+        let verify = self.generate_token("file", server, timestamp, Some(format!("-{}", path)));
+        let mut url = self
+            .base_url
+            .join(&format!("user/files/{}/file", server))
+            .unwrap();
+        url.query_pairs_mut()
+            .append_pair("timestamp", &timestamp.to_string())
+            .append_pair("verify", &verify)
+            .append_pair("path", &path);
         url.to_string()
     }
 }

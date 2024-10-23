@@ -1,5 +1,5 @@
 [workspace]
-members = ["backend", "daemon/common", "daemon/sdk", "daemon", "mariadb-plugin"]
+members = ["daemon/common", "daemon/sdk", "daemon", "mariadb-plugin"]
 resolver = "2"
 
 [workspace.dependencies]

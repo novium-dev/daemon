@@ -1,10 +1,13 @@
 pub use daemon_common as common;
+use std::collections::HashMap;
 use std::ops::Deref;
 pub mod server;
 
 pub mod builder;
 #[cfg(feature = "database")]
 pub mod database;
+#[cfg(feature = "files")]
+pub mod files;
 pub mod resource;
 #[cfg(feature = "user")]
 pub mod user;
@@ -12,6 +15,7 @@ pub mod user;
 use http::{Method, StatusCode};
 use reqwest::{Client, Response, Url};
 use serde::Serialize;
+use serde_json::Value;
 use std::sync::Arc;
 #[cfg(target_arch = "wasm32")]
 use tsify::Tsify;
@@ -59,19 +63,41 @@ impl Deref for DaemonSDK<()> {
     }
 }
 
+pub(crate) enum RequestBody<T = ()>
+where
+    T: Serialize,
+{
+    None,
+    Json(T),
+    Raw(Vec<u8>),
+}
+
 impl<T: DaemonSDKExtra> InternalDaemonSDK<T> {
-    pub(crate) async fn wrapper(
+    pub(crate) async fn wrapper<J: Serialize>(
         &self,
         method: Method,
         path: impl Into<String>,
-        body: Option<&impl Serialize>,
+        body: RequestBody<J>,
+        query: Option<&impl Serialize>,
     ) -> Result<Response, DaemonSDKError> {
         let path = path.into();
-        let mut request = self
-            .client
-            .request(method, self.base_url.join(&path).unwrap());
-        if let Some(body) = body {
-            request = request.json(body);
+        let mut url = self.base_url.join(&path).unwrap();
+        if let Some(query) = query {
+            let query: HashMap<String, Value> =
+                serde_json::from_value(serde_json::to_value(query).unwrap()).unwrap();
+            for (key, val) in query {
+                url.query_pairs_mut().append_pair(&key, &val.to_string());
+            }
+        }
+        let mut request = self.client.request(method, url);
+        match body {
+            RequestBody::None => {}
+            RequestBody::Json(body) => {
+                request = request.json(&body);
+            }
+            RequestBody::Raw(bytes) => {
+                request = request.body(bytes);
+            }
         }
         request.send().await.map_err(DaemonSDKError::Reqwest)
     }
@@ -84,6 +110,7 @@ pub enum DaemonSDKError {
     StatusCode(StatusCode),
     #[cfg(feature = "websocket")]
     InvalidWebsocketKey,
+    Limit(usize),
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -97,6 +124,7 @@ pub mod wasm {
     pub enum DaemonSDKError {
         Other { message: String },
         StatusCode { message: String, code: u16 },
+        Limit { limit: usize },
     }
 }
 
@@ -121,6 +149,7 @@ impl Into<wasm::DaemonSDKError> for DaemonSDKError {
             DaemonSDKError::InvalidWebsocketKey => wasm::DaemonSDKError::Other {
                 message: "Websocket Key is invalid! (not exactly 32 bytes)".to_owned(),
             },
+            DaemonSDKError::Limit(limit) => wasm::DaemonSDKError::Limit { limit },
         }
     }
 }
@@ -130,5 +159,77 @@ impl Into<JsValue> for DaemonSDKError {
     fn into(self) -> JsValue {
         let err: wasm::DaemonSDKError = self.into();
         err.into_js().unwrap().into()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub type SdkVec<T> = Vec<T>;
+
+#[cfg(target_arch = "wasm32")]
+pub struct SdkVec<T>(Vec<T>);
+
+#[cfg(target_arch = "wasm32")]
+impl<T> Into<Vec<T>> for SdkVec<T> {
+    fn into(self) -> Vec<T> {
+        self.0
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T: Into<JsValue>> From<Vec<T>> for SdkVec<T> {
+    fn from(value: Vec<T>) -> Self {
+        Self(value)
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T> Deref for SdkVec<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T> std::ops::DerefMut for SdkVec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T: Into<JsValue>> Into<JsValue> for SdkVec<T> {
+    fn into(self) -> JsValue {
+        let array = js_sys::Array::new();
+        for v in self.0 {
+            array.push(&v.into());
+        }
+        array.into()
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T: wasm_bindgen::describe::WasmDescribe> wasm_bindgen::describe::WasmDescribe for SdkVec<T> {
+    fn describe() {
+        wasm_bindgen::describe::inform(wasm_bindgen::describe::VECTOR);
+        T::describe();
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl<T: wasm_bindgen::convert::FromWasmAbi<Abi = u32>> wasm_bindgen::convert::FromWasmAbi
+    for SdkVec<T>
+{
+    type Abi = u32;
+
+    unsafe fn from_abi(js: Self::Abi) -> Self {
+        use wasm_bindgen::convert::IntoWasmAbi;
+        let mut vec = Vec::new();
+        let array = js_sys::Array::from_abi(js);
+        for entry in array {
+            vec.push(T::from_abi(entry.into_abi()));
+        }
+        SdkVec(vec)
     }
 }
