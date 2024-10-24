@@ -11,7 +11,8 @@ database = ["daemon_common/database"]
 user = ["ed25519-dalek", "pkcs8"]
 websocket = ["user"]
 files = ["daemon_common/files"]
-default = ["database", "user", "files", "websocket"]
+backups = []
+default = ["database", "user", "files", "backups", "websocket"]
 
 [dependencies]
 daemon_common.workspace = true

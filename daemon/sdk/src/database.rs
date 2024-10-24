@@ -1,4 +1,4 @@
-#[cfg(feature = "websocket")]
+#[cfg(feature = "user")]
 use crate::builder::user::DaemonSDKWithUserKey;
 use crate::DaemonSDKError;
 use crate::*;
@@ -12,8 +12,8 @@ use http::Method;
 #[allow(unused)]
 pub(crate) struct DaemonSDKStruct;
 
-#[cfg_attr(not(feature = "websocket"), duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]])]
-#[cfg_attr(feature = "websocket", duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]; [DaemonSDKWithUserKey]])]
+#[cfg_attr(not(feature = "user"), duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]])]
+#[cfg_attr(feature = "user", duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]; [DaemonSDKWithUserKey]])]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl DaemonSDKStruct {
     pub async fn create_database(

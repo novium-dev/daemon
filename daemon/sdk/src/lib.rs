@@ -3,6 +3,8 @@ use std::collections::HashMap;
 use std::ops::Deref;
 pub mod server;
 
+#[cfg(feature = "backups")]
+pub mod backup;
 pub mod builder;
 #[cfg(feature = "database")]
 pub mod database;
@@ -69,6 +71,7 @@ where
 {
     None,
     Json(T),
+    #[allow(dead_code)]
     Raw(Vec<u8>),
 }
 
@@ -108,7 +111,7 @@ pub enum DaemonSDKError {
     Reqwest(reqwest::Error),
     URLParseError(url::ParseError),
     StatusCode(StatusCode),
-    #[cfg(feature = "websocket")]
+    #[cfg(feature = "user")]
     InvalidWebsocketKey,
     Limit(usize),
 }
@@ -145,7 +148,7 @@ impl Into<wasm::DaemonSDKError> for DaemonSDKError {
                     .map(String::from)
                     .unwrap_or_default(),
             },
-            #[cfg(feature = "websocket")]
+            #[cfg(feature = "user")]
             DaemonSDKError::InvalidWebsocketKey => wasm::DaemonSDKError::Other {
                 message: "Websocket Key is invalid! (not exactly 32 bytes)".to_owned(),
             },

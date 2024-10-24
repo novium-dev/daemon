@@ -1,4 +1,4 @@
-#[cfg(feature = "websocket")]
+#[cfg(feature = "user")]
 use crate::builder::user::DaemonSDKWithUserKey;
 use crate::DaemonSDKError;
 use crate::DefaultDaemonSDK;
@@ -14,8 +14,8 @@ use reqwest::Response;
 #[allow(unused)]
 pub(crate) struct DaemonSDKStruct;
 
-#[cfg_attr(not(feature = "websocket"), duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]])]
-#[cfg_attr(feature = "websocket", duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]; [DaemonSDKWithUserKey]])]
+#[cfg_attr(not(feature = "user"), duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]])]
+#[cfg_attr(feature = "user", duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]; [DaemonSDKWithUserKey]])]
 #[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 impl DaemonSDKStruct {
     pub async fn server_list_files(
@@ -157,6 +157,7 @@ impl DaemonSDKStruct {
         }
     }
 
+    /* TODO: wasm-bindgen doesn't like SdkVec for some reason, I will fix it later
     pub async fn server_write_file(
         &self,
         server: u32,
@@ -182,7 +183,7 @@ impl DaemonSDKStruct {
             .await
             .map(|_| ())
             .map_err(DaemonSDKError::Reqwest)
-    }
+    }*/
 
     pub async fn server_delete_file(
         &self,

@@ -1,4 +1,5 @@
-use crate::builder::user::{DaemonSDKBuilderWithUserKey, DaemonSDKWithUserKey, WithUserKey};
+#[cfg(feature = "user")]
+use crate::builder::user::*;
 use crate::builder::{
     DaemonSDKBuilder, DaemonSDKBuilderBuildable, DaemonSDKBuilderRequiresBaseURL,
     DaemonSDKBuilderRequiresIdentifier, DaemonSDKBuilderRequiresToken,

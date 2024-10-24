@@ -1,6 +1,6 @@
 #[cfg(target_arch = "wasm32")]
 use crate::*;
-#[cfg(feature = "websocket")]
+#[cfg(feature = "user")]
 pub mod user;
 #[cfg(target_arch = "wasm32")]
 pub mod wasm;

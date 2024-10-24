@@ -1,9 +1,3 @@
-use std::collections::HashSet;
-use std::io;
-use std::io::ErrorKind;
-use std::ops::DerefMut;
-use std::path::{Path, PathBuf};
-
 use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::utils::{storage_read, storage_write, StorageError};
@@ -11,21 +5,28 @@ use crate::{storage, DaemonState};
 use axum::async_trait;
 use axum::body::Body;
 use axum::http::StatusCode;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use daemon_common::payload::backup::BackupResponseEntry;
 use log::debug;
 use serde_json::json;
+use std::collections::HashSet;
+use std::io;
+use std::io::ErrorKind;
+use std::ops::DerefMut;
+use std::path::{Path, PathBuf};
+use std::time::SystemTime;
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
 use tokio_tar::{Archive, Builder};
 use tokio_util::io::ReaderStream;
+use uuid::Uuid;
 
 pub(crate) async fn create_backup(
     state: &DaemonState,
     id: StorageIdentifier,
     backup_storage: &String,
-) -> Result<i64, StatusCode> {
+) -> Result<String, StatusCode> {
     let (path, lock, backup_exclude, storage) = storage_read(
         &state.config,
         state.conn.lock().await.deref_mut(),
@@ -63,13 +64,13 @@ async fn create_backup0(
     backup: &BackupEntry,
     #[allow(unused)] storage: &StorageEntry,
     exclude: HashSet<String>,
-) -> Result<i64, io::Error> {
+) -> Result<String, io::Error> {
     let dir = PathBuf::from(path);
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     if !tokio::fs::try_exists(&target_dir).await? {
         tokio::fs::create_dir_all(&target_dir).await?;
     }
-    let timestamp = Utc::now().timestamp_millis();
+    let timestamp = Uuid::new_v4().to_string();
     match backup {
         BackupEntry::Archive {
             ref compression, ..
@@ -117,7 +118,7 @@ async fn create_backup0(
 pub(crate) async fn restore_backup(
     state: &DaemonState,
     id: StorageIdentifier,
-    backup_id: i64,
+    backup_id: String,
     backup_storage: &String,
 ) -> Result<(), StatusCode> {
     let (path, lock, disk, storage) = storage_write(
@@ -148,7 +149,7 @@ async fn restore_backup0(
     id: StorageIdentifier,
     storage: &StorageEntry,
     path: String,
-    timestamp: i64,
+    backup_id: String,
     backup: &BackupEntry,
     disk: Option<u64>,
 ) -> Result<(), io::Error> {
@@ -158,7 +159,7 @@ async fn restore_backup0(
         BackupEntry::Archive {
             ref compression, ..
         } => {
-            let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
+            let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
             let file = File::open(target).await?;
             let decoder = compression.create_decoder(BufReader::new(file));
             let mut archive = Archive::new(decoder);
@@ -170,7 +171,7 @@ async fn restore_backup0(
         BackupEntry::Btrfs { .. } => {
             use btrfsutil::subvolume::{DeleteFlags, SnapshotFlags, Subvolume};
             use std::io::ErrorKind;
-            let target = target_dir.join(timestamp.to_string());
+            let target = target_dir.join(&backup_id);
             tokio::task::spawn_blocking(move || {
                 let snapshot = Subvolume::get(target.as_path())
                     .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
@@ -225,44 +226,40 @@ async fn list_backups0(
             } => {
                 let mut readdir = tokio::fs::read_dir(&target_dir).await?;
                 while let Some(entry) = readdir.next_entry().await? {
-                    if !entry.file_type().await?.is_file() {
+                    let metadata = entry.metadata().await?;
+                    if !metadata.file_type().is_file() {
                         continue;
                     }
                     let filename = entry.file_name().to_string_lossy().to_string();
                     if !filename.ends_with(&format!(".tar{}", compression.ext())) {
                         continue;
                     }
+                    let time = metadata.created().unwrap_or(SystemTime::UNIX_EPOCH);
+                    let time: DateTime<Utc> = time.into();
                     let entry = &filename[0..filename.len() - (4 + compression.ext().len())];
-                    let entry: Result<i64, _> = entry.parse();
-                    match entry {
-                        Ok(entry) => {
-                            entries.push(BackupResponseEntry {
-                                time: entry,
-                                storage: name.clone(),
-                            });
-                        }
-                        Err(_) => continue,
-                    }
+                    entries.push(BackupResponseEntry {
+                        id: entry.to_string(),
+                        storage: name.clone(),
+                        time: time.to_rfc3339(),
+                    });
                 }
             }
             #[cfg(feature = "btrfs")]
             BackupEntry::Btrfs { .. } => {
                 let mut readdir = tokio::fs::read_dir(&target_dir).await?;
                 while let Some(entry) = readdir.next_entry().await? {
-                    if !entry.file_type().await?.is_dir() {
+                    let metadata = entry.metadata().await?;
+                    if !metadata.file_type().is_dir() {
                         continue;
                     }
                     let filename = entry.file_name().to_string_lossy().to_string();
-                    let entry: Result<i64, _> = filename.parse();
-                    match entry {
-                        Ok(entry) => {
-                            entries.push(BackupResponseEntry {
-                                time: entry,
-                                storage: name.clone(),
-                            });
-                        }
-                        Err(_) => continue,
-                    }
+                    let time = metadata.created().unwrap_or(SystemTime::UNIX_EPOCH);
+                    let time: DateTime<Utc> = time.into();
+                    entries.push(BackupResponseEntry {
+                        id: filename,
+                        storage: name.clone(),
+                        time: time.to_rfc3339(),
+                    });
                 }
             }
         }
@@ -273,7 +270,7 @@ async fn list_backups0(
 pub(crate) async fn backup_to_stream(
     state: &DaemonState,
     id: StorageIdentifier,
-    backup_id: i64,
+    backup_id: String,
     backup_storage: &String,
 ) -> Result<Body, StatusCode> {
     let (_path, lock, backup_exclude, _) = storage_read(
@@ -300,7 +297,7 @@ pub(crate) async fn backup_to_stream(
 #[inline(always)]
 async fn backup_to_stream0(
     id: StorageIdentifier,
-    timestamp: i64,
+    backup_id: String,
     backup: &BackupEntry,
     #[allow(unused)] exclude: HashSet<String>,
 ) -> Result<Body, io::Error> {
@@ -309,7 +306,7 @@ async fn backup_to_stream0(
         BackupEntry::Archive {
             ref compression, ..
         } => {
-            let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
+            let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
             Ok(Body::from_stream(ReaderStream::new(
                 File::open(target).await?,
             )))
@@ -320,7 +317,7 @@ async fn backup_to_stream0(
             ..
         } => {
             let compression = *jit_compression;
-            let target = target_dir.join(timestamp.to_string());
+            let target = target_dir.join(backup_id);
             stream_realtime1(compression, target, exclude).await
         }
     }
@@ -387,7 +384,7 @@ async fn stream_realtime1(
 pub(crate) async fn delete_backup(
     state: &DaemonState,
     id: StorageIdentifier,
-    backup_id: i64,
+    backup_id: String,
     backup_storage: &String,
 ) -> Result<(), StatusCode> {
     let (_path, lock, _, _) = storage_read(
@@ -414,7 +411,7 @@ pub(crate) async fn delete_backup(
 #[inline(always)]
 async fn delete_backup0(
     id: StorageIdentifier,
-    timestamp: i64,
+    backup_id: String,
     backup: &BackupEntry,
 ) -> Result<(), io::Error> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
@@ -422,7 +419,7 @@ async fn delete_backup0(
         BackupEntry::Archive {
             ref compression, ..
         } => {
-            let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
+            let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
             tokio::fs::remove_file(target).await?;
         }
         #[cfg(feature = "btrfs")]
@@ -430,7 +427,7 @@ async fn delete_backup0(
             use btrfsutil::subvolume::DeleteFlags;
             use std::io::ErrorKind;
             return tokio::task::spawn_blocking(move || {
-                let target = target_dir.join(timestamp.to_string());
+                let target = target_dir.join(backup_id);
                 let subvol = btrfsutil::subvolume::Subvolume::get(target.as_path())
                     .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
                 subvol
