@@ -6,3 +6,4 @@ mysql/sockets/
 /backups/
 test/node_modules/
 .vscode/
+*.wasm
