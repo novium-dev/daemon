@@ -7,6 +7,7 @@ use std::ops::Deref;
 use std::sync::Arc;
 use url::Url;
 
+#[derive(Clone)]
 pub struct WithUserKey(pub(crate) SigningKey);
 
 #[derive(Clone)]
