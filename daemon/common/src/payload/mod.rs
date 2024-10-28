@@ -6,13 +6,7 @@ pub mod files;
 pub mod resource;
 pub mod server;
 
-#[cfg(target_arch = "wasm32")]
-pub use wasm_bindgen::prelude::*;
-
 use serde::{Deserialize, Serialize};
-
-#[cfg(target_arch = "wasm32")]
-pub use tsify::Tsify;
 
 #[derive(Serialize, Deserialize)]
 pub struct IdResponse {

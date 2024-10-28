@@ -2,9 +2,6 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-#[cfg(target_arch = "wasm32")]
-use super::*;
-
 #[derive(Serialize, Deserialize)]
 pub struct ServerPayload {
     pub storage: Option<String>,
@@ -14,8 +11,6 @@ pub struct ServerPayload {
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(target_arch = "wasm32", derive(Tsify))]
-#[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ServerResourcePayload {
     pub cpu: Option<f32>,
     pub ram: Option<u32>,
@@ -24,8 +19,6 @@ pub struct ServerResourcePayload {
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(target_arch = "wasm32", derive(Tsify))]
-#[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ServerBuildPayload {
     pub identifier: String,
     pub dockerfile: String,
@@ -38,8 +31,6 @@ pub struct ServerBuildPayload {
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(target_arch = "wasm32", derive(Tsify))]
-#[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct ServerPortEntryPayload {
     pub internal_port: u16,
     pub external_port: u16,
@@ -48,8 +39,6 @@ pub struct ServerPortEntryPayload {
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(target_arch = "wasm32", derive(Tsify))]
-#[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(transparent)]
 pub struct ServerPortsPayload(pub Vec<ServerPortEntryPayload>);
 

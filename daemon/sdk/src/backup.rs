@@ -1,23 +1,13 @@
-#[cfg(feature = "user")]
-use crate::builder::user::DaemonSDKWithUserKey;
 use crate::DaemonSDKError;
-use crate::DefaultDaemonSDK;
 use crate::*;
 use daemon_common::payload::backup::BackupResponseEntry;
 use http::Method;
 
-// My ide doesn't like duplicate (this struct isn't actually used)
-#[allow(unused)]
-pub(crate) struct DaemonSDKStruct;
-
-#[cfg_attr(not(feature = "user"), duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]])]
-#[cfg_attr(feature = "user", duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]; [DaemonSDKWithUserKey]])]
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-impl DaemonSDKStruct {
+impl<T: DaemonSDKExtra> DaemonSDK<T> {
     pub async fn server_list_backups(
         &self,
         server: u32,
-    ) -> Result<SdkVec<BackupResponseEntry>, DaemonSDKError> {
+    ) -> Result<Vec<BackupResponseEntry>, DaemonSDKError> {
         let response = self
             .wrapper(
                 Method::GET,
@@ -29,12 +19,10 @@ impl DaemonSDKStruct {
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
         }
-        #[allow(clippy::useless_conversion)]
         response
             .json::<Vec<BackupResponseEntry>>()
             .await
             .map_err(DaemonSDKError::Reqwest)
-            .map(|vec| vec.into())
     }
 
     pub async fn server_create_backup(
@@ -53,7 +41,6 @@ impl DaemonSDKStruct {
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
         }
-        #[allow(clippy::useless_conversion)]
         response
             .bytes()
             .await
@@ -78,7 +65,6 @@ impl DaemonSDKStruct {
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
         }
-        #[allow(clippy::useless_conversion)]
         response
             .bytes()
             .await
@@ -103,7 +89,6 @@ impl DaemonSDKStruct {
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
         }
-        #[allow(clippy::useless_conversion)]
         response
             .bytes()
             .await

@@ -1,20 +1,8 @@
-#[cfg(feature = "user")]
-use crate::builder::user::DaemonSDKWithUserKey;
-use crate::DefaultDaemonSDK;
-use crate::{DaemonSDKError, RequestBody};
+use crate::{DaemonSDK, DaemonSDKError, DaemonSDKExtra, RequestBody};
 use daemon_common::payload::resource::ResourceResponse;
 use http::Method;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
 
-// My ide doesn't like duplicate (this struct isn't actually used)
-#[allow(unused)]
-pub(crate) struct DaemonSDKStruct;
-
-#[cfg_attr(not(feature = "user"), duplicate::duplicate_item[DeamonSDKStruct; [DefaultDaemonSDK]])]
-#[cfg_attr(feature = "user", duplicate::duplicate_item[DeamonSDKStruct; [DefaultDaemonSDK]; [DaemonSDKWithUserKey]])]
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-impl DeamonSDKStruct {
+impl<T: DaemonSDKExtra> DaemonSDK<T> {
     pub async fn get_resource(&self) -> Result<ResourceResponse, DaemonSDKError> {
         let response = self
             .wrapper(

@@ -1,14 +1,7 @@
-#[cfg(target_arch = "wasm32")]
-use super::*;
-
-#[cfg(not(target_arch = "wasm32"))]
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
-#[cfg(not(target_arch = "wasm32"))]
 use serde::{Deserializer, Serializer};
 use std::collections::HashMap;
-#[cfg(target_arch = "wasm32")]
-use tsify::declare;
 
 #[derive(Serialize, Deserialize, Eq, PartialEq)]
 pub struct DatabasePayload {
@@ -18,8 +11,6 @@ pub struct DatabasePayload {
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
-#[cfg_attr(target_arch = "wasm32", derive(Tsify))]
-#[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 pub struct DatabaseUserPayload {
     pub password_hash: String,
     pub permissions: DatabasePermissions,
@@ -27,8 +18,6 @@ pub struct DatabaseUserPayload {
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(target_arch = "wasm32", derive(Tsify))]
-#[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(transparent)]
 pub struct DatabaseUsersPayload(pub HashMap<String, DatabaseUserPayload>);
 
@@ -45,12 +34,9 @@ impl From<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
 }
 
 #[derive(Serialize, Deserialize)]
-#[cfg_attr(target_arch = "wasm32", derive(Tsify))]
-#[cfg_attr(target_arch = "wasm32", tsify(into_wasm_abi, from_wasm_abi))]
 #[serde(transparent)]
 pub struct DatabasePasswordlessPayload(pub HashMap<u32, DatabasePermissions>);
 
-#[cfg(not(target_arch = "wasm32"))]
 bitflags! {
     #[derive(Eq, PartialEq, Hash, Clone, Copy)]
     pub struct DatabasePermissions: i32 {
@@ -63,7 +49,6 @@ bitflags! {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl Serialize for DatabasePermissions {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
@@ -73,7 +58,6 @@ impl Serialize for DatabasePermissions {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl<'de> Deserialize<'de> for DatabasePermissions {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
@@ -81,21 +65,6 @@ impl<'de> Deserialize<'de> for DatabasePermissions {
     {
         i32::deserialize(deserializer).map(DatabasePermissions::from_bits_truncate)
     }
-}
-
-#[cfg(target_arch = "wasm32")]
-#[declare]
-pub type DatabasePermissions = i32;
-
-#[cfg(target_arch = "wasm32")]
-#[wasm_bindgen(js_name = DatabasePermissionBits)]
-pub enum WasmDatabasePermissions {
-    SELECT = 1,
-    INSERT = 2,
-    UPDATE = 4,
-    DELETE = 8,
-    CREATE = 16,
-    DROP = 32,
 }
 
 impl From<DatabasePasswordlessPayload> for HashMap<u32, DatabasePermissions> {

@@ -1,7 +1,4 @@
-#[cfg(feature = "user")]
-use crate::builder::user::DaemonSDKWithUserKey;
 use crate::DaemonSDKError;
-use crate::DefaultDaemonSDK;
 use crate::*;
 use daemon_common::payload::files::{
     FileResponse, PathDirectoryQuery, PathQuery, PathSymlinkQuery, TwoPathQuery,
@@ -10,19 +7,12 @@ use futures_util::StreamExt;
 use http::Method;
 use reqwest::Response;
 
-// My ide doesn't like duplicate (this struct isn't actually used)
-#[allow(unused)]
-pub(crate) struct DaemonSDKStruct;
-
-#[cfg_attr(not(feature = "user"), duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]])]
-#[cfg_attr(feature = "user", duplicate::duplicate_item[DaemonSDKStruct; [DefaultDaemonSDK]; [DaemonSDKWithUserKey]])]
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-impl DaemonSDKStruct {
+impl<T: DaemonSDKExtra> DaemonSDK<T> {
     pub async fn server_list_files(
         &self,
         server: u32,
         path: String,
-    ) -> Result<SdkVec<FileResponse>, DaemonSDKError> {
+    ) -> Result<Vec<FileResponse>, DaemonSDKError> {
         let response = self
             .wrapper(
                 Method::GET,
@@ -117,7 +107,7 @@ impl DaemonSDKStruct {
         server: u32,
         path: String,
         limit: Option<usize>,
-    ) -> Result<SdkVec<u8>, DaemonSDKError> {
+    ) -> Result<Vec<u8>, DaemonSDKError> {
         let response: Response = self
             .wrapper(
                 Method::GET,
@@ -130,15 +120,11 @@ impl DaemonSDKStruct {
             return Err(DaemonSDKError::StatusCode(response.status()));
         }
         match limit {
-            None =>
-            {
-                #[allow(clippy::useless_conversion)]
-                response
-                    .bytes()
-                    .await
-                    .map_err(DaemonSDKError::Reqwest)
-                    .map(|bytes| bytes.to_vec().into())
-            }
+            None => response
+                .bytes()
+                .await
+                .map_err(DaemonSDKError::Reqwest)
+                .map(|bytes| bytes.to_vec()),
             Some(limit) => {
                 let mut buf = Vec::new();
                 let mut stream = response.bytes_stream();
@@ -149,20 +135,16 @@ impl DaemonSDKStruct {
                     }
                     buf.extend_from_slice(&entry);
                 }
-                Ok(
-                    #[allow(clippy::useless_conversion)]
-                    buf.into(),
-                )
+                Ok(buf)
             }
         }
     }
 
-    /* TODO: wasm-bindgen doesn't like SdkVec for some reason, I will fix it later
     pub async fn server_write_file(
         &self,
         server: u32,
         path: String,
-        data: SdkVec<u8>,
+        data: Vec<u8>,
     ) -> Result<(), DaemonSDKError> {
         let response = self
             .wrapper(
@@ -183,7 +165,7 @@ impl DaemonSDKStruct {
             .await
             .map(|_| ())
             .map_err(DaemonSDKError::Reqwest)
-    }*/
+    }
 
     pub async fn server_delete_file(
         &self,

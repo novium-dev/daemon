@@ -1,32 +1,18 @@
-use std::clone::Clone;
-use std::ops::Deref;
-#[cfg(target_arch = "wasm32")]
-use wasm_bindgen::prelude::*;
-
-use crate::builder::user::{DaemonSDKWithUserKey, WithUserKey};
+use crate::builder::user::WithUserKey;
 use crate::DaemonSDK;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use ed25519_dalek::Signer;
+use std::clone::Clone;
 
 #[cfg(feature = "websocket")]
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
 #[derive(Copy, Clone)]
 pub enum WebsocketType {
     TERMINAL,
     STATS,
 }
 
-impl Deref for DaemonSDK<WithUserKey> {
-    type Target = DaemonSDKWithUserKey;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-#[cfg_attr(target_arch = "wasm32", wasm_bindgen)]
-impl DaemonSDKWithUserKey {
+impl DaemonSDK<WithUserKey> {
     fn generate_token(
         &self,
         name: &str,
