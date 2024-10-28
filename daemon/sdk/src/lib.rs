@@ -24,6 +24,7 @@ pub(crate) trait DaemonSdkSealed {}
 impl DaemonSDKExtra for () {}
 impl DaemonSdkSealed for () {}
 
+#[derive(Debug, Clone)]
 pub struct DaemonSDK<T: DaemonSDKExtra> {
     client: Client,
     identifier: String,
