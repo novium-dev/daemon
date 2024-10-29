@@ -2,9 +2,8 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize)]
 pub struct BackupResponseEntry {
-    pub id: String,
+    pub time: i64,
     pub storage: String,
-    pub time: String,
 }
 
 #[derive(Serialize, Deserialize)]

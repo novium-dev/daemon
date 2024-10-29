@@ -14,6 +14,6 @@ pub struct IdResponse {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct StringIdResponse {
-    pub id: String,
+pub struct TimeIdResponse {
+    pub time: i64,
 }

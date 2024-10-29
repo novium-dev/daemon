@@ -96,4 +96,32 @@ impl DaemonSDK<WithUserKey> {
             .append_pair("path", &path);
         url.to_string()
     }
+
+    #[cfg(feature = "backups")]
+    pub fn generate_backup_download_url(&self, server: u32, timestamp: u64, storage: String, backup: i64) -> String {
+        let verify = self.generate_token("file", server, timestamp, Some(format!("-{}-{}", storage, backup)));
+        let mut url = self
+            .base_url
+            .join(&format!("user/backup/{}/{}/{}", server, storage, backup))
+            .unwrap();
+        url.query_pairs_mut()
+            .append_pair("timestamp", &timestamp.to_string())
+            .append_pair("verify", &verify);
+        url.to_string()
+    }
+
+    #[cfg(feature = "backups")]
+    pub fn generate_realtime_backup_download_url(&self, server: u32, timestamp: u64, compression: String) -> String {
+        let verify = self.generate_token("file", server, timestamp, Some(format!("-{}", compression)));
+        let mut url = self
+            .base_url
+            .join(&format!("user/backup/{}/rt", server))
+            .unwrap();
+        url.query_pairs_mut()
+            .append_pair("timestamp", &timestamp.to_string())
+            .append_pair("verify", &verify)
+            .append_pair("compression", &compression);
+        url.to_string()
+    }
+
 }

@@ -52,7 +52,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
         &self,
         server: u32,
         storage: String,
-        backup: String,
+        backup: i64,
     ) -> Result<(), DaemonSDKError> {
         let response = self
             .wrapper(
@@ -76,7 +76,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
         &self,
         server: u32,
         storage: String,
-        backup: String,
+        backup: i64,
     ) -> Result<(), DaemonSDKError> {
         let response = self
             .wrapper(

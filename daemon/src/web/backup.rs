@@ -3,7 +3,7 @@ use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::Json;
 use daemon_common::payload::backup::*;
-use daemon_common::payload::StringIdResponse;
+use daemon_common::payload::TimeIdResponse;
 
 use crate::storage::StorageIdentifier;
 use crate::{storage, DaemonState};
@@ -11,17 +11,17 @@ use crate::{storage, DaemonState};
 pub(crate) async fn server_create_backup(
     State(state): State<DaemonState>,
     Path((server_id, backup_storage)): Path<(u32, String)>,
-) -> Result<Json<StringIdResponse>, StatusCode> {
+) -> Result<Json<TimeIdResponse>, StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::create_backup(&state, storage, &backup_storage)
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
-        .map(|id| Json(StringIdResponse { id }))
+        .map(|time| Json(TimeIdResponse { time }))
 }
 
 pub(crate) async fn server_download_backup(
     State(state): State<DaemonState>,
-    Path((server_id, backup_storage, backup_id)): Path<(u32, String, String)>,
+    Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
 ) -> Result<Body, StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::backup_to_stream(&state, storage, backup_id, &backup_storage)
@@ -32,7 +32,7 @@ pub(crate) async fn server_download_backup(
 #[cfg(feature = "user")]
 pub(crate) async fn server_user_download_backup(
     State(state): State<DaemonState>,
-    Path((server_id, backup_storage, backup_id)): Path<(u32, String, String)>,
+    Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
     axum::extract::Query(crate::web::user::GenericUserQuery { timestamp, verify }): axum::extract::Query<crate::web::user::GenericUserQuery>,
 ) -> Result<Body, StatusCode> {
     crate::web::user::authenticate_user(
@@ -41,7 +41,7 @@ pub(crate) async fn server_user_download_backup(
         &state,
         &timestamp,
         &verify,
-        Some(format!("-{}", backup_id)),
+        Some(format!("-{}-{}", backup_storage, backup_id)),
     )
     .await?;
     let storage = StorageIdentifier::Primary(server_id);
@@ -89,7 +89,7 @@ pub(crate) async fn server_user_backup_realtime(
 
 pub(crate) async fn server_delete_backup(
     State(state): State<DaemonState>,
-    Path((server_id, backup_storage, backup_id)): Path<(u32, String, String)>,
+    Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
 ) -> Result<(), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::delete_backup(&state, storage, backup_id, &backup_storage)
@@ -107,7 +107,7 @@ pub(crate) async fn server_list_backups(
 
 pub(crate) async fn server_restore_backup(
     State(state): State<DaemonState>,
-    Path((server_id, backup_storage, backup_id)): Path<(u32, String, String)>,
+    Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
 ) -> Result<(), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::restore_backup(&state, storage, backup_id, &backup_storage).await
