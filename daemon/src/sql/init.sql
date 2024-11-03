@@ -4,9 +4,9 @@ CREATE TABLE IF NOT EXISTS `servers`
   `build_dockerfile` VARCHAR(1000) NOT NULL DEFAULT '',
   `build_identifier` VARCHAR(255) NOT NULL DEFAULT '',
   `cpu` FLOAT(255,2),
-  `ram` INT(255) UNSIGNED,
-  `swap` INT(255) UNSIGNED,
-  `disk` INT(255) UNSIGNED,
+  `ram` INT UNSIGNED,
+  `swap` INT UNSIGNED,
+  `disk` BIGINT UNSIGNED,
   `storage` VARCHAR(255) NOT NULL DEFAULT 'local'
 );
 
