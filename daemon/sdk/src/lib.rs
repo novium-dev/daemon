@@ -79,7 +79,5 @@ pub enum DaemonSDKError {
     Reqwest(reqwest::Error),
     URLParseError(url::ParseError),
     StatusCode(StatusCode),
-    #[cfg(feature = "user")]
-    InvalidWebsocketKey,
     Limit(usize),
 }
