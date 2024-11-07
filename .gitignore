@@ -2,6 +2,8 @@
 .idea/
 mysql/data/
 mysql/sockets/
+valkey/data/
+valkey/sockets/
 /storage/
 /backups/
 test/node_modules/
