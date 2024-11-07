@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use daemon_common::payload::server::ServerFileWrite;
 use diesel::result::Error;
 use diesel::{
     define_sql_function, Associations, BelongingToDsl, Identifiable, Insertable, Queryable,
@@ -50,6 +51,7 @@ pub(crate) struct FetchedServer {
     pub(crate) build_args: HashMap<String, String>,
     pub(crate) build_identifier: String,
     pub(crate) backup_exclude: HashSet<String>,
+    pub(crate) files_write: HashMap<String, ServerFileWrite>,
 
     pub(crate) cpu: Option<f32>,
     pub(crate) ram: Option<u32>,
@@ -105,6 +107,7 @@ impl Server {
             build_args,
             build_identifier: self.build_identifier,
             backup_exclude,
+            files_write: HashMap::new(), // TODO: Database files write
 
             cpu: self.cpu,
             ram: self.ram,

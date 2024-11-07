@@ -5,6 +5,7 @@ use std::future::Future;
 use std::io;
 use std::io::ErrorKind;
 use std::ops::{Add, Deref, DerefMut};
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -19,7 +20,10 @@ use bollard::image::{BuildImageOptions, ListImagesOptions};
 use bollard::models::{HealthStatusEnum, PortBinding};
 use bollard::service::HostConfig;
 use bollard::Docker;
+use daemon_common::payload::server::ServerFileWrite;
+use daemon_common::server::{PublicServerState, ServerStats};
 use futures::stream::StreamExt;
+use java_properties::{read, write};
 use log::warn;
 use serde::{Serialize, Serializer};
 use termion::color::Fg;
@@ -28,8 +32,7 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::{Mutex, OwnedRwLockReadGuard};
 use tokio::time::Instant;
 use tokio_tar::{Builder, Header};
-
-use daemon_common::server::{PublicServerState, ServerStats};
+use tokio_util::io::SyncIoBridge;
 
 use crate::config::StorageEntry;
 use crate::schema::FetchedServer;
@@ -259,6 +262,34 @@ impl FetchedServer {
             .clone()
             .prepare_image(&docker, buffer.deref_mut(), server_data)
             .await?;
+
+        let storage_path_buf = PathBuf::from(&storage_path);
+        for (file_path, file_write) in &self.files_write {
+            let target_path = storage_path_buf.join(file_path);
+            let file = tokio::fs::OpenOptions::new()
+                .create(true)
+                .read(true)
+                .write(true)
+                .truncate(true)
+                .open(&target_path)
+                .await
+                .map_err(ServerStartError::IO)?;
+            match file_write.clone() {
+                ServerFileWrite::PROPERTIES { content } => {
+                    tokio::task::spawn_blocking(move || {
+                        let mut bridge = SyncIoBridge::new(file);
+                        let mut current = read(&mut bridge).unwrap_or(HashMap::new());
+                        current.extend(content);
+                        write(&mut bridge, &current).map_err(|err| {
+                            ServerStartError::IO(io::Error::new(ErrorKind::Other, err))
+                        })?;
+                        Ok(())
+                    })
+                    .await
+                    .map_err(|err| ServerStartError::IO(io::Error::new(ErrorKind::Other, err)))??;
+                }
+            }
+        }
 
         let mut binds = Vec::with_capacity(1);
         binds.push(format!("{}:/work", storage_path));

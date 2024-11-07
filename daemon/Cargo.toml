@@ -51,8 +51,12 @@ chrono.workspace = true
 futures-util = "0.3.31"
 futures = "0.3.30"
 bytes = "1.7.2"
-tokio-util = "0.7.12"
 sysinfo = "0.32.0"
+java-properties = "2.0.0"
+
+[dependencies.tokio-util]
+version = "0.7.12"
+features = ["io-util"]
 
 [dependencies.daemon_common]
 workspace = true

@@ -25,9 +25,17 @@ pub struct ServerBuildPayload {
     pub build_args: HashMap<String, String>,
 
     pub backup_exclude: HashSet<String>,
+    pub files_write: HashMap<String, ServerFileWrite>,
 
     pub cap_add: Vec<String>,
     pub cap_drop: Vec<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "filetype")]
+pub enum ServerFileWrite {
+    #[serde(rename = "properties")]
+    PROPERTIES { content: HashMap<String, String> },
 }
 
 #[derive(Serialize, Deserialize)]
