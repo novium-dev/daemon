@@ -216,7 +216,7 @@ where
     D: serde::Deserializer<'de>,
 {
     struct CompressionLevelVisitor;
-    impl<'de> Visitor<'de> for CompressionLevelVisitor {
+    impl Visitor<'_> for CompressionLevelVisitor {
         type Value = Level;
 
         fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
