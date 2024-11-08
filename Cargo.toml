@@ -3,7 +3,7 @@ members = ["backend", "daemon/common", "daemon/sdk", "daemon", "mariadb-plugin"]
 resolver = "2"
 
 [workspace.dependencies]
-libc = "0.2.159"
+libc = "0.2"
 bollard = "0.17.1"
 regex = "1.11.0"
 toml = "0.8.19"
@@ -46,7 +46,7 @@ version = "1.0"
 features = ["preserve_order"]
 
 [workspace.dependencies.tokio]
-version = "1.39.2"
+version = "1.41.1"
 features = ["full"]
 
 [workspace.dependencies.axum-server]
