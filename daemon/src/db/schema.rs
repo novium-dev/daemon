@@ -46,7 +46,7 @@ impl Database {
     }
 }
 
-#[derive(Clone, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct FetchedServer {
     pub(crate) id: u32,
 
@@ -154,7 +154,7 @@ impl Server {
             build_args,
             build_identifier: self.build_identifier,
             backup_exclude,
-            files_write: HashMap::new(), // TODO: Database files write
+            files_write,
 
             cpu: self.cpu,
             ram: self.ram,
@@ -365,7 +365,7 @@ diesel::table! {
     }
 }
 
-#[derive(Identifiable, Insertable, Queryable, Selectable, Associations, Clone)]
+#[derive(Debug, Identifiable, Insertable, Queryable, Selectable, Associations, Clone)]
 #[diesel(table_name = server_ports)]
 #[diesel(belongs_to(Server, foreign_key = server_id))]
 #[diesel(primary_key(id))]

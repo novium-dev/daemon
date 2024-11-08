@@ -31,7 +31,7 @@ pub struct ServerBuildPayload {
     pub cap_drop: Vec<String>,
 }
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "filetype")]
 pub enum ServerFileWrite {
     #[serde(rename = "write")]
