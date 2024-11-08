@@ -15,7 +15,7 @@ use crate::terminal::{new_session, update_size, TerminalData};
 use crate::utils::{storage_read, ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{DaemonState, ServerData};
 use axum::{async_trait, http};
-use daemon_common::server::PanelAuthServerPermissions;
+use daemon_common::server::BackendAuthServerPermissions;
 use log::{debug, error};
 use russh::server::{Auth, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId, ChannelStream, Pty};
@@ -70,7 +70,7 @@ pub(crate) type PanelAuthResponse = Vec<PanelAuthServer>;
 #[derive(Deserialize, Clone)]
 pub(crate) struct PanelAuthServer {
     pub(crate) id: u32,
-    pub(crate) permissions: PanelAuthServerPermissions,
+    pub(crate) permissions: BackendAuthServerPermissions,
 }
 
 pub struct DaemonSSHHandler {
@@ -203,7 +203,7 @@ impl Handler for DaemonSSHHandler {
                         for server in servers {
                             auth.push(PanelAuthServer {
                                 id: server.id,
-                                permissions: PanelAuthServerPermissions::all(),
+                                permissions: BackendAuthServerPermissions::all(),
                             });
                         }
                     }
@@ -370,11 +370,11 @@ impl Handler for DaemonSSHHandler {
             if server.id == server_id {
                 if server
                     .permissions
-                    .contains(PanelAuthServerPermissions::TERMINAL_READ)
+                    .contains(BackendAuthServerPermissions::TERMINAL_READ)
                 {
                     if server
                         .permissions
-                        .contains(PanelAuthServerPermissions::TERMINAL_WRITE)
+                        .contains(BackendAuthServerPermissions::TERMINAL_WRITE)
                     {
                         allowed = 2;
                     } else {
@@ -532,7 +532,7 @@ impl Handler for DaemonSSHHandler {
                     for server in self.auth.as_ref().unwrap() {
                         if server
                             .permissions
-                            .contains(PanelAuthServerPermissions::FILES_READ)
+                            .contains(BackendAuthServerPermissions::FILES_READ)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
                             if let Ok((_path, lock, _, storage)) = storage_read(

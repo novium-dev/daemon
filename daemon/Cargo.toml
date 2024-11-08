@@ -17,6 +17,7 @@ btrfs = ["btrfsutil"]
 user = []
 
 default = ["ssl", "ssh", "sftp", "websocket", "database", "files", "backups"]
+full = ["btrfs"]
 
 [dependencies]
 libc.workspace = true

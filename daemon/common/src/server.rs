@@ -102,7 +102,7 @@ impl ServerStats {
 bitflags! {
     #[repr(transparent)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
-    pub struct PanelAuthServerPermissions: i32 {
+    pub struct BackendAuthServerPermissions: i32 {
         const TERMINAL_READ = 1 << 0;
         const TERMINAL_WRITE = 1 << 1;
 
