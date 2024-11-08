@@ -1,5 +1,5 @@
 use crate::common::payload::database::DatabasePayload;
-use crate::{db::schema, sql};
+use crate::{schema, sql};
 use axum::async_trait;
 use diesel::result::Error;
 use diesel::{delete, insert_into};

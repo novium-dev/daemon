@@ -39,7 +39,7 @@ use tokio_tar::{Builder, Header};
 use tokio_util::io::SyncIoBridge;
 
 use crate::config::StorageEntry;
-use crate::db::schema::FetchedServer;
+use crate::schema::*;
 use crate::storage::StorageIdentifier;
 use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
 use crate::{utils, DaemonState, ServerData};
@@ -595,6 +595,7 @@ impl FetchedServer {
         }
     }
 
+    #[inline(always)]
     async fn queue_start0(
         server_id: u32,
         state: DaemonState,
@@ -627,6 +628,7 @@ impl FetchedServer {
         Ok(())
     }
 
+    #[inline(always)]
     fn start_pinned<'a>(
         &'a self,
         docker: Arc<Docker>,

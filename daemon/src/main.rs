@@ -32,7 +32,7 @@ use uuid::Uuid;
 pub use daemon_common as common;
 
 use crate::config::DaemonConfig;
-use crate::db::schema::FetchedServer;
+use crate::schema::FetchedServer;
 #[cfg(feature = "ssh")]
 use crate::ssh::DaemonSSHServer;
 use crate::storage::StorageIdentifier;
@@ -41,7 +41,8 @@ use crate::utils::ChannelWriteData;
 
 mod config;
 #[cfg(feature = "database")]
-mod db;
+mod database;
+mod schema;
 mod server;
 
 #[cfg(feature = "files")]

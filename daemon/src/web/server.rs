@@ -3,12 +3,12 @@ use std::time::Duration;
 
 use crate::common::payload::server::ServerPayload;
 use crate::common::payload::IdResponse;
-use crate::db::schema::*;
+use crate::schema::*;
 use crate::server::{InternalServerState, ServerStartError, ServerStopError};
 use crate::storage::StorageIdentifier;
 use crate::utils::{server, storage_read};
 use crate::web::diesel_error_to_http;
-use crate::{db::schema, storage, DaemonState};
+use crate::{schema, storage, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;
@@ -161,6 +161,7 @@ pub(crate) async fn insert_dummy(
         .await? as u32)
 }
 
+// ONLY EXECUTE INSIDE A TRANSACTION
 pub(crate) async fn modify0(
     conn: &mut AsyncMysqlConnection,
     server_id: u32,

@@ -1,4 +1,4 @@
-use crate::db::schema::FetchedServer;
+use crate::schema::*;
 use crate::server::ServerStopError;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};

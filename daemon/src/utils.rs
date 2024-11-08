@@ -18,9 +18,7 @@ use tokio::time::error::Elapsed;
 use daemon_common::server::ServerStats;
 
 use crate::config::{DaemonConfig, StorageEntry};
-#[cfg(feature = "database")]
-use crate::db::schema::{databases, Database, FetchedDatabase};
-use crate::db::schema::{servers, FetchedServer, Server};
+use crate::schema::*;
 use crate::server::InternalServerState;
 use crate::storage::{ensure_exists, StorageIdentifier};
 use crate::web::diesel_error_to_http;
