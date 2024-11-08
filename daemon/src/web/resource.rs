@@ -1,4 +1,4 @@
-use crate::schema::servers;
+use crate::db::schema::servers;
 use crate::web::diesel_error_to_http;
 use crate::DaemonState;
 use axum::extract::State;

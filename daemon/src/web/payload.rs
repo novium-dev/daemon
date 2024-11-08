@@ -1,5 +1,5 @@
 use crate::common::payload::database::{DatabasePayload, DatabaseUserPayload};
-use crate::schema::FetchedDatabase;
+use crate::db::schema::FetchedDatabase;
 use daemon_common::payload::database::DatabasePermissions;
 
 pub(crate) trait FromFetchedDatabaseExtension {

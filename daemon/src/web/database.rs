@@ -1,10 +1,10 @@
 use crate::common::payload::database::DatabasePayload;
 use crate::common::payload::IdResponse;
-use crate::database::{DatabasePayloadFunctionExtension, DatabaseUpdateError};
+use crate::db::database::{DatabasePayloadFunctionExtension, DatabaseUpdateError};
 use crate::utils::database;
 use crate::web::diesel_error_to_http;
 use crate::web::payload::FromFetchedDatabaseExtension;
-use crate::{schema, sql, DaemonState};
+use crate::{db::schema, sql, DaemonState};
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::Json;

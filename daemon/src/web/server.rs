@@ -12,15 +12,15 @@ use tokio::time::timeout;
 
 use crate::common::payload::server::ServerPayload;
 use crate::common::payload::IdResponse;
-use crate::schema::FetchedServer;
-use crate::schema::{
+use crate::db::schema::FetchedServer;
+use crate::db::schema::{
     server_backup_exclude, server_buildargs, server_capadd, server_capdrop, server_ports, servers,
 };
 use crate::server::{InternalServerState, ServerStartError, ServerStopError};
 use crate::storage::StorageIdentifier;
 use crate::utils::{server, storage_read};
 use crate::web::diesel_error_to_http;
-use crate::{schema, storage, DaemonState};
+use crate::{db::schema, storage, DaemonState};
 
 pub(crate) async fn create_server(
     State(state): State<DaemonState>,

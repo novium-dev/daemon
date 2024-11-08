@@ -39,7 +39,7 @@ use tokio_tar::{Builder, Header};
 use tokio_util::io::SyncIoBridge;
 
 use crate::config::StorageEntry;
-use crate::schema::FetchedServer;
+use crate::db::schema::FetchedServer;
 use crate::storage::StorageIdentifier;
 use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
 use crate::{utils, DaemonState, ServerData};

@@ -182,7 +182,7 @@ impl Handler for DaemonSSHHandler {
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
         #[cfg(feature = "ssh_debug_auth_bypass")]
         {
-            use crate::schema::servers;
+            use crate::db::schema::servers;
             use diesel::{QueryDsl, SelectableHelper};
             use diesel_async::RunQueryDsl;
             use std::ops::DerefMut;
@@ -190,9 +190,9 @@ impl Handler for DaemonSSHHandler {
             if cfg!(feature = "ssh_debug_auth_bypass") {
                 let conn = self.state.conn.clone();
                 let mut conn = conn.lock().await;
-                let servers: Result<Vec<crate::schema::Server>, diesel::result::Error> =
+                let servers: Result<Vec<crate::db::schema::Server>, diesel::result::Error> =
                     servers::dsl::servers
-                        .select(crate::schema::Server::as_select())
+                        .select(crate::db::schema::Server::as_select())
                         .load(conn.deref_mut())
                         .await;
                 let mut auth =
