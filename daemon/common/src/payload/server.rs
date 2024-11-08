@@ -34,6 +34,8 @@ pub struct ServerBuildPayload {
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "filetype")]
 pub enum ServerFileWrite {
+    #[serde(rename = "write")]
+    WRITE { data: Vec<u8> },
     #[serde(rename = "properties")]
     PROPERTIES { content: HashMap<String, String> },
 }

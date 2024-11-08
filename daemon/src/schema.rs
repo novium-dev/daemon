@@ -1,5 +1,5 @@
-use std::collections::{HashMap, HashSet};
-
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use daemon_common::payload::server::ServerFileWrite;
 use diesel::result::Error;
 use diesel::{
@@ -7,6 +7,9 @@ use diesel::{
     Selectable,
 };
 use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
+use std::collections::{HashMap, HashSet};
+use std::io;
+use std::io::ErrorKind;
 
 #[cfg(feature = "database")]
 #[derive(Clone, Default, Eq, PartialEq)]
@@ -100,6 +103,50 @@ impl Server {
             .into_iter()
             .map(|cap_drop| cap_drop.capability)
             .collect();
+
+        let files_write_entries: Vec<ServerFileWriteEntry> =
+            ServerFileWriteEntry::belonging_to(&self)
+                .load::<ServerFileWriteEntry>(conn)
+                .await?;
+        let mut files_write: HashMap<String, ServerFileWrite> = HashMap::new();
+        for entry in files_write_entries {
+            match entry.filetype.as_str() {
+                "properties" => {
+                    if !files_write.contains_key(&entry.file) {
+                        files_write.insert(
+                            entry.file.clone(),
+                            ServerFileWrite::PROPERTIES {
+                                content: HashMap::new(),
+                            },
+                        );
+                    }
+                    if let ServerFileWrite::PROPERTIES { content } =
+                        files_write.get_mut(&entry.file).unwrap()
+                    {
+                        content.insert(
+                            entry
+                                .key
+                                .ok_or(diesel::result::Error::DeserializationError(Box::new(
+                                    io::Error::new(ErrorKind::Other, "key is null!"),
+                                )))?,
+                            entry.value,
+                        );
+                    }
+                }
+                "write" => {
+                    files_write.insert(
+                        entry.file.clone(),
+                        ServerFileWrite::WRITE {
+                            data: BASE64_STANDARD
+                                .decode(entry.value)
+                                .map_err(Box::new)
+                                .map_err(|err| diesel::result::Error::DeserializationError(err))?,
+                        },
+                    );
+                }
+                _ => {}
+            }
+        }
 
         Ok(FetchedServer {
             id: self.id,
@@ -273,6 +320,28 @@ diesel::table! {
         id -> Unsigned<Integer>,
         server_id -> Unsigned<Integer>,
         exclude -> VarChar,
+    }
+}
+
+#[derive(Identifiable, Insertable, Queryable, Selectable, Associations)]
+#[diesel(table_name = server_file_writes)]
+#[diesel(belongs_to(Server, foreign_key = server_id))]
+#[diesel(primary_key(server_id, file))]
+pub(crate) struct ServerFileWriteEntry {
+    pub(crate) server_id: u32,
+    pub(crate) file: String,
+    pub(crate) filetype: String,
+    pub(crate) key: Option<String>,
+    pub(crate) value: String,
+}
+
+diesel::table! {
+    server_file_writes (server_id, file) {
+        server_id -> Unsigned<Integer>,
+        file -> VarChar,
+        filetype -> VarChar,
+        key -> Nullable<VarChar>,
+        value -> VarChar
     }
 }
 

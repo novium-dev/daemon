@@ -39,6 +39,15 @@ CREATE TABLE IF NOT EXISTS `server_backup_exclude`
   `exclude` VARCHAR(255) NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS `server_file_writes`
+(
+  `server_id` INT(255) UNSIGNED NOT NULL,
+  `file` VARCHAR(255) NOT NULL,
+  `filetype` ENUM('write', 'properties') NOT NULL,
+  `key` VARCHAR(255),
+  `value` VARCHAR(1000) NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS `server_ports`
 (
   `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,

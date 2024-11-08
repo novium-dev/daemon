@@ -5,6 +5,7 @@ use std::future::Future;
 use std::io;
 use std::io::ErrorKind;
 use std::ops::{Add, Deref, DerefMut};
+use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -20,6 +21,8 @@ use bollard::image::{BuildImageOptions, ListImagesOptions};
 use bollard::models::{HealthStatusEnum, PortBinding};
 use bollard::service::HostConfig;
 use bollard::Docker;
+use cap_async_std::ambient_authority;
+use cap_async_std::fs::{Dir, OpenOptions};
 use daemon_common::payload::server::ServerFileWrite;
 use daemon_common::server::{PublicServerState, ServerStats};
 use futures::stream::StreamExt;
@@ -28,6 +31,7 @@ use log::warn;
 use serde::{Serialize, Serializer};
 use termion::color::Fg;
 use termion::{clear, color};
+use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::{Mutex, OwnedRwLockReadGuard};
 use tokio::time::Instant;
@@ -264,21 +268,31 @@ impl FetchedServer {
             .await?;
 
         let storage_path_buf = PathBuf::from(&storage_path);
+        let storage = Dir::open_ambient_dir(&storage_path_buf, ambient_authority())
+            .await
+            .map_err(ServerStartError::IO)?;
         for (file_path, file_write) in &self.files_write {
-            let target_path = storage_path_buf.join(file_path);
-            let file = tokio::fs::OpenOptions::new()
-                .create(true)
-                .read(true)
-                .write(true)
-                .truncate(true)
-                .open(&target_path)
+            let file = storage
+                .open_with(
+                    file_path,
+                    OpenOptions::new()
+                        .create(true)
+                        .truncate(true)
+                        .write(true)
+                        .read(true),
+                )
                 .await
                 .map_err(ServerStartError::IO)?;
+            let fd: OwnedFd = file.into();
+            let mut file = tokio::fs::File::from_std(std::fs::File::from(fd));
             match file_write.clone() {
+                ServerFileWrite::WRITE { data } => {
+                    file.write_all(&data).await.map_err(ServerStartError::IO)?;
+                }
                 ServerFileWrite::PROPERTIES { content } => {
                     tokio::task::spawn_blocking(move || {
                         let mut bridge = SyncIoBridge::new(file);
-                        let mut current = read(&mut bridge).unwrap_or(HashMap::new());
+                        let mut current = read(&mut bridge).unwrap_or_default();
                         current.extend(content);
                         write(&mut bridge, &current).map_err(|err| {
                             ServerStartError::IO(io::Error::new(ErrorKind::Other, err))

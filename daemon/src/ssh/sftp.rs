@@ -3,16 +3,22 @@ use crate::ssh::PanelAuthServerPermissions;
 use crate::storage::StorageIdentifier;
 use crate::utils::parse_path;
 use axum::async_trait;
+use cap_async_std::ambient_authority;
+use cap_async_std::fs::{
+    Dir, FileTypeExt, Metadata, MetadataExt, OpenOptions, OpenOptionsExt, Permissions,
+    PermissionsExt, ReadDir,
+};
 use log::{debug, error};
 use russh_sftp::protocol::{
     Attrs, Data, FileAttributes, FileMode, Handle, Name, OpenFlags, Status, StatusCode, Version,
 };
 use std::collections::HashMap;
-use std::fs::{Metadata, Permissions, ReadDir};
+use std::fs::Permissions as PermissionsStd;
 use std::io::{ErrorKind, SeekFrom};
+use std::os::unix::fs::PermissionsExt as StdPermissionsExt;
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
-use tokio::fs::{self, File, OpenOptions};
+use tokio::fs::File;
 use tokio::io;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::sync::OwnedRwLockReadGuard;
@@ -140,7 +146,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         debug!("Read {} {}", id, handle);
         let handle = self
             .handle(handle, PanelAuthServerPermissions::FILES_READ)?
-            .regular_only()?;
+            .regular_file_only()?;
         handle
             .seek(SeekFrom::Start(offset))
             .await
@@ -171,7 +177,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         debug!("Write {} {}", id, handle);
         let handle = self
             .handle(handle, PanelAuthServerPermissions::FILES_WRITE)?
-            .regular_only()?;
+            .regular_file_only()?;
         handle
             .seek(SeekFrom::Start(offset))
             .await
@@ -204,10 +210,10 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         debug!("Fsetstat {} {}", id, handle);
         let handle = self
             .handle(handle, PanelAuthServerPermissions::FILES_WRITE)?
-            .regular_only()?;
+            .regular_file_only()?;
         if let Some(mode) = attrs.permissions {
             handle
-                .set_permissions(Permissions::from_mode(mode))
+                .set_permissions(PermissionsStd::from_mode(mode))
                 .await
                 .map_err(|_err| StatusCode::Failure)?;
         }
@@ -223,12 +229,10 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Lstat {} {}", id, path);
-        let path = self
+        let (storage, path) = self
             .path(path, PanelAuthServerPermissions::FILES_READ)
             .await?;
-        let metadata = tokio::fs::symlink_metadata(path)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
+        let metadata = storage.symlink_metadata(path).await.map_err(ferr)?;
         Ok(Attrs {
             id,
             attrs: metadata.into_fileattributes(),
@@ -242,28 +246,31 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         debug!("Mkdir {} {}", id, path);
-        let path = self
+        let (storage, path) = self
             .path(path, PanelAuthServerPermissions::FILES_CREATE)
             .await?;
-        fs::create_dir(&path)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
+        let (storage, path) = tokio::task::spawn_blocking(move || {
+            // (copy-pasted from cap-std docs) TODO: async: fix this when we fix https://github.com/bytecodealliance/cap-std/issues/51
+            storage.create_dir_all(&path).map_err(ferr)?;
+            Ok((storage, path))
+        })
+        .await
+        .map_err(|_err| StatusCode::Failure)??;
         if let Some(mode) = attrs.permissions {
-            fs::set_permissions(&path, Permissions::from_mode(mode))
+            storage
+                .set_permissions(&path, Permissions::from_mode(mode))
                 .await
-                .map_err(|_err| StatusCode::Failure)?;
+                .map_err(ferr)?;
         }
         Self::success(id)
     }
 
     async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Stat {} {}", id, path);
-        let path = self
+        let (storage, path) = self
             .path(path, PanelAuthServerPermissions::FILES_READ)
             .await?;
-        let metadata = tokio::fs::metadata(path)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
+        let metadata = storage.symlink_metadata(path).await.map_err(ferr)?;
         Ok(Attrs {
             id,
             attrs: metadata.into_fileattributes(),
@@ -277,20 +284,18 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         debug!("Setstat {} {}", id, path);
-        let path = self
+        let (storage, path) = self
             .path(path, PanelAuthServerPermissions::FILES_WRITE)
             .await?;
-        let fs = fs::File::open(path)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
+        let fs = storage.open(path).await.map_err(ferr)?;
         if let Some(mode) = attrs.permissions {
             fs.set_permissions(Permissions::from_mode(mode))
                 .await
-                .map_err(|_err| StatusCode::Failure)?;
+                .map_err(ferr)?;
         }
 
         if let Some(len) = attrs.size {
-            fs.set_len(len).await.map_err(|_err| StatusCode::Failure)?;
+            fs.set_len(len).await.map_err(ferr)?;
         }
 
         Self::success(id)
@@ -303,37 +308,34 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         newpath: String,
     ) -> Result<Status, Self::Error> {
         debug!("Rename {} {} to {}", id, oldpath, newpath);
-        let old_path = self
+        let (old_storage, old_path) = self
             .path(oldpath, PanelAuthServerPermissions::FILES_DELETE)
             .await?;
-        let new_path = self
+        let (new_storage, new_path) = self
             .path(newpath, PanelAuthServerPermissions::FILES_CREATE)
             .await?;
-        fs::rename(old_path, new_path)
+        old_storage
+            .rename(old_path, &new_storage, new_path)
             .await
-            .map_err(|_err| StatusCode::Failure)?;
+            .map_err(ferr)?;
         Self::success(id)
     }
 
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
         debug!("Remove {} {}", id, filename);
-        let path = self
+        let (storage, path) = self
             .path(filename, PanelAuthServerPermissions::FILES_DELETE)
             .await?;
-        fs::remove_file(path)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
+        storage.remove_file(path).await.map_err(ferr)?;
         Self::success(id)
     }
 
     async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
         debug!("rmdir {} {}", id, path);
-        let path = self
+        let (storage, path) = self
             .path(path, PanelAuthServerPermissions::FILES_DELETE)
             .await?;
-        fs::remove_dir(path)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
+        storage.remove_dir(path).await.map_err(ferr)?;
         Self::success(id)
     }
 
@@ -344,24 +346,20 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         targetpath: String,
     ) -> Result<Status, Self::Error> {
         debug!("Symlink {} {} {}", id, linkpath, targetpath);
-        let linkpath = self
+        let (storage, path) = self
             .path(linkpath, PanelAuthServerPermissions::FILES_CREATE)
             .await?;
-        let targetpath = PathBuf::from(targetpath);
-        fs::symlink(linkpath, targetpath)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
+        let content = PathBuf::from(targetpath);
+        storage.symlink(content, path).await.map_err(ferr)?;
         Self::success(id)
     }
 
     async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         debug!("Readlink {} {}", id, path);
-        let linkpath = self
+        let (storage, path) = self
             .path(path, PanelAuthServerPermissions::FILES_READ)
             .await?;
-        let path = fs::read_link(linkpath)
-            .await
-            .map_err(|_err| StatusCode::Failure)?;
+        let path = storage.read_link(path).await.map_err(ferr)?;
         Ok(Name {
             id,
             files: vec![russh_sftp::protocol::File {
@@ -423,7 +421,7 @@ impl DaemonSftpSession {
         &self,
         path: String,
         required: PanelAuthServerPermissions,
-    ) -> Result<PathBuf, StatusCode> {
+    ) -> Result<(Dir, PathBuf), StatusCode> {
         let (storage, _, temp_suffix) = self.path0(path).await?;
 
         match storage {
@@ -432,11 +430,15 @@ impl DaemonSftpSession {
                 if !permissions.contains(required) {
                     return Err(StatusCode::PermissionDenied);
                 }
-                let mut path = PathBuf::from(storage.path()).join(id.as_pathbuf());
+                let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
+                let storage = Dir::open_ambient_dir(base, ambient_authority())
+                    .await
+                    .map_err(ferr)?;
+                let mut path = PathBuf::new();
                 for comp in temp_suffix {
                     path = path.join(comp);
                 }
-                Ok(path)
+                Ok((storage, path))
             }
         }
     }
@@ -535,72 +537,63 @@ impl DaemonSftpSession {
                 let base = tokio::fs::canonicalize(base)
                     .await
                     .map_err(|_err| StatusCode::Failure)?;
-
-                let mut path = base.clone();
-                for comp in temp_suffix {
-                    path = path.join(comp);
-                }
-
-                let cononical_path = tokio::fs::canonicalize(&path)
+                let storage = Dir::open_ambient_dir(&base, ambient_authority())
                     .await
                     .map_err(|_err| StatusCode::Failure)?;
-                if cononical_path.strip_prefix(base).is_err() {
-                    return Err(StatusCode::PermissionDenied); // Trying to escape the allowed directory using symlinks
-                }
 
-                let mut options = OpenOptions::new();
-                let mut options = options
-                    .read(pflags.intersects(OpenFlags::READ))
-                    .write(pflags.intersects(OpenFlags::WRITE))
-                    .append(pflags.intersects(OpenFlags::APPEND))
-                    .create(pflags.intersects(OpenFlags::CREATE))
-                    .truncate(pflags.intersects(OpenFlags::TRUNCATE))
-                    .create_new(pflags.intersects(OpenFlags::EXCLUDE));
-
-                if let Some(mode) = attrs.permissions {
-                    options = options.mode(mode);
+                let mut path = if temp_suffix.is_empty() {
+                    PathBuf::from(".")
+                } else {
+                    PathBuf::new()
+                };
+                for comp in &temp_suffix {
+                    path = path.join(comp);
                 }
-
-                let file = options.open(&path).await.map_err(|err| match err.kind() {
-                    ErrorKind::NotFound => StatusCode::NoSuchFile,
-                    ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
-                    _ => StatusCode::Failure,
-                })?;
-                let mut read_dir = None;
-                if file
-                    .metadata()
-                    .await
-                    .map_err(|err| match err.kind() {
-                        ErrorKind::NotFound => StatusCode::NoSuchFile,
-                        ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
-                        _ => StatusCode::Failure,
-                    })?
-                    .is_dir()
-                {
-                    read_dir = Some(
-                        tokio::task::spawn_blocking(move || std::fs::read_dir(path))
-                            .await
-                            .map_err(|_err| StatusCode::Failure)?
-                            .map_err(|err| match err.kind() {
-                                ErrorKind::NotFound => StatusCode::NoSuchFile,
-                                ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
-                                _ => StatusCode::Failure,
-                            })?,
-                    );
-                }
-                let handle = file.as_raw_fd().to_string();
-                self.file_handles.insert(
-                    handle.clone(),
-                    FileHandle::Regular(file, read_dir, false, permissions),
+                debug!(
+                    "Requesting open: {} {}",
+                    base.to_string_lossy(),
+                    path.to_string_lossy()
                 );
-                Ok(handle)
+
+                let (fd, handle) = if storage.is_dir(&path).await {
+                    let dir = storage.open_dir(&path).await.map_err(ferr)?;
+                    let fd_num = dir.as_raw_fd() as i32;
+                    let read_dir = dir.read_dir(".").await.map_err(ferr)?;
+                    (
+                        fd_num,
+                        FileHandle::RegularDir(dir, read_dir, false, permissions),
+                    )
+                } else {
+                    let mut options = OpenOptions::new();
+                    let mut options = options
+                        .read(pflags.intersects(OpenFlags::READ))
+                        .write(pflags.intersects(OpenFlags::WRITE))
+                        .append(pflags.intersects(OpenFlags::APPEND))
+                        .create(pflags.intersects(OpenFlags::CREATE))
+                        .truncate(pflags.intersects(OpenFlags::TRUNCATE))
+                        .create_new(pflags.intersects(OpenFlags::EXCLUDE));
+
+                    if let Some(mode) = attrs.permissions {
+                        options = options.mode(mode);
+                    }
+
+                    let file = storage.open_with(&path, options).await.map_err(ferr)?;
+                    let fd: OwnedFd = file.into_std().into();
+                    let fd_num = fd.as_raw_fd() as i32;
+                    let file = tokio::fs::File::from_std(std::fs::File::from(fd));
+                    (fd_num, FileHandle::RegularFile(file, permissions))
+                };
+                let handle_id = fd.to_string();
+                self.file_handles.insert(handle_id.clone(), handle);
+                Ok(handle_id)
             }
         }
     }
 }
 
 pub(crate) enum FileHandle {
-    Regular(File, Option<ReadDir>, bool, PanelAuthServerPermissions),
+    RegularFile(File, PanelAuthServerPermissions),
+    RegularDir(Dir, ReadDir, bool, PanelAuthServerPermissions),
     Internal(
         Vec<(String, FileAttributes)>,
         bool,
@@ -611,19 +604,23 @@ pub(crate) enum FileHandle {
 impl FileHandle {
     fn permissions(&self, required: PanelAuthServerPermissions) -> bool {
         match self {
-            FileHandle::Internal(_, _, perms) | FileHandle::Regular(_, _, _, perms) => {
-                perms.contains(required)
-            }
+            FileHandle::Internal(_, _, perms)
+            | FileHandle::RegularFile(_, perms)
+            | FileHandle::RegularDir(_, _, _, perms) => perms.contains(required),
         }
     }
 
     async fn fstat(&mut self, id: u32) -> Result<Attrs, StatusCode> {
         match self {
-            FileHandle::Regular(handle, _, _, _) => {
-                let metadata = handle
-                    .metadata()
-                    .await
-                    .map_err(|_err| StatusCode::Failure)?;
+            FileHandle::RegularFile(handle, _) => {
+                let metadata = handle.metadata().await.map_err(ferr)?;
+                Ok(Attrs {
+                    id,
+                    attrs: metadata.into_fileattributes(),
+                })
+            }
+            FileHandle::RegularDir(handle, _, _, _) => {
+                let metadata = handle.metadata(".").await.map_err(ferr)?;
                 Ok(Attrs {
                     id,
                     attrs: metadata.into_fileattributes(),
@@ -647,43 +644,34 @@ impl FileHandle {
 
     async fn readdir(&mut self) -> Result<Vec<(String, FileAttributes)>, io::Error> {
         match self {
-            FileHandle::Regular(_handle, read_dir, read, _) => {
-                if read_dir.is_none() {
-                    return Err(io::Error::new(
-                        ErrorKind::InvalidInput,
-                        "File is not a directory",
-                    ));
-                }
+            FileHandle::RegularFile(_, _) => Err(io::Error::new(
+                ErrorKind::InvalidInput,
+                "File is not a directory",
+            )),
+            FileHandle::RegularDir(_handle, read_dir, read, _) => {
                 if *read {
                     return Err(io::Error::new(ErrorKind::UnexpectedEof, ""));
                 }
                 *read = true;
-                let mut read_dir_taken = read_dir.take().unwrap();
-                let (read_dir_taken, result) = tokio::task::spawn_blocking(move || {
-                    let mut files = Vec::new();
-                    loop {
-                        match read_dir_taken.next() {
-                            Some(Ok(entry)) => {
-                                let name = entry.file_name().to_string_lossy().into_owned();
-                                let metadata = entry.metadata();
-                                match metadata {
-                                    Ok(metadata) => {
-                                        files.push((name, metadata.into_fileattributes()));
-                                    }
-                                    Err(err) => break (read_dir_taken, Err(err)),
+                let mut files = Vec::new();
+                loop {
+                    match read_dir.next() {
+                        Some(Ok(entry)) => {
+                            let name = entry.file_name().to_string_lossy().into_owned();
+                            let metadata = entry.metadata();
+                            match metadata {
+                                Ok(metadata) => {
+                                    files.push((name, metadata.into_fileattributes()));
                                 }
-                            }
-                            Some(Err(err)) => break (read_dir_taken, Err(err)),
-                            None => {
-                                break (read_dir_taken, Ok(files));
+                                Err(err) => break Err(err),
                             }
                         }
+                        Some(Err(err)) => break Err(err),
+                        None => {
+                            break Ok(files);
+                        }
                     }
-                })
-                .await
-                .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
-                *read_dir = Some(read_dir_taken);
-                result
+                }
             }
             FileHandle::Internal(dirs, read, _) => {
                 if *read {
@@ -695,16 +683,22 @@ impl FileHandle {
         }
     }
 
-    fn regular_only(&mut self) -> Result<&mut File, StatusCode> {
+    fn regular_file_only(&mut self) -> Result<&mut File, StatusCode> {
         match self {
-            FileHandle::Regular(file, _, _, _) => Ok(file),
-            FileHandle::Internal(_, _, _) => Err(StatusCode::PermissionDenied),
+            FileHandle::RegularFile(file, _) => Ok(file),
+            _ => Err(StatusCode::PermissionDenied),
         }
     }
 }
 
 pub(crate) trait IntoFileAttributes {
     fn into_fileattributes(self) -> FileAttributes;
+}
+
+impl IntoFileAttributes for std::fs::Metadata {
+    fn into_fileattributes(self) -> FileAttributes {
+        Metadata::from_just_metadata(self).into_fileattributes()
+    }
 }
 
 impl IntoFileAttributes for Metadata {
@@ -736,5 +730,14 @@ impl IntoFileAttributes for Metadata {
             user: None,
             group: None,
         }
+    }
+}
+
+fn ferr(err: io::Error) -> StatusCode {
+    debug!("SFTP Error: {:?}", err);
+    match err.kind() {
+        ErrorKind::NotFound => StatusCode::NoSuchFile,
+        ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
+        _ => StatusCode::Failure,
     }
 }

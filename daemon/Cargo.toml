@@ -54,6 +54,14 @@ bytes = "1.7.2"
 sysinfo = "0.32.0"
 java-properties = "2.0.0"
 
+[dependencies.cap-async-std]
+version = "3.4.1"
+features = ["tokio1"]
+
+[dependencies.async-std]
+version = "1.13.0"
+features = ["tokio1"]
+
 [dependencies.tokio-util]
 version = "0.7.12"
 features = ["io-util"]
