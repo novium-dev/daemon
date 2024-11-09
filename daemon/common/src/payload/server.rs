@@ -47,19 +47,3 @@ pub struct ServerPortEntryPayload {
     pub external_ip: String,
     pub protocol: String,
 }
-
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
-#[serde(transparent)]
-pub struct ServerPortsPayload(pub Vec<ServerPortEntryPayload>);
-
-impl From<ServerPortsPayload> for Vec<ServerPortEntryPayload> {
-    fn from(value: ServerPortsPayload) -> Self {
-        value.0
-    }
-}
-
-impl From<Vec<ServerPortEntryPayload>> for ServerPortsPayload {
-    fn from(value: Vec<ServerPortEntryPayload>) -> Self {
-        ServerPortsPayload(value)
-    }
-}

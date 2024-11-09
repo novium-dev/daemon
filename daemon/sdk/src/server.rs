@@ -1,6 +1,6 @@
 use crate::{DaemonSDK, DaemonSDKError, DaemonSDKExtra, RequestBody};
 use daemon_common::payload::server::{
-    ServerBuildPayload, ServerPayload, ServerPortsPayload, ServerResourcePayload,
+    ServerBuildPayload, ServerPayload, ServerPortEntryPayload, ServerResourcePayload,
 };
 use daemon_common::payload::IdResponse;
 use daemon_common::server::PublicServerState;
@@ -27,7 +27,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
         storage: String,
         resource: ServerResourcePayload,
         build: ServerBuildPayload,
-        ports: ServerPortsPayload,
+        ports: Vec<ServerPortEntryPayload>,
     ) -> Result<u32, DaemonSDKError> {
         let response = self
             .wrapper(
@@ -37,7 +37,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
                     storage: Some(storage),
                     resource: Some(resource),
                     build: Some(build),
-                    ports: Some(ports.0),
+                    ports: Some(ports),
                 }),
                 None::<&()>,
             )
@@ -57,7 +57,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
         server: u32,
         resource: Option<ServerResourcePayload>,
         build: Option<ServerBuildPayload>,
-        ports: Option<ServerPortsPayload>,
+        ports: Option<Vec<ServerPortEntryPayload>>,
     ) -> Result<(), DaemonSDKError> {
         let response = self
             .wrapper(
@@ -67,7 +67,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
                     storage: None,
                     resource,
                     build,
-                    ports: ports.map(|payload| payload.0),
+                    ports,
                 }),
                 None::<&()>,
             )
