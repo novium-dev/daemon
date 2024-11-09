@@ -9,7 +9,26 @@ use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
 use std::thread;
 use std::time::Duration;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
+pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+    OpenApiRouter::new().routes(routes!(resource_get))
+}
+
+#[utoipa::path(get,
+    path = "/resource",
+    tag = "resource",
+    description = "Gets resource information",
+    responses(
+        (status = 200, description = "Ok", body = ResourceResponse, content_type = "application/json"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn resource_get(
     State(state): State<DaemonState>,
 ) -> Result<Json<ResourceResponse>, StatusCode> {
@@ -39,7 +58,7 @@ pub(crate) async fn resource_get(
             swap_total: system.total_swap(),
             swap_used: system.used_swap(),
             swap_allocated: swap_allocated.unwrap_or_default() * 1024 * 1024,
-            cpu_count: system.cpus().len() as u64,
+            cpu_count: system.cpus().len() as u32,
             cpu_used: system
                 .cpus()
                 .iter()

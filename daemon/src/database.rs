@@ -46,7 +46,7 @@ pub(crate) trait DatabasePayloadFunctionExtension {
         to: Self,
     ) -> Result<(), DatabaseUpdateError>;
 
-    fn validate_hash(sha256: bool, str: &str) -> Result<(), DatabaseUpdateError>
+    fn validate_hash(str: &str) -> Result<(), DatabaseUpdateError>
     where
         Self: Sized;
 
@@ -65,7 +65,7 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
     ) -> Result<(), DatabaseUpdateError> {
         for (user, data) in &to.users {
             Self::validate_sql_string(user)?;
-            Self::validate_hash(data.restricted.is_some(), &data.password_hash)?;
+            Self::validate_hash(&data.password_hash)?;
         }
         self.update_unvalidated(id, conn, to).await
     }
@@ -158,33 +158,14 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                 .await?;
         }
         for (user, data) in add_users {
-            match data.restricted {
-                None => {
-                    sql::create_user_prehashed(
-                        conn,
-                        format!("{}{}_{}", crate::common::MARIADB_USER_PREFIX, id, user),
-                        "%",
-                        "mysql_native_password",
-                        &data.password_hash,
-                    )
-                    .await?;
-                }
-                Some(ref servers) => {
-                    let mut extra = data.password_hash.clone();
-                    for server in servers {
-                        extra += &format!("{}\\0", server);
-                    }
-                    extra += "\\0";
-                    sql::create_user_prehashed(
-                        conn,
-                        format!("{}{}_{}", crate::common::MARIADB_USER_PREFIX, id, user),
-                        "%",
-                        crate::common::MARIADB_PLUGIN_NAME,
-                        extra,
-                    )
-                    .await?;
-                }
-            }
+            sql::create_user_prehashed(
+                conn,
+                format!("{}{}_{}", crate::common::MARIADB_USER_PREFIX, id, user),
+                "%",
+                "mysql_native_password",
+                &data.password_hash,
+            )
+            .await?;
             sql::grant_privileges(
                 conn,
                 format!("{}{}_{}", crate::common::MARIADB_DATABASE_PREFIX, id, name),
@@ -193,20 +174,12 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
                 "%",
             )
             .await?;
-            let restricted = data.restricted.as_ref().map(|servers| {
-                servers
-                    .iter()
-                    .map(|id| id.to_string())
-                    .collect::<Vec<_>>()
-                    .join(";")
-            });
             insert_into(schema::database_user::dsl::database_user)
                 .values((
                     schema::database_user::dsl::database_id.eq(id),
                     schema::database_user::dsl::name_suffix.eq(&user),
                     schema::database_user::dsl::password_hash.eq(data.password_hash),
                     schema::database_user::dsl::permissions.eq(data.permissions.bits()),
-                    schema::database_user::dsl::restricted.eq(restricted),
                 ))
                 .execute(conn)
                 .await?;
@@ -234,27 +207,16 @@ impl DatabasePayloadFunctionExtension for DatabasePayload {
         Ok(())
     }
 
-    fn validate_hash(sha256: bool, str: &str) -> Result<(), DatabaseUpdateError> {
-        if sha256 {
-            if !str.len() == crate::common::MARIADB_AUTH_HASH_HEX_SIZE {
+    fn validate_hash(str: &str) -> Result<(), DatabaseUpdateError> {
+        if !str.len() == 41 {
+            return Err(DatabaseUpdateError::Invalid);
+        }
+        if !str.starts_with('*') {
+            return Err(DatabaseUpdateError::Invalid);
+        }
+        for c in str[1..].chars() {
+            if !"0123456789ABCDEF".contains(c) {
                 return Err(DatabaseUpdateError::Invalid);
-            }
-            for c in str[1..].chars() {
-                if !"0123456789abcdef".contains(c) {
-                    return Err(DatabaseUpdateError::Invalid);
-                }
-            }
-        } else {
-            if !str.len() == 41 {
-                return Err(DatabaseUpdateError::Invalid);
-            }
-            if !str.starts_with('*') {
-                return Err(DatabaseUpdateError::Invalid);
-            }
-            for c in str[1..].chars() {
-                if !"0123456789ABCDEF".contains(c) {
-                    return Err(DatabaseUpdateError::Invalid);
-                }
             }
         }
         Ok(())

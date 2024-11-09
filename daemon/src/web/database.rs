@@ -11,7 +11,47 @@ use axum::Json;
 use diesel::{delete, insert_into, select, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl};
 use std::collections::HashMap;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
+pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+    OpenApiRouter::new()
+        .routes(routes!(create_database))
+        .routes(routes!(modify_database))
+        .routes(routes!(delete_database))
+}
+
+#[utoipa::path(put,
+    path = "/database",
+    tag = "database",
+    description = "Creates a new database",
+    request_body(
+        content = DatabasePayload,
+        description = "The database details",
+        content_type = "application/json",
+        example = json!({
+            "name_suffix": "luckperms",
+            "passwordless": {
+                "1": -1
+            },
+            "users": {
+                "minigame": {
+                    "password_hash": "*94BDCEBE19083CE2A1F959FD02F964C7AF4CFC29",
+                    "permissions": -1
+                }
+            }
+        })
+    ),
+    responses(
+        (status = 200, description = "Database was created successfully", body = IdResponse, content_type = "application/json"),
+        (status = 400, description = "Some parts of the payload are not present"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+     ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn create_database(
     State(state): State<DaemonState>,
     Json(payload): Json<DatabasePayload>,
@@ -77,6 +117,37 @@ pub(crate) async fn insert_dummy(
         .await? as u32)
 }
 
+#[utoipa::path(patch,
+    path = "/database/{database_id}",
+    tag = "database",
+    description = "Updates an existing database",
+    request_body(
+        content = DatabasePayload,
+        description = "The new database details",
+        content_type = "application/json",
+        example = json!({
+            "passwordless": {},
+            "users": {
+                "minigame": {
+                    "password_hash": "*94BDCEBE19083CE2A1F959FD02F964C7AF4CFC29",
+                    "permissions": -1
+                }
+            }
+        })
+    ),
+    responses(
+        (status = 200, description = "Database was updated successfully"),
+        (status = 400, description = "Some parts of the payload are not present"),
+        (status = 404, description = "The database does not exist"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 501, description = "You tried to rename a database. This hasn't been implemented yet"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("database_id" = u32, description = "The id of the database"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn modify_database(
     State(state): State<DaemonState>,
     Path((database_id,)): Path<(u32,)>,
@@ -110,6 +181,21 @@ pub(crate) async fn modify_database(
     }
 }
 
+#[utoipa::path(delete,
+    path = "/database/{database_id}",
+    tag = "database",
+    description = "Deletes an existing database",
+    responses(
+        (status = 200, description = "Database was deleted successfully"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid"),
+        (status = 404, description = "The database does not exist")
+    ),
+    params(
+        ("database_id" = u32, description = "The id of the database"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn delete_database(
     State(state): State<DaemonState>,
     Path((database_id,)): Path<(u32,)>,

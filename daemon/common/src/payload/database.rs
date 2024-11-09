@@ -1,20 +1,22 @@
 use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use serde::{Deserializer, Serializer};
+use std::borrow::Cow;
 use std::collections::HashMap;
+use utoipa::openapi::{RefOr, Schema};
+use utoipa::{PartialSchema, ToSchema};
 
-#[derive(Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, utoipa::ToSchema)]
 pub struct DatabasePayload {
     pub name_suffix: Option<String>,
     pub passwordless: HashMap<u32, DatabasePermissions>,
     pub users: HashMap<String, DatabaseUserPayload>,
 }
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, Hash)]
+#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, utoipa::ToSchema)]
 pub struct DatabaseUserPayload {
     pub password_hash: String,
     pub permissions: DatabasePermissions,
-    pub restricted: Option<Vec<u32>>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -46,6 +48,18 @@ bitflags! {
         const DELETE = 1 << 3;
         const CREATE = 1 << 4;
         const DROP = 1 << 5;
+    }
+}
+
+impl PartialSchema for DatabasePermissions {
+    fn schema() -> RefOr<Schema> {
+        i32::schema()
+    }
+}
+
+impl ToSchema for DatabasePermissions {
+    fn name() -> Cow<'static, str> {
+        Cow::Borrowed("DatabasePermissions")
     }
 }
 

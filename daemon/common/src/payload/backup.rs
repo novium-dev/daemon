@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[schema(example = json!({"time": 1731160477597i64, "storage": "local"}))]
 pub struct BackupResponseEntry {
     pub time: i64,
     pub storage: String,

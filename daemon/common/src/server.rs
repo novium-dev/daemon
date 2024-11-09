@@ -5,7 +5,8 @@ use bitflags::bitflags;
 use bollard::container::Stats;
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[schema(example = json!({"label": "Running", "healthcheck": null, "start": false, "stop": true, "kill": false}))]
 pub struct PublicServerState {
     pub label: String,
     pub healthcheck: Option<String>,

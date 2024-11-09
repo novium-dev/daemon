@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
@@ -11,6 +12,11 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::config::StorageEntry;
+use crate::schema::*;
+use crate::storage::StorageIdentifier;
+use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
+use crate::{utils, DaemonState, ServerData};
 #[cfg(feature = "websocket")]
 use axum::extract::ws::Message;
 use bollard::container::{
@@ -37,12 +43,8 @@ use tokio::sync::{Mutex, OwnedRwLockReadGuard};
 use tokio::time::Instant;
 use tokio_tar::{Builder, Header};
 use tokio_util::io::SyncIoBridge;
-
-use crate::config::StorageEntry;
-use crate::schema::*;
-use crate::storage::StorageIdentifier;
-use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
-use crate::{utils, DaemonState, ServerData};
+use utoipa::openapi::{RefOr, Schema};
+use utoipa::{PartialSchema, ToSchema};
 
 pub(crate) const TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024; // 1 MiB
 
@@ -716,6 +718,18 @@ pub enum InternalServerState {
 
     Stopping,
     Restarting,
+}
+
+impl PartialSchema for InternalServerState {
+    fn schema() -> RefOr<Schema> {
+        PublicServerState::schema()
+    }
+}
+
+impl ToSchema for InternalServerState {
+    fn name() -> Cow<'static, str> {
+        PublicServerState::name()
+    }
 }
 
 impl InternalServerState {

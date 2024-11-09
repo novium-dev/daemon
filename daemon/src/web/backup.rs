@@ -4,10 +4,46 @@ use axum::http::StatusCode;
 use axum::Json;
 use daemon_common::payload::backup::*;
 use daemon_common::payload::TimeIdResponse;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 use crate::storage::StorageIdentifier;
 use crate::{storage, DaemonState};
 
+pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+    OpenApiRouter::new()
+        .routes(routes!(server_create_backup))
+        .routes(routes!(server_download_backup))
+        .routes(routes!(server_backup_realtime))
+        .routes(routes!(server_delete_backup))
+        .routes(routes!(server_list_backups))
+        .routes(routes!(server_restore_backup))
+}
+
+#[cfg(feature = "user")]
+pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
+    OpenApiRouter::new()
+        .routes(routes!(server_user_download_backup))
+        .routes(routes!(server_user_backup_realtime))
+}
+
+#[utoipa::path(put,
+    path = "/backup/{server_id}/{backup_storage}",
+    tag = "backup",
+    description = "Creates a new backup",
+    responses(
+        (status = 200, description = "Backup was created successfully", body = TimeIdResponse, content_type = "application/json"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server or backup storage does not exist"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = i64, description = "The id of the server"),
+        ("backup_storage" = String, description = "The id of the storage, in which the backup will be stored"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn server_create_backup(
     State(state): State<DaemonState>,
     Path((server_id, backup_storage)): Path<(u32, String)>,
@@ -19,6 +55,24 @@ pub(crate) async fn server_create_backup(
         .map(|time| Json(TimeIdResponse { time }))
 }
 
+#[utoipa::path(get,
+    path = "/backup/{server_id}/{backup_storage}/{backup_id}",
+    tag = "backup",
+    description = "Downloads an existing backup",
+    responses(
+        (status = 200, description = "Ok", content_type = "application/octet-stream"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server, backup storage or the backup does not exist"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("backup_storage" = String, description = "The id of the storage, in which the backup is stored"),
+        ("backup_id" = i64, description = "The id of the backup"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn server_download_backup(
     State(state): State<DaemonState>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
@@ -29,6 +83,25 @@ pub(crate) async fn server_download_backup(
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[cfg_attr(feature = "user", utoipa::path(get,
+    path = "/user/backup/{server_id}/{backup_storage}/{backup_id}",
+    tag = "backup",
+    description = "Downloads an existing backup (User Request)",
+    responses(
+        (status = 200, description = "Ok", content_type = "application/octet-stream"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server, backup storage or the backup does not exist"),
+        (status = 401, description = "The proof of the permission for the user request is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("backup_storage" = String, description = "The id of the storage, in which the backup is stored"),
+        ("backup_id" = i64, description = "The id of the backup"),
+        ("timestamp" = u64, Query, description = "The time the user request got permitted as Utc timestamp (milliseconds)"),
+        ("verify" = String, Query, description = "The signature to proof that the user request was permitted")
+   )
+))]
 #[cfg(feature = "user")]
 pub(crate) async fn server_user_download_backup(
     State(state): State<DaemonState>,
@@ -51,6 +124,24 @@ pub(crate) async fn server_user_download_backup(
     Ok(body)
 }
 
+#[utoipa::path(get,
+    path = "/backup/{server_id}/rt",
+    tag = "backup",
+    description = "Downloads the contents of a server in realtime (without creating a backup)",
+    responses(
+        (status = 200, description = "Ok", content_type = "application/octet-stream"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server does not exist"),
+        (status = 401, description = "Your authorization token is invalid"),
+        (status = 400, description = "The compression is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+        ("compression" = String, description = "The compression that the realtime backup should have")
+   )
+)]
 pub(crate) async fn server_backup_realtime(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
@@ -62,6 +153,25 @@ pub(crate) async fn server_backup_realtime(
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[cfg_attr(feature = "user", utoipa::path(get,
+    path = "/user/backup/{server_id}/rt",
+    tag = "backup",
+    description = "Downloads the contents of a server in realtime (without creating a backup, User Request)",
+    responses(
+        (status = 200, description = "Ok", content_type = "application/octet-stream"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server does not exist"),
+        (status = 401, description = "The proof of the permission for the user request is invalid"),
+        (status = 400, description = "The compression is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("timestamp" = u64, Query, description = "The time the user request got permitted as Utc timestamp (milliseconds)"),
+        ("verify" = String, Query, description = "The signature to proof that the user request was permitted"),
+        ("compression" = String, Query, description = "The compression that the realtime backup should have")
+   )
+))]
 #[cfg(feature = "user")]
 pub(crate) async fn server_user_backup_realtime(
     State(state): State<DaemonState>,
@@ -87,6 +197,24 @@ pub(crate) async fn server_user_backup_realtime(
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[utoipa::path(delete,
+    path = "/backup/{server_id}/{backup_storage}/{backup_id}",
+    tag = "backup",
+    description = "Deletes an existing backup",
+    responses(
+        (status = 200, description = "Backup was deleted successfully"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server, backup storage or the backup does not exist"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("backup_storage" = String, description = "The id of the storage, in which the backup is stored"),
+        ("backup_id" = i64, description = "The id of the backup"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn server_delete_backup(
     State(state): State<DaemonState>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
@@ -97,6 +225,22 @@ pub(crate) async fn server_delete_backup(
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 
+#[utoipa::path(get,
+    path = "/backup/{server_id}",
+    tag = "backup",
+    description = "Lists all backups of an existing server",
+    responses(
+        (status = 200, description = "Ok", body = Vec<BackupResponseEntry>, content_type = "application/json"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server does not exist"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn server_list_backups(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
@@ -105,6 +249,24 @@ pub(crate) async fn server_list_backups(
     Ok(Json(storage::backup::list_backups(&state, storage).await?))
 }
 
+#[utoipa::path(get,
+    path = "/backup/{server_id}/{backup_storage}/{backup_id}/restore",
+    tag = "backup",
+    description = "Restores an existing backup",
+    responses(
+        (status = 200, description = "Ok"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server, backup storage or the backup does not exist"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("backup_storage" = String, description = "The id of the storage, in which the backup is stored"),
+        ("backup_id" = i64, description = "The id of the backup"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn server_restore_backup(
     State(state): State<DaemonState>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,

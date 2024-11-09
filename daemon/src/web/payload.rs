@@ -19,22 +19,11 @@ impl FromFetchedDatabaseExtension for DatabasePayload {
                 .users
                 .into_iter()
                 .map(|(name_suffix, user)| {
-                    let mut restricted = None;
-                    if let Some(str) = user.restricted {
-                        restricted = Some(if str.is_empty() {
-                            Vec::new()
-                        } else {
-                            str.split(';')
-                                .map(|str| str.parse::<u32>().unwrap())
-                                .collect()
-                        });
-                    }
                     (
                         name_suffix,
                         DatabaseUserPayload {
                             permissions: DatabasePermissions::from_bits_truncate(user.permissions),
                             password_hash: user.password_hash,
-                            restricted,
                         },
                     )
                 })

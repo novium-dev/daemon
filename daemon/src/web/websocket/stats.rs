@@ -15,6 +15,23 @@ use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::web::user::{authenticate_user, GenericUserQuery};
 use crate::{DaemonState, ServerData};
 
+#[utoipa::path(get,
+    tag = "server",
+    path = "/user/server/{server_id}/stats",
+    description = "A websocket for server stats (User Request)",
+    responses(
+        (status = 200, description = "Server does exist"),
+        (status = 404, description = "Server does not exist"),
+        (status = 503, description = "Server can't be accessed right now"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "The proof of the permission for the user request is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("timestamp" = u64, Query, description = "The time the user request got permitted as Utc timestamp (milliseconds)"),
+        ("verify" = String, Query, description = "The signature to proof that the user request was permitted")
+   )
+)]
 pub(crate) async fn websocket(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,

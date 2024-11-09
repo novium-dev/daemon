@@ -15,10 +15,12 @@ docker = ["bollard"]
 [dependencies]
 serde.workspace = true
 bitflags.workspace = true
+utoipa.workspace = true
 
 [dependencies.bollard]
 workspace = true
 optional = true
+
 
 [dependencies.serde_json]
 workspace = true

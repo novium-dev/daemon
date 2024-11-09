@@ -1,15 +1,6 @@
 #![forbid(unsafe_code)]
 
-use std::collections::{HashMap, VecDeque};
-use std::error::Error;
-use std::ops::{Deref, DerefMut};
-use std::pin::Pin;
-use std::process::exit;
-use std::sync::Arc;
-use std::time::Duration;
-
-use axum::routing::{delete, get, patch, put};
-use axum::Router;
+use axum::http::{HeaderValue, Method};
 use bollard::Docker;
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use env_logger::Env;
@@ -20,13 +11,24 @@ use reqwest::Client;
 #[cfg(feature = "ssh")]
 use russh::server::{Config, Server as SSHServer};
 use signal_hook::iterator::Signals;
+use std::collections::{HashMap, VecDeque};
+use std::error::Error;
+use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
+use std::process::exit;
+use std::sync::Arc;
+use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinSet;
+use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
 use tower_http::validate_request::ValidateRequestHeaderLayer;
+use utoipa::OpenApi;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_swagger_ui::SwaggerUi;
 use uuid::Uuid;
 
 pub use daemon_common as common;
@@ -51,10 +53,14 @@ mod sql;
 #[cfg(feature = "ssh")]
 mod ssh;
 mod storage;
-#[allow(unused)]
+
 mod terminal;
 mod utils;
 mod web;
+
+#[derive(OpenApi)]
+#[openapi()]
+struct ApiDoc;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -95,126 +101,23 @@ async fn main() -> Result<(), Box<dyn Error>> {
         client: Client::default(),
     };
 
-    #[allow(unused_mut)]
-    let mut app = Router::new()
-        .nest(
-            "/server",
-            Router::new()
-                .route("/", put(web::server::create_server))
-                .route("/:server_id", get(web::server::server_info))
-                .route("/:server_id", patch(web::server::modify_server))
-                .route("/:server_id", delete(web::server::delete_server))
-                .route("/:server_id/start", get(web::server::start_server))
-                .route("/:server_id/stop", get(web::server::stop_server))
-                .route("/:server_id/kill", get(web::server::kill_server))
-                .route("/:server_id/restart", get(web::server::restart_server))
-                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
-        )
-        .route("/resource", get(web::resource::resource_get));
+    let cors = CorsLayer::new()
+        .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&config.origin)?))
+        .allow_methods([Method::GET])
+        .allow_headers(AllowHeaders::any());
 
-    #[cfg(feature = "database")]
+    let (mut router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .merge(web::config())
+        .route_layer(ValidateRequestHeaderLayer::bearer(&config.token))
+        .merge(web::user_config().layer(cors))
+        .split_for_parts();
+
+    #[cfg(debug_assertions)]
     {
-        app = app.nest(
-            "/database",
-            Router::new()
-                .route("/", put(web::database::create_database))
-                .route("/:database_id", patch(web::database::modify_database))
-                .route("/:database_id", delete(web::database::delete_database))
-                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
-        );
+        router = router.merge(SwaggerUi::new("/docs").url("/docs/openapi.json", api));
     }
 
-    #[cfg(feature = "files")]
-    {
-        app = app.nest(
-            "/files/:server_id",
-            Router::new()
-                .route("/ls", get(web::files::server_list_files))
-                .route("/stat", get(web::files::server_stat_file))
-                .route("/rename", get(web::files::server_rename_file))
-                .route("/copy", get(web::files::server_copy_file))
-                .route("/file", get(web::files::server_download_file))
-                .route("/file", put(web::files::server_write_file))
-                .route("/delete", get(web::files::server_delete_file))
-                .route("/mkdir", get(web::files::server_mkdir))
-                .route("/symlink", get(web::files::server_symlink))
-                .route_layer(ValidateRequestHeaderLayer::bearer(&config.token)),
-        );
-    }
-    #[cfg(feature = "backups")]
-    {
-        app = app.nest(
-            "/backup/:server_id",
-            Router::new()
-                .route("/", get(web::backup::server_list_backups))
-                .route("/rt", get(web::backup::server_backup_realtime))
-                .route("/:backup_storage", put(web::backup::server_create_backup))
-                .route(
-                    "/:backup_storage/:backup_id",
-                    get(web::backup::server_download_backup),
-                )
-                .route(
-                    "/:backup_storage/:backup_id",
-                    delete(web::backup::server_delete_backup),
-                )
-                .route(
-                    "/:backup_storage/:backup_id/restore",
-                    get(web::backup::server_restore_backup),
-                )
-                .layer(ValidateRequestHeaderLayer::bearer(&config.token)),
-        );
-    }
-
-    #[cfg(feature = "user")]
-    {
-        use axum::http::{HeaderValue, Method};
-        use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
-
-        let cors = CorsLayer::new()
-            .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&config.origin)?))
-            .allow_methods([Method::GET])
-            .allow_headers(AllowHeaders::any());
-
-        #[allow(unused_mut)]
-        let mut user_router = Router::new().layer(cors);
-
-        #[cfg(feature = "websocket")]
-        {
-            user_router = user_router
-                .route(
-                    "/server/:server_id/terminal",
-                    get(web::websocket::terminal::websocket),
-                )
-                .route(
-                    "/server/:server_id/stats",
-                    get(web::websocket::stats::websocket),
-                );
-        }
-
-        #[cfg(feature = "files")]
-        {
-            user_router = user_router.route(
-                "/files/:server_id/file",
-                get(web::files::server_user_download_file),
-            );
-        }
-
-        #[cfg(feature = "backups")]
-        {
-            user_router = user_router
-                .route(
-                    "/backup/:server_id/rt",
-                    get(web::backup::server_user_backup_realtime),
-                )
-                .route(
-                    "/backup/:server_id/:backup_storage/:backup_id",
-                    get(web::backup::server_user_download_backup),
-                );
-        }
-
-        app = app.nest("/user", user_router);
-    }
-    let app = app.with_state(state.clone());
+    let app = router.with_state(state.clone());
 
     sql::init(state.conn.lock().await.deref_mut()).await?;
     let state = Arc::new(state);

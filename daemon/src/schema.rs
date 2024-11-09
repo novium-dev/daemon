@@ -221,7 +221,6 @@ pub(crate) struct DatabaseUser {
     pub(crate) name_suffix: String,
     pub(crate) password_hash: String,
     pub(crate) permissions: i32,
-    pub(crate) restricted: Option<String>,
 }
 
 #[cfg(feature = "database")]
@@ -231,8 +230,7 @@ diesel::table! {
         database_id -> Unsigned<Integer>,
         name_suffix -> VarChar,
         password_hash -> VarChar,
-        permissions -> Integer,
-        restricted -> Nullable<VarChar>,
+        permissions -> Integer
     }
 }
 

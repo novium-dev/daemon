@@ -1,12 +1,14 @@
 use std::io;
 use std::io::ErrorKind;
 
+use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
+use crate::DaemonState;
 use axum::extract::ws::{Message, WebSocket};
 use axum::{async_trait, Error};
 use futures_util::SinkExt;
 use serde::Deserialize;
-
-use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
 pub(crate) mod stats;
 pub(crate) mod terminal;
@@ -85,4 +87,10 @@ impl ChannelAdapter<Option<Result<Message, Error>>, Result<(), Error>, Result<()
     {
         true
     }
+}
+
+pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
+    OpenApiRouter::new()
+        .routes(routes!(terminal::websocket))
+        .routes(routes!(stats::websocket))
 }

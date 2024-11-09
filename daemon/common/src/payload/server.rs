@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerPayload {
     pub storage: Option<String>,
     pub resource: Option<ServerResourcePayload>,
@@ -10,7 +10,7 @@ pub struct ServerPayload {
     pub ports: Option<Vec<ServerPortEntryPayload>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerResourcePayload {
     pub cpu: Option<f32>,
     pub ram: Option<u32>,
@@ -18,7 +18,7 @@ pub struct ServerResourcePayload {
     pub disk: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerBuildPayload {
     pub identifier: String,
     pub dockerfile: String,
@@ -31,7 +31,7 @@ pub struct ServerBuildPayload {
     pub cap_drop: Vec<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "filetype")]
 pub enum ServerFileWrite {
     #[serde(rename = "write")]
@@ -40,7 +40,7 @@ pub enum ServerFileWrite {
     PROPERTIES { content: HashMap<String, String> },
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerPortEntryPayload {
     pub internal_port: u16,
     pub external_port: u16,
@@ -48,7 +48,7 @@ pub struct ServerPortEntryPayload {
     pub protocol: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(transparent)]
 pub struct ServerPortsPayload(pub Vec<ServerPortEntryPayload>);
 

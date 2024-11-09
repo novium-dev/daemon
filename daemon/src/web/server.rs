@@ -20,7 +20,77 @@ use diesel::{update, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl};
 use log::{debug, error, warn};
 use tokio::time::timeout;
+use utoipa_axum::router::OpenApiRouter;
+use utoipa_axum::routes;
 
+pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+    OpenApiRouter::new()
+        .routes(routes!(create_server))
+        .routes(routes!(modify_server))
+        .routes(routes!(delete_server))
+        .routes(routes!(server_status))
+        .routes(routes!(start_server))
+        .routes(routes!(stop_server))
+        .routes(routes!(kill_server))
+        .routes(routes!(restart_server))
+}
+
+#[utoipa::path(put,
+    path = "/server",
+    tag = "server",
+    description = "Creates a new server",
+    request_body(
+        content = ServerPayload,
+        description = "The server details",
+        content_type = "application/json",
+        example = json!({
+            "storage": "local",
+            "resource": {
+                "cpu": 2.5f32,
+                "ram": 2048u32,
+                "swap": null,
+                "disk": null
+            },
+            "build": {
+                "identifier": "minecraft_paper-1.21.1-131-jre21",
+                "dockerfile": "<see https://docs.docker.com/get-started/docker-concepts/building-images/writing-a-dockerfile/ for writing a Dockerfile>",
+                "build_args": {
+                    "JAVA": 21,
+                    "MINECRAFT_VERSION": "1.21.1",
+                    "PAPER_BUILD": "131"
+                },
+                "backup_exclude": ["cache", "versions"],
+                "files_write": {
+                    "eula.txt": {
+                        "filetype": "properties",
+                        "content": {
+                            "eula": "true"
+                        }
+                    }
+                },
+                "cap_add": [],
+                "cap_drop": ["MKNOD"]
+            },
+            "ports": [
+                {
+                    "internal_port": 25565,
+                    "external_port": 44955,
+                    "external_ip": "0.0.0.0",
+                    "protocol": "tcp"
+                }
+            ]
+        })
+    ),
+    responses(
+        (status = 200, description = "Server was created successfully", body = IdResponse, content_type = "application/json"),
+        (status = 400, description = "Some parts of the payload are not present"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+     ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn create_server(
     State(state): State<DaemonState>,
     Json(mut payload): Json<ServerPayload>,
@@ -53,6 +123,36 @@ pub(crate) async fn create_server(
     Ok(Json(IdResponse { id }))
 }
 
+#[utoipa::path(patch,
+    path = "/server/{server_id}",
+    tag = "server",
+    description = "Updates an existing server",
+    request_body(
+        content = ServerPayload,
+        description = "The server details",
+        content_type = "application/json",
+        example = json!({
+            "resource": {
+                "cpu": null,
+                "ram": 2048u32,
+                "swap": 0u32,
+                "disk": null
+            },
+        })
+    ),
+    responses(
+        (status = 200, description = "Server was updated successfully"),
+        (status = 404, description = "Server does not exist"),
+        (status = 503, description = "Server can't be accessed right now"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 501, description = "You tried to move the server to another storage, which isn't implemened right now"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn modify_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
@@ -78,6 +178,22 @@ pub(crate) async fn modify_server(
     Ok(())
 }
 
+#[utoipa::path(delete,
+    path = "/server/{server_id}",
+    tag = "server",
+    description = "Deletes an existing server",
+    responses(
+        (status = 200, description = "Server was deleted successfully"),
+        (status = 404, description = "Server does not exist"),
+        (status = 503, description = "Server can't be accessed right now"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn delete_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
@@ -302,6 +418,21 @@ pub(crate) async fn modify0(
     Ok(())
 }
 
+#[utoipa::path(get,
+    path = "/server/{server_id}/start",
+    tag = "server",
+    description = "Starts an existing server",
+    responses(
+        (status = 200, description = "Server was started successfully"),
+        (status = 404, description = "Server does not exist"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn start_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
@@ -358,6 +489,22 @@ pub(crate) async fn start_server(
     Ok(())
 }
 
+#[utoipa::path(get,
+    path = "/server/{server_id}/stop",
+    tag = "server",
+    description = "Stops an existing server",
+    responses(
+        (status = 200, description = "Server was stopped successfully"),
+        (status = 404, description = "Server does not exist"),
+        (status = 503, description = "Server can't be accessed right now"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn stop_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
@@ -382,6 +529,22 @@ pub(crate) async fn stop_server(
     Ok(())
 }
 
+#[utoipa::path(get,
+    path = "/server/{server_id}/kill",
+    tag = "server",
+    description = "Kills an existing server",
+    responses(
+        (status = 200, description = "Server was killed successfully"),
+        (status = 404, description = "Server does not exist"),
+        (status = 503, description = "Server can't be accessed right now"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn kill_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
@@ -406,6 +569,22 @@ pub(crate) async fn kill_server(
     Ok(())
 }
 
+#[utoipa::path(get,
+    path = "/server/{server_id}/restart",
+    tag = "server",
+    description = "Restarts an existing server",
+    responses(
+        (status = 200, description = "Server was restarted successfully"),
+        (status = 404, description = "Server does not exist"),
+        (status = 503, description = "Server can't be accessed right now"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
 pub(crate) async fn restart_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
@@ -430,7 +609,23 @@ pub(crate) async fn restart_server(
     Ok(())
 }
 
-pub(crate) async fn server_info(
+#[utoipa::path(get,
+    tag = "server",
+    path = "/server/{server_id}",
+    description = "Gets the status of an existing server",
+    responses(
+        (status = 200, description = "Server does exist", body = InternalServerState, content_type = "application/json"),
+        (status = 404, description = "Server does not exist"),
+        (status = 503, description = "Server can't be accessed right now"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
+pub(crate) async fn server_status(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<Json<InternalServerState>, StatusCode> {
