@@ -16,7 +16,7 @@ use tokio_util::io::{ReaderStream, StreamReader};
 
 use crate::config::StorageEntry;
 use crate::storage::StorageIdentifier;
-use crate::utils::{storage_read, StorageError};
+use crate::utils::{path_relative, storage_read, StorageError};
 use crate::DaemonState;
 use daemon_common::files::FileMode;
 use daemon_common::payload::files::FileResponse;
@@ -40,6 +40,7 @@ pub(crate) async fn list_files(
         storage_read(&state.config, &mut conn, &state.storages, id, true)
             .await
             .map_err(StorageError::into_http)?;
+    let path = path_relative(path);
     drop(conn);
     let files = list_files0(id, storage, path).await?;
     drop(lock);
@@ -50,7 +51,7 @@ pub(crate) async fn list_files(
 async fn list_files0(
     id: StorageIdentifier,
     storage: &StorageEntry,
-    path: String,
+    path: PathBuf,
 ) -> Result<Vec<FileResponse>, StatusCode> {
     let storage = storage_path(id, storage).await?;
 
@@ -91,6 +92,7 @@ pub(crate) async fn stat_file(
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
+    let path = path_relative(path);
     let file = stat_file0(id, storage, path).await?;
     drop(lock);
     Ok(file)
@@ -100,10 +102,9 @@ pub(crate) async fn stat_file(
 async fn stat_file0(
     id: StorageIdentifier,
     storage: &StorageEntry,
-    path: String,
+    path: PathBuf,
 ) -> Result<FileResponse, StatusCode> {
     let storage = storage_path(id, storage).await?;
-    let path = PathBuf::from(path);
     let file = storage
         .open_with(&path, OpenOptions::new().custom_flags(libc::O_NOFOLLOW))
         .await
@@ -140,6 +141,8 @@ pub(crate) async fn rename_file(
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
+    let from = path_relative(from);
+    let to = path_relative(to);
     let storage = storage_path(id, storage).await?;
     storage.rename(from, &storage, to).await.map_err(err)?;
     drop(lock);
@@ -158,6 +161,8 @@ pub(crate) async fn copy_file(
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
+    let from = path_relative(from);
+    let to = path_relative(to);
     let storage = storage_path(id, storage).await?;
     storage.copy(from, &storage, to).await.map_err(err)?;
     drop(lock);
@@ -175,8 +180,8 @@ pub(crate) async fn download_file(
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
+    let path = path_relative(path);
     let storage = storage_path(id, storage).await?;
-    let path = PathBuf::from(path);
     let headers = path
         .file_name()
         .map(|str| str.to_string_lossy())
@@ -207,6 +212,7 @@ pub(crate) async fn write_file(
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
+    let path = path_relative(path);
     let storage = storage_path(id, storage).await?;
     let mut reader =
         StreamReader::new(stream.map_err(|err| io::Error::new(io::ErrorKind::Other, err)));
@@ -231,6 +237,7 @@ pub(crate) async fn mkdir_file(
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
+    let path = path_relative(path);
     let storage = storage_path(id, storage).await?;
     tokio::task::spawn_blocking(move || {
         if recursive {
@@ -258,6 +265,7 @@ pub(crate) async fn symlink_file(
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
+    let path = path_relative(path);
     let storage = storage_path(id, storage).await?;
     storage.symlink(content, path).await.map_err(err)?;
     drop(lock);
@@ -276,6 +284,7 @@ pub(crate) async fn delete_file(
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
+    let path = path_relative(path);
     let storage = storage_path(id, storage).await?;
     if recursive {
         storage.remove_dir_all(path).await

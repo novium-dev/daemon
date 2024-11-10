@@ -1,5 +1,6 @@
 use crate::ssh::sftp::ext::IntoFileAttributes;
 use crate::ssh::sftp::FileHandle;
+use indexmap::IndexMap;
 use russh_sftp::protocol::*;
 use std::io::ErrorKind;
 use tokio::io;
@@ -26,17 +27,19 @@ pub(crate) async fn readdir(handle: &mut FileHandle) -> Result<Vec<File>, Status
 async fn readdir_regular(
     read_dir: &mut cap_async_std::fs::ReadDir,
     read: &mut bool,
-) -> Result<Vec<(String, FileAttributes)>, io::Error> {
+) -> Result<IndexMap<String, FileAttributes>, io::Error> {
     let has_read = *read;
     *read = true;
-    let mut files = Vec::new();
+    let mut files = IndexMap::new();
     loop {
         match read_dir.next() {
             Some(Ok(entry)) => {
                 let name = entry.file_name().to_string_lossy().into_owned();
                 let metadata = entry.metadata();
                 match metadata {
-                    Ok(metadata) => files.push((name, metadata.into_fileattributes())),
+                    Ok(metadata) => {
+                        files.insert(name, metadata.into_fileattributes());
+                    }
                     Err(err) => break Err(err),
                 }
             }
@@ -51,9 +54,9 @@ async fn readdir_regular(
 
 #[inline(always)]
 async fn readdir_internal(
-    entries: &mut Vec<(String, FileAttributes)>,
+    entries: &mut IndexMap<String, FileAttributes>,
     read: &mut bool,
-) -> Result<Vec<(String, FileAttributes)>, io::Error> {
+) -> Result<IndexMap<String, FileAttributes>, io::Error> {
     if *read {
         return Err(io::Error::new(ErrorKind::UnexpectedEof, "Already read"));
     }

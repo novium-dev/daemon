@@ -52,6 +52,7 @@ chrono.workspace = true
 utoipa.workspace = true
 utoipa-axum = "0.1.2"
 
+indexmap = "2.6.0"
 futures-util = "0.3.31"
 futures = "0.3.31"
 bytes = "1.8.0"

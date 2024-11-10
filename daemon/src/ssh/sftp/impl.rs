@@ -2,6 +2,7 @@ use crate::ssh::sftp::{DaemonSftpSession, FileHandle};
 use axum::async_trait;
 use cap_async_std::fs::{OpenOptions, OpenOptionsExt};
 use daemon_common::server::BackendAuthServerPermissions;
+use indexmap::IndexMap;
 use log::*;
 use russh_sftp::protocol::*;
 use std::collections::HashMap;
@@ -37,7 +38,8 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
         self.version = Some(version);
 
-        let handle = FileHandle::Internal(Vec::new(), false, BackendAuthServerPermissions::all());
+        let handle =
+            FileHandle::Internal(IndexMap::new(), false, BackendAuthServerPermissions::all());
         let empty = "empty".to_string();
         self.file_handles.insert(empty.clone(), handle);
 

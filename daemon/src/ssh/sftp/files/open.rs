@@ -4,6 +4,7 @@ use crate::storage::StorageIdentifier;
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::*;
 use daemon_common::server::BackendAuthServerPermissions;
+use indexmap::{IndexMap, IndexSet};
 use russh_sftp::protocol::*;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::PathBuf;
@@ -28,13 +29,13 @@ async fn open_internal(
     session: &mut DaemonSftpSession,
     path: Vec<String>,
 ) -> Result<String, StatusCode> {
-    let mut entries = Vec::new();
+    let mut entries = IndexSet::new();
     for entry in session.access.keys() {
         if path.len() >= entry.len() {
             continue;
         }
         if entry[0..path.len()].eq(&path) {
-            entries.push(entry[path.len()].clone());
+            entries.insert(entry[path.len()].clone());
         }
     }
     if entries.is_empty() {
@@ -44,7 +45,7 @@ async fn open_internal(
             Err(StatusCode::NoSuchFile)
         }
     } else {
-        let entries: Vec<_> = entries
+        let entries: IndexMap<_, _> = entries
             .into_iter()
             .map(|name| (name, internal_directory_attributes()))
             .collect();

@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::future::Future;
 use std::io;
 use std::marker::PhantomData;
+use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -53,6 +54,14 @@ pub(crate) async fn server(
         .entry(server_id)
         .or_insert_with(|| Arc::new(Mutex::new(ServerData::default())));
     Ok((server, servers.get(&server_id).unwrap().clone()))
+}
+
+pub(crate) fn path_relative(str: String) -> PathBuf {
+    if let Some(stripped) = str.strip_prefix("/") {
+        PathBuf::from(stripped)
+    } else {
+        PathBuf::from(str)
+    }
 }
 
 async fn storage_lock<'a>(

@@ -6,6 +6,7 @@ use crate::config::StorageEntry;
 use crate::ssh::BackendAuthServerPermissions;
 use crate::storage::StorageIdentifier;
 use cap_async_std::fs::*;
+use indexmap::IndexMap;
 use log::*;
 use russh_sftp::protocol::*;
 use std::collections::HashMap;
@@ -55,7 +56,7 @@ pub(crate) enum FileHandle {
         BackendAuthServerPermissions,
     ),
     Internal(
-        Vec<(String, FileAttributes)>,
+        IndexMap<String, FileAttributes>,
         bool,
         BackendAuthServerPermissions,
     ),

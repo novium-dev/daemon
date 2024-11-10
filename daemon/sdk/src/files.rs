@@ -16,7 +16,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
         let response = self
             .wrapper(
                 Method::GET,
-                format!("files/{}/ls", server),
+                format!("files/{}/list", server),
                 RequestBody::<()>::None,
                 Some(&PathQuery { path }),
             )
@@ -24,12 +24,10 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
         if !response.status().is_success() {
             return Err(DaemonSDKError::StatusCode(response.status()));
         }
-        #[allow(clippy::useless_conversion)]
         response
             .json::<Vec<FileResponse>>()
             .await
             .map_err(DaemonSDKError::Reqwest)
-            .map(|vec| vec.into())
     }
 
     pub async fn server_stat_file(
