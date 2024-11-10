@@ -151,7 +151,9 @@ impl FetchedServer {
                     last_progress.clear();
                     for (id, (progress, status)) in sort_vec
                         .iter()
-                        .map(|key| (key, progress_map.get(key).unwrap()))
+                        .map(|key| (key, progress_map.get(key)))
+                        .filter(|(_, opt)| opt.is_some())
+                        .map(|(key, opt)| (key, opt.unwrap()))
                     {
                         let mut msg_intermediate = String::new();
                         msg_intermediate += clear::CurrentLine.as_ref();
