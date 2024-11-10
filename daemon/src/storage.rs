@@ -6,7 +6,7 @@ use std::io;
 use std::path::PathBuf;
 use tokio::fs;
 
-#[derive(Hash, PartialEq, Eq, Clone, Copy)]
+#[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum StorageIdentifier {
     Primary(u32),
 }

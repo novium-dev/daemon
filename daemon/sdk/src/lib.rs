@@ -57,7 +57,8 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
             let query: HashMap<String, Value> =
                 serde_json::from_value(serde_json::to_value(query).unwrap()).unwrap();
             for (key, val) in query {
-                url.query_pairs_mut().append_pair(&key, &val.to_string());
+                url.query_pairs_mut()
+                    .append_pair(&key, val.as_str().unwrap_or_default());
             }
         }
         let mut request = self.client.request(method, url);

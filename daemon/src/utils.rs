@@ -57,8 +57,8 @@ pub(crate) async fn server(
 }
 
 pub(crate) fn path_relative(str: String) -> PathBuf {
-    if let Some(stripped) = str.strip_prefix("/") {
-        PathBuf::from(stripped)
+    if str.starts_with("/") {
+        PathBuf::from(format!(".{}", str))
     } else {
         PathBuf::from(str)
     }

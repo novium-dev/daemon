@@ -7,7 +7,7 @@ use axum::body::{Body, BodyDataStream};
 use axum::http;
 use axum::http::{HeaderMap, StatusCode};
 use cap_async_std::ambient_authority;
-use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt, OpenOptions, OpenOptionsExt};
+use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt};
 use diesel_async::AsyncMysqlConnection;
 use futures_util::TryStreamExt;
 use tokio::io::BufWriter;
@@ -22,6 +22,7 @@ use daemon_common::files::FileMode;
 use daemon_common::payload::files::FileResponse;
 
 fn err(err: io::Error) -> StatusCode {
+    println!("Error {:?}", err);
     match err.kind() {
         ErrorKind::NotFound => StatusCode::NOT_FOUND,
         ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
@@ -105,11 +106,7 @@ async fn stat_file0(
     path: PathBuf,
 ) -> Result<FileResponse, StatusCode> {
     let storage = storage_path(id, storage).await?;
-    let file = storage
-        .open_with(&path, OpenOptions::new().custom_flags(libc::O_NOFOLLOW))
-        .await
-        .map_err(err)?;
-    let metadata = file.metadata().await.map_err(err)?;
+    let metadata = storage.symlink_metadata(&path).await.map_err(err)?;
 
     let filename = match path.file_name() {
         None => return Err(StatusCode::INTERNAL_SERVER_ERROR),

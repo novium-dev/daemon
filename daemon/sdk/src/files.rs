@@ -148,10 +148,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
             .wrapper(
                 Method::PUT,
                 format!("files/{}/file", server),
-                RequestBody::<()>::Raw(
-                    #[allow(clippy::useless_conversion)]
-                    data.into(),
-                ),
+                RequestBody::<()>::Raw(data),
                 Some(&PathQuery { path }),
             )
             .await?;
