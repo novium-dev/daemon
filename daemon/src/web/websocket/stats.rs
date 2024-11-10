@@ -120,7 +120,10 @@ pub(crate) async fn new_stats_session<
             message = state.read() => {
                 let message = state.read_transform(message);
                 match message {
-                    Ok(_) => {},
+                    Ok(_) => {
+                        last_sent = Instant::now();
+                        ping_sent = false;
+                    },
                     Err(err) => {
                         if let ChannelError::IO(ref io) = err {
                             warn!("Channel disconnected with error: {:?}", io);
