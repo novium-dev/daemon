@@ -4,7 +4,8 @@ use std::os::unix::prelude::*;
 use std::path::PathBuf;
 
 use axum::body::{Body, BodyDataStream};
-use axum::http::StatusCode;
+use axum::http;
+use axum::http::{HeaderMap, StatusCode};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt, OpenOptions, OpenOptionsExt};
 use diesel_async::AsyncMysqlConnection;
@@ -168,18 +169,30 @@ pub(crate) async fn download_file(
     mut conn: OwnedMutexGuard<AsyncMysqlConnection>,
     id: StorageIdentifier,
     path: String,
-) -> Result<Body, StatusCode> {
+) -> Result<(Option<HeaderMap>, Body), StatusCode> {
     let (_path, lock, _, storage) =
         storage_read(&state.config, &mut conn, &state.storages, id, true)
             .await
             .map_err(StorageError::into_http)?;
     drop(conn);
     let storage = storage_path(id, storage).await?;
+    let path = PathBuf::from(path);
+    let headers = path
+        .file_name()
+        .map(|str| str.to_string_lossy())
+        .map(|filename| {
+            HeaderMap::from_iter([(
+                http::header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{}\"", filename)
+                    .parse()
+                    .unwrap(),
+            )])
+        });
     let fd: OwnedFd = storage.open(path).await.map_err(err)?.into_std().into();
     let stream = ReaderStream::new(tokio::fs::File::from_std(std::fs::File::from(fd)));
     let body = axum::body::Body::from_stream(stream);
     drop(lock);
-    Ok(body)
+    Ok((headers, body))
 }
 
 pub(crate) async fn write_file(

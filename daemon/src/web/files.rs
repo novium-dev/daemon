@@ -1,6 +1,6 @@
 use axum::body::Body;
 use axum::extract::{Path, Query, Request, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use daemon_common::payload::files::{
     PathDirectoryQuery, PathQuery, PathSymlinkQuery, TwoPathQuery,
@@ -183,7 +183,7 @@ pub(crate) async fn server_download_file(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
-) -> Result<Body, StatusCode> {
+) -> Result<(Option<HeaderMap>, Body), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     download_file(&state, state.conn.clone().lock_owned().await, storage, path).await
 }
@@ -216,7 +216,7 @@ pub(crate) async fn server_user_download_file(
         verify,
         timestamp,
     }): Query<daemon_common::payload::files::PathUserQuery>,
-) -> Result<Body, StatusCode> {
+) -> Result<(Option<HeaderMap>, Body), StatusCode> {
     crate::web::user::authenticate_user(
         "file",
         server_id,
