@@ -80,7 +80,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
     ) -> Result<(), DaemonSDKError> {
         let response = self
             .wrapper(
-                Method::DELETE,
+                Method::GET,
                 format!("backup/{}/{}/{}/restore", server, storage, backup),
                 RequestBody::<()>::None,
                 None::<&()>,
