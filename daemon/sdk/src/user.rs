@@ -106,7 +106,7 @@ impl DaemonSDK<WithUserKey> {
         backup: i64,
     ) -> String {
         let verify = self.generate_token(
-            "file",
+            "backup",
             server,
             timestamp,
             Some(format!("-{}-{}", storage, backup)),
@@ -128,8 +128,12 @@ impl DaemonSDK<WithUserKey> {
         timestamp: u64,
         compression: String,
     ) -> String {
-        let verify =
-            self.generate_token("file", server, timestamp, Some(format!("-{}", compression)));
+        let verify = self.generate_token(
+            "backup_rt",
+            server,
+            timestamp,
+            Some(format!("-{}", compression)),
+        );
         let mut url = self
             .base_url
             .join(&format!("user/backup/{}/rt", server))

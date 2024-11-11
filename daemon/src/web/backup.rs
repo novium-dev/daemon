@@ -1,6 +1,6 @@
 use axum::body::Body;
 use axum::extract::{Path, Query, State};
-use axum::http::StatusCode;
+use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use daemon_common::payload::backup::*;
 use daemon_common::payload::TimeIdResponse;
@@ -76,7 +76,7 @@ pub(crate) async fn server_create_backup(
 pub(crate) async fn server_download_backup(
     State(state): State<DaemonState>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
-) -> Result<Body, StatusCode> {
+) -> Result<(HeaderMap, Body), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::backup_to_stream(&state, storage, backup_id, &backup_storage)
         .await
@@ -107,7 +107,7 @@ pub(crate) async fn server_user_download_backup(
     State(state): State<DaemonState>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
     axum::extract::Query(crate::web::user::GenericUserQuery { timestamp, verify }): axum::extract::Query<crate::web::user::GenericUserQuery>,
-) -> Result<Body, StatusCode> {
+) -> Result<(HeaderMap, Body), StatusCode> {
     crate::web::user::authenticate_user(
         "backup",
         server_id,
@@ -146,7 +146,7 @@ pub(crate) async fn server_backup_realtime(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
     Query(CompressionQuery { compression }): Query<CompressionQuery>,
-) -> Result<Body, StatusCode> {
+) -> Result<(HeaderMap, Body), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::stream_realtime(&state, storage, compression)
         .await
@@ -181,7 +181,7 @@ pub(crate) async fn server_user_backup_realtime(
         verify,
         compression,
     }): axum::extract::Query<UserCompressionQuery>,
-) -> Result<Body, StatusCode> {
+) -> Result<(HeaderMap, Body), StatusCode> {
     crate::web::user::authenticate_user(
         "backup_rt",
         server_id,

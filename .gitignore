@@ -9,3 +9,4 @@ valkey/sockets/
 test/node_modules/
 .vscode/
 *.wasm
+config.toml

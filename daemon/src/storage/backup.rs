@@ -2,10 +2,10 @@ use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::utils::{storage_read, storage_write, StorageError};
 use crate::{storage, DaemonState};
-use axum::async_trait;
 use axum::body::Body;
-use axum::http::StatusCode;
-use chrono::Utc;
+use axum::http::{HeaderMap, StatusCode};
+use axum::{async_trait, http};
+use chrono::{TimeZone, Utc};
 use daemon_common::payload::backup::BackupResponseEntry;
 use log::debug;
 use serde_json::json;
@@ -270,7 +270,7 @@ pub(crate) async fn backup_to_stream(
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,
-) -> Result<Body, StatusCode> {
+) -> Result<(HeaderMap, Body), StatusCode> {
     let (_path, lock, backup_exclude, _) = storage_read(
         &state.config,
         state.conn.lock().await.deref_mut(),
@@ -289,6 +289,7 @@ pub(crate) async fn backup_to_stream(
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
+
     Ok(body)
 }
 
@@ -298,16 +299,27 @@ async fn backup_to_stream0(
     backup_id: i64,
     backup: &BackupEntry,
     #[allow(unused)] exclude: HashSet<String>,
-) -> Result<Body, io::Error> {
+) -> Result<(HeaderMap, Body), io::Error> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
         BackupEntry::Archive {
             ref compression, ..
         } => {
             let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
-            Ok(Body::from_stream(ReaderStream::new(
-                File::open(target).await?,
-            )))
+            let headers = HeaderMap::from_iter([(
+                http::header::CONTENT_DISPOSITION,
+                format!(
+                    "attachment; filename=\"{}.tar{}\"",
+                    Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
+                    compression.ext()
+                )
+                .parse()
+                .unwrap(),
+            )]);
+            Ok((
+                headers,
+                Body::from_stream(ReaderStream::new(File::open(target).await?)),
+            ))
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs {
@@ -315,8 +327,21 @@ async fn backup_to_stream0(
             ..
         } => {
             let compression = *jit_compression;
+            let headers = HeaderMap::from_iter([(
+                http::header::CONTENT_DISPOSITION,
+                format!(
+                    "attachment; filename=\"{}.tar{}\"",
+                    Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
+                    compression.ext()
+                )
+                .parse()
+                .unwrap(),
+            )]);
             let target = target_dir.join(&backup_id.to_string());
-            stream_realtime1(compression, target, exclude).await
+            Ok((
+                headers,
+                stream_realtime1(compression, target, exclude).await?,
+            ))
         }
     }
 }
@@ -325,7 +350,7 @@ pub(crate) async fn stream_realtime(
     state: &DaemonState,
     id: StorageIdentifier,
     compression: String,
-) -> Result<Body, StatusCode> {
+) -> Result<(HeaderMap, Body), StatusCode> {
     let (path, lock, backup_exclude, _) = storage_read(
         &state.config,
         state.conn.lock().await.deref_mut(),
@@ -344,7 +369,15 @@ pub(crate) async fn stream_realtime(
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
-    Ok(body)
+
+    let headers = HeaderMap::from_iter([(
+        http::header::CONTENT_DISPOSITION,
+        format!("attachment; filename=\"realtime.tar{}\"", compression.ext())
+            .parse()
+            .unwrap(),
+    )]);
+
+    Ok((headers, body))
 }
 
 #[inline(always)]
