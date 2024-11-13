@@ -16,11 +16,11 @@ use crate::utils::{storage_read, ChannelAdapter, ChannelError, ChannelWriteData}
 use crate::{DaemonState, ServerData};
 use axum::{async_trait, http};
 use daemon_common::server::BackendAuthServerPermissions;
+use daemon_common::ssh::DaemonBackendAuthResponse;
 use log::{debug, error};
 use russh::server::{Auth, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId, ChannelStream, Pty};
 use russh_keys::key::PublicKey;
-use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
@@ -66,18 +66,11 @@ pub(crate) type DaemonChannel = (
     Option<Arc<AtomicU32>>,
 );
 
-pub(crate) type PanelAuthResponse = Vec<PanelAuthServer>;
-#[derive(Deserialize, Clone)]
-pub(crate) struct PanelAuthServer {
-    pub(crate) id: u32,
-    pub(crate) permissions: BackendAuthServerPermissions,
-}
-
 pub struct DaemonSSHHandler {
     state: Arc<DaemonState>,
     channels: HashMap<ChannelId, DaemonChannel>,
-    publickey_cache: InvalidationCacheMap<(String, String), PanelAuthResponse>,
-    auth: Option<PanelAuthResponse>,
+    publickey_cache: InvalidationCacheMap<(String, String), DaemonBackendAuthResponse>,
+    auth: Option<DaemonBackendAuthResponse>,
 }
 
 struct InvalidationCacheMap<T: Clone + Hash + Eq, E: Clone>(HashMap<T, (Instant, E)>, Duration);
@@ -115,16 +108,26 @@ async fn password_auth(
     state: &DaemonState,
     user: &str,
     password: &str,
-) -> Result<PanelAuthResponse, io::Error> {
+) -> Result<DaemonBackendAuthResponse, io::Error> {
+    let mut url = state
+        .config
+        .ssh
+        .auth_url
+        .join("/api/internal/auth/password")
+        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+    url.query_pairs_mut()
+        .append_pair("node", &state.config.identifier);
+    debug!("Trying {}", url);
+
     state
         .client
-        .get(format!(
-            "{}/api/auth/password?node={}",
-            state.config.ssh.auth_url, state.config.identifier
-        ))
+        .get(url)
         .basic_auth(user, Some(password))
         .send()
         .await
+        .inspect_err(|err| {
+            debug!("SSH Authentication failed: {:?}", err);
+        })
         .map_err(|err| match err {
             err if matches!(err.status(), Some(http::StatusCode::UNAUTHORIZED)) => {
                 io::Error::new(ErrorKind::PermissionDenied, err)
@@ -140,13 +143,19 @@ async fn publickey_auth(
     state: &DaemonState,
     user: &str,
     public_key: &PublicKey,
-) -> Result<PanelAuthResponse, io::Error> {
+) -> Result<DaemonBackendAuthResponse, io::Error> {
+    let mut url = state
+        .config
+        .ssh
+        .auth_url
+        .join("/api/internal/auth/publickey")
+        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+    url.query_pairs_mut()
+        .append_pair("node", &state.config.identifier);
+
     state
         .client
-        .get(format!(
-            "{}/api/auth/publickey?node={}",
-            state.config.ssh.auth_url, state.config.identifier
-        ))
+        .get(url)
         .basic_auth(user, Some(public_key.fingerprint()))
         .send()
         .await
@@ -161,13 +170,13 @@ async fn publickey_auth(
         .map_err(|err| io::Error::new(ErrorKind::Other, err))
 }
 
-impl InvalidationCacheMap<(String, String), PanelAuthResponse> {
+impl InvalidationCacheMap<(String, String), DaemonBackendAuthResponse> {
     pub(crate) async fn get_resolved(
         &mut self,
         state: &DaemonState,
         user: &str,
         public_key: &PublicKey,
-    ) -> Result<PanelAuthResponse, io::Error> {
+    ) -> Result<DaemonBackendAuthResponse, io::Error> {
         match self.get(&(user.to_string(), public_key.fingerprint())) {
             None => publickey_auth(state, user, public_key).await,
             Some(response) => Ok(response.clone()),
@@ -203,6 +212,7 @@ impl Handler for DaemonSSHHandler {
                         for server in servers {
                             auth.push(PanelAuthServer {
                                 id: server.id,
+                                name: server.id.to_string(),
                                 permissions: BackendAuthServerPermissions::all(),
                             });
                         }
@@ -306,7 +316,7 @@ impl Handler for DaemonSSHHandler {
         if self.auth.is_none() {
             return Err(russh::Error::NotAuthenticated);
         }
-        debug!("Window size change");
+        debug!("Window size change {}x{}", col_width, row_height);
         match self.channels.get_mut(&channel_id) {
             Some((_channel, id, cols, rows)) => {
                 let cols = match cols {
@@ -359,9 +369,9 @@ impl Handler for DaemonSSHHandler {
         if self.auth.is_none() {
             return Err(russh::Error::NotAuthenticated);
         }
-        debug!("Exec");
         let str =
             String::from_utf8(data.to_vec()).map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
+        debug!("Exec {}", str);
         let server_id: u32 = str.parse().map_err(|_err| russh::Error::DecryptionError)?;
 
         let auth = self.auth.as_ref().unwrap();
@@ -545,7 +555,7 @@ impl Handler for DaemonSSHHandler {
                             .await
                             {
                                 sftp.access.insert(
-                                    identifier.as_vec(),
+                                    vec!["servers".to_string(), server.name.clone()],
                                     (identifier, storage.clone(), server.permissions, lock),
                                 );
                             }

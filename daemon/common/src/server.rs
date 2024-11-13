@@ -20,7 +20,7 @@ pub struct ServerStats {
     pub cpu: f32,
     pub mem: f32,
     pub cpu_max: f32,
-    pub mem_max: f32,
+    pub mem_max: i64,
 }
 
 impl Default for ServerStats {
@@ -29,13 +29,13 @@ impl Default for ServerStats {
             cpu: -1f32,
             mem: -1f32,
             cpu_max: -1f32,
-            mem_max: -1f32,
+            mem_max: -1,
         }
     }
 }
 
 impl ServerStats {
-    pub fn with_max(self, cpu: f32, mem: f32) -> Self {
+    pub fn with_max(self, cpu: f32, mem: i64) -> Self {
         Self {
             cpu: self.cpu,
             mem: self.mem,
@@ -102,7 +102,7 @@ impl ServerStats {
 
 bitflags! {
     #[repr(transparent)]
-    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
     pub struct BackendAuthServerPermissions: i32 {
         const TERMINAL_READ = 1 << 0;
         const TERMINAL_WRITE = 1 << 1;

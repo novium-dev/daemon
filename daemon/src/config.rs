@@ -2,6 +2,7 @@ use async_compression::Level;
 #[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
 use ed25519_dalek::VerifyingKey;
+use reqwest::Url;
 #[cfg(feature = "ssh")]
 use russh_keys::encoding::Bytes;
 #[cfg(feature = "ssh")]
@@ -43,7 +44,7 @@ pub(crate) struct SSHConfig {
     pub(crate) bind: String,
     pub(crate) host_key: Vec<SSHHostKey>,
     pub(crate) auth_cache_duration: u64,
-    pub(crate) auth_url: String,
+    pub(crate) auth_url: Url,
 }
 
 #[derive(Clone, Deserialize)]

@@ -439,10 +439,7 @@ impl FetchedServer {
         );
 
         let cpu_max = self.cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
-        let mem_max = self
-            .ram
-            .map(|mem| ((mem as f32) / 1024f32) / 1024f32)
-            .unwrap_or(-1f32);
+        let mem_max = self.ram.map(|ram| ram as i64).unwrap_or(-1);
         drop(buffer);
 
         let server_id = self.id;
