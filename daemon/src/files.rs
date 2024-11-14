@@ -74,9 +74,13 @@ async fn list_files0(
                     .to_string(),
             );
         }
-        vec.push(
-            metadata.into_fileresponse(entry.file_name().to_string_lossy().to_string(), link_path),
-        );
+
+        let relative_path = path.join(entry.file_name());
+        vec.push(metadata.into_fileresponse(
+            entry.file_name().to_string_lossy().to_string(),
+            relative_path.to_string_lossy().to_string(),
+            link_path,
+        ));
     }
 
     Ok(vec)
@@ -116,14 +120,20 @@ async fn stat_file0(
     if metadata.is_symlink() {
         link_path = Some(
             storage
-                .read_link(path)
+                .read_link(path.clone())
                 .await
                 .map_err(err)?
                 .to_string_lossy()
                 .to_string(),
         );
     }
-    Ok(metadata.into_fileresponse(filename, link_path))
+
+    let relative_path = path.join(filename.clone());
+    Ok(metadata.into_fileresponse(
+        filename,
+        relative_path.to_string_lossy().to_string(),
+        link_path,
+    ))
 }
 
 pub(crate) async fn rename_file(
@@ -301,11 +311,21 @@ async fn storage_path(id: StorageIdentifier, storage: &StorageEntry) -> Result<D
 }
 
 pub trait IntoFileResponse {
-    fn into_fileresponse(self, filename: String, path: Option<String>) -> FileResponse;
+    fn into_fileresponse(
+        self,
+        filename: String,
+        relative_path: String,
+        path: Option<String>,
+    ) -> FileResponse;
 }
 
 impl IntoFileResponse for Metadata {
-    fn into_fileresponse(self, filename: String, path: Option<String>) -> FileResponse {
+    fn into_fileresponse(
+        self,
+        filename: String,
+        relative_path: String,
+        path: Option<String>,
+    ) -> FileResponse {
         let mut r#type = 0;
         let file_type = self.file_type();
         if file_type.is_dir() {
@@ -327,6 +347,7 @@ impl IntoFileResponse for Metadata {
             name: filename,
             path,
             mode: self.mode() | r#type,
+            relative_path,
             size: self.size(),
             uid: self.uid(),
             gid: self.gid(),
