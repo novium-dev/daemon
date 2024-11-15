@@ -2,6 +2,21 @@
 name = "daemon"
 version = "0.1.0"
 edition = "2021"
+authors = ["MarkusTieger"]
+license = "AGPL-3-only"
+
+[package.metadata.deb]
+name = "novium_daemon"
+depends = ["novium_daemon_mariadb_plugin"]
+assets = [
+    ["target/release/daemon", "/usr/sbin/novium_daemon", "755"]
+]
+maintainer-scripts = "debian/"
+systemd-units = { unit-name = "novium_daemon", enable = false }
+
+[package.metadata.deb.variants.full]
+features = ["full"]
+depends = ["novium_daemon_mariadb_plugin", "btrfs-progs"]
 
 [features]
 ssl = []

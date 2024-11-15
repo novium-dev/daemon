@@ -1,0 +1,10 @@
+[Unit]
+Description=Daemon for managing servers on nodes
+
+[Service]
+ExecStart=/usr/sbin/novium_daemon
+Restart=on-failure
+WatchdogSec=1m
+
+[Install]
+WantedBy=multi-user.target
