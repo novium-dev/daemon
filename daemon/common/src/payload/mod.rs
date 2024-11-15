@@ -3,6 +3,7 @@ pub mod backup;
 pub mod database;
 #[cfg(feature = "files")]
 pub mod files;
+pub mod node;
 pub mod resource;
 pub mod server;
 

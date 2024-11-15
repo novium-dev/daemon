@@ -13,6 +13,7 @@ use crate::{storage, DaemonState};
 pub(crate) fn config() -> OpenApiRouter<DaemonState> {
     OpenApiRouter::new()
         .routes(routes!(server_create_backup))
+        .routes(routes!(server_create_backup_order))
         .routes(routes!(server_download_backup))
         .routes(routes!(server_backup_realtime))
         .routes(routes!(server_delete_backup))
@@ -50,6 +51,35 @@ pub(crate) async fn server_create_backup(
 ) -> Result<Json<TimeIdResponse>, StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::create_backup(&state, storage, &backup_storage)
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
+        .map(|time| Json(TimeIdResponse { time }))
+}
+
+#[utoipa::path(put,
+    path = "/backup/{server_id}",
+    tag = "backup",
+    description = "Creates a new backup",
+    responses(
+        (status = 200, description = "Backup was created successfully", body = TimeIdResponse, content_type = "application/json"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server does not exist"),
+        (status = 401, description = "Your authorization token is invalid"),
+        (status = 417, description = "No suitable backup storage available")
+    ),
+    params(
+        ("server_id" = i64, description = "The id of the server"),
+        ("backup_storage" = String, description = "The id of the storage, in which the backup will be stored"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
+pub(crate) async fn server_create_backup_order(
+    State(state): State<DaemonState>,
+    Path((server_id,)): Path<(u32,)>,
+) -> Result<Json<TimeIdResponse>, StatusCode> {
+    let storage = StorageIdentifier::Primary(server_id);
+    storage::backup::create_backup_order(&state, storage)
         .await
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
         .map(|time| Json(TimeIdResponse { time }))

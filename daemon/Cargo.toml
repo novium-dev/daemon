@@ -9,11 +9,11 @@ ssh = ["russh", "russh-keys", "reqwest"]
 ssh_debug_auth_bypass = ["ssh"]
 sftp = ["ssh", "russh-sftp"]
 files = ["daemon_common/files"]
-backups = ["async-compression"]
+backups = ["daemon_common/backups", "async-compression"]
 database = ["daemon_common/database"]
 websocket = ["axum/ws", "daemon_common/websocket", "user"]
 user_debug_auth_bypass = ["user"]
-btrfs = ["btrfsutil"]
+btrfs = ["daemon_common/btrfs", "btrfsutil"]
 user = []
 
 default = ["ssl", "ssh", "sftp", "websocket", "database", "files", "backups"]
@@ -58,6 +58,8 @@ futures = "0.3.31"
 bytes = "1.8.0"
 sysinfo = "0.32.0"
 java-properties = "2.0.0"
+crossterm = "0.28.1"
+inquire = "0.7.5"
 
 [dependencies.utoipa-swagger-ui]
 version = "8.0.3"

@@ -25,6 +25,25 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
             .map_err(DaemonSDKError::Reqwest)
     }
 
+    pub async fn server_create_backup_order(&self, server: u32) -> Result<(), DaemonSDKError> {
+        let response = self
+            .wrapper(
+                Method::PUT,
+                format!("backup/{}", server),
+                RequestBody::<()>::None,
+                None::<&()>,
+            )
+            .await?;
+        if !response.status().is_success() {
+            return Err(DaemonSDKError::StatusCode(response.status()));
+        }
+        response
+            .bytes()
+            .await
+            .map(|_| ())
+            .map_err(DaemonSDKError::Reqwest)
+    }
+
     pub async fn server_create_backup(
         &self,
         server: u32,

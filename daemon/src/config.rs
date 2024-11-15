@@ -1,6 +1,7 @@
-use async_compression::Level;
 #[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
+use base64::prelude::BASE64_STANDARD;
+use base64::Engine;
 use ed25519_dalek::VerifyingKey;
 use reqwest::Url;
 #[cfg(feature = "ssh")]
@@ -8,19 +9,20 @@ use russh_keys::encoding::Bytes;
 #[cfg(feature = "ssh")]
 use russh_keys::key::{KeyPair, RsaPrivate, SignatureHash};
 use serde::de::{Error, Visitor};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
 use std::fmt::Formatter;
 #[cfg(feature = "ssl")]
 use std::path::PathBuf;
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct DaemonConfig {
     #[allow(unused)]
     pub(crate) identifier: String,
     pub(crate) token: String,
     #[cfg(feature = "user")]
     #[serde(deserialize_with = "deserialize_user_key")]
+    #[serde(serialize_with = "serialize_user_key")]
     pub(crate) user_key: VerifyingKey,
     #[cfg(feature = "user")]
     #[allow(unused)]
@@ -36,10 +38,18 @@ pub(crate) struct DaemonConfig {
     pub(crate) ssl: SSLConfig,
     #[cfg(feature = "ssh")]
     pub(crate) ssh: SSHConfig,
+    pub(crate) mounts: Vec<MountPoint>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct MountPoint {
+    pub(crate) src: String,
+    pub(crate) dest: String,
+    pub(crate) mode: String,
 }
 
 #[cfg(feature = "ssh")]
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct SSHConfig {
     pub(crate) bind: String,
     pub(crate) host_key: Vec<SSHHostKey>,
@@ -47,7 +57,7 @@ pub(crate) struct SSHConfig {
     pub(crate) auth_url: Url,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
 pub(crate) enum StorageEntry {
     #[serde(rename = "directory")]
@@ -68,13 +78,14 @@ impl StorageEntry {
 }
 
 #[cfg(feature = "backups")]
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
 pub(crate) enum BackupEntry {
     #[serde(rename = "archive")]
     Archive {
         compression: ArchiveCompression,
         path: String,
+        order: Option<i8>,
     },
     #[cfg(feature = "btrfs")]
     #[serde(rename = "btrfs")]
@@ -82,9 +93,11 @@ pub(crate) enum BackupEntry {
         jit_compression: ArchiveCompression,
         path: String,
         group: String,
+        order: Option<i8>,
     },
 }
 
+#[cfg(feature = "backups")]
 impl BackupEntry {
     pub(crate) fn path(&self) -> &String {
         match self {
@@ -93,10 +106,18 @@ impl BackupEntry {
             BackupEntry::Btrfs { path, .. } => path,
         }
     }
+
+    pub(crate) fn order(&self) -> Option<i8> {
+        match self {
+            BackupEntry::Archive { order, .. } => *order,
+            #[cfg(feature = "btrfs")]
+            BackupEntry::Btrfs { order, .. } => *order,
+        }
+    }
 }
 
 #[cfg(feature = "backups")]
-#[derive(Deserialize, Copy, Clone)]
+#[derive(Serialize, Deserialize, Copy, Clone)]
 #[serde(tag = "type")]
 pub(crate) enum ArchiveCompression {
     #[serde(rename = "none")]
@@ -104,44 +125,51 @@ pub(crate) enum ArchiveCompression {
     #[serde(rename = "zstd")]
     Zstd {
         #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(serialize_with = "serialize_compression_level")]
         #[serde(default = "default_level")]
-        level: Level,
+        level: async_compression::Level,
     },
     #[serde(rename = "xz")]
     Xz {
         #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(serialize_with = "serialize_compression_level")]
         #[serde(default = "default_level")]
-        level: Level,
+        level: async_compression::Level,
     },
     #[serde(rename = "zlib")]
     Zlib {
         #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(serialize_with = "serialize_compression_level")]
         #[serde(default = "default_level")]
-        level: Level,
+        level: async_compression::Level,
     },
     #[serde(rename = "gzip")]
     Gzip {
         #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(serialize_with = "serialize_compression_level")]
         #[serde(default = "default_level")]
-        level: Level,
+        level: async_compression::Level,
     },
     #[serde(rename = "lzma")]
     Lzma {
         #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(serialize_with = "serialize_compression_level")]
         #[serde(default = "default_level")]
-        level: Level,
+        level: async_compression::Level,
     },
     #[serde(rename = "brotli")]
     Brotli {
         #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(serialize_with = "serialize_compression_level")]
         #[serde(default = "default_level")]
-        level: Level,
+        level: async_compression::Level,
     },
     #[serde(rename = "bzip2")]
     Bzip2 {
         #[serde(deserialize_with = "deserialize_compression_level")]
+        #[serde(serialize_with = "serialize_compression_level")]
         #[serde(default = "default_level")]
-        level: Level,
+        level: async_compression::Level,
     },
 }
 
@@ -207,15 +235,33 @@ impl ArchiveCompression {
 }
 
 #[cfg(feature = "backups")]
-fn default_level() -> Level {
-    Level::Default
+fn default_level() -> async_compression::Level {
+    async_compression::Level::Default
 }
 
 #[cfg(feature = "backups")]
-fn deserialize_compression_level<'de, D>(deserializer: D) -> Result<Level, D::Error>
+fn serialize_compression_level<S: Serializer>(
+    v: &async_compression::Level,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    use async_compression::Level;
+    match *v {
+        Level::Fastest => serializer.serialize_str("fastest"),
+        Level::Best => serializer.serialize_str("default"),
+        Level::Default => serializer.serialize_str("best"),
+        Level::Precise(level) => serializer.serialize_i32(level),
+        _ => unreachable!(),
+    }
+}
+
+#[cfg(feature = "backups")]
+fn deserialize_compression_level<'de, D>(
+    deserializer: D,
+) -> Result<async_compression::Level, D::Error>
 where
     D: serde::Deserializer<'de>,
 {
+    use async_compression::Level;
     struct CompressionLevelVisitor;
     impl Visitor<'_> for CompressionLevelVisitor {
         type Value = Level;
@@ -275,8 +321,13 @@ where
         .map_err(D::Error::custom)
 }
 
+#[cfg(feature = "user")]
+fn serialize_user_key<S: Serializer>(key: &VerifyingKey, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(&BASE64_STANDARD.encode(key.as_bytes()))
+}
+
 #[cfg(feature = "ssl")]
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct SSLConfig {
     pub(crate) enabled: bool,
     pub(crate) private_key: Option<String>,
@@ -295,7 +346,7 @@ impl SSLConfig {
 }
 
 #[cfg(feature = "ssh")]
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub(crate) enum SSHHostKey {
     #[serde(rename = "ed25519")]

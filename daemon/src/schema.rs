@@ -4,7 +4,7 @@ use daemon_common::payload::server::ServerFileWrite;
 use diesel::result::Error;
 use diesel::{
     define_sql_function, Associations, BelongingToDsl, Identifiable, Insertable, Queryable,
-    Selectable,
+    QueryableByName, Selectable,
 };
 use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
 use std::collections::{HashMap, HashSet};
@@ -384,6 +384,19 @@ diesel::table! {
         external_port -> Unsigned<SmallInt>,
         external_ip -> VarChar,
         protocol -> VarChar,
+    }
+}
+
+#[derive(Debug, QueryableByName, PartialEq, Eq, Clone)]
+#[diesel[table_name = __mysql_plugins]]
+pub(crate) struct MySQLPluginEntry {
+    #[diesel(column_name = Name)]
+    pub(crate) name: String,
+}
+
+diesel::table! {
+    __mysql_plugins (Name) {
+        Name -> VarChar,
     }
 }
 

@@ -1,4 +1,4 @@
-/target
+target/
 .idea/
 mysql/data/
 mysql/sockets/

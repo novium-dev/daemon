@@ -20,6 +20,68 @@ use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
 use tokio_tar::{Archive, Builder};
 use tokio_util::io::ReaderStream;
 
+pub(crate) async fn create_backup_order(
+    state: &DaemonState,
+    id: StorageIdentifier,
+) -> Result<i64, StatusCode> {
+    let (path, lock, backup_exclude, storage) = storage_read(
+        &state.config,
+        state.conn.lock().await.deref_mut(),
+        &state.storages,
+        id,
+        true,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
+
+    let mut storages: Vec<(String, i8, &BackupEntry)> = state
+        .config
+        .backup
+        .iter()
+        .map(|(name, entry)| (name.clone(), entry.order(), entry))
+        .filter(|(_, order, _)| order.is_some())
+        .map(|(name, order, entry)| (name, order.unwrap(), entry))
+        .collect();
+    storages.sort_by_key(|storage| storage.1);
+    let mut suitable = None;
+    for (_, _order, entry) in storages {
+        if compatible(storage, entry) {
+            suitable = Some(entry);
+            break;
+        }
+    }
+    if suitable.is_none() {
+        return Err(StatusCode::EXPECTATION_FAILED);
+    }
+
+    let id = create_backup0(path, id, suitable.unwrap(), storage, backup_exclude)
+        .await
+        .map_err(|err| {
+            debug!("Backup creation failed: {:?}", err);
+            if err.kind() == ErrorKind::InvalidInput {
+                StatusCode::UNPROCESSABLE_ENTITY
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        })?;
+    drop(lock);
+    Ok(id)
+}
+
+fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
+    match (storage, backup) {
+        #[cfg(feature = "btrfs")]
+        (StorageEntry::Btrfs { group: group1, .. }, BackupEntry::Btrfs { group: group2, .. })
+            if group1.eq(group2) =>
+        {
+            true
+        }
+        (_, BackupEntry::Archive { .. }) => true,
+        #[allow(unreachable_patterns)]
+        _ => false,
+    }
+}
+
 pub(crate) async fn create_backup(
     state: &DaemonState,
     id: StorageIdentifier,

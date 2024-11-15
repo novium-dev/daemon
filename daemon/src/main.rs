@@ -5,13 +5,14 @@ use bollard::Docker;
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
 use env_logger::Env;
 use libc::SIGINT;
-use log::{info, warn};
+use log::{error, info, warn};
 #[cfg(feature = "ssh")]
 use reqwest::Client;
 #[cfg(feature = "ssh")]
 use russh::server::{Config, Server as SSHServer};
 use signal_hook::iterator::Signals;
 use std::collections::{HashMap, VecDeque};
+use std::env;
 use std::error::Error;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
@@ -35,8 +36,6 @@ pub use daemon_common as common;
 
 use crate::config::DaemonConfig;
 use crate::schema::FetchedServer;
-#[cfg(feature = "ssh")]
-use crate::ssh::DaemonSSHServer;
 use crate::storage::StorageIdentifier;
 use crate::terminal::TerminalSession;
 use crate::utils::ChannelWriteData;
@@ -54,6 +53,7 @@ mod sql;
 mod ssh;
 mod storage;
 
+pub(crate) mod setup;
 mod terminal;
 mod utils;
 mod web;
@@ -63,7 +63,17 @@ mod web;
 struct ApiDoc;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() {
+    main0().await.expect("Daemon startup failed")
+}
+
+async fn main0() -> Result<(), Box<dyn Error>> {
+    let args = env::args();
+    if args.len() > 1 && args.into_iter().nth(1).unwrap().eq("setup") {
+        let _ = tokio::task::spawn_blocking(setup::setup).await;
+        return Ok(());
+    }
+
     #[cfg(not(debug_assertions))]
     let env = Env::default().filter_or("LOG_LEVEL", "info");
     #[cfg(debug_assertions)]
@@ -101,16 +111,21 @@ async fn main() -> Result<(), Box<dyn Error>> {
         client: Client::default(),
     };
 
-    let cors = CorsLayer::new()
-        .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&config.origin)?))
-        .allow_methods([Method::GET])
-        .allow_headers(AllowHeaders::any());
-
-    let (mut router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+    let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(web::config())
-        .route_layer(ValidateRequestHeaderLayer::bearer(&config.token))
-        .merge(web::user_config().layer(cors))
-        .split_for_parts();
+        .route_layer(ValidateRequestHeaderLayer::bearer(&config.token));
+
+    #[cfg(feature = "user")]
+    {
+        let cors = CorsLayer::new()
+            .allow_origin(AllowOrigin::exact(HeaderValue::from_str(&config.origin)?))
+            .allow_methods([Method::GET])
+            .allow_headers(AllowHeaders::any());
+
+        router = router.merge(web::user_config().layer(cors));
+    }
+
+    let (mut router, api) = router.split_for_parts();
 
     #[cfg(debug_assertions)]
     {
@@ -129,20 +144,31 @@ async fn main() -> Result<(), Box<dyn Error>> {
         tokio::task::spawn(async move {
             let mut keys = Vec::with_capacity(config1.ssh.host_key.len());
             for key in &config1.ssh.host_key {
-                keys.push(key.as_russh_key().await?);
+                keys.push(match key.as_russh_key().await {
+                    Ok(key) => key,
+                    Err(err) => {
+                        error!("Failed to start ssh server: {:?}", err);
+                        exit(-1);
+                    }
+                });
             }
-            DaemonSSHServer {
+            let mut server = crate::ssh::DaemonSSHServer {
                 state: state1,
                 cache_invalidation: Duration::from_millis(config1.ssh.auth_cache_duration),
+            };
+            if let Err(err) = server
+                .run_on_address(
+                    Arc::new(Config {
+                        keys,
+                        ..Config::default()
+                    }),
+                    &config1.ssh.bind,
+                )
+                .await
+            {
+                error!("Failed to start ssh server: {:?}", err);
+                exit(-1);
             }
-            .run_on_address(
-                Arc::new(Config {
-                    keys,
-                    ..Config::default()
-                }),
-                &config1.ssh.bind,
-            )
-            .await
         });
     }
 
