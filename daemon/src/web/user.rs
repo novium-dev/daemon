@@ -1,8 +1,8 @@
 use axum::http::StatusCode;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
-use log::debug;
 use serde::Deserialize;
+use tracing::debug;
 
 use crate::DaemonState;
 

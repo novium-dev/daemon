@@ -33,7 +33,6 @@ use daemon_common::payload::server::ServerFileWrite;
 use daemon_common::server::{PublicServerState, ServerStats};
 use futures::stream::StreamExt;
 use java_properties::{read, write};
-use log::warn;
 use serde::{Serialize, Serializer};
 use termion::color::Fg;
 use termion::{clear, color};
@@ -43,6 +42,7 @@ use tokio::sync::{Mutex, OwnedRwLockReadGuard};
 use tokio::time::Instant;
 use tokio_tar::{Builder, Header};
 use tokio_util::io::SyncIoBridge;
+use tracing::warn;
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
 

@@ -17,13 +17,13 @@ use crate::{DaemonState, ServerData};
 use axum::{async_trait, http};
 use daemon_common::server::BackendAuthServerPermissions;
 use daemon_common::ssh::DaemonBackendAuthResponse;
-use log::{debug, error};
 use russh::server::{Auth, Handler, Msg, Server, Session};
 use russh::{Channel, ChannelId, ChannelStream, Pty};
 use russh_keys::key::PublicKey;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use tokio::time::timeout;
+use tracing::{debug, error};
 
 #[cfg(feature = "sftp")]
 pub(crate) mod sftp;

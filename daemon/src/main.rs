@@ -3,9 +3,7 @@
 use axum::http::{HeaderValue, Method};
 use bollard::Docker;
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
-use env_logger::Env;
 use libc::SIGINT;
-use log::{error, info, warn};
 #[cfg(feature = "ssh")]
 use reqwest::Client;
 #[cfg(feature = "ssh")]
@@ -26,7 +24,9 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinSet;
 use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
+use tower_http::trace::TraceLayer;
 use tower_http::validate_request::ValidateRequestHeaderLayer;
+use tracing::{error, info, warn};
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_swagger_ui::SwaggerUi;
@@ -74,11 +74,13 @@ async fn main0() -> Result<(), Box<dyn Error>> {
         return Ok(());
     }
 
-    #[cfg(not(debug_assertions))]
-    let env = Env::default().filter_or("LOG_LEVEL", "info");
-    #[cfg(debug_assertions)]
-    let env = Env::default().filter_or("LOG_LEVEL", "debug");
-    env_logger::init_from_env(env);
+    tracing_subscriber::fmt()
+        .with_max_level(if cfg!(debug_assertions) {
+            tracing::Level::DEBUG
+        } else {
+            tracing::Level::INFO
+        })
+        .init();
 
     let mut config_buffer = String::new();
     File::open("config.toml")
@@ -132,7 +134,9 @@ async fn main0() -> Result<(), Box<dyn Error>> {
         router = router.merge(SwaggerUi::new("/docs").url("/docs/openapi.json", api));
     }
 
-    let app = router.with_state(state.clone());
+    let app = router
+        .layer(TraceLayer::new_for_http())
+        .with_state(state.clone());
 
     sql::init(state.conn.lock().await.deref_mut()).await?;
     let state = Arc::new(state);

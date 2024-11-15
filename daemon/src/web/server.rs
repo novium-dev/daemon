@@ -18,8 +18,8 @@ use daemon_common::payload::server::ServerFileWrite;
 use diesel::dsl::{delete, insert_into, select};
 use diesel::{update, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl};
-use log::{debug, error, warn};
 use tokio::time::timeout;
+use tracing::{debug, error, warn};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 

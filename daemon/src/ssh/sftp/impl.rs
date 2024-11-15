@@ -3,9 +3,9 @@ use axum::async_trait;
 use cap_async_std::fs::{OpenOptions, OpenOptionsExt};
 use daemon_common::server::BackendAuthServerPermissions;
 use indexmap::IndexMap;
-use log::*;
 use russh_sftp::protocol::*;
 use std::collections::HashMap;
+use tracing::*;
 
 impl DaemonSftpSession {
     fn success(id: u32) -> Result<Status, StatusCode> {

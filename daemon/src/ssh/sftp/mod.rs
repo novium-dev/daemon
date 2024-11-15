@@ -7,13 +7,13 @@ use crate::ssh::BackendAuthServerPermissions;
 use crate::storage::StorageIdentifier;
 use cap_async_std::fs::*;
 use indexmap::IndexMap;
-use log::*;
 use russh_sftp::protocol::*;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use tokio::fs::File;
 use tokio::io;
 use tokio::sync::OwnedRwLockReadGuard;
+use tracing::*;
 
 pub(crate) struct DaemonSftpSession {
     pub(crate) version: Option<u32>,

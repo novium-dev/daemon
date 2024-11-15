@@ -5,11 +5,11 @@ use axum::extract::ws::WebSocket;
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use log::warn;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
+use tracing::warn;
 
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::web::user::{authenticate_user, GenericUserQuery};

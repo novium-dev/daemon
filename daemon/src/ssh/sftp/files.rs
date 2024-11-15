@@ -39,9 +39,9 @@ use crate::utils::parse_path;
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::*;
 use daemon_common::server::BackendAuthServerPermissions;
-use log::debug;
 use russh_sftp::protocol::*;
 use std::path::PathBuf;
+use tracing::debug;
 
 impl DaemonSftpSession {
     pub(crate) async fn resolve_path(

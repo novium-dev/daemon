@@ -7,7 +7,6 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::{async_trait, http};
 use chrono::{TimeZone, Utc};
 use daemon_common::payload::backup::BackupResponseEntry;
-use log::debug;
 use serde_json::json;
 use std::collections::HashSet;
 use std::io;
@@ -19,6 +18,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
 use tokio_tar::{Archive, Builder};
 use tokio_util::io::ReaderStream;
+use tracing::debug;
 
 pub(crate) async fn create_backup_order(
     state: &DaemonState,

@@ -3,7 +3,6 @@ use crate::server::ServerStopError;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};
 use bollard::Docker;
-use log::warn;
 use std::ops::DerefMut;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
@@ -13,6 +12,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
+use tracing::warn;
 use uuid::Uuid;
 
 pub(crate) type TerminalSession = (Instant, Arc<AtomicU32>, Arc<AtomicU32>);

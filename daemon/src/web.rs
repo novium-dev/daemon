@@ -1,7 +1,7 @@
 use crate::DaemonState;
 use axum::http::StatusCode;
 use diesel::result::Error;
-use log::{debug, warn};
+use tracing::{debug, warn};
 use utoipa_axum::router::OpenApiRouter;
 
 #[cfg(feature = "backups")]
