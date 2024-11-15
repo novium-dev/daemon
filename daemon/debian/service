@@ -5,6 +5,7 @@ Description=Daemon for managing servers on nodes
 ExecStart=/usr/sbin/novium_daemon
 Restart=on-failure
 WatchdogSec=1m
+WorkingDirectory=/var/lib/novium_daemon
 
 [Install]
 WantedBy=multi-user.target
