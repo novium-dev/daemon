@@ -3,6 +3,7 @@ use russh_sftp::protocol::StatusCode;
 use std::io;
 use std::io::{ErrorKind, SeekFrom};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tracing::debug;
 
 pub(crate) async fn write(
     handle: &mut FileHandle,
@@ -11,8 +12,12 @@ pub(crate) async fn write(
 ) -> Result<(), StatusCode> {
     match handle {
         FileHandle::RegularFile(file, _) => write_regular(file, offset, data).await,
-        _ => return Err(StatusCode::Failure),
+        _ => {
+            debug!("write on a not regular file handle: {:?}", handle);
+            return Err(StatusCode::OpUnsupported);
+        }
     }
+    .inspect_err(|err| debug!("Failed to write file: {:?}", err))
     .map_err(|err| match err.kind() {
         ErrorKind::UnexpectedEof => StatusCode::Eof,
         _ => StatusCode::Failure,

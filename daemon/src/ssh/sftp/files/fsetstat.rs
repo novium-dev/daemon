@@ -1,8 +1,10 @@
-use crate::ssh::sftp::FileHandle;
+use crate::ssh::sftp::{sftp_err, FileHandle};
 use russh_sftp::protocol::StatusCode;
 use std::fs::Permissions;
 use std::io;
+use std::os::fd::OwnedFd;
 use std::os::unix::fs::PermissionsExt;
+use tracing::debug;
 
 pub(crate) async fn fsetstat(
     handle: &mut FileHandle,
@@ -11,9 +13,28 @@ pub(crate) async fn fsetstat(
 ) -> Result<(), StatusCode> {
     match handle {
         FileHandle::RegularFile(file, _) => fsetstat_regular(file, permissions, size).await,
-        _ => return Err(StatusCode::Failure),
+        FileHandle::RegularDir(dir, _, _, _) => {
+            let file: OwnedFd = dir
+                .open(".")
+                .await
+                .inspect_err(|err| debug!("Failed fsetstat on directory open: {:?}", err))
+                .map_err(|_err| StatusCode::Failure)?
+                .into_std()
+                .into();
+            fsetstat_regular(
+                &mut tokio::fs::File::from_std(std::fs::File::from(file)),
+                permissions,
+                size,
+            )
+            .await
+        }
+        _ => {
+            debug!("Fsetstat on a not regular file handle: {:?}", handle);
+            return Err(StatusCode::OpUnsupported);
+        }
     }
-    .map_err(|_err| StatusCode::Failure)
+    .inspect_err(|err| debug!("Failed to fsetstat: {:?}", err))
+    .map_err(sftp_err)
 }
 
 #[inline(always)]

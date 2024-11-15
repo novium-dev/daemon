@@ -19,7 +19,7 @@ use diesel::dsl::{delete, insert_into, select};
 use diesel::{update, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl};
 use tokio::time::timeout;
-use tracing::{debug, error, warn};
+use tracing::{debug, warn};
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
@@ -100,13 +100,15 @@ pub(crate) async fn create_server(
         || payload.ports.is_none()
         || payload.storage.is_none()
     {
+        debug!("Some parts of the server create payload are missing");
         return Err(StatusCode::BAD_REQUEST);
     }
     state
         .config
         .storage
         .get(payload.storage.as_ref().unwrap())
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or(StatusCode::NOT_FOUND)
+        .inspect_err(|_err| debug!("Server storage does not exist: {:?}", payload.storage))?;
     let mut conn = state.conn.lock().await;
 
     let id = conn
@@ -164,6 +166,7 @@ pub(crate) async fn modify_server(
         .map_err(diesel_error_to_http)?;
 
     if payload.storage.is_some() {
+        debug!("Tried to move the server");
         return Err(StatusCode::NOT_IMPLEMENTED);
     }
     conn.transaction(|conn| {
@@ -245,10 +248,7 @@ pub(crate) async fn delete_server(
                 })
             })
             .await
-            .map_err(|err: diesel::result::Error| {
-                error!("Failed to commit transaction: {:?}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
+            .map_err(diesel_error_to_http)?;
             state.servers.lock().await.remove(&server_id);
 
             tokio::task::spawn(async move {
@@ -259,7 +259,10 @@ pub(crate) async fn delete_server(
 
             Ok(())
         }
-        Err(_) => Err(StatusCode::SERVICE_UNAVAILABLE),
+        Err(_) => {
+            debug!("Timeout using Server data lock");
+            Err(StatusCode::SERVICE_UNAVAILABLE)
+        }
     }
 }
 
@@ -482,6 +485,8 @@ pub(crate) async fn start_server(
                         );
                     }
                 }
+            } else {
+                debug!("Timeout locking server data. Ignoring start request...");
             }
         }
     });
@@ -641,6 +646,7 @@ pub(crate) async fn server_status(
         Ok(mut server_data) => Ok(Json(
             FetchedServer::state(server.id, &state.docker, server_data.deref_mut())
                 .await
+                .inspect_err(|err| debug!("Failed to get current server state: {:?}", err))
                 .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?,
         )),
         Err(_err) => Err(StatusCode::SERVICE_UNAVAILABLE),

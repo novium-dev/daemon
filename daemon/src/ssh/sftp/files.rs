@@ -107,8 +107,15 @@ impl DaemonSftpSession {
                     return Err(StatusCode::PermissionDenied);
                 }
                 let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
-                let storage = Dir::open_ambient_dir(base, ambient_authority())
+                let storage = Dir::open_ambient_dir(&base, ambient_authority())
                     .await
+                    .inspect_err(|err| {
+                        debug!(
+                            "Failed to open storage directory: {} {:?}",
+                            base.to_string_lossy(),
+                            err
+                        )
+                    })
                     .map_err(sftp_err)?;
                 let mut path = PathBuf::new();
                 for comp in temp_suffix {

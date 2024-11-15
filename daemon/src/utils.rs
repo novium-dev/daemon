@@ -9,14 +9,14 @@ use std::time::Duration;
 
 use axum::async_trait;
 use axum::http::StatusCode;
+use daemon_common::server::ServerStats;
 use diesel::{ExpressionMethods, QueryDsl, SelectableHelper};
 use diesel_async::{AsyncMysqlConnection, RunQueryDsl};
 #[cfg(feature = "database")]
 use tokio::sync::OwnedMutexGuard;
 use tokio::sync::{Mutex, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use tokio::time::error::Elapsed;
-
-use daemon_common::server::ServerStats;
+use tracing::{debug, warn};
 
 use crate::config::{DaemonConfig, StorageEntry};
 use crate::schema::*;
@@ -187,8 +187,14 @@ impl StorageError {
     pub(crate) fn into_http(self) -> StatusCode {
         match self {
             StorageError::Diesel(err) => diesel_error_to_http(err),
-            StorageError::IO(_err) => StatusCode::INTERNAL_SERVER_ERROR,
-            StorageError::Timeout(_) => StatusCode::SERVICE_UNAVAILABLE,
+            StorageError::IO(err) => {
+                warn!("Storage error: {:?}", err);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+            StorageError::Timeout(_) => {
+                debug!("Storage lock timeout");
+                StatusCode::SERVICE_UNAVAILABLE
+            }
         }
     }
 }

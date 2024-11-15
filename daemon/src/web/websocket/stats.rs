@@ -9,7 +9,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::web::user::{authenticate_user, GenericUserQuery};
@@ -87,6 +87,7 @@ pub(crate) async fn new_stats_session<
     loop {
         if Instant::now().duration_since(last_sent) > Duration::from_secs(10) && A::send_ping() {
             if ping_sent {
+                debug!("Closing connection. Terminal session timed out");
                 state.close().await;
                 return;
             } else {
@@ -112,6 +113,7 @@ pub(crate) async fn new_stats_session<
                     }
                     Err(RecvError::Lagged(_)) => {},
                     Err(RecvError::Closed) => {
+                        debug!("Closing connection. Internal Sender disconnected");
                         state.close().await;
                         return;
                     }

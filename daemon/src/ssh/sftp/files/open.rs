@@ -8,6 +8,7 @@ use indexmap::{IndexMap, IndexSet};
 use russh_sftp::protocol::*;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::PathBuf;
+use tracing::debug;
 use uuid::Uuid;
 
 pub(crate) async fn open(
@@ -42,6 +43,7 @@ async fn open_internal(
         if path.is_empty() {
             Ok("empty".to_string())
         } else {
+            debug!("Tried to open non-existent virtual path: {:?}", path);
             Err(StatusCode::NoSuchFile)
         }
     } else {
@@ -70,9 +72,16 @@ async fn open_regular(
     let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
     let base = tokio::fs::canonicalize(base)
         .await
+        .inspect_err(|err| {
+            debug!(
+                "Failed to open regular file (canonicalize of base): {:?}",
+                err
+            )
+        })
         .map_err(|_err| StatusCode::Failure)?;
     let storage = Dir::open_ambient_dir(&base, ambient_authority())
         .await
+        .inspect_err(|err| debug!("Failed to open regular file: {:?}", err))
         .map_err(|_err| StatusCode::Failure)?;
 
     let mut path = if path_components.is_empty() {
@@ -85,15 +94,27 @@ async fn open_regular(
     }
 
     let (fd, handle) = if storage.is_dir(&path).await {
-        let dir = storage.open_dir(&path).await.map_err(sftp_err)?;
+        let dir = storage
+            .open_dir(&path)
+            .await
+            .inspect_err(|err| debug!("Failed to open regular dir (final): {:?}", err))
+            .map_err(sftp_err)?;
         let fd_num = dir.as_raw_fd() as i32;
-        let read_dir = dir.read_dir(".").await.map_err(sftp_err)?;
+        let read_dir = dir
+            .read_dir(".")
+            .await
+            .inspect_err(|err| debug!("Failed to open regular dir (readdir): {:?}", err))
+            .map_err(sftp_err)?;
         (
             fd_num,
             FileHandle::RegularDir(dir, read_dir, false, permissions),
         )
     } else {
-        let file = storage.open_with(&path, options).await.map_err(sftp_err)?;
+        let file = storage
+            .open_with(&path, options)
+            .await
+            .inspect_err(|err| debug!("Failed to open regular file (final): {:?}", err))
+            .map_err(sftp_err)?;
         let fd: OwnedFd = file.into_std().into();
         let fd_num = fd.as_raw_fd() as i32;
         let file = tokio::fs::File::from_std(std::fs::File::from(fd));

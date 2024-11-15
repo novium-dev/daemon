@@ -3,26 +3,25 @@ use std::io::ErrorKind;
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
 
+use crate::config::StorageEntry;
+use crate::storage::StorageIdentifier;
+use crate::utils::{path_relative, storage_read, StorageError};
+use crate::DaemonState;
 use axum::body::{Body, BodyDataStream};
 use axum::http;
 use axum::http::{HeaderMap, StatusCode};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt, OpenOptions};
+use daemon_common::files::FileMode;
+use daemon_common::payload::files::FileResponse;
 use diesel_async::AsyncMysqlConnection;
 use futures_util::TryStreamExt;
 use tokio::io::BufWriter;
 use tokio::sync::OwnedMutexGuard;
 use tokio_util::io::{ReaderStream, StreamReader};
-
-use crate::config::StorageEntry;
-use crate::storage::StorageIdentifier;
-use crate::utils::{path_relative, storage_read, StorageError};
-use crate::DaemonState;
-use daemon_common::files::FileMode;
-use daemon_common::payload::files::FileResponse;
+use tracing::debug;
 
 fn err(err: io::Error) -> StatusCode {
-    println!("Error {:?}", err);
     match err.kind() {
         ErrorKind::NotFound => StatusCode::NOT_FOUND,
         ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
@@ -43,33 +42,28 @@ pub(crate) async fn list_files(
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     drop(conn);
-    let files = list_files0(id, storage, path).await?;
+    let storage = storage_path(id, storage).await?;
+    let files = list_files0(storage, path)
+        .await
+        .inspect_err(|err| debug!("Failed to list files: {:?}", err))
+        .map_err(err)?;
     drop(lock);
     Ok(files)
 }
 
 #[inline(always)]
-async fn list_files0(
-    id: StorageIdentifier,
-    storage: &StorageEntry,
-    path: PathBuf,
-) -> Result<Vec<FileResponse>, StatusCode> {
-    let storage = storage_path(id, storage).await?;
-
-    let read_dir = storage.read_dir(&path).await.map_err(err)?;
+async fn list_files0(storage: Dir, path: PathBuf) -> Result<Vec<FileResponse>, io::Error> {
+    let read_dir = storage.read_dir(&path).await?;
     let mut vec = Vec::new();
     for entry in read_dir {
-        let entry = entry.map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
-        let metadata = entry
-            .metadata()
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        let entry = entry?;
+        let metadata = entry.metadata()?;
         let mut link_path = None;
         if metadata.is_symlink() {
             link_path = Some(
                 storage
                     .read_link(PathBuf::from(&path).join(entry.file_name()))
-                    .await
-                    .map_err(err)?
+                    .await?
                     .to_string_lossy()
                     .to_string(),
             );
@@ -98,22 +92,26 @@ pub(crate) async fn stat_file(
             .map_err(StorageError::into_http)?;
     drop(conn);
     let path = path_relative(path);
-    let file = stat_file0(id, storage, path).await?;
+    let storage = storage_path(id, storage).await?;
+    let file = stat_file0(storage, path)
+        .await
+        .inspect_err(|err| debug!("Failed to stat file: {:?}", err))
+        .map_err(err)?;
     drop(lock);
     Ok(file)
 }
 
 #[inline(always)]
-async fn stat_file0(
-    id: StorageIdentifier,
-    storage: &StorageEntry,
-    path: PathBuf,
-) -> Result<FileResponse, StatusCode> {
-    let storage = storage_path(id, storage).await?;
-    let metadata = storage.symlink_metadata(&path).await.map_err(err)?;
+async fn stat_file0(storage: Dir, path: PathBuf) -> Result<FileResponse, io::Error> {
+    let metadata = storage.symlink_metadata(&path).await?;
 
     let filename = match path.file_name() {
-        None => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+        None => {
+            return Err(io::Error::new(
+                ErrorKind::Other,
+                "Final component of path is missing",
+            ))
+        }
         Some(filename) => filename.to_string_lossy().to_string(),
     };
     let mut link_path = None;
@@ -121,8 +119,7 @@ async fn stat_file0(
         link_path = Some(
             storage
                 .read_link(path.clone())
-                .await
-                .map_err(err)?
+                .await?
                 .to_string_lossy()
                 .to_string(),
         );
@@ -151,7 +148,11 @@ pub(crate) async fn rename_file(
     let from = path_relative(from);
     let to = path_relative(to);
     let storage = storage_path(id, storage).await?;
-    storage.rename(from, &storage, to).await.map_err(err)?;
+    storage
+        .rename(from, &storage, to)
+        .await
+        .inspect_err(|err| debug!("Failed to rename file: {:?}", err))
+        .map_err(err)?;
     drop(lock);
     Ok(())
 }
@@ -171,7 +172,11 @@ pub(crate) async fn copy_file(
     let from = path_relative(from);
     let to = path_relative(to);
     let storage = storage_path(id, storage).await?;
-    storage.copy(from, &storage, to).await.map_err(err)?;
+    storage
+        .copy(from, &storage, to)
+        .await
+        .inspect_err(|err| debug!("Failed to copy file: {:?}", err))
+        .map_err(err)?;
     drop(lock);
     Ok(())
 }
@@ -200,7 +205,13 @@ pub(crate) async fn download_file(
                     .unwrap(),
             )])
         });
-    let fd: OwnedFd = storage.open(path).await.map_err(err)?.into_std().into();
+    let fd: OwnedFd = storage
+        .open(path)
+        .await
+        .inspect_err(|err| debug!("Failed to download file: {:?}", err))
+        .map_err(err)?
+        .into_std()
+        .into();
     let stream = ReaderStream::new(tokio::fs::File::from_std(std::fs::File::from(fd)));
     let body = axum::body::Body::from_stream(stream);
     drop(lock);
@@ -229,12 +240,14 @@ pub(crate) async fn write_file(
             OpenOptions::new().create(true).truncate(true).write(true),
         )
         .await
+        .inspect_err(|err| debug!("Failed to write file (open): {:?}", err))
         .map_err(err)?
         .into_std()
         .into();
     let mut writer = BufWriter::new(tokio::fs::File::from_std(std::fs::File::from(fd)));
     tokio::io::copy(&mut reader, &mut writer)
         .await
+        .inspect_err(|err| debug!("Failed to download file: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
     Ok(())
@@ -262,7 +275,9 @@ pub(crate) async fn mkdir_file(
         }
     })
     .await
+    .inspect_err(|err| debug!("Failed to mkdir (task): {:?}", err))
     .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?
+    .inspect_err(|err| debug!("Failed to mkdir: {:?}", err))
     .map_err(err)?;
     drop(lock);
     Ok(())
@@ -282,7 +297,11 @@ pub(crate) async fn symlink_file(
     drop(conn);
     let path = path_relative(path);
     let storage = storage_path(id, storage).await?;
-    storage.symlink(content, path).await.map_err(err)?;
+    storage
+        .symlink(content, path)
+        .await
+        .inspect_err(|err| debug!("Failed to create symlink: {:?}", err))
+        .map_err(err)?;
     drop(lock);
     Ok(())
 }
@@ -306,6 +325,7 @@ pub(crate) async fn delete_file(
     } else {
         storage.remove_file(path).await
     }
+    .inspect_err(|err| debug!("Failed to delete file: {:?}", err))
     .map_err(err)?;
     drop(lock);
     Ok(())
@@ -315,6 +335,7 @@ async fn storage_path(id: StorageIdentifier, storage: &StorageEntry) -> Result<D
     let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
     Dir::open_ambient_dir(&base, ambient_authority())
         .await
+        .inspect_err(|err| debug!("Failed to open storage: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 

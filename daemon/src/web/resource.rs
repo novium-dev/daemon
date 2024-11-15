@@ -9,6 +9,7 @@ use diesel::QueryDsl;
 use diesel_async::RunQueryDsl;
 use std::thread;
 use std::time::Duration;
+use tracing::debug;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
@@ -77,6 +78,7 @@ pub(crate) async fn resource_get(
         }
     })
     .await
+    .inspect_err(|err| debug!("Failed to provide resource info: {:?}", err))
     .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(resource))
 }

@@ -2,6 +2,7 @@ use crate::ssh::sftp::sftp_err;
 use cap_async_std::fs::Dir;
 use russh_sftp::protocol::StatusCode;
 use std::path::PathBuf;
+use tracing::debug;
 
 pub(crate) async fn rename(
     old_storage: Dir,
@@ -12,5 +13,6 @@ pub(crate) async fn rename(
     old_storage
         .rename(old_path, &new_storage, new_path)
         .await
+        .inspect_err(|err| debug!("Failed to rename file: {:?}", err))
         .map_err(sftp_err)
 }

@@ -52,7 +52,6 @@ pub(crate) async fn server_create_backup(
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::create_backup(&state, storage, &backup_storage)
         .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
         .map(|time| Json(TimeIdResponse { time }))
 }
 
@@ -81,7 +80,6 @@ pub(crate) async fn server_create_backup_order(
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::create_backup_order(&state, storage)
         .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
         .map(|time| Json(TimeIdResponse { time }))
 }
 
@@ -108,9 +106,7 @@ pub(crate) async fn server_download_backup(
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
 ) -> Result<(HeaderMap, Body), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
-    storage::backup::backup_to_stream(&state, storage, backup_id, &backup_storage)
-        .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
+    storage::backup::backup_to_stream(&state, storage, backup_id, &backup_storage).await
 }
 
 #[cfg_attr(feature = "user", utoipa::path(get,
@@ -148,9 +144,8 @@ pub(crate) async fn server_user_download_backup(
     )
     .await?;
     let storage = StorageIdentifier::Primary(server_id);
-    let body = storage::backup::backup_to_stream(&state, storage, backup_id, &backup_storage)
-        .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let body =
+        storage::backup::backup_to_stream(&state, storage, backup_id, &backup_storage).await?;
     Ok(body)
 }
 
@@ -178,9 +173,7 @@ pub(crate) async fn server_backup_realtime(
     Query(CompressionQuery { compression }): Query<CompressionQuery>,
 ) -> Result<(HeaderMap, Body), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
-    storage::backup::stream_realtime(&state, storage, compression)
-        .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
+    storage::backup::stream_realtime(&state, storage, compression).await
 }
 
 #[cfg_attr(feature = "user", utoipa::path(get,
@@ -222,9 +215,7 @@ pub(crate) async fn server_user_backup_realtime(
     )
     .await?;
     let storage = StorageIdentifier::Primary(server_id);
-    storage::backup::stream_realtime(&state, storage, compression)
-        .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
+    storage::backup::stream_realtime(&state, storage, compression).await
 }
 
 #[utoipa::path(delete,
@@ -250,9 +241,7 @@ pub(crate) async fn server_delete_backup(
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
 ) -> Result<(), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
-    storage::backup::delete_backup(&state, storage, backup_id, &backup_storage)
-        .await
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
+    storage::backup::delete_backup(&state, storage, backup_id, &backup_storage).await
 }
 
 #[utoipa::path(get,

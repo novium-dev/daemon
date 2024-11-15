@@ -117,7 +117,6 @@ async fn password_auth(
         .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
     url.query_pairs_mut()
         .append_pair("node", &state.config.identifier);
-    debug!("Trying {}", url);
 
     state
         .client
@@ -125,9 +124,7 @@ async fn password_auth(
         .basic_auth(user, Some(password))
         .send()
         .await
-        .inspect_err(|err| {
-            debug!("SSH Authentication failed: {:?}", err);
-        })
+        .inspect_err(|err| debug!("SSH Authentication failed (password): {:?}", err))
         .map_err(|err| match err {
             err if matches!(err.status(), Some(http::StatusCode::UNAUTHORIZED)) => {
                 io::Error::new(ErrorKind::PermissionDenied, err)
@@ -159,6 +156,7 @@ async fn publickey_auth(
         .basic_auth(user, Some(public_key.fingerprint()))
         .send()
         .await
+        .inspect_err(|err| debug!("SSH Authentication failed (publickey): {:?}", err))
         .map_err(|err| match err {
             err if matches!(err.status(), Some(http::StatusCode::UNAUTHORIZED)) => {
                 io::Error::new(ErrorKind::PermissionDenied, err)
@@ -218,6 +216,7 @@ impl Handler for DaemonSSHHandler {
                         }
                     }
                     Err(err) => {
+                        debug!("Failed to complete authentication: {:?}", err);
                         return Err(russh::Error::IO(io::Error::new(ErrorKind::Other, err)));
                     }
                 }
@@ -226,7 +225,10 @@ impl Handler for DaemonSSHHandler {
                 return Ok(Auth::Accept);
             }
         }
-        match password_auth(&self.state, user, password).await {
+        match password_auth(&self.state, user, password)
+            .await
+            .inspect_err(|err| debug!("Password authentication failed: {:?}", err))
+        {
             Ok(response) => {
                 self.auth = Some(response);
                 Ok(Auth::Accept)
@@ -255,6 +257,7 @@ impl Handler for DaemonSSHHandler {
             .publickey_cache
             .get_resolved(&self.state, user, public_key)
             .await
+            .inspect_err(|err| debug!("Publickey authentication failed: {:?}", err))
         {
             Ok(response) => {
                 self.auth = Some(response);
@@ -284,6 +287,7 @@ impl Handler for DaemonSSHHandler {
             .publickey_cache
             .get_resolved(&self.state, user, public_key)
             .await
+            .inspect_err(|err| debug!("Publickey offered authentication failed: {:?}", err))
         {
             Ok(_response) => Ok(Auth::Accept),
             Err(err) => match err {
@@ -321,6 +325,7 @@ impl Handler for DaemonSSHHandler {
             Some((_channel, id, cols, rows)) => {
                 let cols = match cols {
                     None => {
+                        debug!("Size is None on window size");
                         session.channel_failure(channel_id);
                         return Ok(());
                     }
@@ -328,6 +333,7 @@ impl Handler for DaemonSSHHandler {
                 };
                 let rows = match rows {
                     None => {
+                        debug!("Size is None on window size");
                         session.channel_failure(channel_id);
                         return Ok(());
                     }
@@ -337,6 +343,7 @@ impl Handler for DaemonSSHHandler {
                 rows.store(row_height, Ordering::Relaxed);
                 match id {
                     None => {
+                        debug!("Server is None on window size");
                         session.channel_failure(channel_id);
                     }
                     Some(id) => {
@@ -354,6 +361,7 @@ impl Handler for DaemonSSHHandler {
                 }
             }
             None => {
+                debug!("Tried to access a non existent channel");
                 session.channel_failure(channel_id);
             }
         }
@@ -369,10 +377,14 @@ impl Handler for DaemonSSHHandler {
         if self.auth.is_none() {
             return Err(russh::Error::NotAuthenticated);
         }
-        let str =
-            String::from_utf8(data.to_vec()).map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
+        let str = String::from_utf8(data.to_vec())
+            .inspect_err(|_err| debug!("Command is not utf-8 encoded"))
+            .map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
         debug!("Exec {}", str);
-        let server_id: u32 = str.parse().map_err(|_err| russh::Error::DecryptionError)?;
+        let server_id: u32 = str
+            .parse()
+            .inspect_err(|_err| debug!("Command is not parsable as server id to u32"))
+            .map_err(|_err| russh::Error::DecryptionError)?;
 
         let auth = self.auth.as_ref().unwrap();
         let mut allowed = 0u8;
@@ -395,6 +407,7 @@ impl Handler for DaemonSSHHandler {
             }
         }
         if allowed == 0 {
+            debug!("Terminal access denied. No permission");
             session.channel_failure(channel_id);
             return Ok(());
         }
@@ -415,6 +428,7 @@ impl Handler for DaemonSSHHandler {
 
                 match self.channels.get_mut(&channel_id) {
                     None => {
+                        debug!("Tried to access a non existent channel");
                         session.channel_failure(channel_id);
                         Ok(())
                     }
@@ -422,11 +436,13 @@ impl Handler for DaemonSSHHandler {
                         *id = Some(server_id);
                         let channel = channel.take();
                         if channel.is_none() {
+                            debug!("Channel already taken");
                             session.channel_failure(channel_id);
                             return Ok(());
                         }
                         let cols = match cols {
                             None => {
+                                debug!("Size is None on exec");
                                 session.channel_failure(channel_id);
                                 return Ok(());
                             }
@@ -434,6 +450,7 @@ impl Handler for DaemonSSHHandler {
                         };
                         let rows = match rows {
                             None => {
+                                debug!("Size is None on exec");
                                 session.channel_failure(channel_id);
                                 return Ok(());
                             }
@@ -458,10 +475,13 @@ impl Handler for DaemonSSHHandler {
                     }
                 }
             }
-            Err(_timeout) => Err(russh::Error::IO(io::Error::new(
-                ErrorKind::TimedOut,
-                "Timed out locking server.",
-            ))),
+            Err(_timeout) => {
+                debug!("Timed out on locking server data");
+                Err(russh::Error::IO(io::Error::new(
+                    ErrorKind::TimedOut,
+                    "Timed out locking server.",
+                )))
+            }
         }
     }
 
@@ -484,6 +504,7 @@ impl Handler for DaemonSSHHandler {
             match cols {
                 None => *cols = Some(Arc::new(AtomicU32::new(col_width))),
                 Some(_) => {
+                    debug!("Size is Some on pty");
                     session.channel_failure(channel_id);
                     return Ok(());
                 }
@@ -491,6 +512,7 @@ impl Handler for DaemonSSHHandler {
             match rows {
                 None => *rows = Some(Arc::new(AtomicU32::new(col_width))),
                 Some(_) => {
+                    debug!("Size is Some on pty");
                     session.channel_failure(channel_id);
                     return Ok(());
                 }
@@ -525,11 +547,13 @@ impl Handler for DaemonSSHHandler {
             #[cfg(feature = "sftp")]
             match self.channels.get_mut(&channel_id) {
                 None => {
+                    debug!("Channel invalid on subsystem request");
                     session.channel_failure(channel_id);
                 }
                 Some((channel, _id, _cols, _rows)) => {
                     let channel = channel.take();
                     if channel.is_none() {
+                        debug!("Channel was already taken on subsystem request");
                         session.channel_failure(channel_id);
                         return Ok(());
                     }
@@ -567,6 +591,7 @@ impl Handler for DaemonSSHHandler {
                 }
             }
         } else {
+            debug!("Tried to access a non existent subsystem: {:?}", name);
             session.channel_failure(channel_id);
         }
         Ok(())

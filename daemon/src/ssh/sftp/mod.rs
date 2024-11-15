@@ -36,9 +36,13 @@ impl DaemonSftpSession {
         permissions: BackendAuthServerPermissions,
     ) -> Result<&mut FileHandle, StatusCode> {
         match self.file_handles.get_mut(&handle) {
-            None => Err(StatusCode::NoSuchFile),
+            None => {
+                debug!("File handle does not exist: {:?}", handle);
+                Err(StatusCode::NoSuchFile)
+            }
             Some(handle) => {
                 if !handle.has_permissions(permissions) {
+                    debug!("File handle was opened with less permissions than required");
                     return Err(StatusCode::PermissionDenied);
                 }
                 Ok(handle)
@@ -47,6 +51,7 @@ impl DaemonSftpSession {
     }
 }
 
+#[derive(Debug)]
 pub(crate) enum FileHandle {
     RegularFile(File, BackendAuthServerPermissions),
     RegularDir(
@@ -63,7 +68,6 @@ pub(crate) enum FileHandle {
 }
 
 pub(crate) fn sftp_err(err: io::Error) -> StatusCode {
-    debug!("SFTP Error: {:?}", err);
     match err.kind() {
         ErrorKind::NotFound => StatusCode::NoSuchFile,
         ErrorKind::PermissionDenied => StatusCode::PermissionDenied,

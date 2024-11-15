@@ -12,7 +12,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
-use tracing::warn;
+use tracing::{debug, warn};
 use uuid::Uuid;
 
 pub(crate) type TerminalSession = (Instant, Arc<AtomicU32>, Arc<AtomicU32>);
@@ -67,6 +67,7 @@ pub(crate) async fn new_session<
     loop {
         if Instant::now().duration_since(last_sent) > Duration::from_secs(10) && A::send_ping() {
             if ping_sent {
+                debug!("Closing connection. Terminal session timed out");
                 state.close().await;
                 let mut sessions = sessions_arc.lock().await;
                 sessions.remove(&session_id);
@@ -100,6 +101,7 @@ pub(crate) async fn new_session<
                     }
                     Err(RecvError::Lagged(_)) => {},
                     Err(RecvError::Closed) => {
+                        debug!("Closing connection. Internal Sender disconnected");
                         let mut sessions = sessions_arc.lock().await;
                         sessions.remove(&session_id);
                         drop(sessions);

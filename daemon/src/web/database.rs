@@ -11,6 +11,7 @@ use axum::Json;
 use diesel::{delete, insert_into, select, ExpressionMethods};
 use diesel_async::{AsyncConnection, AsyncMysqlConnection, RunQueryDsl};
 use std::collections::HashMap;
+use tracing::debug;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
@@ -58,9 +59,16 @@ pub(crate) async fn create_database(
 ) -> Result<Json<IdResponse>, StatusCode> {
     let mut conn = state.conn.clone().lock_owned().await;
     if payload.name_suffix.is_none() {
+        debug!("Create database request where name_suffix is None");
         return Err(StatusCode::BAD_REQUEST);
     }
     DatabasePayload::validate_sql_string(payload.name_suffix.as_ref().unwrap())
+        .inspect_err(|_err| {
+            debug!(
+                "Validation of name suffix failed: {:?}",
+                payload.name_suffix
+            )
+        })
         .map_err(|_| StatusCode::BAD_REQUEST)?;
 
     let (database_id, result) = conn
@@ -96,9 +104,18 @@ pub(crate) async fn create_database(
 
     match result {
         Err(DatabaseUpdateError::Diesel(err)) => Err(diesel_error_to_http(err)),
-        Err(DatabaseUpdateError::Invalid) => Err(StatusCode::BAD_REQUEST),
-        Err(DatabaseUpdateError::Blocking(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-        Err(DatabaseUpdateError::RenameingNotImplemented) => Err(StatusCode::NOT_IMPLEMENTED),
+        Err(DatabaseUpdateError::Invalid) => {
+            debug!("Invalid database creation: {:?}", result);
+            Err(StatusCode::BAD_REQUEST)
+        }
+        Err(DatabaseUpdateError::Blocking(_)) => {
+            debug!("database create task failed: {:?}", result);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+        Err(DatabaseUpdateError::RenameingNotImplemented) => {
+            debug!("Tried to rename database: {:?}", result);
+            Err(StatusCode::NOT_IMPLEMENTED)
+        }
         Ok(_) => Ok(Json(IdResponse { id: database_id })),
     }
 }
@@ -174,9 +191,18 @@ pub(crate) async fn modify_database(
 
     match result {
         Err(DatabaseUpdateError::Diesel(err)) => Err(diesel_error_to_http(err)),
-        Err(DatabaseUpdateError::Invalid) => Err(StatusCode::BAD_REQUEST),
-        Err(DatabaseUpdateError::Blocking(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-        Err(DatabaseUpdateError::RenameingNotImplemented) => Err(StatusCode::NOT_IMPLEMENTED),
+        Err(DatabaseUpdateError::Invalid) => {
+            debug!("Invalid database update: {:?}", result);
+            Err(StatusCode::BAD_REQUEST)
+        }
+        Err(DatabaseUpdateError::Blocking(_)) => {
+            debug!("database update task failed: {:?}", result);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+        Err(DatabaseUpdateError::RenameingNotImplemented) => {
+            debug!("Tried to rename database: {:?}", result);
+            Err(StatusCode::NOT_IMPLEMENTED)
+        }
         Ok(_) => Ok(()),
     }
 }
@@ -245,9 +271,18 @@ pub(crate) async fn delete_database(
 
     match result {
         Err(DatabaseUpdateError::Diesel(err)) => Err(diesel_error_to_http(err)),
-        Err(DatabaseUpdateError::Invalid) => Err(StatusCode::BAD_REQUEST),
-        Err(DatabaseUpdateError::Blocking(_)) => Err(StatusCode::INTERNAL_SERVER_ERROR),
-        Err(DatabaseUpdateError::RenameingNotImplemented) => Err(StatusCode::NOT_IMPLEMENTED),
+        Err(DatabaseUpdateError::Invalid) => {
+            debug!("Invalid database delete: {:?}", result);
+            Err(StatusCode::BAD_REQUEST)
+        }
+        Err(DatabaseUpdateError::Blocking(_)) => {
+            debug!("database delete task failed: {:?}", result);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+        Err(DatabaseUpdateError::RenameingNotImplemented) => {
+            debug!("Tried to rename database: {:?}", result);
+            Err(StatusCode::NOT_IMPLEMENTED)
+        }
         Ok(_) => Ok(()),
     }
 }

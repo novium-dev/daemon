@@ -4,10 +4,14 @@ use indexmap::IndexMap;
 use russh_sftp::protocol::*;
 use std::io::ErrorKind;
 use tokio::io;
+use tracing::debug;
 
 pub(crate) async fn readdir(handle: &mut FileHandle) -> Result<Vec<File>, StatusCode> {
     Ok(match handle {
-        FileHandle::RegularFile(_, _) => return Err(StatusCode::OpUnsupported),
+        FileHandle::RegularFile(_, _) => {
+            debug!("readdir on a regular file handle: {:?}", handle);
+            return Err(StatusCode::OpUnsupported);
+        }
         FileHandle::RegularDir(_, read_dir, read, _) => readdir_regular(read_dir, read).await,
         FileHandle::Internal(entries, read, _) => readdir_internal(entries, read).await,
     }
@@ -58,6 +62,7 @@ async fn readdir_internal(
     read: &mut bool,
 ) -> Result<IndexMap<String, FileAttributes>, io::Error> {
     if *read {
+        debug!("Tried to readdir twice!");
         return Err(io::Error::new(ErrorKind::UnexpectedEof, "Already read"));
     }
     *read = true;
