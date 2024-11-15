@@ -152,8 +152,6 @@ async fn create_backup0(
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { group, .. } => {
-            use btrfsutil::subvolume::SnapshotFlags;
-            use btrfsutil::BtrfsUtilError;
             use std::io::ErrorKind;
 
             if !matches!(storage, StorageEntry::Btrfs { group: storage_group, .. } if storage_group.eq(group))
@@ -162,13 +160,15 @@ async fn create_backup0(
             }
 
             tokio::task::spawn_blocking(move || {
-                let subvol = btrfsutil::subvolume::Subvolume::get(dir.as_path())?;
                 let target = target_dir.join(timestamp.to_string());
-                subvol.snapshot(target.as_path(), SnapshotFlags::READ_ONLY, None)?;
-                Ok::<(), BtrfsUtilError>(())
+                libbtrfs::subvolume::snapshot(
+                    &dir.to_string_lossy(),
+                    &target.to_string_lossy(),
+                    true,
+                )?;
+                Ok::<(), io::Error>(())
             })
-            .await
-            .map_err(|err| io::Error::new(ErrorKind::Other, err))?
+            .await?
             .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
         }
     }
@@ -229,20 +229,15 @@ async fn restore_backup0(
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
-            use btrfsutil::subvolume::{DeleteFlags, SnapshotFlags, Subvolume};
             use std::io::ErrorKind;
             let target = target_dir.join(&backup_id.to_string());
             tokio::task::spawn_blocking(move || {
-                let snapshot = Subvolume::get(target.as_path())
-                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
-                let storage = Subvolume::get(dir.as_path())
-                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
-                storage
-                    .delete(Some(DeleteFlags::RECURSIVE))
-                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
-                snapshot
-                    .snapshot(dir.as_path(), Some(SnapshotFlags::empty()), None)
-                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                libbtrfs::subvolume::remove(&dir.to_string_lossy())?;
+                libbtrfs::subvolume::snapshot(
+                    &target.to_string_lossy(),
+                    &dir.to_string_lossy(),
+                    false,
+                )?;
                 Ok::<(), io::Error>(())
             })
             .await
@@ -517,14 +512,10 @@ async fn delete_backup0(
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
-            use btrfsutil::subvolume::DeleteFlags;
             use std::io::ErrorKind;
             return tokio::task::spawn_blocking(move || {
                 let target = target_dir.join(&backup_id.to_string());
-                let subvol = btrfsutil::subvolume::Subvolume::get(target.as_path())
-                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
-                subvol
-                    .delete(Some(DeleteFlags::RECURSIVE))
+                libbtrfs::subvolume::remove(&target.to_string_lossy())
                     .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
                 Ok(())
             })

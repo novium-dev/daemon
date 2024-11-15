@@ -48,7 +48,7 @@ pub(crate) async fn ensure_exists(
                 }
                 // TODO: Quota
                 tokio::task::spawn_blocking(move || {
-                    let _subvol = btrfsutil::subvolume::Subvolume::create(dir.as_path(), None)
+                    libbtrfs::subvolume::new(&dir.to_string_lossy())
                         .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
                     Ok::<(), io::Error>(())
                 })
@@ -71,13 +71,9 @@ pub(crate) async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Res
 
     #[cfg(feature = "btrfs")]
     if let StorageEntry::Btrfs { .. } = storage {
-        use btrfsutil::subvolume::DeleteFlags;
         use std::io::ErrorKind;
         return tokio::task::spawn_blocking(move || {
-            let subvol = btrfsutil::subvolume::Subvolume::get(dir.as_path())
-                .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
-            subvol
-                .delete(Some(DeleteFlags::RECURSIVE))
+            libbtrfs::subvolume::remove(&dir.to_string_lossy())
                 .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
             Ok(())
         })
