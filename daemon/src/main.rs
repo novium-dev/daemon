@@ -75,11 +75,13 @@ async fn main0() -> Result<(), Box<dyn Error>> {
     }
 
     tracing_subscriber::fmt()
-        .with_max_level(if cfg!(debug_assertions) {
-            tracing::Level::DEBUG
-        } else {
-            tracing::Level::INFO
-        })
+        .with_max_level(
+            if cfg!(debug_assertions) || env::var("DEBUG").unwrap_or_default().eq("1") {
+                tracing::Level::DEBUG
+            } else {
+                tracing::Level::INFO
+            },
+        )
         .init();
 
     let mut config_buffer = String::new();
