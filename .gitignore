@@ -5,8 +5,10 @@ mysql/sockets/
 valkey/data/
 valkey/sockets/
 /storage/
+/storages/
 /backups/
 test/node_modules/
 .vscode/
 *.wasm
+*.pem
 config.toml

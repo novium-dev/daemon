@@ -210,7 +210,7 @@ impl Handler for DaemonSSHHandler {
                 match servers {
                     Ok(servers) => {
                         for server in servers {
-                            auth.push(PanelAuthServer {
+                            auth.push(crate::common::ssh::DaemonBackendAuthServer {
                                 id: server.id,
                                 name: server.id.to_string(),
                                 permissions: BackendAuthServerPermissions::all(),

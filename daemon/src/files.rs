@@ -7,7 +7,7 @@ use axum::body::{Body, BodyDataStream};
 use axum::http;
 use axum::http::{HeaderMap, StatusCode};
 use cap_async_std::ambient_authority;
-use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt};
+use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt, OpenOptions};
 use diesel_async::AsyncMysqlConnection;
 use futures_util::TryStreamExt;
 use tokio::io::BufWriter;
@@ -223,7 +223,15 @@ pub(crate) async fn write_file(
     let storage = storage_path(id, storage).await?;
     let mut reader =
         StreamReader::new(stream.map_err(|err| io::Error::new(io::ErrorKind::Other, err)));
-    let fd: OwnedFd = storage.open(path).await.map_err(err)?.into_std().into();
+    let fd: OwnedFd = storage
+        .open_with(
+            path,
+            OpenOptions::new().create(true).truncate(true).write(true),
+        )
+        .await
+        .map_err(err)?
+        .into_std()
+        .into();
     let mut writer = BufWriter::new(tokio::fs::File::from_std(std::fs::File::from(fd)));
     tokio::io::copy(&mut reader, &mut writer)
         .await
