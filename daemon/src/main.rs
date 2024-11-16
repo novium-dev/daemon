@@ -68,6 +68,10 @@ async fn main() {
 }
 
 async fn main0() -> Result<(), Box<dyn Error>> {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .unwrap();
+
     let args = env::args();
     if args.len() > 1 && args.into_iter().nth(1).unwrap().eq("setup") {
         let _ = tokio::task::spawn_blocking(setup::setup).await;
