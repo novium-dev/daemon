@@ -11,7 +11,7 @@ database = ["daemon_common/database"]
 user = ["ed25519-dalek", "pkcs8"]
 websocket = ["user"]
 files = ["daemon_common/files"]
-backups = []
+backups = ["daemon_common/backups"]
 btrfs = ["daemon_common/btrfs"]
 default = ["database", "user", "files", "backups", "websocket", "btrfs"]
 
