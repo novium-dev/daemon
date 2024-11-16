@@ -1,9 +1,10 @@
 [Unit]
 Description=Daemon for managing servers on nodes
+After=mariadb.service
 
 [Service]
 ExecStart=/usr/sbin/novium_daemon
-Restart=on-failure
+Restart=always
 WatchdogSec=1m
 WorkingDirectory=/var/lib/novium_daemon
 
