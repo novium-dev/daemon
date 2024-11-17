@@ -1,5 +1,11 @@
 [workspace]
-members = ["backend", "daemon/common", "daemon/sdk", "daemon", "daemon_mariadb_plugin"]
+members = [
+    "backend",
+    "daemon/common",
+    "daemon/sdk",
+    "daemon",
+    "daemon_mariadb_plugin",
+]
 resolver = "2"
 
 [workspace.dependencies]
@@ -30,7 +36,18 @@ path = "daemon/sdk"
 [workspace.dependencies.reqwest]
 version = "0.12.9"
 default-features = false
-features = ["charset", "http2", "macos-system-configuration", "json", "rustls-tls", "rustls-tls-webpki-roots"]
+features = [
+    "charset",
+    "http2",
+    "macos-system-configuration",
+    "json",
+    "rustls-tls",
+    "rustls-tls-webpki-roots",
+]
+
+[workspace.dependencies.sentry]
+version = "0.34.0"
+features = ["log", "tower", "tower-axum-matched-path", "tracing"]
 
 [workspace.dependencies.bitflags]
 version = "2.6.0"

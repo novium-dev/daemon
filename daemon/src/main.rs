@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 
+use axum::extract::Request;
 use axum::http::{HeaderValue, Method};
 use bollard::Docker;
 use diesel_async::{AsyncConnection, AsyncMysqlConnection};
@@ -8,7 +9,10 @@ use libc::SIGINT;
 use reqwest::Client;
 #[cfg(feature = "ssh")]
 use russh::server::{Config, Server as SSHServer};
+use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
 use signal_hook::iterator::Signals;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::error::Error;
@@ -72,21 +76,32 @@ async fn main0() -> Result<(), Box<dyn Error>> {
         .install_default()
         .unwrap();
 
-    let args = env::args();
-    if args.len() > 1 && args.into_iter().nth(1).unwrap().eq("setup") {
-        let _ = tokio::task::spawn_blocking(setup::setup).await;
-        return Ok(());
-    }
-
-    tracing_subscriber::fmt()
-        .with_max_level(
+    tracing_subscriber::registry()
+        .with(tracing_subscriber::filter::LevelFilter::from_level(
             if cfg!(debug_assertions) || env::var("DEBUG").unwrap_or_default().eq("1") {
                 tracing::Level::DEBUG
             } else {
                 tracing::Level::INFO
             },
-        )
+        ))
+        .with(tracing_subscriber::fmt::layer())
+        .with(sentry::integrations::tracing::layer())
         .init();
+
+    let sentry = sentry::init(("https://79a1f560730aef34fdc4e4a3f3d9ce92@o4507044844404736.ingest.us.sentry.io/4508313795297280", sentry::ClientOptions {
+        release: sentry::release_name!(),
+        ..Default::default()
+    }));
+    if sentry.is_enabled() {
+        info!("Enabled Sentry integration");
+        std::env::set_var("RUST_BACKTRACE", "1");
+    }
+
+    let args = env::args();
+    if args.len() > 1 && args.into_iter().nth(1).unwrap().eq("setup") {
+        let _ = tokio::task::spawn_blocking(setup::setup).await;
+        return Ok(());
+    }
 
     let mut config_buffer = String::new();
     File::open("config.toml")
@@ -142,6 +157,8 @@ async fn main0() -> Result<(), Box<dyn Error>> {
 
     let app = router
         .layer(TraceLayer::new_for_http())
+        .layer(NewSentryLayer::<Request>::new_from_top())
+        .layer(SentryHttpLayer::with_transaction())
         .with_state(state.clone());
 
     sql::init(state.conn.lock().await.deref_mut()).await?;

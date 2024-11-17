@@ -8,9 +8,7 @@ license = "AGPL-3-only"
 [package.metadata.deb]
 name = "novium_daemon"
 depends = ["novium_daemon_mariadb_plugin"]
-assets = [
-    ["target/release/daemon", "/usr/sbin/novium_daemon", "755"]
-]
+assets = [["target/release/daemon", "/usr/sbin/novium_daemon", "755"]]
 maintainer-scripts = "debian/"
 systemd-units = { unit-name = "novium_daemon", enable = false }
 
@@ -66,6 +64,7 @@ ed25519-dalek.workspace = true
 chrono.workspace = true
 utoipa.workspace = true
 utoipa-axum = "0.1.2"
+sentry.workspace = true
 
 indexmap = "2.6.0"
 futures-util = "0.3.31"
