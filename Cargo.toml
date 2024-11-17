@@ -47,7 +47,19 @@ features = [
 
 [workspace.dependencies.sentry]
 version = "0.34.0"
-features = ["log", "tower", "tower-axum-matched-path", "tracing"]
+default-features = false
+features = [
+    "backtrace",
+    "contexts",
+    "debug-images",
+    "panic",
+    "reqwest",
+    "rustls",
+    "log",
+    "tower",
+    "tower-axum-matched-path",
+    "tracing",
+]
 
 [workspace.dependencies.bitflags]
 version = "2.6.0"

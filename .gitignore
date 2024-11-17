@@ -12,3 +12,4 @@ test/node_modules/
 *.wasm
 *.pem
 config.toml
+dependencies.txt
