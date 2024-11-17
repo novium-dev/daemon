@@ -11,8 +11,6 @@ use reqwest::Client;
 use russh::server::{Config, Server as SSHServer};
 use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
 use signal_hook::iterator::Signals;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 use std::collections::{HashMap, VecDeque};
 use std::env;
 use std::error::Error;
@@ -31,6 +29,8 @@ use tower_http::cors::{AllowHeaders, AllowOrigin, CorsLayer};
 use tower_http::trace::TraceLayer;
 use tower_http::validate_request::ValidateRequestHeaderLayer;
 use tracing::{error, info, warn};
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::util::SubscriberInitExt;
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_swagger_ui::SwaggerUi;
@@ -111,7 +111,7 @@ async fn main0() -> Result<(), Box<dyn Error>> {
         .unwrap();
     let config: DaemonConfig = toml::from_str(&config_buffer)?;
 
-    info!("Starting Daemon...");
+    info!("Starting Daemon on version {}", env!("GIT_HASH"));
 
     let servers = HashMap::new();
 
