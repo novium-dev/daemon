@@ -60,7 +60,7 @@ impl FetchedServer {
     ) {
         let bytes = msg.into_bytes();
         if (buffer.len() + bytes.len()) > TERMINAL_BUFFER_LIMIT {
-            let remove = TERMINAL_BUFFER_LIMIT - (buffer.len() + bytes.len());
+            let remove = (buffer.len() + bytes.len()) - TERMINAL_BUFFER_LIMIT;
             for _ in 0..remove {
                 buffer.pop_front();
             }

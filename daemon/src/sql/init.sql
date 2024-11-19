@@ -1,7 +1,7 @@
 CREATE TABLE IF NOT EXISTS `servers`
 (
   `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `build_dockerfile` VARCHAR(1000) NOT NULL DEFAULT '',
+  `build_dockerfile` VARCHAR(10000) NOT NULL DEFAULT '',
   `build_identifier` VARCHAR(255) NOT NULL DEFAULT '',
   `cpu` FLOAT(255,2),
   `ram` INT UNSIGNED,
