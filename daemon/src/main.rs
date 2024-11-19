@@ -88,19 +88,22 @@ async fn main0() -> Result<(), Box<dyn Error>> {
         .with(sentry::integrations::tracing::layer())
         .init();
 
-    let sentry = sentry::init(("https://79a1f560730aef34fdc4e4a3f3d9ce92@o4507044844404736.ingest.us.sentry.io/4508313795297280", sentry::ClientOptions {
-        release: sentry::release_name!(),
-        ..Default::default()
-    }));
-    if sentry.is_enabled() {
-        info!("Enabled Sentry integration");
-        std::env::set_var("RUST_BACKTRACE", "1");
-    }
-
     let args = env::args();
     if args.len() > 1 && args.into_iter().nth(1).unwrap().eq("setup") {
         let _ = tokio::task::spawn_blocking(setup::setup).await;
         return Ok(());
+    }
+
+    #[cfg(not(debug_assertions))]
+    {
+        let sentry = sentry::init(("https://79a1f560730aef34fdc4e4a3f3d9ce92@o4507044844404736.ingest.us.sentry.io/4508313795297280", sentry::ClientOptions {
+            release: sentry::release_name!(),
+            ..Default::default()
+        }));
+        if sentry.is_enabled() {
+            info!("Enabled Sentry integration");
+            std::env::set_var("RUST_BACKTRACE", "1");
+        }
     }
 
     let mut config_buffer = String::new();
