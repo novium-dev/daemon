@@ -157,6 +157,9 @@ async fn publickey_auth(
         .send()
         .await
         .inspect_err(|err| debug!("SSH Authentication failed (publickey): {:?}", err))
+        .map_err(|err| io::Error::new(ErrorKind::Other, err))?
+        .error_for_status()
+        .inspect_err(|err| debug!("SSH Authentication failed (publickey): {:?}", err))
         .map_err(|err| match err {
             err if matches!(err.status(), Some(http::StatusCode::UNAUTHORIZED)) => {
                 io::Error::new(ErrorKind::PermissionDenied, err)
