@@ -3,6 +3,7 @@ use std::hash::Hash;
 use std::io::{self, ErrorKind};
 use std::net::SocketAddr;
 use std::ops::DerefMut;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -15,6 +16,8 @@ use crate::terminal::{new_session, update_size, TerminalData};
 use crate::utils::{storage_read, ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{DaemonState, ServerData};
 use axum::{async_trait, http};
+use cap_async_std::ambient_authority;
+use cap_async_std::fs::Dir;
 use daemon_common::server::BackendAuthServerPermissions;
 use daemon_common::ssh::DaemonBackendAuthResponse;
 use russh::server::{Auth, Handler, Msg, Server, Session};
@@ -581,10 +584,25 @@ impl Handler for DaemonSSHHandler {
                             )
                             .await
                             {
-                                sftp.access.insert(
-                                    vec!["servers".to_string(), server.name.clone()],
-                                    (identifier, storage.clone(), server.permissions, lock),
-                                );
+                                let base =
+                                    PathBuf::from(storage.path()).join(identifier.as_pathbuf());
+                                match Dir::open_ambient_dir(&base, ambient_authority())
+                                    .await
+                                    .inspect_err(|err| {
+                                        error!(
+                                            "Failed to open storage directory: {} {:?}",
+                                            base.to_string_lossy(),
+                                            err
+                                        )
+                                    }) {
+                                    Ok(storage) => {
+                                        sftp.access.insert(
+                                            vec!["servers".to_string(), server.name.clone()],
+                                            (Arc::new(storage), server.permissions, lock),
+                                        );
+                                    }
+                                    Err(_err) => continue,
+                                }
                             }
                         }
                     }

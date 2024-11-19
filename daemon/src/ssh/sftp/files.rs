@@ -32,15 +32,13 @@ pub(crate) use stat::stat;
 pub(crate) use symlink::symlink;
 pub(crate) use write::write;
 
-use crate::config::StorageEntry;
-use crate::ssh::sftp::{sftp_err, DaemonSftpSession, FileHandle};
-use crate::storage::StorageIdentifier;
+use crate::ssh::sftp::{DaemonSftpSession, FileHandle};
 use crate::utils::parse_path;
-use cap_async_std::ambient_authority;
 use cap_async_std::fs::*;
 use daemon_common::server::BackendAuthServerPermissions;
 use russh_sftp::protocol::*;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::debug;
 
 impl DaemonSftpSession {
@@ -49,11 +47,7 @@ impl DaemonSftpSession {
         mut path: String,
     ) -> Result<
         (
-            Option<(
-                StorageIdentifier,
-                StorageEntry,
-                BackendAuthServerPermissions,
-            )>,
+            Option<(Arc<Dir>, BackendAuthServerPermissions)>,
             Vec<String>,
             Vec<String>,
         ),
@@ -87,7 +81,7 @@ impl DaemonSftpSession {
             temp_suffix[index] = format!("{}/", temp_suffix[index]);
         }
         Ok((
-            storage.map(|(id, storage, perms, _)| (*id, storage.clone(), *perms)),
+            storage.map(|(dir, perms, _)| (dir.clone(), *perms)),
             temp_prefix,
             temp_suffix,
         ))
@@ -97,26 +91,15 @@ impl DaemonSftpSession {
         &self,
         path: String,
         required: BackendAuthServerPermissions,
-    ) -> Result<(Dir, PathBuf), StatusCode> {
+    ) -> Result<(Arc<Dir>, PathBuf), StatusCode> {
         let (storage, _, temp_suffix) = self.resolve_path(path).await?;
 
         match storage {
             None => Err(StatusCode::NoSuchFile),
-            Some((id, storage, permissions)) => {
+            Some((storage, permissions)) => {
                 if !permissions.contains(required) {
                     return Err(StatusCode::PermissionDenied);
                 }
-                let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
-                let storage = Dir::open_ambient_dir(&base, ambient_authority())
-                    .await
-                    .inspect_err(|err| {
-                        debug!(
-                            "Failed to open storage directory: {} {:?}",
-                            base.to_string_lossy(),
-                            err
-                        )
-                    })
-                    .map_err(sftp_err)?;
                 let mut path = PathBuf::new();
                 for comp in temp_suffix {
                     path = path.join(comp);

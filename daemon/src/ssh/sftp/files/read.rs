@@ -3,7 +3,7 @@ use russh_sftp::protocol::StatusCode;
 use std::io;
 use std::io::{ErrorKind, SeekFrom};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
-use tracing::debug;
+use tracing::{debug, error};
 
 pub(crate) async fn read(
     handle: &mut FileHandle,
@@ -13,11 +13,11 @@ pub(crate) async fn read(
     match handle {
         FileHandle::RegularFile(file, _) => read_regular(file, offset, len).await,
         _ => {
-            debug!("read on a not regular file handle: {:?}", handle);
+            debug!("Read on a not regular file handle: {:?}", handle);
             return Err(StatusCode::OpUnsupported);
         }
     }
-    .inspect_err(|err| debug!("Failed to read file: {:?}", err))
+    .inspect_err(|err| error!("Failed to read file: {:?}", err))
     .map_err(|err| match err.kind() {
         ErrorKind::UnexpectedEof => StatusCode::Eof,
         _ => StatusCode::Failure,

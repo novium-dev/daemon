@@ -19,7 +19,7 @@ use futures_util::TryStreamExt;
 use tokio::io::BufWriter;
 use tokio::sync::OwnedMutexGuard;
 use tokio_util::io::{ReaderStream, StreamReader};
-use tracing::debug;
+use tracing::{debug, error};
 
 fn err(err: io::Error) -> StatusCode {
     match err.kind() {
@@ -45,7 +45,13 @@ pub(crate) async fn list_files(
     let storage = storage_path(id, storage).await?;
     let files = list_files0(storage, path)
         .await
-        .inspect_err(|err| debug!("Failed to list files: {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory => debug!("Failed to list files: {:?}", err),
+            _ => error!("Failed to list files: {:?}", err),
+        })
         .map_err(err)?;
     drop(lock);
     Ok(files)
@@ -95,7 +101,13 @@ pub(crate) async fn stat_file(
     let storage = storage_path(id, storage).await?;
     let file = stat_file0(storage, path)
         .await
-        .inspect_err(|err| debug!("Failed to stat file: {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory => debug!("Failed to stat file: {:?}", err),
+            _ => error!("Failed to stat file: {:?}", err),
+        })
         .map_err(err)?;
     drop(lock);
     Ok(file)
@@ -151,7 +163,14 @@ pub(crate) async fn rename_file(
     storage
         .rename(from, &storage, to)
         .await
-        .inspect_err(|err| debug!("Failed to rename file: {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory
+            | ErrorKind::AlreadyExists => debug!("Failed to rename file: {:?}", err),
+            _ => error!("Failed to rename file: {:?}", err),
+        })
         .map_err(err)?;
     drop(lock);
     Ok(())
@@ -175,7 +194,14 @@ pub(crate) async fn copy_file(
     storage
         .copy(from, &storage, to)
         .await
-        .inspect_err(|err| debug!("Failed to copy file: {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory
+            | ErrorKind::AlreadyExists => debug!("Failed to copy file: {:?}", err),
+            _ => error!("Failed to copy file: {:?}", err),
+        })
         .map_err(err)?;
     drop(lock);
     Ok(())
@@ -208,7 +234,13 @@ pub(crate) async fn download_file(
     let fd: OwnedFd = storage
         .open(path)
         .await
-        .inspect_err(|err| debug!("Failed to download file: {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory => debug!("Failed to download file: {:?}", err),
+            _ => error!("Failed to download file: {:?}", err),
+        })
         .map_err(err)?
         .into_std()
         .into();
@@ -240,14 +272,26 @@ pub(crate) async fn write_file(
             OpenOptions::new().create(true).truncate(true).write(true),
         )
         .await
-        .inspect_err(|err| debug!("Failed to write file (open): {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory => debug!("Failed to write file (open): {:?}", err),
+            _ => error!("Failed to write file (open): {:?}", err),
+        })
         .map_err(err)?
         .into_std()
         .into();
     let mut writer = BufWriter::new(tokio::fs::File::from_std(std::fs::File::from(fd)));
     tokio::io::copy(&mut reader, &mut writer)
         .await
-        .inspect_err(|err| debug!("Failed to download file: {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory => debug!("Failed to write file: {:?}", err),
+            _ => error!("Failed to write file: {:?}", err),
+        })
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
     Ok(())
@@ -275,9 +319,16 @@ pub(crate) async fn mkdir_file(
         }
     })
     .await
-    .inspect_err(|err| debug!("Failed to mkdir (task): {:?}", err))
+    .inspect_err(|err| error!("Failed to mkdir (task): {:?}", err))
     .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?
-    .inspect_err(|err| debug!("Failed to mkdir: {:?}", err))
+    .inspect_err(|err| match err.kind() {
+        ErrorKind::NotFound
+        | ErrorKind::PermissionDenied
+        | ErrorKind::IsADirectory
+        | ErrorKind::NotADirectory
+        | ErrorKind::AlreadyExists => debug!("Failed to mkdir: {:?}", err),
+        _ => error!("Failed to mkdir: {:?}", err),
+    })
     .map_err(err)?;
     drop(lock);
     Ok(())
@@ -300,7 +351,14 @@ pub(crate) async fn symlink_file(
     storage
         .symlink(content, path)
         .await
-        .inspect_err(|err| debug!("Failed to create symlink: {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory
+            | ErrorKind::AlreadyExists => debug!("Failed to create symlink: {:?}", err),
+            _ => error!("Failed to create symlink: {:?}", err),
+        })
         .map_err(err)?;
     drop(lock);
     Ok(())
@@ -321,11 +379,17 @@ pub(crate) async fn delete_file(
     let path = path_relative(path);
     let storage = storage_path(id, storage).await?;
     if recursive {
-        storage.remove_dir_all(path).await
+        storage.remove_dir_all(&path).await
     } else {
-        storage.remove_file(path).await
+        storage.remove_file(&path).await
     }
-    .inspect_err(|err| debug!("Failed to delete file: {:?}", err))
+    .inspect_err(|err| match err.kind() {
+        ErrorKind::NotFound
+        | ErrorKind::PermissionDenied
+        | ErrorKind::IsADirectory
+        | ErrorKind::NotADirectory => debug!("Failed to delete file: {:?}", err),
+        _ => error!("Failed to delete file: {:?}", err),
+    })
     .map_err(err)?;
     drop(lock);
     Ok(())
@@ -335,7 +399,7 @@ async fn storage_path(id: StorageIdentifier, storage: &StorageEntry) -> Result<D
     let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
     Dir::open_ambient_dir(&base, ambient_authority())
         .await
-        .inspect_err(|err| debug!("Failed to open storage: {:?}", err))
+        .inspect_err(|err| error!("Failed to open storage {:?}: {:?}", id, err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
 }
 

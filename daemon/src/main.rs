@@ -122,7 +122,14 @@ async fn main0() -> Result<(), Box<dyn Error>> {
     let docker = bollard::Docker::connect_with_local_defaults()?;
 
     info!("Establishing Database Connection...");
-    let conn = AsyncMysqlConnection::establish(&config.database).await?;
+    let conn = {
+        loop {
+            if let Ok(conn) = AsyncMysqlConnection::establish(&config.database).await {
+                break conn;
+            }
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+    };
 
     info!("Starting Webserver...");
 

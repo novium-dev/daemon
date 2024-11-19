@@ -1,9 +1,9 @@
 use crate::ssh::sftp::FileHandle;
 use russh_sftp::protocol::StatusCode;
 use std::io;
-use std::io::{ErrorKind, SeekFrom};
+use std::io::SeekFrom;
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
-use tracing::debug;
+use tracing::{debug, error};
 
 pub(crate) async fn write(
     handle: &mut FileHandle,
@@ -17,11 +17,8 @@ pub(crate) async fn write(
             return Err(StatusCode::OpUnsupported);
         }
     }
-    .inspect_err(|err| debug!("Failed to write file: {:?}", err))
-    .map_err(|err| match err.kind() {
-        ErrorKind::UnexpectedEof => StatusCode::Eof,
-        _ => StatusCode::Failure,
-    })
+    .inspect_err(|err| error!("Failed to write file: {:?}", err))
+    .map_err(|_err| StatusCode::Failure)
 }
 
 #[inline(always)]

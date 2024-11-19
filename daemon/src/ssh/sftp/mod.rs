@@ -2,14 +2,13 @@ pub(crate) mod ext;
 pub(crate) mod files;
 pub(crate) mod r#impl;
 
-use crate::config::StorageEntry;
 use crate::ssh::BackendAuthServerPermissions;
-use crate::storage::StorageIdentifier;
 use cap_async_std::fs::*;
 use indexmap::IndexMap;
 use russh_sftp::protocol::*;
 use std::collections::HashMap;
 use std::io::ErrorKind;
+use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io;
 use tokio::sync::OwnedRwLockReadGuard;
@@ -21,8 +20,7 @@ pub(crate) struct DaemonSftpSession {
     pub(crate) access: HashMap<
         Vec<String>,
         (
-            StorageIdentifier,
-            StorageEntry,
+            Arc<Dir>,
             BackendAuthServerPermissions,
             OwnedRwLockReadGuard<()>,
         ),

@@ -4,7 +4,7 @@ use std::fs::Permissions;
 use std::io;
 use std::os::fd::OwnedFd;
 use std::os::unix::fs::PermissionsExt;
-use tracing::debug;
+use tracing::{debug, error};
 
 pub(crate) async fn fsetstat(
     handle: &mut FileHandle,
@@ -17,7 +17,7 @@ pub(crate) async fn fsetstat(
             let file: OwnedFd = dir
                 .open(".")
                 .await
-                .inspect_err(|err| debug!("Failed fsetstat on directory open: {:?}", err))
+                .inspect_err(|err| error!("Failed fsetstat on directory open: {:?}", err))
                 .map_err(|_err| StatusCode::Failure)?
                 .into_std()
                 .into();
@@ -33,7 +33,7 @@ pub(crate) async fn fsetstat(
             return Err(StatusCode::OpUnsupported);
         }
     }
-    .inspect_err(|err| debug!("Failed to fsetstat: {:?}", err))
+    .inspect_err(|err| error!("Failed to fsetstat: {:?}", err))
     .map_err(sftp_err)
 }
 

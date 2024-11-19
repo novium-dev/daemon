@@ -1,13 +1,20 @@
 use crate::ssh::sftp::sftp_err;
 use cap_async_std::fs::Dir;
 use russh_sftp::protocol::StatusCode;
+use std::io::ErrorKind;
 use std::path::PathBuf;
-use tracing::debug;
+use std::sync::Arc;
+use tracing::{debug, error};
 
-pub(crate) async fn remove(storage: Dir, path: PathBuf) -> Result<(), StatusCode> {
+pub(crate) async fn remove(storage: Arc<Dir>, path: PathBuf) -> Result<(), StatusCode> {
     storage
         .remove_file(path)
         .await
-        .inspect_err(|err| debug!("Failed to remove file: {:?}", err))
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::IsADirectory => {
+                debug!("Failed to remove file: {:?}", err)
+            }
+            _ => error!("Failed to remove file: {:?}", err),
+        })
         .map_err(sftp_err)
 }

@@ -1,14 +1,13 @@
-use crate::config::StorageEntry;
 use crate::ssh::sftp::{internal_directory_attributes, sftp_err, DaemonSftpSession, FileHandle};
-use crate::storage::StorageIdentifier;
-use cap_async_std::ambient_authority;
 use cap_async_std::fs::*;
 use daemon_common::server::BackendAuthServerPermissions;
 use indexmap::{IndexMap, IndexSet};
 use russh_sftp::protocol::*;
+use std::io::ErrorKind;
 use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::PathBuf;
-use tracing::debug;
+use std::sync::Arc;
+use tracing::{debug, error};
 use uuid::Uuid;
 
 pub(crate) async fn open(
@@ -19,8 +18,8 @@ pub(crate) async fn open(
     let (storage, temp_prefix, temp_suffix) = session.resolve_path(path).await?;
     match storage {
         None => open_internal(session, temp_prefix).await,
-        Some((id, storage, permissions)) => {
-            open_regular(session, id, storage, options, permissions, temp_suffix).await
+        Some((dir, permissions)) => {
+            open_regular(session, dir, options, permissions, temp_suffix).await
         }
     }
 }
@@ -63,27 +62,11 @@ async fn open_internal(
 #[inline(always)]
 async fn open_regular(
     session: &mut DaemonSftpSession,
-    id: StorageIdentifier,
-    storage: StorageEntry,
+    storage: Arc<Dir>,
     options: &OpenOptions,
     permissions: BackendAuthServerPermissions,
     path_components: Vec<String>,
 ) -> Result<String, StatusCode> {
-    let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
-    let base = tokio::fs::canonicalize(base)
-        .await
-        .inspect_err(|err| {
-            debug!(
-                "Failed to open regular file (canonicalize of base): {:?}",
-                err
-            )
-        })
-        .map_err(|_err| StatusCode::Failure)?;
-    let storage = Dir::open_ambient_dir(&base, ambient_authority())
-        .await
-        .inspect_err(|err| debug!("Failed to open regular file: {:?}", err))
-        .map_err(|_err| StatusCode::Failure)?;
-
     let mut path = if path_components.is_empty() {
         PathBuf::from(".")
     } else {
@@ -97,13 +80,18 @@ async fn open_regular(
         let dir = storage
             .open_dir(&path)
             .await
-            .inspect_err(|err| debug!("Failed to open regular dir (final): {:?}", err))
+            .inspect_err(|err| match err.kind() {
+                ErrorKind::NotFound | ErrorKind::PermissionDenied => {
+                    debug!("Failed to open regular dir (final): {:?}", err)
+                }
+                _ => error!("Failed to open regular dir (final): {:?}", err),
+            })
             .map_err(sftp_err)?;
         let fd_num = dir.as_raw_fd() as i32;
         let read_dir = dir
             .read_dir(".")
             .await
-            .inspect_err(|err| debug!("Failed to open regular dir (readdir): {:?}", err))
+            .inspect_err(|err| error!("Failed to open regular dir (readdir): {:?}", err))
             .map_err(sftp_err)?;
         (
             fd_num,
@@ -113,7 +101,12 @@ async fn open_regular(
         let file = storage
             .open_with(&path, options)
             .await
-            .inspect_err(|err| debug!("Failed to open regular file (final): {:?}", err))
+            .inspect_err(|err| match err.kind() {
+                ErrorKind::NotFound | ErrorKind::PermissionDenied => {
+                    debug!("Failed to open regular file (final): {:?}", err)
+                }
+                _ => error!("Failed to open regular file (final): {:?}", err),
+            })
             .map_err(sftp_err)?;
         let fd: OwnedFd = file.into_std().into();
         let fd_num = fd.as_raw_fd() as i32;

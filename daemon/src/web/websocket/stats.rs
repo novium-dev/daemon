@@ -9,7 +9,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::web::user::{authenticate_user, GenericUserQuery};
@@ -113,7 +113,7 @@ pub(crate) async fn new_stats_session<
                     }
                     Err(RecvError::Lagged(_)) => {},
                     Err(RecvError::Closed) => {
-                        debug!("Closing connection. Internal Sender disconnected");
+                        error!("Closing connection. Internal Sender disconnected");
                         state.close().await;
                         return;
                     }

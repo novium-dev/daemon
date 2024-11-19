@@ -18,7 +18,7 @@ use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
 use tokio_tar::{Archive, Builder};
 use tokio_util::io::ReaderStream;
-use tracing::debug;
+use tracing::{debug, error};
 
 pub(crate) async fn create_backup_order(
     state: &DaemonState,
@@ -56,7 +56,13 @@ pub(crate) async fn create_backup_order(
 
     let id = create_backup0(path, id, suitable.unwrap(), storage, backup_exclude)
         .await
-        .inspect_err(|err| debug!("Backup creation failed: {:?}", err))
+        .inspect_err(|err| {
+            if err.kind() == ErrorKind::InvalidInput {
+                debug!("Backup creation failed: {:?}", err)
+            } else {
+                error!("Backup creation failed: {:?}", err)
+            }
+        })
         .map_err(|err| {
             if err.kind() == ErrorKind::InvalidInput {
                 StatusCode::UNPROCESSABLE_ENTITY
@@ -201,7 +207,7 @@ pub(crate) async fn restore_backup(
 
     restore_backup0(id, storage, path, backup_id, backup, disk)
         .await
-        .inspect_err(|err| debug!("Failed to restore backup: {:?}", err))
+        .inspect_err(|err| error!("Failed to restore backup: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
     Ok(())
@@ -265,7 +271,7 @@ pub(crate) async fn list_backups(
     .map_err(StorageError::into_http)?;
     let vec = list_backups0(state, id)
         .await
-        .inspect_err(|err| debug!("Failed to list backups: {:?}", err))
+        .inspect_err(|err| error!("Failed to list backups: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
     Ok(vec)
@@ -349,7 +355,7 @@ pub(crate) async fn backup_to_stream(
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
     let body = backup_to_stream0(id, backup_id, backup, backup_exclude)
         .await
-        .inspect_err(|err| debug!("Failed to create a backup stream: {:?}", err))
+        .inspect_err(|err| error!("Failed to create a backup stream: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
 
@@ -430,7 +436,7 @@ pub(crate) async fn stream_realtime(
 
     let body = stream_realtime0(path, backup_exclude, compression)
         .await
-        .inspect_err(|err| debug!("Failed to create a realtime backup stream: {:?}", err))
+        .inspect_err(|err| error!("Failed to create a realtime backup stream: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
 
@@ -499,7 +505,7 @@ pub(crate) async fn delete_backup(
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
     delete_backup0(id, backup_id, backup)
         .await
-        .inspect_err(|err| debug!("Failed to delete a backup: {:?}", err))
+        .inspect_err(|err| error!("Failed to delete a backup: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     drop(lock);
     Ok(())

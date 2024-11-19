@@ -12,7 +12,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
-use tracing::{debug, warn};
+use tracing::{debug, error, warn};
 use uuid::Uuid;
 
 pub(crate) type TerminalSession = (Instant, Arc<AtomicU32>, Arc<AtomicU32>);
@@ -101,7 +101,7 @@ pub(crate) async fn new_session<
                     }
                     Err(RecvError::Lagged(_)) => {},
                     Err(RecvError::Closed) => {
-                        debug!("Closing connection. Internal Sender disconnected");
+                        error!("Closing connection. Internal Sender disconnected");
                         let mut sessions = sessions_arc.lock().await;
                         sessions.remove(&session_id);
                         drop(sessions);
