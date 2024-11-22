@@ -28,6 +28,7 @@ http = "1.1.0"
 async-trait = "0.1.83"
 tracing = "*"
 tracing-subscriber = "*"
+dotenvy = "*"
 
 [workspace.dependencies.daemon_common]
 path = "services/daemon/common"
