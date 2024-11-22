@@ -1,1 +1,0 @@
-SET @STATEMENT = CONCAT('DROP DATABASE `', ?, '`')

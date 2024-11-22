@@ -1,1 +1,0 @@
-SET @STATEMENT = CONCAT('DROP USER ', QUOTE(?), '@', QUOTE(?))

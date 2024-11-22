@@ -1,10 +1,11 @@
 [workspace]
 members = [
-    "backend",
-    "daemon/common",
-    "daemon/sdk",
-    "daemon",
-    "daemon_mariadb_plugin",
+    "services/backend",
+    "services/daemon/common",
+    "services/daemon/sdk",
+    "services/daemon",
+    "services/daemon_mariadb_plugin",
+    "services/billing",
 ]
 resolver = "2"
 
@@ -28,10 +29,10 @@ tracing = "*"
 tracing-subscriber = "*"
 
 [workspace.dependencies.daemon_common]
-path = "daemon/common"
+path = "services/daemon/common"
 
 [workspace.dependencies.daemon_sdk]
-path = "daemon/sdk"
+path = "services/daemon/sdk"
 
 [workspace.dependencies.reqwest]
 version = "0.12.9"
