@@ -6,6 +6,7 @@ members = [
     "services/daemon",
     "services/daemon_mariadb_plugin",
     "services/billing",
+    "services/bot",
 ]
 resolver = "2"
 
