@@ -10,7 +10,6 @@ services:
     volumes:
     - ../mysql/sockets:/var/run/mysqld
     - ../mysql/data:/var/lib/mysql
-    - ../target/debug/libdeamon_mariadb_plugin.so:/usr/lib/mysql/plugin/libmariadb_plugin.so
     - ../target/debug/libdaemon_mariadb_plugin.so:/usr/lib/mysql/plugin/libdaemon_mariadb_plugin.so
     - ../mysql/db.sql:/docker-entrypoint-initdb.d/schema.sql:ro
     - /var/run/docker.sock:/var/run/docker.sock
