@@ -1,6 +1,10 @@
 [workspace]
 members = [
     "services/backend",
+    "services/backend/api",
+    "services/backend/core",
+    "services/backend/http",
+    "services/backend/bootstrap",
     "services/daemon/common",
     "services/daemon/sdk",
     "services/daemon",
@@ -29,12 +33,18 @@ async-trait = "0.1.83"
 tracing = "*"
 tracing-subscriber = "*"
 dotenvy = "*"
+indexmap = "2.6.0"
+linkme = "0.3.31"
+url = "2.5.4"
 
 [workspace.dependencies.daemon_common]
 path = "services/daemon/common"
 
 [workspace.dependencies.daemon_sdk]
 path = "services/daemon/sdk"
+
+[workspace.dependencies.backend_api]
+path = "services/backend/api"
 
 [workspace.dependencies.reqwest]
 version = "0.12.9"
@@ -75,6 +85,15 @@ features = ["derive"]
 [workspace.dependencies.serde_json]
 version = "1.0"
 features = ["preserve_order"]
+
+[workspace.dependencies.speedy]
+version = "0.8.7"
+features = ["speedy-derive", "indexmap"]
+
+[workspace.dependencies.redis]
+version = "0.27.5"
+features = ["tokio"]
+
 
 [workspace.dependencies.tokio]
 version = "1.41.1"
