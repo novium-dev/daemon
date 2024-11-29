@@ -140,3 +140,9 @@ features = ["pem"]
 [workspace.dependencies.ed25519-dalek]
 version = "2.1.1"
 features = ["serde", "rand_core", "pkcs8", "pem"]
+
+[profile.dev]
+codegen-units = 1
+
+[profile.release]
+codegen-units = 1
