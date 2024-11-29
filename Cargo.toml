@@ -3,6 +3,7 @@ members = [
     "services/backend",
     "services/backend/api",
     "services/backend/core",
+    "services/backend/auth",
     "services/backend/http",
     "services/backend/bootstrap",
     "services/daemon/common",
@@ -30,12 +31,13 @@ openssl = "0.10.66"
 termion = "4.0.3"
 http = "1.1.0"
 async-trait = "0.1.83"
-tracing = "*"
-tracing-subscriber = "*"
+tracing = "0.1.41"
+tracing-subscriber = "0.3.18"
 dotenvy = "*"
 indexmap = "2.6.0"
 linkme = "0.3.31"
 url = "2.5.4"
+hex = "0.4.3"
 
 [workspace.dependencies.daemon_common]
 path = "services/daemon/common"
