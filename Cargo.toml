@@ -5,6 +5,7 @@ members = [
     "services/backend/core",
     "services/backend/auth",
     "services/backend/http",
+    "services/backend/dev",
     "services/backend/bootstrap",
     "services/daemon/common",
     "services/daemon/sdk",
