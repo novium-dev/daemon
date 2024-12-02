@@ -38,7 +38,7 @@ indexmap = "2.6.0"
 linkme = "0.3.31"
 url = "2.5.4"
 hex = "0.4.3"
-downcast-trait = "0.1.0"
+argon2 = "0.6.0-pre.1"
 
 [workspace.dependencies.daemon_common]
 path = "services/daemon/common"
