@@ -110,6 +110,10 @@ features = ["tls-rustls"]
 version = "0.7.7"
 features = ["json", "macros"]
 
+[workspace.dependencies.axum-extra]
+version = "0.9.6"
+features = ["cookie", "typed-header"]
+
 [workspace.dependencies.utoipa]
 version = "5.2.0"
 features = ["macros", "preserve_path_order"]
