@@ -39,6 +39,7 @@ linkme = "0.3.31"
 url = "2.5.4"
 hex = "0.4.3"
 argon2 = "0.6.0-pre.1"
+serde_yaml = "0.9.34+deprecated"
 
 [workspace.dependencies.daemon_common]
 path = "services/daemon/common"
@@ -97,10 +98,13 @@ features = ["speedy-derive", "indexmap"]
 version = "0.27.5"
 features = ["tokio"]
 
-
 [workspace.dependencies.tokio]
 version = "1.42.0"
 features = ["full"]
+
+[workspace.dependencies.tokio-util]
+version = "0.7.12"
+features = ["io-util"]
 
 [workspace.dependencies.axum-server]
 version = "0.7.1"
