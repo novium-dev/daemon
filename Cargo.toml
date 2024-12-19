@@ -22,7 +22,6 @@ regex = "1.11.0"
 toml = "0.8.19"
 rustls = "0.23.19"
 tower-layer = "0.3.3"
-axum-auth = "0.7.0"
 base64 = "0.22.1"
 axum-macros = "0.4.2"
 rand = "0.8.5"
@@ -63,8 +62,8 @@ features = [
 ]
 
 [workspace.dependencies.sentry]
-version = "0.34.0"
-default-features = false
+# Currently there is no axum 0.8.0 support for sentry
+git = "https://github.com/MarkusTieger/sentry-rust.git"
 features = [
     "backtrace",
     "contexts",
@@ -111,15 +110,20 @@ version = "0.7.1"
 features = ["tls-rustls"]
 
 [workspace.dependencies.axum]
-version = "0.7.7"
-features = ["json", "macros"]
+version = "0.8.0-rc.1"
+features = ["json", "macros", "http2"]
 
 [workspace.dependencies.axum-extra]
 version = "0.9.6"
 features = ["cookie", "typed-header"]
 
+[workspace.dependencies.axum-auth]
+# Currently there is no axum 0.8.0 support for axum-auth
+git = "https://github.com/MarkusTieger/axum-auth.git"
+
 [workspace.dependencies.utoipa]
-version = "5.2.0"
+# Currently there is no axum 0.8.0 support for utoipa
+git = "https://github.com/MarkusTieger/utoipa.git"
 features = ["macros", "preserve_path_order"]
 
 [workspace.dependencies.tower-http]
