@@ -3,7 +3,7 @@ services:
   mysql:
     image: mariadb:latest
     container_name: daemon_mysql
-    network_mode: 'none'
+    network_mode: 'host'
     environment:
     - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1
     - MARIA_DB_USER=daemon
