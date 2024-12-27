@@ -54,7 +54,7 @@ path = "services/daemon/sdk"
 path = "services/backend/api"
 
 [workspace.dependencies.reqwest]
-version = "0.12.9"
+version = "0.12.11"
 default-features = false
 features = [
     "charset",
