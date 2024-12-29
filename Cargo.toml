@@ -134,14 +134,6 @@ features = ["macros", "preserve_path_order"]
 version = "0.6.1"
 features = ["cors", "auth", "trace"]
 
-[workspace.dependencies.diesel-async]
-version = "0.5.2"
-features = ["mysql", "r2d2", "bb8"]
-
-[workspace.dependencies.diesel]
-version = "2.2.6"
-features = ["mysql", "r2d2", "uuid", "chrono", "serde_json"]
-
 [workspace.dependencies.sqlx]
 version = "0.8.2"
 features = [
