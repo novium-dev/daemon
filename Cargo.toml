@@ -114,11 +114,11 @@ version = "0.7.1"
 features = ["tls-rustls"]
 
 [workspace.dependencies.axum]
-version = "0.8.0-rc.1"
+version = "0.8.0"
 features = ["json", "macros", "http2"]
 
 [workspace.dependencies.axum-extra]
-version = "0.9.6"
+version = "0.10.0"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.axum-auth]
