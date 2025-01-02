@@ -43,6 +43,8 @@ serde_yaml = "0.9.34+deprecated"
 java-properties = "2.0.0"
 bigdecimal = "0.4.7"
 scoped-futures = "0.1.4"
+futures = "0.3.31"
+futures-core = "0.3.31"
 
 [workspace.dependencies.daemon_common]
 path = "services/daemon/common"
