@@ -136,7 +136,7 @@ version = "0.6.1"
 features = ["cors", "auth", "trace"]
 
 [workspace.dependencies.sqlx]
-version = "0.8.2"
+version = "0.8.3"
 features = [
     "runtime-tokio",
     "tls-rustls-ring",
