@@ -103,7 +103,7 @@ version = "0.27.5"
 features = ["tokio"]
 
 [workspace.dependencies.tokio]
-version = "1.42.0"
+version = "1.43.0"
 features = ["full"]
 
 [workspace.dependencies.tokio-util]
