@@ -20,7 +20,6 @@ libc = "0.2"
 bollard = "0.18.1"
 regex = "1.11.1"
 toml = "0.8.19"
-rustls = "0.23.21"
 base64 = "0.22.1"
 rand = "0.8.5"
 signal-hook = "0.3.17"
@@ -53,6 +52,9 @@ path = "services/daemon/sdk"
 [workspace.dependencies.backend_api]
 path = "services/backend/api"
 
+[workspace.dependencies.rustls]
+version = "0.23.21"
+
 [workspace.dependencies.reqwest]
 version = "0.12.12"
 default-features = false
@@ -67,6 +69,7 @@ features = [
 
 [workspace.dependencies.sentry]
 version = "0.36.0"
+default-features = false
 features = [
     "backtrace",
     "contexts",
@@ -77,6 +80,7 @@ features = [
     "tower",
     "tower-axum-matched-path",
     "tracing",
+    "reqwest"
 ]
 
 [workspace.dependencies.bitflags]
