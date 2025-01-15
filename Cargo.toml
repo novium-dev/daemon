@@ -84,7 +84,7 @@ features = [
 ]
 
 [workspace.dependencies.bitflags]
-version = "2.7.0"
+version = "2.8.0"
 features = ["serde"]
 
 [workspace.dependencies.serde]
@@ -125,7 +125,7 @@ version = "0.10.0"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.axum-auth]
-version = "0.8.0-rc.1"
+version = "0.8.1"
 
 [workspace.dependencies.utoipa]
 version = "5.3.1"
