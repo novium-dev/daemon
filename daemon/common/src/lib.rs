@@ -5,4 +5,4 @@ pub mod server;
 pub mod ssh;
 pub mod utils;
 
-include!("../../../../config.rs");
+include!("../../../config.rs");
