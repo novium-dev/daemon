@@ -1,0 +1,6 @@
+use std::ffi::c_uint;
+
+pub const MARIA_PLUGIN_INTERFACE_VERSION: i32 = 0x0104;
+pub const MARIA_AUTHENTICATION_INTERFACE_VERSION: i32 = 0x0202;
+
+pub const MARIA_PLUGIN_MATURITY_STABLE: c_uint = 5;

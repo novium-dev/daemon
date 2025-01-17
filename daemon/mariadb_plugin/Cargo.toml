@@ -1,0 +1,34 @@
+[package]
+name = "daemon_mariadb_plugin"
+version = "0.1.0"
+edition = "2021"
+authors = ["MarkusTieger"]
+license = "AGPL-3.0-only"
+
+[package.metadata.deb]
+name = "novium_daemon_mariadb_plugin"
+depends = ["mariadb-server", "docker.io | docker-ce"]
+assets = [
+    [
+        "target/release/libdaemon_mariadb_plugin.so",
+        "/usr/lib/mysql/plugin/libdaemon_mariadb_plugin.so",
+        "755",
+    ],
+]
+maintainer-scripts = "debian/"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+libc.workspace = true
+bollard.workspace = true
+constcat = "0.5.1"
+
+[dependencies.tokio]
+workspace = true
+features = ["fs", "io-std", "rt", "rt-multi-thread"]
+
+[dependencies.daemon_common]
+workspace = true
+features = ["docker"]

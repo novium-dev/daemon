@@ -1,0 +1,37 @@
+[package]
+name = "daemon_common"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+database = []
+user = ["axum"]
+btrfs = []
+ssh = []
+docker = ["bollard"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+bitflags.workspace = true
+utoipa.workspace = true
+tokio.workspace = true
+java-properties.workspace = true
+serde_yaml.workspace = true
+tracing.workspace = true
+lazy_static.workspace = true
+regex.workspace = true
+crc64 = "2.0.0"
+
+[dependencies.bollard]
+workspace = true
+optional = true
+
+
+[dependencies.axum]
+workspace = true
+features = ["ws"]
+optional = true

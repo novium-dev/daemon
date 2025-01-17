@@ -1,0 +1,25 @@
+[Unit]
+Description=Daemon for managing servers on nodes
+After=mariadb.service
+
+[Service]
+User=novium_daemon
+Group=novium_daemon
+
+# Prevent writes to /usr, /boot, and /etc
+ProtectSystem=full
+
+# Prevent accessing /home, /root and /run/user
+ProtectHome=true
+
+CapabilityBoundingSet=CAP_FOWNER CAP_DAC_OVERRIDE CAP_CHOWN CAP_SYS_ADMIN
+AmbientCapabilities=CAP_FOWNER CAP_DAC_OVERRIDE CAP_CHOWN CAP_SYS_ADMIN
+
+ExecStart=/usr/bin/novium_daemon
+WorkingDirectory=/var/lib/novium_daemon
+KillSignal=SIGINT
+
+SendSIGKILL=no
+
+[Install]
+WantedBy=multi-user.target

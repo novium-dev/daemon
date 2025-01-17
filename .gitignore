@@ -11,7 +11,7 @@ test/node_modules/
 .vscode/
 *.wasm
 *.pem
-!services/daemon/src/test_ed25519.pem
+!daemon/src/test_ed25519.pem
 config.toml
 dependencies.txt
 

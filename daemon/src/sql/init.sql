@@ -1,0 +1,120 @@
+CREATE TABLE IF NOT EXISTS `images`
+(
+    `id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
+    `dockerfile` VARCHAR(10000) NOT NULL,
+    `default_tag` VARCHAR(255)
+);
+
+CREATE TABLE IF NOT EXISTS `servers`
+(
+  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `image` BIGINT UNSIGNED,
+  `cpu` FLOAT(255,2),
+  `ram` INT UNSIGNED,
+  `swap` INT UNSIGNED,
+  `disk` BIGINT UNSIGNED,
+  `storage` VARCHAR(255) NOT NULL DEFAULT 'local',
+  `internet` BOOLEAN NOT NULL DEFAULT FALSE,
+  `ipv6_suffix` BIGINT UNSIGNED DEFAULT NULL,
+  `uid` SMALLINT UNSIGNED DEFAULT NULL,
+  `gid` SMALLINT UNSIGNED DEFAULT NULL,
+  FOREIGN KEY (`image`) REFERENCES `images`(`id`)
+);
+
+CREATE TABLE IF NOT EXISTS `server_capability_add`
+(
+  `server` INT UNSIGNED NOT NULL,
+  `capability` VARCHAR(255) NOT NULL,
+  PRIMARY KEY (`server`, `capability`),
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
+) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS `server_capability_drop`
+(
+  `server` INT(255) UNSIGNED NOT NULL,
+  `capability` VARCHAR(255) NOT NULL,
+  PRIMARY KEY (`server`, `capability`),
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
+) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS `server_image_tags`
+(
+  `server` INT(255) UNSIGNED NOT NULL,
+  `image` BIGINT UNSIGNED NOT NULL,
+  `tag` VARCHAR(255) NOT NULL,
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`image`) REFERENCES `images`(`id`),
+  PRIMARY KEY (`server`, `image`)
+) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS `server_image_args`
+(
+  `server` INT(255) UNSIGNED NOT NULL,
+  `image` BIGINT UNSIGNED NOT NULL,
+  `key` VARCHAR(255) NOT NULL,
+  `value` VARCHAR(255) NOT NULL,
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`image`) REFERENCES `images`(`id`),
+  PRIMARY KEY (`server`, `image`, `key`)
+) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS `server_backup_exclude`
+(
+  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `server` INT(255) UNSIGNED NOT NULL,
+  `exclude` VARCHAR(255) NOT NULL,
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
+) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS `server_file_writes`
+(
+  `server` INT(255) UNSIGNED NOT NULL,
+  `file` VARCHAR(255) NOT NULL,
+  `filetype` ENUM('write', 'properties', 'json', 'yaml') NOT NULL,
+  `key` VARCHAR(255),
+  `value` VARCHAR(1000) NOT NULL,
+  PRIMARY KEY (`server`, `file`, `key`),
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
+) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS `server_ports`
+(
+  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `server` INT(255) UNSIGNED NOT NULL,
+  `internal_port` SMALLINT UNSIGNED NOT NULL,
+  `external_port` SMALLINT UNSIGNED NOT NULL,
+  `external_ip` VARCHAR(255) NOT NULL,
+  `protocol` VARCHAR(255) NOT NULL,
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
+) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS `image_parents`
+(
+    `image` BIGINT UNSIGNED NOT NULL,
+    `parent` BIGINT UNSIGNED NOT NULL,
+    PRIMARY KEY (`image`, `parent`),
+    FOREIGN KEY (`image`) REFERENCES `images`(`id`),
+    FOREIGN KEY (`parent`) REFERENCES `images`(`id`)
+);
+
+CREATE TABLE IF NOT EXISTS `networks`
+(
+  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `ipv4` SMALLINT UNSIGNED NOT NULL UNIQUE,
+  `ipv6` SMALLINT UNSIGNED NOT NULL UNIQUE,
+  CONSTRAINT IP_RANGE CHECK ((`ipv4` & 0b111111) = 0)
+);
+
+CREATE TABLE IF NOT EXISTS `server_networks`
+(
+  `server` INT(255) UNSIGNED NOT NULL,
+  `network` INT(255) UNSIGNED NOT NULL,
+  `ipv4` TINYINT UNSIGNED NOT NULL,
+  `ipv6` BIGINT UNSIGNED NOT NULL,
+  PRIMARY KEY (`network`, `server`),
+  UNIQUE (`network`, `ipv4`),
+  UNIQUE (`network`, `ipv6`),
+  FOREIGN KEY (`network`) REFERENCES `networks`(`id`) ON DELETE CASCADE,
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE,
+  CONSTRAINT IP_RANGE CHECK (`ipv4` > 1 AND (`ipv4` | 0b11000000) != 255 AND (`ipv4` & 0b11000000) = 0 AND (`ipv6` & 0xffff) > 1)
+) ENGINE=INNODB;

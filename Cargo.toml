@@ -1,17 +1,17 @@
 [workspace]
 members = [
-    "services/backend/api",
-    "services/backend/core",
-    "services/backend/auth",
-    "services/backend/http",
-    "services/backend/minecraft",
-    "services/backend/dev",
-    "services/backend/bootstrap",
-    "services/daemon/common",
-    "services/daemon/sdk",
-    "services/daemon",
-    "services/daemon_mariadb_plugin",
-    "services/bot",
+    "backend/api",
+    "backend/core",
+    "backend/auth",
+    "backend/http",
+    "backend/bot",
+    "backend/minecraft",
+    "backend/dev",
+    "backend/bootstrap",
+    "daemon/common",
+    "daemon/sdk",
+    "daemon",
+    "dasmon/mariadb_plugin",
 ]
 resolver = "2"
 
@@ -44,13 +44,13 @@ bytes = "1.9.0"
 duplicate = "2.0.0"
 
 [workspace.dependencies.daemon_common]
-path = "services/daemon/common"
+path = "daemon/common"
 
 [workspace.dependencies.daemon_sdk]
-path = "services/daemon/sdk"
+path = "daemon/sdk"
 
 [workspace.dependencies.backend_api]
-path = "services/backend/api"
+path = "backend/api"
 
 [workspace.dependencies.rustls]
 version = "0.23.21"
@@ -80,7 +80,7 @@ features = [
     "tower",
     "tower-axum-matched-path",
     "tracing",
-    "reqwest"
+    "reqwest",
 ]
 
 [workspace.dependencies.bitflags]
@@ -102,7 +102,13 @@ features = ["speedy-derive", "indexmap"]
 [workspace.dependencies.redis]
 version = "0.28.1"
 default-features = false
-features = ["uuid", "json", "tls-rustls", "tls-rustls-webpki-roots", "tokio-rustls-comp"]
+features = [
+    "uuid",
+    "json",
+    "tls-rustls",
+    "tls-rustls-webpki-roots",
+    "tokio-rustls-comp",
+]
 
 [workspace.dependencies.tokio]
 version = "1.43.0"
