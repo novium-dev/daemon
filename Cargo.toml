@@ -11,7 +11,7 @@ members = [
     "daemon/common",
     "daemon/sdk",
     "daemon",
-    "dasmon/mariadb_plugin",
+    "daemon/mariadb_plugin",
 ]
 resolver = "2"
 
