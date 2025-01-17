@@ -6,6 +6,7 @@ storage/*
 storages/*
 valkey/*
 mysql/*
+build/
 
 # Don't leak information
 *.pem
