@@ -23,3 +23,4 @@ node_modules/
 # React Router
 frontend/.react-router/
 build/*
+gen/*
