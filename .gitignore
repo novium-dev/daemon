@@ -17,3 +17,9 @@ dependencies.txt
 rustc-*.*
 control.sock
 .env.local
+.DS_Store
+node_modules/
+
+# React Router
+frontend/.react-router/
+build/*
