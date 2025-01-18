@@ -1,9 +1,14 @@
+// only allow linux
+#[cfg(not(target_os = "linux"))]
+compile_error!("This module is only available on linux");
+
 pub mod proxy;
 
 use crate::plugin::proxy::authenticate_proxy_mode;
 use crate::types::{AuthStatus, PluginVIO, PluginVIOInfoProtocol, ServerAuthInfo};
 use bollard::Docker;
 
+use libc::{socklen_t, ucred, SO_PEERCRED};
 use std::error::Error;
 use std::ffi::{c_char, c_uchar, c_void, CString};
 use std::io;
@@ -12,15 +17,6 @@ use std::mem::{size_of, MaybeUninit};
 use std::net::{SocketAddr, TcpStream};
 use std::os::fd::{FromRawFd, IntoRawFd};
 use tokio::runtime::Runtime;
-
-#[cfg(target_os = "linux")]
-use libc::{socklen_t, ucred, SO_PEERCRED};
-
-#[cfg(target_os = "macos")]
-use libc::{socklen_t, xucred as ucred};
-
-#[cfg(target_os = "macos")]
-const SO_PEERCRED: libc::c_int = libc::LOCAL_PEERCRED;
 
 static mut DOCKER: Option<Docker> = None;
 static mut RUNTIME: Option<Runtime> = None;
