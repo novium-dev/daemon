@@ -8,11 +8,14 @@ license = "AGPL-3.0-only"
 [package.metadata.deb]
 name = "novium_daemon"
 depends = ["novium_daemon_mariadb_plugin", "adduser>=3.40", "docker.io | docker-ce"]
+conflicts = "novium_daemon_full"
 assets = [["target/release/daemon", "/usr/bin/novium_daemon", "755"]]
 maintainer-scripts = "debian/"
 systemd-units = { unit-name = "novium_daemon", enable = false }
 
 [package.metadata.deb.variants.full]
+name = "novium_daemon_full"
+conflicts = "novium_daemon"
 features = ["full"]
 depends = ["novium_daemon_mariadb_plugin", "adduser>=3.40", "btrfs-progs"]
 
