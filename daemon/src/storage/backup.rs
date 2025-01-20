@@ -225,7 +225,7 @@ async fn restore_backup0(
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
             use std::io::ErrorKind;
-            let target = target_dir.join(&backup_id.to_string());
+            let target = target_dir.join(backup_id.to_string());
             tokio::task::spawn_blocking(move || {
                 libbtrfs::subvolume::remove(&dir.to_string_lossy())?;
                 libbtrfs::subvolume::snapshot(
@@ -382,7 +382,7 @@ async fn backup_to_stream0(
                 .parse()
                 .unwrap(),
             )]);
-            let target = target_dir.join(&backup_id.to_string());
+            let target = target_dir.join(backup_id.to_string());
             Ok((
                 headers,
                 stream_realtime1(compression, target, exclude).await?,
@@ -495,7 +495,7 @@ async fn delete_backup0(
         BackupEntry::Btrfs { .. } => {
             use std::io::ErrorKind;
             return tokio::task::spawn_blocking(move || {
-                let target = target_dir.join(&backup_id.to_string());
+                let target = target_dir.join(backup_id.to_string());
                 libbtrfs::subvolume::remove(&target.to_string_lossy())
                     .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
                 Ok(())
