@@ -65,7 +65,7 @@ bytes.workspace = true
 tokio-util.workspace = true
 serde_yaml.workspace = true
 
-indexmap = "2.7.0"
+indexmap = "2.7.1"
 futures-util = "0.3.31"
 futures = "0.3.31"
 sysinfo = "0.33.1"
