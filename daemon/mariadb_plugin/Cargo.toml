@@ -6,7 +6,7 @@ authors = ["MarkusTieger"]
 license = "AGPL-3.0-only"
 
 [package.metadata.deb]
-name = "novium_daemon_mariadb_plugin"
+name = "novium-daemon-mariadb-plugin"
 depends = ["mariadb-server", "docker.io | docker-ce"]
 assets = [
     [
@@ -16,6 +16,7 @@ assets = [
     ],
 ]
 maintainer-scripts = "debian/"
+section = "database"
 
 [lib]
 crate-type = ["cdylib"]

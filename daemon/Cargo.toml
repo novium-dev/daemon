@@ -6,11 +6,12 @@ authors = ["MarkusTieger"]
 license = "AGPL-3.0-only"
 
 [package.metadata.deb]
-name = "novium_daemon"
+name = "novium-daemon"
 depends = ["novium_daemon_mariadb_plugin", "adduser>=3.40", "docker.io | docker-ce"]
 assets = [["target/release/daemon", "/usr/bin/novium_daemon", "755"]]
 maintainer-scripts = "debian/"
 systemd-units = { unit-name = "novium_daemon", enable = false }
+section = "admin"
 
 [features]
 ssl = []
