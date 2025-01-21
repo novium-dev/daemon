@@ -67,7 +67,7 @@ impl Handler for DaemonSSHHandler {
                     }
                     Err(err) => {
                         debug!("Failed to complete authentication: {:?}", err);
-                        return Err(russh::Error::IO(io::Error::new(ErrorKind::Other, err)));
+                        return Err(russh::Error::IO(std::io::Error::new(ErrorKind::Other, err)));
                     }
                 }
 
