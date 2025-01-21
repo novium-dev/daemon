@@ -166,7 +166,7 @@ version = "0.4.39"
 features = ["serde"]
 
 [workspace.dependencies.uuid]
-version = "1.12.0"
+version = "1.12.1"
 features = ["serde", "v4"]
 
 [workspace.dependencies.pkcs8]
