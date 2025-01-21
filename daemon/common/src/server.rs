@@ -40,13 +40,13 @@ impl Default for ServerStats {
 }
 
 impl ServerStats {
-    pub fn with_max(self, cpu: f32, mem: i64, swap: i64) -> Self {
+    pub fn with_max(self, cpu: f32, ram: i64, swap: i64) -> Self {
         Self {
             cpu: self.cpu,
             ram: self.ram,
             swap: self.swap,
             cpu_max: cpu,
-            ram_max: mem,
+            ram_max: ram,
             swap_max: swap,
         }
     }

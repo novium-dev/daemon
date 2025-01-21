@@ -1,17 +1,14 @@
 use crate::config::StorageEntry;
+use crate::server::watcher::attach;
 use crate::server::FetchedServer;
 use crate::storage::StorageIdentifier;
-use crate::utils::{from_mib, storage_read, ChannelWriteData, StorageError};
+use crate::utils::{from_mib, storage_read, StorageError};
 use crate::{utils, DaemonState, ServerData};
-use async_std::stream::StreamExt;
-use bollard::container::{
-    AttachContainerOptions, Config, CreateContainerOptions, NetworkingConfig, Stats, StatsOptions,
-};
+use bollard::container::{Config, CreateContainerOptions, NetworkingConfig};
 use bollard::models::{EndpointSettings, HostConfig, PortBinding};
 use bollard::Docker;
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, OpenOptions};
-use daemon_common::server::ServerStats;
 use ringbuffer::RingBuffer;
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -19,14 +16,13 @@ use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::{Add, Deref, DerefMut};
+use std::ops::{Deref, DerefMut};
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{Mutex, OwnedRwLockReadGuard};
-use tokio::time::Instant;
 use tracing::warn;
 
 #[allow(unused)]
@@ -290,111 +286,23 @@ impl FetchedServer {
             .await
             .map_err(ServerStartError::Docker)?;
 
-        let result = docker
-            .attach_container::<String>(
-                &Self::container_name(self.id),
-                Some(AttachContainerOptions {
-                    logs: Some(true),
-                    stderr: Some(true),
-                    stdout: Some(true),
-                    stdin: Some(true),
-                    stream: Some(true),
-                    ..AttachContainerOptions::default()
-                }),
-            )
-            .await
-            .map_err(ServerStartError::Docker)?;
-        *server_data.attach_write.lock().await = Some(result.input);
-
-        let mut result2 = docker.stats(
-            &Self::container_name(self.id),
-            Some(StatsOptions {
-                stream: true,
-                one_shot: false,
-            }),
-        );
-
         let cpu_max = self.cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
-        let mem_max = self.ram.map(|ram| ram as i64).unwrap_or(-1);
+        let ram_max = self.ram.map(|ram| ram as i64).unwrap_or(-1);
         let swap_max = self.swap.map(|ram| ram as i64).unwrap_or(-1);
         drop(buffer);
 
         let server_id = self.id;
-        let mut output = result.output;
-        let sender = server_data.sender.deref().clone();
-        let stats_sender = server_data.stats_sender.deref().clone();
-        let buffer = server_data.buffer.clone();
-        let state = state.clone();
-        tokio::task::spawn(async move {
-            let mut next = Instant::now().add(Duration::from_millis(500));
-            loop {
-                tokio::select! {
-                    log = output.next() => {
-                        match log {
-                            Some(Ok(log)) => {
-                                let mut buffer = buffer.lock().await;
-                                Self::console(&sender, buffer.deref_mut(), log.to_string())
-                            },
-                            Some(Err(_err)) => return,
-                            None => break,
-                        }
-                    }
-                    stat = result2.next() => {
-                        if let Some(Ok(stats)) = stat {
-                            let _ = stats_sender.send(ChannelWriteData::Stats(<Stats as Into<ServerStats>>::into(stats).with_max(cpu_max, mem_max, swap_max)));
-                        }
-                    }
-                    _elapsed = tokio::time::sleep_until(next) => {
-                        next = Instant::now().add(Duration::from_millis(500));
-                        let stats_sender = stats_sender.clone();
-                        let docker = docker.clone();
-                        let server_data_arc = server_data_arc.clone();
-                        tokio::task::spawn(async move {
-                            Self::update_status(server_id, &stats_sender, &docker, &server_data_arc).await;
-                        });
-                    }
-                }
-            }
-            drop(storage_lock);
-            let mut failure = if let Ok(inspection) = docker
-                .inspect_container(&Self::container_name(server_id), None)
-                .await
-            {
-                inspection
-                    .state
-                    .unwrap_or_default()
-                    .exit_code
-                    .map(|code| code != 0)
-                    .unwrap_or_default()
-            } else {
-                false
-            };
-            let mut server_data = server_data_arc.lock().await;
-            failure &= !server_data.stopping;
-            server_data.stopping = false;
-            server_data.restart |= failure;
-
-            let do_restart = server_data.restart;
-            if do_restart {
-                server_data.restart = false;
-                tokio::task::spawn(Self::queue_start(
-                    server_id,
-                    state.clone(),
-                    Duration::from_secs(1),
-                ));
-            }
-            let mut buffer = buffer.lock().await;
-            Self::console(&server_data.sender, buffer.deref_mut(), "\n".to_owned());
-            Self::log(&server_data.sender, buffer.deref_mut(), "Server stopped!");
-            drop(buffer);
-            let _ = stats_sender.send(ChannelWriteData::Stats(
-                ServerStats::default().with_max(cpu_max, mem_max, swap_max),
-            ));
-            if !do_restart {
-                tokio::time::sleep(Duration::from_secs(1)).await;
-                Self::update_status0(server_id, &docker, &server_data).await;
-            }
-        });
+        attach(
+            server_id,
+            state,
+            cpu_max,
+            ram_max,
+            swap_max,
+            server_data,
+            server_data_arc,
+            storage_lock,
+        )
+        .await?;
 
         Ok(())
     }

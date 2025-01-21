@@ -3,6 +3,8 @@ use axum::http::StatusCode;
 use daemon_common::server::ServerStats;
 use sqlx::{query_as, Executor, MySql, Pool};
 use std::collections::{HashMap, HashSet};
+use std::error::Error;
+use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::path::PathBuf;
@@ -189,6 +191,23 @@ pub(crate) enum StorageError {
     IO(io::Error),
     Timeout(Elapsed),
     NotFound,
+}
+
+impl Error for StorageError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            StorageError::Sqlx(err) => Some(err),
+            StorageError::IO(err) => Some(err),
+            StorageError::Timeout(err) => Some(err),
+            StorageError::NotFound => None,
+        }
+    }
+}
+
+impl Display for StorageError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        <Self as Debug>::fmt(self, f)
+    }
 }
 
 #[allow(unused)]

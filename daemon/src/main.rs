@@ -8,11 +8,10 @@ use ringbuffer::AllocRingBuffer;
 use russh::server::{Config, Server as SSHServer};
 use signal_hook::iterator::Signals;
 use sqlx::mysql::MySqlPoolOptions;
-use sqlx::{MySql, Pool};
+use sqlx::{query, MySql, Pool};
 use std::collections::HashMap;
 use std::env;
-use std::error::Error;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::process::exit;
 use std::sync::Arc;
@@ -35,10 +34,11 @@ use uuid::Uuid;
 pub use daemon_common as common;
 
 use crate::config::DaemonConfig;
+use crate::server::watcher::attach;
 use crate::server::FetchedServer;
 use crate::storage::StorageIdentifier;
 use crate::terminal::TerminalSession;
-use crate::utils::ChannelWriteData;
+use crate::utils::{storage_read, ChannelWriteData};
 
 mod config;
 #[cfg(feature = "database")]
@@ -64,10 +64,6 @@ struct ApiDoc;
 
 #[tokio::main]
 async fn main() {
-    main0().await.expect("Daemon startup failed")
-}
-
-async fn main0() -> Result<(), Box<dyn Error>> {
     rustls::crypto::ring::default_provider()
         .install_default()
         .unwrap();
@@ -93,7 +89,7 @@ async fn main0() -> Result<(), Box<dyn Error>> {
 
     if env::args().nth(1).is_some_and(|s| s.eq("setup")) {
         let _ = tokio::task::spawn_blocking(setup::setup).await;
-        return Ok(());
+        return;
     }
 
     #[cfg(all(feature = "sentry", not(debug_assertions)))]
@@ -111,18 +107,24 @@ async fn main0() -> Result<(), Box<dyn Error>> {
 
     let mut config_buffer = String::new();
     File::open("config.toml")
-        .await?
+        .await
+        .inspect_err(|_err| error!("Failed to open config file"))
+        .unwrap()
         .read_to_string(&mut config_buffer)
         .await
         .unwrap();
-    let config: DaemonConfig = toml::from_str(&config_buffer)?;
+    let config: DaemonConfig = toml::from_str(&config_buffer)
+        .inspect_err(|_err| error!("Failed to read config file"))
+        .unwrap();
 
     info!("Starting Daemon on version {}", env!("GIT_HASH"));
 
     let servers = HashMap::new();
 
     info!("Connecting to Docker...");
-    let docker = bollard::Docker::connect_with_local_defaults()?;
+    let docker = bollard::Docker::connect_with_local_defaults()
+        .inspect_err(|_err| error!("Failed to connect to docker"))
+        .unwrap();
 
     match docker
         .inspect_network::<String>(crate::common::NETWORK_DEFAULT, None)
@@ -201,8 +203,6 @@ async fn main0() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    info!("Starting Webserver...");
-
     let config = Arc::new(config);
     let state = DaemonState {
         config: config.clone(),
@@ -212,6 +212,103 @@ async fn main0() -> Result<(), Box<dyn Error>> {
         conn: Arc::new(conn),
         client: Arc::new(Client::default()),
     };
+    sql::init(&state.conn)
+        .await
+        .inspect_err(|_err| error!("Failed to initialize sql"))
+        .unwrap();
+
+    if let Ok(containers) = state
+        .docker
+        .list_containers::<String>(None)
+        .await
+        .inspect_err(|err| {
+            warn!(
+                "Failed to scan for running containers... (assuming there are none): {:?}",
+                err
+            )
+        })
+    {
+        let mut servers = state.servers.lock().await;
+
+        let mut restored = 0;
+        for container in containers {
+            let names = container.names.unwrap_or_default();
+            let mut id = None::<u32>;
+            for mut name in names {
+                if let Some(suffix) = name.strip_prefix("/") {
+                    name = suffix.to_string();
+                }
+                if let Some(suffix) = name.strip_prefix(crate::common::CONTAINER_PREFIX) {
+                    if let Ok(container_id) = suffix.parse() {
+                        id = Some(container_id);
+                        break;
+                    }
+                }
+            }
+            if let Some(id) = id {
+                servers.insert(id, Arc::default());
+                let server_data_arc = servers.get(&id).unwrap().clone();
+
+                match query!(
+                    "SELECT `cpu`, `ram`, `swap` FROM `servers` WHERE `id` = ?",
+                    id
+                )
+                .fetch_optional(state.conn.deref())
+                .await
+                .unwrap()
+                {
+                    Some(row) => {
+                        let mut server_data = server_data_arc.lock().await;
+                        let storage_lock = storage_read(
+                            &state.config,
+                            state.conn.deref(),
+                            &state.storages,
+                            StorageIdentifier::Primary(id),
+                            false,
+                        )
+                        .await
+                        .unwrap()
+                        .1;
+                        let cpu_max = row.cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
+                        let ram_max = row.ram.map(|ram| ram as i64).unwrap_or(-1);
+                        let swap_max = row.swap.map(|ram| ram as i64).unwrap_or(-1);
+                        if let Err(err) = attach(
+                            id,
+                            &state,
+                            cpu_max,
+                            ram_max,
+                            swap_max,
+                            server_data.deref_mut(),
+                            server_data_arc.clone(),
+                            storage_lock,
+                        )
+                        .await
+                        {
+                            warn!("Failed to reattach server {}: {:?}", id, err);
+                        } else {
+                            restored += 1;
+                        }
+                    }
+                    None => {
+                        warn!(
+                            "Found server that is missing in database: {}. Killing...",
+                            id
+                        );
+                        let _ = state
+                            .docker
+                            .kill_container::<String>(&FetchedServer::container_name(id), None)
+                            .await;
+                    }
+                }
+            }
+        }
+
+        if restored > 0 {
+            info!("Successfully reattached to {} container", restored);
+        }
+    }
+
+    info!("Starting Webserver...");
 
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
@@ -222,7 +319,7 @@ async fn main0() -> Result<(), Box<dyn Error>> {
     {
         let cors = tower_http::cors::CorsLayer::new()
             .allow_origin(tower_http::cors::AllowOrigin::exact(
-                axum::http::header::HeaderValue::from_str(&config.origin)?,
+                axum::http::header::HeaderValue::from_str(&config.origin).unwrap(),
             ))
             .allow_methods([axum::http::Method::GET])
             .allow_headers(tower_http::cors::AllowHeaders::any());
@@ -251,7 +348,6 @@ async fn main0() -> Result<(), Box<dyn Error>> {
             .layer(SentryHttpLayer::with_transaction());
     }
 
-    sql::init(&state.conn).await?;
     let state_cloned = state.clone();
     let state = Arc::new(state);
 
@@ -392,16 +488,36 @@ async fn main0() -> Result<(), Box<dyn Error>> {
 
     #[cfg(feature = "ssl")]
     if config.ssl.enabled {
-        axum_server::bind_rustls(config.bind.parse()?, config.ssl.as_rustls().await?)
-            .serve(app.into_make_service())
-            .await?;
-        return Ok(());
-    }
-    axum_server::bind(config.bind.parse()?)
+        axum_server::bind_rustls(
+            config
+                .bind
+                .parse()
+                .inspect_err(|_err| error!("Failed to parse socket address!"))
+                .unwrap(),
+            config
+                .ssl
+                .as_rustls()
+                .await
+                .inspect_err(|_err| error!("Failed to parse ssl certs!"))
+                .unwrap(),
+        )
         .serve(app.into_make_service())
-        .await?;
-
-    Ok(())
+        .await
+        .inspect_err(|_err| error!("Failed to serve http server!"))
+        .unwrap();
+        return;
+    }
+    axum_server::bind(
+        config
+            .bind
+            .parse()
+            .inspect_err(|_err| error!("Failed to parse socket address!"))
+            .unwrap(),
+    )
+    .serve(app.into_make_service())
+    .await
+    .inspect_err(|_err| error!("Failed to serve http server!"))
+    .unwrap();
 }
 
 #[derive(Clone)]

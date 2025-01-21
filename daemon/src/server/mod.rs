@@ -15,6 +15,7 @@ pub(crate) mod start;
 pub(crate) mod status;
 pub(crate) mod stop;
 pub(crate) mod terminal;
+pub(crate) mod watcher;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct FetchedServer {
