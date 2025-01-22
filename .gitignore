@@ -22,5 +22,6 @@ node_modules/
 
 # React Router
 frontend/.react-router/
+frontend/.svelte-kit/
 build/*
 gen/*
