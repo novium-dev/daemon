@@ -124,7 +124,7 @@ version = "0.7.1"
 features = ["tls-rustls"]
 
 [workspace.dependencies.axum]
-version = "0.8.2"
+version = "0.8.1"
 features = ["json", "macros", "http2"]
 
 [workspace.dependencies.axum-extra]
@@ -179,10 +179,13 @@ features = ["serde", "rand_core", "pkcs8", "pem"]
 
 # No axum 0.8 support yet without git
 [workspace.dependencies.tonic]
-git = "https://github.com/hyperium/tonic.git"
+git = "https://github.com/MarkusTieger/tonic.git"
 
 [workspace.dependencies.tonic-build]
-git = "https://github.com/hyperium/tonic.git"
+git = "https://github.com/MarkusTieger/tonic.git"
+
+[workspace.dependencies.tonic-web]
+git = "https://github.com/MarkusTieger/tonic.git"
 
 [workspace.dependencies.prost]
 version = "0.13.4"
