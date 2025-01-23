@@ -186,6 +186,7 @@ git = "https://github.com/MarkusTieger/tonic.git"
 
 [workspace.dependencies.tonic-web]
 git = "https://github.com/MarkusTieger/tonic.git"
+features = ["axum"]
 
 [workspace.dependencies.prost]
 version = "0.13.4"

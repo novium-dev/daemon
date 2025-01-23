@@ -1,0 +1,14 @@
+#!/bin/bash
+set -e
+
+# shellcheck source=/dev/null
+. /usr/share/debconf/confmodule
+
+export PATH=$PATH:/sbin:/usr/sbin:/bin:/usr/bin
+
+case "$1" in
+  configure)
+    # The MariaDB Plugin needs access to the docker daemon to identify the servers
+    adduser mysql docker
+
+#DEBHELPER#

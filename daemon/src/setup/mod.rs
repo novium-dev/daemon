@@ -7,8 +7,9 @@ use daemon_common::payload::node::{BackupStorage, NodeRegistrationRequest, Serve
 use ed25519_dalek::ed25519::signature::rand_core::RngCore;
 #[cfg(feature = "user")]
 use ed25519_dalek::VerifyingKey;
+use inquire::autocompletion::Replacement;
 use inquire::validator::{ErrorMessage, StringValidator, Validation};
-use inquire::{CustomUserError, Text};
+use inquire::{Autocomplete, CustomUserError, Text};
 use rand::rngs::OsRng;
 use regex::Regex;
 use reqwest::{Client, Url};
@@ -38,22 +39,48 @@ struct RegexValidator(Regex);
 struct LengthValidator(RangeInclusive<usize>);
 
 pub(crate) fn setup() {
+    println!("Daemon Setup");
+
+    #[cfg(not(debug_assertions))]
+    {
+        use std::os::unix::fs;
+        if !std::fs::exists("/var/lib/novium_daemon").unwrap() {
+            std::fs::create_dir_all("/var/lib/novium_daemon").unwrap();
+        }
+        fs::chown(
+            "/var/lib/novium_daemon",
+            Some(crate::common::CONTAINER_DEFAULT_UID as u32),
+            Some(crate::common::CONTAINER_DEFAULT_GID as u32),
+        )
+        .unwrap();
+        env::set_current_dir(PathBuf::from("/var/lib/novium_daemon")).unwrap();
+        users::switch::set_effective_gid(crate::common::CONTAINER_DEFAULT_GID as u32).unwrap();
+        users::switch::set_effective_uid(crate::common::CONTAINER_DEFAULT_UID as u32).unwrap();
+    }
+
     match File::open("config.toml") {
-        Ok(file) => update(file),
+        Ok(file) => {
+            println!(
+                "\nThere already is an existing configuration for the daemon? Do you want to apply config updates or start a new setup?"
+            );
+            if Text::new(" ")
+                .with_validator(RegexValidator(Regex::new("Update|New").unwrap()))
+                .with_autocomplete(VecAutoComplete(&["Update", "New"]))
+                .prompt()
+                .unwrap()
+                .eq("New")
+            {
+                new()
+            } else {
+                update(file)
+            }
+        }
         Err(_) => new(),
     }
 }
 
 fn default() -> (Url, String) {
-    println!("Daemon Setup");
-
-    #[cfg(target_os = "linux")]
-    if !std::fs::exists("/bin/vim").unwrap() {
-        println!("Error: Vim is not installed. Vim is required for some interactions");
-        exit(-1);
-    }
-
-    let mut args = env::args().skip(2);
+    let mut args = env::args().skip(2); // Skip <current_binary_path> setup
 
     let backend = args.next().unwrap_or_else(|| {
         println!(
@@ -441,5 +468,22 @@ impl StringValidator for LengthValidator {
         } else {
             Validation::Invalid(ErrorMessage::Default)
         })
+    }
+}
+
+#[derive(Copy, Clone)]
+struct VecAutoComplete(&'static [&'static str]);
+
+impl Autocomplete for VecAutoComplete {
+    fn get_suggestions(&mut self, _input: &str) -> Result<Vec<String>, CustomUserError> {
+        Ok(self.0.iter().map(|str| String::from(*str)).collect())
+    }
+
+    fn get_completion(
+        &mut self,
+        _input: &str,
+        highlighted_suggestion: Option<String>,
+    ) -> Result<Replacement, CustomUserError> {
+        Ok(highlighted_suggestion)
     }
 }
