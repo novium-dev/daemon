@@ -28,6 +28,11 @@ case "$1" in
     fi
 
     adduser novium_daemon docker
+  *)
+    echo "postinst called with unknown argument '$1'" 1>&2
+    exit 1
+    ;;
+esac
 
 #DEBHELPER#
 
