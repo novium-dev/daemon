@@ -10,6 +10,7 @@ case "$1" in
   configure)
     # The MariaDB Plugin needs access to the docker daemon to identify the servers
     adduser mysql docker
+    ;;
   *)
     echo "postinst called with unknown argument '$1'" 1>&2
     exit 1
