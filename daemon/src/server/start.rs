@@ -260,10 +260,10 @@ impl FetchedServer {
 
                         cpu_period: self.cpu.map(|_| 100000),
                         cpu_quota: self.cpu.map(|cpu| (100000.0 * cpu) as i64),
-                        memory: self.ram.map(utils::from_mib),
+                        memory: self.ram.map(utils::from_mib).map(|ram| ram as i64),
                         memory_swap: self.ram.map(|data| {
                             if let Some(swap) = self.swap {
-                                from_mib(data + swap)
+                                from_mib(data + swap) as i64
                             } else {
                                 -1
                             }
@@ -276,7 +276,6 @@ impl FetchedServer {
 
                         ..HostConfig::default()
                     }),
-
                     ..Config::default()
                 },
             )

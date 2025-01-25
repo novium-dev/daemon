@@ -65,7 +65,11 @@ pub(crate) enum StorageEntry {
     Directory { path: String },
     #[cfg(feature = "btrfs")]
     #[serde(rename = "btrfs")]
-    Btrfs { group: String, path: String },
+    Btrfs {
+        group: String,
+        path: String,
+        quota: bool,
+    },
 }
 
 impl StorageEntry {

@@ -24,8 +24,24 @@ use crate::storage::{ensure_exists, StorageIdentifier};
 use crate::web::sql_error_to_http;
 use crate::ServerData;
 
-pub(crate) fn from_mib(mib: u32) -> i64 {
-    mib as i64 * 1024 * 1024
+pub(crate) trait ResourceData {
+    fn into_u64(self) -> u64;
+}
+
+impl ResourceData for u32 {
+    fn into_u64(self) -> u64 {
+        self as u64
+    }
+}
+
+impl ResourceData for u64 {
+    fn into_u64(self) -> u64 {
+        self
+    }
+}
+
+pub(crate) fn from_mib(mib: impl ResourceData) -> u64 {
+    mib.into_u64() * 1024 * 1024
 }
 
 #[cfg(feature = "database")]
@@ -128,21 +144,21 @@ pub(crate) async fn storage_read<'a>(
     else {
         return Err(StorageError::NotFound);
     };
-    let path = ensure_exists(storage, entry, disk)
-        .await
-        .map_err(StorageError::IO)?;
-    if timeout {
-        Ok((
-            path,
+    let (guard, backup_exclude, entry) = if timeout {
+        (
             tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
                 .await
                 .map_err(StorageError::Timeout)?,
             backup_exclude,
             entry,
-        ))
+        )
     } else {
-        Ok((path, lock.read_owned().await, backup_exclude, entry))
-    }
+        (lock.read_owned().await, backup_exclude, entry)
+    };
+    let path = ensure_exists(storage, entry, disk)
+        .await
+        .map_err(StorageError::IO)?;
+    Ok((path, guard, backup_exclude, entry))
 }
 
 #[allow(unused)]
@@ -167,24 +183,23 @@ pub(crate) async fn storage_write<'a>(
     else {
         return Err(StorageError::NotFound);
     };
-    let path = ensure_exists(storage, entry, disk)
-        .await
-        .map_err(StorageError::IO)?;
-    if timeout {
-        Ok((
-            path,
+    let (guard, backup_exclude, entry) = if timeout {
+        (
             tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
                 .await
                 .map_err(StorageError::Timeout)?,
             disk,
             entry,
-        ))
+        )
     } else {
-        Ok((path, lock.write_owned().await, disk, entry))
-    }
+        (lock.write_owned().await, disk, entry)
+    };
+    let path = ensure_exists(storage, entry, disk)
+        .await
+        .map_err(StorageError::IO)?;
+    Ok((path, guard, backup_exclude, entry))
 }
 
-#[allow(unused)]
 #[derive(Debug)]
 pub(crate) enum StorageError {
     Sqlx(sqlx::Error),
@@ -210,7 +225,6 @@ impl Display for StorageError {
     }
 }
 
-#[allow(unused)]
 impl StorageError {
     pub(crate) fn into_http(self) -> StatusCode {
         match self {

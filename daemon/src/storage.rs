@@ -1,9 +1,12 @@
 pub(crate) mod backup;
 
 use crate::config::StorageEntry;
+use crate::utils;
 use std::io;
+use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use tokio::fs;
+use tokio::fs::File;
 use tracing::error;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
@@ -29,7 +32,7 @@ impl StorageIdentifier {
 pub(crate) async fn ensure_exists(
     id: StorageIdentifier,
     storage: &StorageEntry,
-    _disk: Option<u64>,
+    disk: Option<u64>,
 ) -> Result<String, io::Error> {
     let base = PathBuf::from(storage.path());
     let dir = base.join(id.as_pathbuf());
@@ -53,7 +56,6 @@ pub(crate) async fn ensure_exists(
                         error!("Unable to create parents of storage directory: {:?}", err)
                     })?;
                 }
-                // TODO: Quota
                 tokio::task::spawn_blocking(move || {
                     libbtrfs::subvolume::new(&dir.to_string_lossy())?;
                     Ok::<(), io::Error>(())
@@ -68,8 +70,27 @@ pub(crate) async fn ensure_exists(
     }
 
     #[cfg(feature = "btrfs")]
-    if let StorageEntry::Btrfs { .. } = &storage {
-        // TODO: Update quota
+    if let StorageEntry::Btrfs { quota: true, .. } = &storage {
+        use libbtrfs::btrfs::*;
+        let args = btrfs_ioctl_qgroup_limit_args {
+            qgroupid: 0,
+            lim: btrfs_qgroup_limit {
+                flags: BTRFS_QGROUP_LIMIT_RFER_CMPR
+                    | BTRFS_QGROUP_LIMIT_EXCL_CMPR
+                    | BTRFS_QGROUP_LIMIT_MAX_RFER,
+                max_rfer: disk.map(utils::from_mib).unwrap_or(u64::MAX), // This is the value for no limit
+
+                rsv_rfer: 0,
+                rsv_excl: 0,
+                max_excl: 0,
+            },
+        };
+        let file = File::open(&dir).await?;
+
+        let ret = unsafe { libc::ioctl(file.as_raw_fd(), BTRFS_IOC_QGROUP_LIMIT, &args) };
+        if ret < 0 {
+            return Err(io::Error::last_os_error());
+        }
     }
     Ok(fs::canonicalize(dir)
         .await
