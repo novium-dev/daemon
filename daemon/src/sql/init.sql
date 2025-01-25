@@ -37,6 +37,16 @@ CREATE TABLE IF NOT EXISTS `server_capability_drop`
   FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
 ) ENGINE=INNODB;
 
+CREATE TABLE IF NOT EXISTS `server_environment`
+(
+  `server` INT(255) UNSIGNED NOT NULL,
+  `key` VARCHAR(255) NOT NULL,
+  `value` VARCHAR(255) NOT NULL,
+  PRIMARY KEY (`server`, `key`),
+  CONSTRAINT VALIDATE CHECK (`key` NOT LIKE '%=%'),
+  FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
+) ENGINE=INNODB;
+
 CREATE TABLE IF NOT EXISTS `server_image_tags`
 (
   `server` INT(255) UNSIGNED NOT NULL,

@@ -38,6 +38,8 @@ pub struct ServerBuildPayload {
     pub cap_add: Vec<String>,
     pub cap_drop: Vec<String>,
 
+    pub environment: HashMap<String, String>,
+
     pub uid: Option<u16>,
     pub gid: Option<u16>,
 }

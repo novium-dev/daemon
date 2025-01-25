@@ -323,6 +323,12 @@ async fn modify0(
         .execute(&mut **tx)
         .await?;
         query!(
+            "DELETE FROM `server_environment` WHERE `server` = ?",
+            server_id
+        )
+        .execute(&mut **tx)
+        .await?;
+        query!(
             "DELETE FROM `server_image_tags` WHERE `server` = ?",
             server_id
         )
@@ -393,6 +399,16 @@ async fn modify0(
                 "INSERT INTO `server_capability_drop` (`server`, `capability`) VALUES (?, ?)",
                 server_id,
                 cap
+            )
+            .execute(&mut **tx)
+            .await?;
+        }
+        for (key, val) in &build.environment {
+            query!(
+                "INSERT INTO `server_environment` (`server`, `key`, `value`) VALUES (?, ?, ?)",
+                server_id,
+                key,
+                val,
             )
             .execute(&mut **tx)
             .await?;

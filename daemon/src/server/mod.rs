@@ -33,6 +33,8 @@ pub(crate) struct FetchedServer {
     pub(crate) cap_add: HashSet<String>,
     pub(crate) cap_drop: HashSet<String>,
 
+    pub(crate) environment: HashMap<String, String>,
+
     pub(crate) uid: Option<u16>,
     pub(crate) gid: Option<u16>,
 
@@ -100,6 +102,16 @@ impl Server {
         .fetch_all(conn)
         .await?
         .into_iter()
+        .collect();
+
+        let environment: HashMap<String, String> = query!(
+            "SELECT `key`, `value` FROM `server_environment` WHERE `server` = ?",
+            self.id
+        )
+        .fetch_all(conn)
+        .await?
+        .into_iter()
+        .map(|row| (row.key, row.value))
         .collect();
 
         let files_write_entries = query!(
@@ -220,6 +232,8 @@ impl Server {
 
             cap_add,
             cap_drop,
+
+            environment,
 
             storage: self.storage,
             internet: self.internet,

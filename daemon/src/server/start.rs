@@ -199,6 +199,14 @@ impl FetchedServer {
             "Creating Environment...",
         );
 
+        let mut env: HashMap<String, String> =
+            HashMap::from_iter([("TERM".to_owned(), "xterm-256color".to_owned())]);
+        env.extend(self.environment.clone());
+        let env = env
+            .into_iter()
+            .map(|(key, value)| format!("{}={}", key, value))
+            .collect();
+
         docker
             .create_container(
                 Some(CreateContainerOptions {
@@ -221,7 +229,7 @@ impl FetchedServer {
                     attach_stderr: Some(true),
                     attach_stdin: Some(true),
 
-                    env: Some(vec!["TERM=xterm-256color".to_owned()]),
+                    env: Some(env),
 
                     networking_config: Some(NetworkingConfig {
                         endpoints_config: networks,
