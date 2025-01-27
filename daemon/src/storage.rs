@@ -76,6 +76,8 @@ pub(crate) async fn ensure_exists(
     #[cfg(feature = "btrfs")]
     if let StorageEntry::Btrfs { quota: true, .. } = &storage {
         use libbtrfs::btrfs::*;
+        use std::io::ErrorKind;
+
         let args = btrfs_ioctl_qgroup_limit_args {
             qgroupid: 0,
             lim: btrfs_qgroup_limit {
@@ -91,7 +93,11 @@ pub(crate) async fn ensure_exists(
         };
         let file = File::open(&dir).await?;
 
-        let ret = unsafe { libc::ioctl(file.as_raw_fd(), BTRFS_IOC_QGROUP_LIMIT, &args) };
+        let ret = tokio::task::spawn_blocking(move || unsafe {
+            libc::ioctl(file.as_raw_fd(), BTRFS_IOC_QGROUP_LIMIT, &args)
+        })
+        .await
+        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
         if ret < 0 {
             return Err(io::Error::last_os_error());
         }
