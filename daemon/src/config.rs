@@ -6,9 +6,9 @@ use base64::prelude::*;
 use ed25519_dalek::VerifyingKey;
 use reqwest::Url;
 #[cfg(feature = "ssh")]
-use russh_keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
+use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
 #[cfg(feature = "ssh")]
-use russh_keys::PrivateKey;
+use russh::keys::PrivateKey;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
@@ -357,9 +357,9 @@ pub(crate) enum SSHHostKey {
 #[cfg(feature = "ssh")]
 impl SSHHostKey {
     pub(crate) async fn as_russh_key(&self) -> Result<PrivateKey, anyhow::Error> {
+        use ed25519_dalek::ed25519::signature::rand_core::OsRng;
         use pkcs8::LineEnding;
-        use rand::rngs::OsRng;
-        use russh_keys::ssh_encoding::{DecodePem, EncodePem};
+        use russh::keys::ssh_encoding::{DecodePem, EncodePem};
         use std::io::ErrorKind;
         use tokio::fs::{File, OpenOptions};
         use tokio::io::{AsyncReadExt, AsyncWriteExt};

@@ -1,7 +1,7 @@
 use crate::DaemonState;
 use axum::http;
 use daemon_common::ssh::DaemonBackendAuthResponse;
-use russh_keys::{HashAlg, PublicKey};
+use russh::keys::{HashAlg, PublicKey};
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::io;

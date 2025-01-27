@@ -4,13 +4,13 @@ use axum::Router;
 use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
 use daemon_common::payload::node::{BackupStorage, NodeRegistrationRequest, ServerStorage};
-use ed25519_dalek::ed25519::signature::rand_core::RngCore;
 #[cfg(feature = "user")]
 use ed25519_dalek::VerifyingKey;
 use inquire::autocompletion::Replacement;
 use inquire::validator::{ErrorMessage, StringValidator, Validation};
 use inquire::{Autocomplete, CustomUserError, Text};
 use rand::rngs::OsRng;
+use rand::TryRngCore;
 use regex::Regex;
 use reqwest::{Client, Url};
 use sqlx::{query_scalar, Connection, MySqlConnection, QueryBuilder};
@@ -186,7 +186,7 @@ pub(crate) fn new() {
     }
 
     let mut bytes = [0; 128];
-    OsRng.fill_bytes(&mut bytes);
+    OsRng.try_fill_bytes(&mut bytes).unwrap();
     let token = BASE64_STANDARD.encode(bytes);
 
     println!("\nPlease enter the node identification.\nThis is a string for the identification of the node in the backend and for authentication. It should not be visible to the user.");

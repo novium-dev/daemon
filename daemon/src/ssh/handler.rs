@@ -4,14 +4,13 @@ use crate::storage::sync::{storage_read, StorageLockData};
 use crate::storage::StorageIdentifier;
 use crate::terminal::update_size;
 use crate::{DaemonState, ServerData};
-use async_trait::async_trait;
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::Dir;
 use daemon_common::server::BackendAuthServerPermissions;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
+use russh::keys::{HashAlg, PublicKey};
 use russh::server::{Auth, Handler, Msg, Session};
 use russh::{Channel, ChannelId, Pty};
-use russh_keys::{HashAlg, PublicKey};
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::ops::Deref;
@@ -38,7 +37,6 @@ pub struct DaemonSSHHandler {
     pub(crate) auth: Option<DaemonBackendAuthResponse>,
 }
 
-#[async_trait]
 impl Handler for DaemonSSHHandler {
     type Error = russh::Error;
 
