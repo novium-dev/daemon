@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS `servers`
   `uid` SMALLINT UNSIGNED DEFAULT NULL,
   `gid` SMALLINT UNSIGNED DEFAULT NULL,
   FOREIGN KEY (`image`) REFERENCES `images`(`id`),
-  CONSTRAINT MAX_DISK CHECK ( `disk` <= ((POWER(2, 64))/2)-1 ) -- i64 is used heavy (where -1 means null) in the daemon. Do not allow disk limits that would overflow
+  CONSTRAINT MAX_DISK CHECK ( (`disk`*1024*1024) <= ((POWER(2, 64))/2)-1 ) -- i64 is used heavy (where -1 means null) in the daemon. Do not allow disk limits that would overflow
 );
 
 CREATE TABLE IF NOT EXISTS `server_capability_add`

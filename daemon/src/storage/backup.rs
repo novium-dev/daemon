@@ -14,7 +14,8 @@ use std::io;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
@@ -208,10 +209,18 @@ pub(crate) async fn restore_backup(
         .ok_or(StatusCode::NOT_FOUND)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
-    restore_backup0(id, storage, path, backup_id, backup, disk)
-        .await
-        .inspect_err(|err| error!("Failed to restore backup: {:?}", err))
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    restore_backup0(
+        id,
+        storage,
+        path,
+        backup_id,
+        backup,
+        disk,
+        storage_value.clone(),
+    )
+    .await
+    .inspect_err(|err| error!("Failed to restore backup: {:?}", err))
+    .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     storage_value.0.store(-1, Ordering::Relaxed);
     drop(lock);
     Ok(())
@@ -225,6 +234,7 @@ async fn restore_backup0(
     backup_id: i64,
     backup: &BackupEntry,
     disk: Option<u64>,
+    value: Arc<(AtomicI64, AtomicI64)>,
 ) -> Result<(), io::Error> {
     let dir = PathBuf::from(path);
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
@@ -237,7 +247,7 @@ async fn restore_backup0(
             let decoder = compression.create_decoder(BufReader::new(file));
             let mut archive = Archive::new(decoder);
             storage::delete(storage, id).await?;
-            storage::ensure_exists(id, storage, disk).await?;
+            storage::ensure_exists(id, storage, value, disk).await?;
             archive.unpack(&dir).await?;
         }
         #[cfg(feature = "btrfs")]

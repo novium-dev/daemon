@@ -6,6 +6,8 @@ use crate::utils;
 use std::io;
 use std::os::fd::AsRawFd;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
 use tokio::fs;
 use tokio::fs::File;
 use tracing::error;
@@ -33,6 +35,7 @@ impl StorageIdentifier {
 pub(crate) async fn ensure_exists(
     id: StorageIdentifier,
     storage: &StorageEntry,
+    value: Arc<(AtomicI64, AtomicI64)>,
     disk: Option<u64>,
 ) -> Result<String, io::Error> {
     let base = PathBuf::from(storage.path());
@@ -93,6 +96,10 @@ pub(crate) async fn ensure_exists(
             return Err(io::Error::last_os_error());
         }
     }
+    value
+        .1
+        .store(disk.map(|i| i as i64).unwrap_or(-1), Ordering::Relaxed);
+
     Ok(fs::canonicalize(dir)
         .await
         .inspect_err(|err| error!("Unable to canonicalize storage directory: {:?}", err))?

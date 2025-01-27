@@ -101,7 +101,7 @@ pub(crate) async fn storage_read<'a>(
     } else {
         lock.read_owned().await
     };
-    let path = ensure_exists(storage, entry, disk)
+    let path = ensure_exists(storage, entry, value.clone(), disk)
         .await
         .map_err(StorageError::IO)?;
     Ok(StorageLockData {
@@ -136,7 +136,7 @@ pub(crate) async fn storage_write<'a>(
     } else {
         lock.write_owned().await
     };
-    let path = ensure_exists(storage, entry, disk)
+    let path = ensure_exists(storage, entry, value.clone(), disk)
         .await
         .map_err(StorageError::IO)?;
     Ok(StorageLockData {

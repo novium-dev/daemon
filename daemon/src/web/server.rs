@@ -257,6 +257,11 @@ pub(crate) async fn delete_server(
                 if let Some(storage) = state.config.storage.get(&server.storage) {
                     let _ = storage::delete(storage, StorageIdentifier::Primary(server_id)).await;
                 }
+                state
+                    .storages
+                    .lock()
+                    .await
+                    .remove(&StorageIdentifier::Primary(server_id));
             });
 
             Ok(())
