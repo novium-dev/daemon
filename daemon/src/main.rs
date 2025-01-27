@@ -397,6 +397,8 @@ async fn main() {
         });
     }
 
+    storage::watcher::run(state_cloned.clone()).await;
+
     tokio::task::spawn(ctlsock::run(state_cloned));
 
     let state1 = state.clone();
@@ -540,6 +542,7 @@ pub(crate) struct DaemonState {
     pub(crate) client: Arc<Client>,
 }
 
+#[derive(Clone)]
 pub(crate) struct StorageData {
     pub(crate) lock: Arc<RwLock<()>>,
     pub(crate) value: Arc<(AtomicI64, AtomicI64)>,

@@ -1,0 +1,137 @@
+use crate::config::StorageEntry;
+use crate::storage::StorageIdentifier;
+use crate::utils::ChannelWriteData;
+use crate::{DaemonState, StorageData};
+use daemon_common::server::ServerStats;
+use sqlx::__rt::timeout;
+use sqlx::query;
+use std::collections::HashMap;
+use std::ops::Deref;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicI64, Ordering};
+use std::sync::Arc;
+use std::time::Duration;
+use tokio::sync::broadcast::Sender;
+use tokio::task::JoinSet;
+use tracing::warn;
+
+pub(crate) async fn run(state: DaemonState) {
+    let state2 = state.clone();
+    for (storage_id, storage_entry) in state.config.storage.clone() {
+        tokio::task::spawn(watch(state2.clone(), storage_id, storage_entry));
+    }
+}
+
+async fn resolve(
+    state: &DaemonState,
+    storage_id: String,
+    storage_entry: &StorageEntry,
+) -> Option<
+    HashMap<
+        StorageIdentifier,
+        (
+            PathBuf,
+            Option<f32>,
+            Option<u32>,
+            Option<u32>,
+            StorageData,
+            Option<Arc<Sender<ChannelWriteData>>>,
+        ),
+    >,
+> {
+    type ResourceInfo = (Option<f32>, Option<u32>, Option<u32>, Option<u64>);
+    let servers: HashMap<u32, ResourceInfo> = match query!(
+        "SELECT `id`, `cpu`, `ram`, `swap`, `disk` FROM `servers` WHERE `storage` = ?",
+        &storage_id
+    )
+    .fetch_all(state.conn.deref())
+    .await
+    {
+        Ok(servers) => servers
+            .into_iter()
+            .map(|row| (row.id, (row.cpu, row.ram, row.swap, row.disk)))
+            .collect(),
+        Err(err) => {
+            warn!("Failed to retrieve servers list: {:?}", err);
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            return None;
+        }
+    };
+    let mut available = HashMap::new();
+    for (id, (cpu, ram, swap, disk)) in servers {
+        let identifier = StorageIdentifier::Primary(id);
+        let path = PathBuf::from(storage_entry.path()).join(identifier.as_pathbuf());
+
+        if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+            continue;
+        }
+        let mut storages = state.storages.lock().await; // acquire lock multiple times, because the try_exists probably takes some time
+        let storage_data = storages
+            .entry(identifier)
+            .or_insert(StorageData {
+                lock: Arc::default(),
+                stats_lock: Arc::default(),
+                value: Arc::new((
+                    AtomicI64::new(-1),
+                    AtomicI64::new(disk.map(|i| i as i64).unwrap_or(-1)),
+                )),
+            })
+            .clone();
+        let servers = state.servers.lock().await;
+        let sender = match servers.get(&id) {
+            None => None,
+            Some(sender) => Some(sender.lock().await.stats_sender.clone()),
+        };
+        available.insert(identifier, (path, cpu, ram, swap, storage_data, sender));
+    }
+
+    Some(available)
+}
+
+pub(crate) async fn watch(state: DaemonState, storage_id: String, storage_entry: StorageEntry) {
+    loop {
+        let Some(storages) = resolve(&state, storage_id.clone(), &storage_entry).await else {
+            tokio::time::sleep(Duration::from_secs(30)).await;
+            continue;
+        };
+
+        let mut quota = false;
+        #[cfg(feature = "btrfs")]
+        if let StorageEntry::Btrfs { quota: true, .. } = storage_entry {
+            quota = true;
+            // TODO: Update through quota
+        }
+
+        if !quota {
+            // TODO: Update through directory scan (in a 30 minute period)
+        }
+
+        let mut join = JoinSet::new();
+        for (_id, (_path, cpu, ram, swap, data, sender)) in storages {
+            join.spawn(async move {
+                let stats_guard = timeout(Duration::from_millis(100), data.stats_lock.lock()).await;
+                if stats_guard.is_ok() {
+                    if let Some(sender) = sender {
+                        let cpu_max = cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
+                        let ram_max = ram.map(|ram| ram as i64).unwrap_or(-1);
+                        let swap_max = swap.map(|ram| ram as i64).unwrap_or(-1);
+
+                        let _ = sender.send(ChannelWriteData::Stats(
+                            ServerStats::default()
+                                .with_disk(data.value.0.load(Ordering::Relaxed))
+                                .with_max(
+                                    cpu_max,
+                                    ram_max,
+                                    swap_max,
+                                    data.value.1.load(Ordering::Relaxed),
+                                ),
+                        ));
+                    }
+                }
+            });
+        }
+        join.join_all().await;
+
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+}

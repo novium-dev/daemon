@@ -1,5 +1,6 @@
 pub(crate) mod backup;
 pub(crate) mod sync;
+pub(crate) mod watcher;
 
 use crate::config::StorageEntry;
 use crate::utils;

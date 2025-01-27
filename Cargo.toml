@@ -190,3 +190,6 @@ features = ["axum"]
 
 [workspace.dependencies.prost]
 version = "0.13.4"
+
+[profile.dev.package.sqlx-macros]
+opt-level = 3
