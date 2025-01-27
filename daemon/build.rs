@@ -10,4 +10,10 @@ fn main() {
     let git_hash = String::from_utf8(output.stdout).unwrap();
 
     println!("cargo:rustc-env=GIT_HASH={}", git_hash);
+
+    #[cfg(target_os = "linux")]
+    println!("cargo:rustc-env=DATABASE_URL=mysql://root@localhost/daemon?socket=mysql/sockets/mysqld.sock");
+
+    #[cfg(target_os = "macos")]
+    println!("cargo:rustc-env=DATABASE_URL=mysql://root@mysql.mac.orb.local/daemon");
 }
