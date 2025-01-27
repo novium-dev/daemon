@@ -10,6 +10,7 @@ use daemon_common::server::ServerStats;
 use ringbuffer::AllocRingBuffer;
 use std::ops::{Add, Deref, DerefMut};
 use std::pin::Pin;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::Sender;
@@ -26,6 +27,8 @@ pub(crate) async fn attach(
     server_data: &mut ServerData,
     server_data_arc: Arc<Mutex<ServerData>>,
     storage_lock: OwnedRwLockReadGuard<(), ()>,
+    storage_value: Arc<(AtomicI64, AtomicI64)>,
+    storage_stats_lock: Arc<Mutex<()>>,
 ) -> Result<(), ServerStartError> {
     let result = state
         .docker
@@ -57,7 +60,7 @@ pub(crate) async fn attach(
     let buffer = server_data.buffer.clone();
     let state = state.clone();
 
-    watch(
+    tokio::task::spawn(watch(
         server_id,
         result.output,
         sender,
@@ -70,8 +73,9 @@ pub(crate) async fn attach(
         result2,
         server_data_arc,
         storage_lock,
-    )
-    .await;
+        storage_value,
+        storage_stats_lock,
+    ));
     Ok(())
 }
 
@@ -89,76 +93,85 @@ pub(crate) async fn watch(
     mut result2: impl Stream<Item = Result<Stats, Error>> + Sized + Send + Unpin + 'static,
     server_data_arc: Arc<Mutex<ServerData>>,
     storage_lock: OwnedRwLockReadGuard<(), ()>,
+    storage_value: Arc<(AtomicI64, AtomicI64)>,
+    storage_stats_lock: Arc<Mutex<()>>,
 ) {
-    tokio::task::spawn(async move {
-        let mut next = Instant::now().add(Duration::from_millis(500));
-        loop {
-            tokio::select! {
-                log = output.next() => {
-                    match log {
-                        Some(Ok(log)) => {
-                            let mut buffer = buffer.lock().await;
-                            FetchedServer::console(&sender, buffer.deref_mut(), log.to_string())
-                        },
-                        Some(Err(_err)) => return,
-                        None => break,
-                    }
-                }
-                stat = result2.next() => {
-                    if let Some(Ok(stats)) = stat {
-                        let _ = stats_sender.send(ChannelWriteData::Stats(<Stats as Into<ServerStats>>::into(stats).with_max(cpu_max, ram_max, swap_max)));
-                    }
-                }
-                _elapsed = tokio::time::sleep_until(next) => {
-                    next = Instant::now().add(Duration::from_millis(500));
-                    let stats_sender = stats_sender.clone();
-                    let docker = state.docker.clone();
-                    let server_data_arc = server_data_arc.clone();
-                    tokio::task::spawn(async move {
-                        FetchedServer::update_status(server_id, &stats_sender, &docker, &server_data_arc).await;
-                    });
+    let storage_stats_guard = storage_stats_lock.lock().await;
+    let mut next = Instant::now().add(Duration::from_millis(500));
+    loop {
+        tokio::select! {
+            log = output.next() => {
+                match log {
+                    Some(Ok(log)) => {
+                        let mut buffer = buffer.lock().await;
+                        FetchedServer::console(&sender, buffer.deref_mut(), log.to_string())
+                    },
+                    Some(Err(_err)) => return,
+                    None => break,
                 }
             }
+            stat = result2.next() => {
+                if let Some(Ok(stats)) = stat {
+                    let _ = stats_sender.send(ChannelWriteData::Stats(<Stats as Into<ServerStats>>::into(stats).with_disk(storage_value.0.load(Ordering::Relaxed)).with_max(cpu_max, ram_max, swap_max, storage_value.1.load(Ordering::Relaxed))));
+                }
+            }
+            _elapsed = tokio::time::sleep_until(next) => {
+                next = Instant::now().add(Duration::from_millis(500));
+                let stats_sender = stats_sender.clone();
+                let docker = state.docker.clone();
+                let server_data_arc = server_data_arc.clone();
+                tokio::task::spawn(async move {
+                    FetchedServer::update_status(server_id, &stats_sender, &docker, &server_data_arc).await;
+                });
+            }
         }
-        drop(storage_lock);
-        let mut failure = if let Ok(inspection) = state
-            .docker
-            .inspect_container(&FetchedServer::container_name(server_id), None)
-            .await
-        {
-            inspection
-                .state
-                .unwrap_or_default()
-                .exit_code
-                .map(|code| code != 0)
-                .unwrap_or_default()
-        } else {
-            false
-        };
-        let mut server_data = server_data_arc.lock().await;
-        failure &= !server_data.stopping;
-        server_data.stopping = false;
-        server_data.restart |= failure;
+    }
+    drop(storage_lock);
+    let mut failure = if let Ok(inspection) = state
+        .docker
+        .inspect_container(&FetchedServer::container_name(server_id), None)
+        .await
+    {
+        inspection
+            .state
+            .unwrap_or_default()
+            .exit_code
+            .map(|code| code != 0)
+            .unwrap_or_default()
+    } else {
+        false
+    };
+    let mut server_data = server_data_arc.lock().await;
+    failure &= !server_data.stopping;
+    server_data.stopping = false;
+    server_data.restart |= failure;
 
-        let do_restart = server_data.restart;
-        if do_restart {
-            server_data.restart = false;
-            tokio::task::spawn(FetchedServer::queue_start(
-                server_id,
-                state.clone(),
-                Duration::from_secs(1),
-            ));
-        }
-        let mut buffer = buffer.lock().await;
-        FetchedServer::console(&server_data.sender, buffer.deref_mut(), "\n".to_owned());
-        FetchedServer::log(&server_data.sender, buffer.deref_mut(), "Server stopped!");
-        drop(buffer);
-        let _ = stats_sender.send(ChannelWriteData::Stats(
-            ServerStats::default().with_max(cpu_max, ram_max, swap_max),
+    let do_restart = server_data.restart;
+    if do_restart {
+        server_data.restart = false;
+        tokio::task::spawn(FetchedServer::queue_start(
+            server_id,
+            state.clone(),
+            Duration::from_secs(1),
         ));
-        if !do_restart {
-            tokio::time::sleep(Duration::from_secs(1)).await;
-            FetchedServer::update_status0(server_id, &state.docker, &server_data).await;
-        }
-    });
+    }
+    let mut buffer = buffer.lock().await;
+    FetchedServer::console(&server_data.sender, buffer.deref_mut(), "\n".to_owned());
+    FetchedServer::log(&server_data.sender, buffer.deref_mut(), "Server stopped!");
+    drop(buffer);
+    let _ = stats_sender.send(ChannelWriteData::Stats(
+        ServerStats::default()
+            .with_disk(storage_value.0.load(Ordering::Relaxed))
+            .with_max(
+                cpu_max,
+                ram_max,
+                swap_max,
+                storage_value.1.load(Ordering::Relaxed),
+            ),
+    ));
+    drop(storage_stats_guard);
+    if !do_restart {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+        FetchedServer::update_status0(server_id, &state.docker, &server_data).await;
+    }
 }

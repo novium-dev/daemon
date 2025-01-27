@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use crate::common::payload::server::ServerPayload;
@@ -8,8 +9,9 @@ use crate::server::start::ServerStartError;
 use crate::server::status::InternalServerState;
 use crate::server::stop::ServerStopError;
 use crate::server::FetchedServer;
+use crate::storage::sync::{storage_read, storage_write, StorageError, StorageLockData};
 use crate::storage::StorageIdentifier;
-use crate::utils::{server, storage_read, storage_write, StorageError};
+use crate::utils::server;
 use crate::web::sql_error_to_http;
 use crate::{sql, storage, DaemonState};
 use axum::extract::{Path, State};
@@ -786,7 +788,12 @@ pub(crate) async fn wipe_server(
     State(state): State<DaemonState>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
-    let (_, lock, _, entry) = storage_write(
+    let StorageLockData {
+        lock,
+        storage: entry,
+        value: storage_value,
+        ..
+    } = storage_write(
         &state.config,
         state.conn.deref(),
         &state.storages,
@@ -799,6 +806,7 @@ pub(crate) async fn wipe_server(
         .await
         .inspect_err(|err| error!("Failed to wipe server: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    storage_value.0.store(0, Ordering::Relaxed);
 
     drop(lock);
     Ok(())

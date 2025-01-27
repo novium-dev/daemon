@@ -21,9 +21,11 @@ pub struct ServerStats {
     pub cpu: f32,
     pub ram: f32,
     pub swap: f32,
+    pub disk: i64,
     pub cpu_max: f32,
     pub ram_max: i64,
     pub swap_max: i64,
+    pub disk_max: i64,
 }
 
 impl Default for ServerStats {
@@ -32,23 +34,28 @@ impl Default for ServerStats {
             cpu: -1f32,
             ram: -1f32,
             swap: -1f32,
+            disk: -1,
             cpu_max: -1f32,
             ram_max: -1,
             swap_max: -1,
+            disk_max: -1,
         }
     }
 }
 
 impl ServerStats {
-    pub fn with_max(self, cpu: f32, ram: i64, swap: i64) -> Self {
+    pub fn with_max(self, cpu: f32, ram: i64, swap: i64, disk: i64) -> Self {
         Self {
-            cpu: self.cpu,
-            ram: self.ram,
-            swap: self.swap,
             cpu_max: cpu,
             ram_max: ram,
             swap_max: swap,
+            disk_max: disk,
+            ..self
         }
+    }
+
+    pub fn with_disk(self, disk: i64) -> Self {
+        Self { disk, ..self }
     }
 }
 
@@ -93,12 +100,10 @@ impl From<Stats> for ServerStats {
     }
 }
 
-#[allow(unused)]
-pub const STATS_MAGIC: &str = "STATS!";
-
 #[cfg(feature = "user")]
 impl ServerStats {
     pub fn as_websocket_message(&self) -> Message {
+        const STATS_MAGIC: &str = "STATS!";
         Message::Text(
             format!(
                 "{}{}",

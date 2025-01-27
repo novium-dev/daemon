@@ -1,6 +1,6 @@
 use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
+use crate::storage::sync::{storage_read, storage_write, StorageError, StorageLockData};
 use crate::storage::StorageIdentifier;
-use crate::utils::{storage_read, storage_write, StorageError};
 use crate::{storage, DaemonState};
 use async_trait::async_trait;
 use axum::body::Body;
@@ -14,6 +14,7 @@ use std::io;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::Ordering;
 use tokio::fs;
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
@@ -25,10 +26,15 @@ pub(crate) async fn create_backup_order(
     state: &DaemonState,
     id: StorageIdentifier,
 ) -> Result<i64, StatusCode> {
-    let (path, lock, backup_exclude, storage) =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData {
+        path,
+        lock,
+        backup_exclude,
+        storage,
+        ..
+    } = storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
+        .await
+        .map_err(StorageError::into_http)?;
 
     let mut storages: Vec<(String, i8, &BackupEntry)> = state
         .config
@@ -89,10 +95,15 @@ pub(crate) async fn create_backup(
     id: StorageIdentifier,
     backup_storage: &String,
 ) -> Result<i64, StatusCode> {
-    let (path, lock, backup_exclude, storage) =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData {
+        path,
+        lock,
+        backup_exclude,
+        storage,
+        ..
+    } = storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
+        .await
+        .map_err(StorageError::into_http)?;
 
     let backup = state
         .config
@@ -179,10 +190,16 @@ pub(crate) async fn restore_backup(
     backup_id: i64,
     backup_storage: &String,
 ) -> Result<(), StatusCode> {
-    let (path, lock, disk, storage) =
-        storage_write(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData {
+        path,
+        lock,
+        disk,
+        storage,
+        value: storage_value,
+        ..
+    } = storage_write(&state.config, state.conn.deref(), &state.storages, id, true)
+        .await
+        .map_err(StorageError::into_http)?;
 
     let backup = state
         .config
@@ -195,6 +212,7 @@ pub(crate) async fn restore_backup(
         .await
         .inspect_err(|err| error!("Failed to restore backup: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+    storage_value.0.store(-1, Ordering::Relaxed);
     drop(lock);
     Ok(())
 }
@@ -246,7 +264,7 @@ pub(crate) async fn list_backups(
     state: &DaemonState,
     id: StorageIdentifier,
 ) -> Result<Vec<BackupResponseEntry>, StatusCode> {
-    let (_path, lock, _, _) =
+    let StorageLockData { lock, .. } =
         storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
             .await
             .map_err(StorageError::into_http)?;
@@ -319,10 +337,13 @@ pub(crate) async fn backup_to_stream(
     backup_id: i64,
     backup_storage: &String,
 ) -> Result<(HeaderMap, Body), StatusCode> {
-    let (_path, lock, backup_exclude, _) =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData {
+        lock,
+        backup_exclude,
+        ..
+    } = storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
+        .await
+        .map_err(StorageError::into_http)?;
     let backup = state
         .config
         .backup
@@ -396,10 +417,14 @@ pub(crate) async fn stream_realtime(
     id: StorageIdentifier,
     compression: String,
 ) -> Result<(HeaderMap, Body), StatusCode> {
-    let (path, lock, backup_exclude, _) =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData {
+        path,
+        lock,
+        backup_exclude,
+        ..
+    } = storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
+        .await
+        .map_err(StorageError::into_http)?;
     let compression: ArchiveCompression = serde_json::from_value(json!({
         "type": compression
     }))
@@ -459,7 +484,7 @@ pub(crate) async fn delete_backup(
     backup_id: i64,
     backup_storage: &String,
 ) -> Result<(), StatusCode> {
-    let (_path, lock, _, _) =
+    let StorageLockData { lock, .. } =
         storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
             .await
             .map_err(StorageError::into_http)?;

@@ -1,8 +1,8 @@
 use crate::ssh::auth::{password_auth, InvalidationCacheMap};
 use crate::ssh::sftp::DaemonSftpSession;
+use crate::storage::sync::{storage_read, StorageLockData};
 use crate::storage::StorageIdentifier;
 use crate::terminal::update_size;
-use crate::utils::storage_read;
 use crate::{DaemonState, ServerData};
 use async_trait::async_trait;
 use cap_async_std::ambient_authority;
@@ -315,7 +315,7 @@ impl Handler for DaemonSSHHandler {
                             .contains(BackendAuthServerPermissions::FILES_READ)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
-                            if let Ok((_path, lock, _, storage)) = storage_read(
+                            if let Ok(StorageLockData { lock, storage, .. }) = storage_read(
                                 &self.state.config,
                                 self.state.conn.deref(),
                                 &self.state.storages,

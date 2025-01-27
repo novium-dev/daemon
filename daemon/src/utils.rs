@@ -1,27 +1,19 @@
 use async_trait::async_trait;
-use axum::http::StatusCode;
 use daemon_common::server::ServerStats;
 use sqlx::{query_as, Executor, MySql, Pool};
-use std::collections::{HashMap, HashSet};
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
+use std::collections::HashMap;
+use std::fmt::Debug;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 use std::{io, mem};
-use tokio::sync::{Mutex, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
-use tokio::time::error::Elapsed;
+use tokio::sync::Mutex;
 use tokio_util::io::SyncIoBridge;
-use tracing::{debug, warn};
 
-use crate::config::{DaemonConfig, StorageEntry};
 use crate::server::status::InternalServerState;
 use crate::server::{FetchedServer, Server};
-use crate::storage::{ensure_exists, StorageIdentifier};
-use crate::web::sql_error_to_http;
 use crate::ServerData;
 
 pub(crate) trait ResourceData {
@@ -83,162 +75,6 @@ pub(crate) fn path_relative(str: String) -> PathBuf {
         PathBuf::from(format!(".{}", str))
     } else {
         PathBuf::from(str)
-    }
-}
-
-async fn storage_lock<'a>(
-    config: &'a DaemonConfig,
-    conn: impl Executor<'_, Database = MySql> + Copy,
-    storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
-    storage: StorageIdentifier,
-) -> Result<
-    Option<(
-        Option<u64>,
-        Arc<RwLock<()>>,
-        HashSet<String>,
-        &'a StorageEntry,
-    )>,
-    sqlx::Error,
-> {
-    let (disk, backup_exclude, entry) = match storage {
-        StorageIdentifier::Primary(server_id) => {
-            let Some(server) = generic_server_select(conn, server_id).await? else {
-                return Ok(None);
-            };
-            let Some(storage) = config.storage.get(&server.storage) else {
-                return Ok(None);
-            };
-            (server.disk, server.backup_exclude, storage)
-        }
-    };
-    let mut storages = storages.lock().await;
-    let lock = match storages.get(&storage) {
-        None => {
-            let lock = Arc::new(RwLock::new(()));
-            storages.insert(storage, lock.clone());
-            lock
-        }
-        Some(lock) => lock.clone(),
-    };
-    Ok(Some((disk, lock, backup_exclude, entry)))
-}
-
-pub(crate) async fn storage_read<'a>(
-    config: &'a DaemonConfig,
-    conn: impl Executor<'_, Database = MySql> + Copy,
-    storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
-    storage: StorageIdentifier,
-    timeout: bool,
-) -> Result<
-    (
-        String,
-        OwnedRwLockReadGuard<()>,
-        HashSet<String>,
-        &'a StorageEntry,
-    ),
-    StorageError,
-> {
-    let Some((disk, lock, backup_exclude, entry)) = storage_lock(config, conn, storages, storage)
-        .await
-        .map_err(StorageError::Sqlx)?
-    else {
-        return Err(StorageError::NotFound);
-    };
-    let (guard, backup_exclude, entry) = if timeout {
-        (
-            tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
-                .await
-                .map_err(StorageError::Timeout)?,
-            backup_exclude,
-            entry,
-        )
-    } else {
-        (lock.read_owned().await, backup_exclude, entry)
-    };
-    let path = ensure_exists(storage, entry, disk)
-        .await
-        .map_err(StorageError::IO)?;
-    Ok((path, guard, backup_exclude, entry))
-}
-
-#[allow(unused)]
-pub(crate) async fn storage_write<'a>(
-    config: &'a DaemonConfig,
-    conn: impl Executor<'_, Database = MySql> + Copy,
-    storages: &Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>,
-    storage: StorageIdentifier,
-    timeout: bool,
-) -> Result<
-    (
-        String,
-        OwnedRwLockWriteGuard<()>,
-        Option<u64>,
-        &'a StorageEntry,
-    ),
-    StorageError,
-> {
-    let Some((disk, lock, _, entry)) = storage_lock(config, conn, storages, storage)
-        .await
-        .map_err(StorageError::Sqlx)?
-    else {
-        return Err(StorageError::NotFound);
-    };
-    let (guard, backup_exclude, entry) = if timeout {
-        (
-            tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
-                .await
-                .map_err(StorageError::Timeout)?,
-            disk,
-            entry,
-        )
-    } else {
-        (lock.write_owned().await, disk, entry)
-    };
-    let path = ensure_exists(storage, entry, disk)
-        .await
-        .map_err(StorageError::IO)?;
-    Ok((path, guard, backup_exclude, entry))
-}
-
-#[derive(Debug)]
-pub(crate) enum StorageError {
-    Sqlx(sqlx::Error),
-    IO(io::Error),
-    Timeout(Elapsed),
-    NotFound,
-}
-
-impl Error for StorageError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            StorageError::Sqlx(err) => Some(err),
-            StorageError::IO(err) => Some(err),
-            StorageError::Timeout(err) => Some(err),
-            StorageError::NotFound => None,
-        }
-    }
-}
-
-impl Display for StorageError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        <Self as Debug>::fmt(self, f)
-    }
-}
-
-impl StorageError {
-    pub(crate) fn into_http(self) -> StatusCode {
-        match self {
-            StorageError::Sqlx(err) => sql_error_to_http(err),
-            StorageError::IO(err) => {
-                warn!("Storage error: {:?}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
-            StorageError::Timeout(_) => {
-                debug!("Storage lock timeout");
-                StatusCode::SERVICE_UNAVAILABLE
-            }
-            StorageError::NotFound => StatusCode::NOT_FOUND,
-        }
     }
 }
 

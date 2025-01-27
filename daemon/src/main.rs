@@ -14,6 +14,7 @@ use std::env;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::process::exit;
+use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::fs::File;
@@ -36,9 +37,10 @@ pub use daemon_common as common;
 use crate::config::DaemonConfig;
 use crate::server::watcher::attach;
 use crate::server::FetchedServer;
+use crate::storage::sync::{storage_read, StorageLockData};
 use crate::storage::StorageIdentifier;
 use crate::terminal::TerminalSession;
-use crate::utils::{storage_read, ChannelWriteData};
+use crate::utils::ChannelWriteData;
 
 mod config;
 #[cfg(feature = "database")]
@@ -259,7 +261,12 @@ async fn main() {
                 {
                     Some(row) => {
                         let mut server_data = server_data_arc.lock().await;
-                        let storage_lock = storage_read(
+                        let StorageLockData {
+                            lock: storage_lock,
+                            value: storage_value,
+                            stats_lock: storage_stats_lock,
+                            ..
+                        } = storage_read(
                             &state.config,
                             state.conn.deref(),
                             &state.storages,
@@ -267,11 +274,12 @@ async fn main() {
                             false,
                         )
                         .await
-                        .unwrap()
-                        .1;
+                        .unwrap();
+
                         let cpu_max = row.cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
                         let ram_max = row.ram.map(|ram| ram as i64).unwrap_or(-1);
-                        let swap_max = row.swap.map(|ram| ram as i64).unwrap_or(-1);
+                        let swap_max = row.swap.map(|swap| swap as i64).unwrap_or(-1);
+
                         if let Err(err) = attach(
                             id,
                             &state,
@@ -281,6 +289,8 @@ async fn main() {
                             server_data.deref_mut(),
                             server_data_arc.clone(),
                             storage_lock,
+                            storage_value,
+                            storage_stats_lock,
                         )
                         .await
                         {
@@ -524,10 +534,16 @@ async fn main() {
 pub(crate) struct DaemonState {
     pub(crate) config: Arc<DaemonConfig>,
     pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
-    pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, Arc<RwLock<()>>>>>,
+    pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, StorageData>>>,
     pub(crate) docker: Arc<Docker>,
     pub(crate) conn: Arc<Pool<MySql>>,
     pub(crate) client: Arc<Client>,
+}
+
+pub(crate) struct StorageData {
+    pub(crate) lock: Arc<RwLock<()>>,
+    pub(crate) value: Arc<(AtomicI64, AtomicI64)>,
+    pub(crate) stats_lock: Arc<Mutex<()>>,
 }
 
 pub(crate) type ServerContainerWrite = Pin<Box<dyn AsyncWrite + Send>>;

@@ -1,8 +1,8 @@
-use crate::config::StorageEntry;
 use crate::server::watcher::attach;
 use crate::server::FetchedServer;
+use crate::storage::sync::{storage_read, StorageError, StorageLockData};
 use crate::storage::StorageIdentifier;
-use crate::utils::{from_mib, storage_read, StorageError};
+use crate::utils::from_mib;
 use crate::{utils, DaemonState, ServerData};
 use bollard::container::{Config, CreateContainerOptions, NetworkingConfig};
 use bollard::models::{EndpointSettings, HostConfig, PortBinding};
@@ -10,7 +10,7 @@ use bollard::Docker;
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, OpenOptions};
 use ringbuffer::RingBuffer;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
@@ -51,12 +51,13 @@ impl FetchedServer {
         &self,
         docker: Arc<Docker>,
         server_data: &mut ServerData,
-        (storage_path, storage_lock, _, _): (
-            String,
-            OwnedRwLockReadGuard<()>,
-            HashSet<String>,
-            &StorageEntry,
-        ),
+        StorageLockData {
+            path: storage_path,
+            lock: storage_lock,
+            value: storage_value,
+            stats_lock: storage_stats_lock,
+            ..
+        }: StorageLockData<'_, OwnedRwLockReadGuard<()>>,
         server_data_arc: Arc<Mutex<ServerData>>,
         state: &DaemonState,
     ) -> Result<(), ServerStartError> {
@@ -308,6 +309,8 @@ impl FetchedServer {
             server_data,
             server_data_arc,
             storage_lock,
+            storage_value,
+            storage_stats_lock,
         )
         .await?;
 
@@ -361,12 +364,7 @@ impl FetchedServer {
         docker: Arc<Docker>,
         server_data: &'a mut ServerData,
         server_data_arc: Arc<Mutex<ServerData>>,
-        storage: (
-            String,
-            OwnedRwLockReadGuard<()>,
-            HashSet<String>,
-            &'a StorageEntry,
-        ),
+        storage: StorageLockData<'a, OwnedRwLockReadGuard<()>>,
         state: &'a DaemonState,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
         Box::pin(self.start(docker, server_data, storage, server_data_arc, state))
