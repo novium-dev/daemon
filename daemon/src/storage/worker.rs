@@ -110,8 +110,21 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
 
         if !quota && last.elapsed().unwrap_or_default() > Duration::from_secs(60 * 30) {
             last = SystemTime::now();
-
-            // TODO: Update through directory scan (in a 30 minute period)
+            for (id, (path, _, _, _, data, _)) in &storages {
+                match fs_extra::dir::get_size(path) {
+                    Ok(size) => {
+                        let size = if size > i64::MAX as u64 {
+                            -1
+                        } else {
+                            size as i64
+                        };
+                        data.value.0.store(size, Ordering::Relaxed);
+                    }
+                    Err(err) => {
+                        warn!("Failed to scan directory size for {:?}: {:?}", id, err);
+                    }
+                }
+            }
         }
 
         let mut join = JoinSet::new();

@@ -68,6 +68,7 @@ num-traits = "0.2.19"
 ringbuffer = "0.15.0"
 utoipa-axum = "0.2.0"
 users = "0.11.0"
+fs_extra = "1.3.0"
 
 [dependencies.anyhow]
 version = "1.0.95"
