@@ -3,9 +3,9 @@ use crate::storage::StorageIdentifier;
 use crate::utils::ChannelWriteData;
 use crate::{DaemonState, StorageData};
 use daemon_common::server::ServerStats;
-use sqlx::__rt::timeout;
 use sqlx::query;
 use std::collections::HashMap;
+use std::fs::File;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -15,7 +15,8 @@ use std::time::{Duration, SystemTime};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
 use tokio::task::JoinSet;
-use tracing::warn;
+use tokio::time::timeout;
+use tracing::{error, warn};
 
 pub(crate) async fn run(state: DaemonState) {
     let state2 = state.clone();
@@ -103,14 +104,49 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
 
         let mut quota = false;
         #[cfg(feature = "btrfs")]
-        if let StorageEntry::Btrfs { quota: true, .. } = storage_entry {
+        if let StorageEntry::Btrfs {
+            quota: true,
+            ref path,
+            ..
+        } = storage_entry
+        {
             quota = true;
-            // TODO: Update through quota
+
+            let mut quotas = HashMap::new();
+            if let Err(err) = super::btrfs::search_quotas(File::open(path), &mut quotas) {
+                error!(
+                    "Unable to retrieve quotas: {:?}. Ensure quotas are enabled",
+                    err
+                );
+            }
+
+            for (id, (path, _, _, _, data, _)) in &storages {
+                let subvol = match super::btrfs::get_subvol_id(File::open(path)) {
+                    Ok(id) => id,
+                    Err(err) => {
+                        warn!("Unable to get subvolume id of {:?}: {:?}", id, err);
+                        continue;
+                    }
+                };
+                let Some(size) = quotas.get(&subvol) else {
+                    warn!("Quota missing for {:?}", id);
+                    continue;
+                };
+                let size = if *size > i64::MAX as u64 {
+                    -1
+                } else {
+                    *size as i64
+                };
+                data.value.0.store(size, Ordering::Relaxed);
+            }
         }
 
         if !quota && last.elapsed().unwrap_or_default() > Duration::from_secs(60 * 30) {
             last = SystemTime::now();
             for (id, (path, _, _, _, data, _)) in &storages {
+                let Ok(_read_guard) = data.lock.try_read() else {
+                    continue;
+                };
                 match fs_extra::dir::get_size(path) {
                     Ok(size) => {
                         let size = if size > i64::MAX as u64 {
@@ -119,6 +155,12 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
                             size as i64
                         };
                         data.value.0.store(size, Ordering::Relaxed);
+                        let exceeded = size > data.value.1.load(Ordering::Relaxed);
+                        if exceeded {
+                            // TODO: Lock server
+                        } else {
+                            // TODO: Unlock server if locked
+                        }
                     }
                     Err(err) => {
                         warn!("Failed to scan directory size for {:?}: {:?}", id, err);

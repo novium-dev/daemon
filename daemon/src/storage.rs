@@ -1,4 +1,6 @@
 pub(crate) mod backup;
+#[cfg(feature = "btrfs")]
+pub(crate) mod btrfs;
 pub(crate) mod sync;
 pub(crate) mod worker;
 
