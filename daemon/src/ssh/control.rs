@@ -398,7 +398,12 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
 
     let stats = Layout::new(
         Direction::Horizontal,
-        [Constraint::Percentage(50), Constraint::Fill(1)],
+        [
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Percentage(25),
+            Constraint::Fill(1),
+        ],
     )
     .flex(Flex::SpaceAround)
     .split(stats_area.inner(Margin::new(1, 1)));
@@ -429,8 +434,41 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
     };
     let mem_text = Text::raw(format!("RAM: {} / {}", mem_current_str, mem_max_str));
 
+    let swap_current_str = if current_stat.swap == -1f32 {
+        "-".to_string()
+    } else {
+        format!("{:.2} MiB", current_stat.swap)
+    };
+    let swap_max_str = if current_stat.swap_max == -1 {
+        "∞".to_string()
+    } else {
+        format!("{:.2} MiB", current_stat.swap_max)
+    };
+    let swap_text = Text::raw(format!("Swap: {} / {}", swap_current_str, swap_max_str));
+
+    let disk_current_str = if current_stat.disk == -1 {
+        "-".to_string()
+    } else {
+        let disk = current_stat.disk as f32 / 1048576.0;
+        if disk > 1024.0 {
+            format!("{:.2} GiB", disk / 1024.0)
+        } else {
+            format!("{:.2} MiB", disk)
+        }
+    };
+    let disk_max_str = if current_stat.disk_max == -1 {
+        "∞".to_string()
+    } else if current_stat.disk_max > 1024 {
+        format!("{:.2} GiB", current_stat.disk_max as f32 / 1024.0)
+    } else {
+        format!("{:.2} MiB", current_stat.disk_max)
+    };
+    let disk_text = Text::raw(format!("Disk: {} / {}", disk_current_str, disk_max_str));
+
     frame.render_widget(cpu_text, stats[0]);
     frame.render_widget(mem_text, stats[1]);
+    frame.render_widget(swap_text, stats[2]);
+    frame.render_widget(disk_text, stats[3]);
 }
 
 fn draw_chart_stats(

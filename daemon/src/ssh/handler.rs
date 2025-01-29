@@ -238,7 +238,7 @@ impl Handler for DaemonSSHHandler {
         channel_id: ChannelId,
         _term: &str,
         col_width: u32,
-        _row_height: u32,
+        row_height: u32,
         _pix_width: u32,
         _pix_height: u32,
         _modes: &[(Pty, u32)],
@@ -257,7 +257,7 @@ impl Handler for DaemonSSHHandler {
                 }
             }
             match rows {
-                None => *rows = Some(Arc::new(AtomicU32::new(col_width))),
+                None => *rows = Some(Arc::new(AtomicU32::new(row_height))),
                 Some(_) => {
                     debug!("Size is Some on pty");
                     return session.channel_failure(channel_id);
