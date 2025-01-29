@@ -397,7 +397,7 @@ async fn main() {
         });
     }
 
-    storage::watcher::run(state_cloned.clone()).await;
+    storage::worker::run(state_cloned.clone()).await;
 
     tokio::task::spawn(ctlsock::run(state_cloned));
 

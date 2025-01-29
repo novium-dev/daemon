@@ -10,7 +10,9 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
-use std::time::Duration;
+use std::thread;
+use std::time::{Duration, SystemTime};
+use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
 use tokio::task::JoinSet;
 use tracing::warn;
@@ -18,7 +20,8 @@ use tracing::warn;
 pub(crate) async fn run(state: DaemonState) {
     let state2 = state.clone();
     for (storage_id, storage_entry) in state.config.storage.clone() {
-        tokio::task::spawn(watch(state2.clone(), storage_id, storage_entry));
+        let state = state2.clone();
+        tokio::task::spawn_blocking(move || watch(state, storage_id, storage_entry));
     }
 }
 
@@ -88,10 +91,13 @@ async fn resolve(
     Some(available)
 }
 
-pub(crate) async fn watch(state: DaemonState, storage_id: String, storage_entry: StorageEntry) {
+pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: StorageEntry) {
+    let mut last = SystemTime::UNIX_EPOCH;
     loop {
-        let Some(storages) = resolve(&state, storage_id.clone(), &storage_entry).await else {
-            tokio::time::sleep(Duration::from_secs(30)).await;
+        let Some(storages) =
+            Handle::current().block_on(resolve(&state, storage_id.clone(), &storage_entry))
+        else {
+            thread::sleep(Duration::from_secs(30));
             continue;
         };
 
@@ -102,7 +108,9 @@ pub(crate) async fn watch(state: DaemonState, storage_id: String, storage_entry:
             // TODO: Update through quota
         }
 
-        if !quota {
+        if !quota && last.elapsed().unwrap_or_default() > Duration::from_secs(60 * 30) {
+            last = SystemTime::now();
+
             // TODO: Update through directory scan (in a 30 minute period)
         }
 
@@ -130,8 +138,8 @@ pub(crate) async fn watch(state: DaemonState, storage_id: String, storage_entry:
                 }
             });
         }
-        join.join_all().await;
+        Handle::current().block_on(join.join_all());
 
-        tokio::time::sleep(Duration::from_secs(30)).await;
+        thread::sleep(Duration::from_secs(30));
     }
 }
