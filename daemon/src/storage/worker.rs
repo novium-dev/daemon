@@ -1,4 +1,6 @@
 use crate::config::StorageEntry;
+use crate::server::stop::ServerStopError;
+use crate::server::FetchedServer;
 use crate::storage::StorageIdentifier;
 use crate::utils::ChannelWriteData;
 use crate::{DaemonState, StorageData};
@@ -165,6 +167,24 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
                                 if let Err(err) = Handle::current().block_on(query!("INSERT IGNORE INTO `server_locks` (`server`, `lock`) VALUES (?, 'storage')", server_id)
                                     .execute(state.conn.deref())) {
                                     warn!("Unable to lock server {}: {:?}", server_id, err);
+                                }
+                                let servers = state.servers.blocking_lock();
+                                if let Some(server) = servers.get(server_id).cloned() {
+                                    drop(servers);
+                                    let server_id = *server_id;
+                                    let docker = state.docker.clone();
+                                    tokio::task::spawn(async move {
+                                        let server_data = server.lock_owned().await;
+                                        if let Err(err) = FetchedServer::stop(&FetchedServer {
+                                            id: server_id,
+                                            .. FetchedServer::default()
+                                        }, &docker, server_data).await {
+                                            if let ServerStopError::NotRunning = err {
+                                                return;
+                                            }
+                                            warn!("Unable to stop server after lock {}: {:?}", server_id, err);
+                                        }
+                                    });
                                 }
                             } else if let Err(err) = Handle::current().block_on(query!("DELETE FROM `server_locks` WHERE `server` = ? AND `lock` = 'storage'", server_id)
                                     .execute(state.conn.deref())) {
