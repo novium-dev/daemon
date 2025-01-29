@@ -8,6 +8,7 @@ use bollard::container::{AttachContainerOptions, LogOutput, Stats, StatsOptions}
 use bollard::errors::Error;
 use daemon_common::server::ServerStats;
 use ringbuffer::AllocRingBuffer;
+use std::collections::HashSet;
 use std::ops::{Add, Deref, DerefMut};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -121,7 +122,7 @@ pub(crate) async fn watch(
                 let docker = state.docker.clone();
                 let server_data_arc = server_data_arc.clone();
                 tokio::task::spawn(async move {
-                    FetchedServer::update_status(server_id, &stats_sender, &docker, &server_data_arc).await;
+                    FetchedServer::update_status(server_id, HashSet::new(), &stats_sender, &docker, &server_data_arc).await;
                 });
             }
         }
@@ -172,6 +173,12 @@ pub(crate) async fn watch(
     drop(storage_stats_guard);
     if !do_restart {
         tokio::time::sleep(Duration::from_secs(1)).await;
-        FetchedServer::update_status0(server_id, &state.docker, &server_data).await;
+        FetchedServer::update_status0(
+            server_id,
+            FetchedServer::resolve_locked(server_id, &state.conn).await,
+            &state.docker,
+            &server_data,
+        )
+        .await;
     }
 }

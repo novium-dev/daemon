@@ -5,12 +5,15 @@ use axum::extract::ws::WebSocket;
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use sqlx::{MySql, Pool};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 
+use crate::server::status::InternalServerState;
+use crate::server::FetchedServer;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::web::user::{authenticate_user, GenericUserQuery};
 use crate::{DaemonState, ServerData};
@@ -58,17 +61,20 @@ pub(crate) async fn websocket(
     };
     let server = server.clone();
     drop(servers);
-    Ok(ws.on_upgrade(move |socket| stats_websocket_handle(server, socket)))
+    let conn = state.conn;
+    Ok(ws.on_upgrade(move |socket| stats_websocket_handle(server_id, conn, server, socket)))
 }
 
 pub(crate) async fn stats_websocket_handle(
+    id: u32,
+    conn: Arc<Pool<MySql>>,
     server_data_arc: Arc<Mutex<ServerData>>,
     socket: WebSocket,
 ) {
     let server_data = server_data_arc.lock().await;
     let stats_sender = server_data.stats_sender.clone();
     drop(server_data);
-    tokio::task::spawn(new_stats_session(socket, stats_sender));
+    tokio::task::spawn(new_stats_session(id, conn, socket, stats_sender));
 }
 
 pub(crate) async fn new_stats_session<
@@ -77,12 +83,24 @@ pub(crate) async fn new_stats_session<
     J: Send + 'static,
     Q: Send + 'static,
 >(
+    id: u32,
+    conn: Arc<Pool<MySql>>,
     mut state: A,
     sender: Arc<Sender<ChannelWriteData>>,
 ) {
     let mut recv = sender.subscribe();
     let mut last_sent = Instant::now();
     let mut ping_sent = false;
+
+    let _ = state
+        .write(ChannelWriteData::Status(
+            if FetchedServer::resolve_locked(id, &conn).await.is_empty() {
+                InternalServerState::Stopped
+            } else {
+                InternalServerState::Locked
+            },
+        ))
+        .await;
 
     loop {
         if Instant::now().duration_since(last_sent) > Duration::from_secs(10) && A::send_ping() {

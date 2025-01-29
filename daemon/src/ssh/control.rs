@@ -1,4 +1,5 @@
 use crate::server::status::InternalServerState;
+use crate::server::FetchedServer;
 use crate::ssh::handler::DaemonSSHHandler;
 use crate::storage::sync::storage_read;
 use crate::storage::StorageIdentifier;
@@ -167,7 +168,15 @@ fn new_control_session(
 
     let mut selected = 0u8;
 
-    let mut server_state: InternalServerState = InternalServerState::Stopped;
+    let conn = state.conn.clone();
+    let mut server_state: InternalServerState = if Handle::current()
+        .block_on(async move { FetchedServer::resolve_locked(server_id, &conn).await })
+        .is_empty()
+    {
+        InternalServerState::Stopped
+    } else {
+        InternalServerState::Locked
+    };
 
     let mut bridge = SyncIoBridge::new(&mut stream);
     let backend = CustomSizedCrosstermBackendWrapper(CrosstermBackend::new(&mut bridge), 1, 1);

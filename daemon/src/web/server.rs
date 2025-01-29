@@ -846,10 +846,15 @@ pub(crate) async fn server_status(
     let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
     match server_data {
         Ok(mut server_data) => Ok(Json(
-            FetchedServer::state(server.id, &state.docker, server_data.deref_mut())
-                .await
-                .inspect_err(|err| debug!("Failed to get current server state: {:?}", err))
-                .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?,
+            FetchedServer::state(
+                server.id,
+                server.locks,
+                &state.docker,
+                server_data.deref_mut(),
+            )
+            .await
+            .inspect_err(|err| debug!("Failed to get current server state: {:?}", err))
+            .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?,
         )),
         Err(_err) => Err(StatusCode::SERVICE_UNAVAILABLE),
     }

@@ -61,7 +61,7 @@ impl FetchedServer {
         server_data_arc: Arc<Mutex<ServerData>>,
         state: &DaemonState,
     ) -> Result<(), ServerStartError> {
-        if !Self::state(self.id, &docker, server_data)
+        if !Self::state(self.id, self.locks.clone(), &docker, server_data)
             .await
             .map_err(ServerStartError::Docker)?
             .start()

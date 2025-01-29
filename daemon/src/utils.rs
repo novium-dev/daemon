@@ -13,7 +13,7 @@ use tokio::sync::Mutex;
 use tokio_util::io::SyncIoBridge;
 
 use crate::server::status::InternalServerState;
-use crate::server::{FetchedServer, Server};
+use crate::server::*;
 use crate::ServerData;
 
 pub(crate) trait ResourceData {

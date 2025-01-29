@@ -34,6 +34,7 @@ async fn resolve(
     HashMap<
         StorageIdentifier,
         (
+            Option<u32>,
             PathBuf,
             Option<f32>,
             Option<u32>,
@@ -86,7 +87,10 @@ async fn resolve(
             None => None,
             Some(sender) => Some(sender.lock().await.stats_sender.clone()),
         };
-        available.insert(identifier, (path, cpu, ram, swap, storage_data, sender));
+        available.insert(
+            identifier,
+            (Some(id), path, cpu, ram, swap, storage_data, sender),
+        );
     }
 
     Some(available)
@@ -120,7 +124,7 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
                 );
             }
 
-            for (id, (path, _, _, _, data, _)) in &storages {
+            for (id, (_server_id, path, _, _, _, data, _)) in &storages {
                 let subvol = match super::btrfs::get_subvol_id(File::open(path)) {
                     Ok(id) => id,
                     Err(err) => {
@@ -143,7 +147,7 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
 
         if !quota && last.elapsed().unwrap_or_default() > Duration::from_secs(60 * 30) {
             last = SystemTime::now();
-            for (id, (path, _, _, _, data, _)) in &storages {
+            for (id, (server_id, path, _, _, _, data, _)) in &storages {
                 let Ok(_read_guard) = data.lock.try_read() else {
                     continue;
                 };
@@ -156,10 +160,16 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
                         };
                         data.value.0.store(size, Ordering::Relaxed);
                         let exceeded = size > data.value.1.load(Ordering::Relaxed);
-                        if exceeded {
-                            // TODO: Lock server
-                        } else {
-                            // TODO: Unlock server if locked
+                        if let Some(server_id) = server_id {
+                            if exceeded {
+                                if let Err(err) = Handle::current().block_on(query!("INSERT IGNORE INTO `server_locks` (`server`, `lock`) VALUES (?, 'storage')", server_id)
+                                    .execute(state.conn.deref())) {
+                                    warn!("Unable to lock server {}: {:?}", server_id, err);
+                                }
+                            } else if let Err(err) = Handle::current().block_on(query!("DELETE FROM `server_locks` WHERE `server` = ? AND `lock` = 'storage'", server_id)
+                                    .execute(state.conn.deref())) {
+                                    warn!("Unable to unlock server {}: {:?}", server_id, err);
+                                }
                         }
                     }
                     Err(err) => {
@@ -170,7 +180,7 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
         }
 
         let mut join = JoinSet::new();
-        for (_id, (_path, cpu, ram, swap, data, sender)) in storages {
+        for (_id, (_server_id, _path, cpu, ram, swap, data, sender)) in storages {
             join.spawn(async move {
                 let stats_guard = timeout(Duration::from_millis(100), data.stats_lock.lock()).await;
                 if stats_guard.is_ok() {

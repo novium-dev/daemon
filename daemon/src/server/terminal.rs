@@ -6,6 +6,7 @@ use bollard::container::ResizeContainerTtyOptions;
 use bollard::exec::ResizeExecOptions;
 use bollard::Docker;
 use ringbuffer::AllocRingBuffer;
+use std::collections::HashSet;
 use std::io;
 use std::io::ErrorKind;
 use termion::color;
@@ -70,7 +71,7 @@ impl FetchedServer {
         cols: u32,
         rows: u32,
     ) -> Result<(), ServerStopError> {
-        if !Self::state(id, docker, server_data)
+        if !Self::state(id, HashSet::new(), docker, server_data)
             .await
             .map_err(ServerStopError::Docker)?
             .stop()

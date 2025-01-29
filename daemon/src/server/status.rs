@@ -10,7 +10,7 @@ use chrono::DateTime;
 use daemon_common::server::PublicServerState;
 use serde::{Serialize, Serializer};
 use std::borrow::Cow;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use tokio::sync::broadcast::Sender;
@@ -21,6 +21,7 @@ use utoipa::{PartialSchema, ToSchema};
 impl FetchedServer {
     pub(crate) async fn update_status(
         id: u32,
+        locks: HashSet<String>,
         stats_sender: &Sender<ChannelWriteData>,
         docker: &Docker,
         server_data_arc: &Arc<Mutex<ServerData>>,
@@ -29,11 +30,16 @@ impl FetchedServer {
             return;
         }
         let server_data = server_data_arc.lock().await;
-        Self::update_status0(id, docker, &server_data).await;
+        Self::update_status0(id, locks, docker, &server_data).await;
     }
 
-    pub(crate) async fn update_status0(id: u32, docker: &Docker, server_data: &ServerData) {
-        if let Ok(state) = Self::state(id, docker, server_data).await {
+    pub(crate) async fn update_status0(
+        id: u32,
+        locks: HashSet<String>,
+        docker: &Docker,
+        server_data: &ServerData,
+    ) {
+        if let Ok(state) = Self::state(id, locks, docker, server_data).await {
             let _ = server_data
                 .stats_sender
                 .send(ChannelWriteData::Status(state));
@@ -42,6 +48,7 @@ impl FetchedServer {
 
     pub(crate) async fn state(
         id: u32,
+        locks: HashSet<String>,
         docker: &Docker,
         server_data: &ServerData,
     ) -> Result<InternalServerState, bollard::errors::Error> {
@@ -67,7 +74,11 @@ impl FetchedServer {
 
             let state = inspect.state.unwrap();
             Ok(if !state.running.unwrap() {
-                InternalServerState::Stopped
+                if locks.is_empty() {
+                    InternalServerState::Stopped
+                } else {
+                    InternalServerState::Locked
+                }
             } else if server_data.stopping {
                 if server_data.restart {
                     InternalServerState::Restarting(created)
@@ -112,6 +123,8 @@ pub enum InternalServerState {
 
     Stopping(i64),
     Restarting(i64),
+
+    Locked,
 }
 
 impl PartialSchema for InternalServerState {
@@ -137,11 +150,15 @@ impl InternalServerState {
             InternalServerState::Stopped
                 | InternalServerState::Stopping(_)
                 | InternalServerState::Restarting(_)
+                | InternalServerState::Locked
         )
     }
 
     pub(crate) fn kill(&self) -> bool {
-        !matches!(self, InternalServerState::Stopped)
+        !matches!(
+            self,
+            InternalServerState::Stopped | InternalServerState::Locked
+        )
     }
 
     #[allow(unused)]
@@ -173,6 +190,7 @@ impl Display for InternalServerState {
             InternalServerState::Running(_, _) => "Running",
             InternalServerState::Stopping(_) => "Stopping",
             InternalServerState::Restarting(_) => "Restarting",
+            InternalServerState::Locked => "Locked",
         })
     }
 }

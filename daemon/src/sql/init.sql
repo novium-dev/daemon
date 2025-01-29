@@ -22,6 +22,14 @@ CREATE TABLE IF NOT EXISTS `servers`
   CONSTRAINT MAX_DISK CHECK ( (`disk`*1024*1024) <= ((POWER(2, 64))/2)-1 ) -- i64 is used heavy (where -1 means null) in the daemon. Do not allow disk limits that would overflow
 );
 
+CREATE TABLE IF NOT EXISTS `server_locks`
+(
+    `server` INT(255) UNSIGNED NOT NULL,
+    `lock` VARCHAR(255) NOT NULL,
+    PRIMARY KEY (`server`, `lock`),
+    FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS `server_capability_add`
 (
   `server` INT UNSIGNED NOT NULL,
