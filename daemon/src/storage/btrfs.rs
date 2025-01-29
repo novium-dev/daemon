@@ -114,8 +114,10 @@ pub(crate) fn search_quotas(
 }
 
 fn key_in_range(key: &btrfs_key, sk: &btrfs_ioctl_search_key) -> bool {
-    !(key.objectid < sk.min_objectid || key.objectid > sk.max_objectid)
-        && !(key.typ as u32) < sk.min_type
+    !(key.objectid < sk.min_objectid
+        || key.objectid > sk.max_objectid
+        || (key.typ as u32) < sk.min_type
         || (key.typ as u32) > sk.max_type
-            && !(key.offset < sk.min_offset || key.offset > sk.max_offset)
+        || key.offset < sk.min_offset
+        || key.offset > sk.max_offset)
 }
