@@ -1,4 +1,5 @@
 use crate::config::StorageEntry;
+use crate::server::status::InternalServerState;
 use crate::server::stop::ServerStopError;
 use crate::server::FetchedServer;
 use crate::storage::StorageIdentifier;
@@ -147,7 +148,7 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
             }
         }
 
-        if !quota && last.elapsed().unwrap_or_default() > Duration::from_secs(60 * 30) {
+        if !quota && last.elapsed().unwrap_or_default() > crate::common::STORAGE_SCAN_INTERVAL {
             last = SystemTime::now();
             for (id, (server_id, path, _, _, _, data, _)) in &storages {
                 let Ok(_read_guard) = data.lock.try_read() else {
@@ -161,7 +162,8 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
                             size as i64
                         };
                         data.value.0.store(size, Ordering::Relaxed);
-                        let exceeded = size > data.value.1.load(Ordering::Relaxed);
+                        let allowed = data.value.1.load(Ordering::Relaxed);
+                        let exceeded = (size / 1048576) > allowed && allowed != -1;
                         if let Some(server_id) = server_id {
                             if exceeded {
                                 if let Err(err) = Handle::current().block_on(query!("INSERT IGNORE INTO `server_locks` (`server`, `lock`) VALUES (?, 'storage')", server_id)
@@ -200,16 +202,28 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
         }
 
         let mut join = JoinSet::new();
-        for (_id, (_server_id, _path, cpu, ram, swap, data, sender)) in storages {
+        for (_id, (server_id, _path, cpu, ram, swap, data, sender)) in storages {
+            let conn = state.conn.clone();
             join.spawn(async move {
                 let stats_guard = timeout(Duration::from_millis(100), data.stats_lock.lock()).await;
                 if stats_guard.is_ok() {
-                    if let Some(sender) = sender {
+                    if let Some(stats_sender) = sender {
                         let cpu_max = cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
                         let ram_max = ram.map(|ram| ram as i64).unwrap_or(-1);
                         let swap_max = swap.map(|ram| ram as i64).unwrap_or(-1);
 
-                        let _ = sender.send(ChannelWriteData::Stats(
+                        if !quota && server_id.is_some() {
+                            let locks =
+                                FetchedServer::resolve_locked(server_id.unwrap(), conn.deref())
+                                    .await;
+                            let _ =
+                                stats_sender.send(ChannelWriteData::Status(if locks.is_empty() {
+                                    InternalServerState::Stopped
+                                } else {
+                                    InternalServerState::Locked
+                                }));
+                        }
+                        let _ = stats_sender.send(ChannelWriteData::Stats(
                             ServerStats::default()
                                 .with_disk(data.value.0.load(Ordering::Relaxed))
                                 .with_max(

@@ -60,7 +60,11 @@ impl FetchedServer {
             }))
             .await?;
         if list.is_empty() {
-            Ok(InternalServerState::Stopped)
+            Ok(if locks.is_empty() {
+                InternalServerState::Stopped
+            } else {
+                InternalServerState::Locked
+            })
         } else {
             let inspect = docker
                 .inspect_container(&Self::container_name(id), None)
