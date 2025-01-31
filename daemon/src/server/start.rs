@@ -69,6 +69,8 @@ impl FetchedServer {
             return Err(ServerStartError::AlreadyRunning); // Containers are created with delete-on-exit.
         }
 
+        server_data.stop_command = self.stop_command.clone();
+
         server_data.stopping = false;
         server_data.restart = false;
 

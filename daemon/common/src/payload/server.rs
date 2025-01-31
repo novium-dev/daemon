@@ -42,6 +42,8 @@ pub struct ServerBuildPayload {
 
     pub uid: Option<u16>,
     pub gid: Option<u16>,
+
+    pub stop_command: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]

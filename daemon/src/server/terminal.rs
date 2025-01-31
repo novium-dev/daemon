@@ -71,6 +71,12 @@ impl FetchedServer {
         cols: u32,
         rows: u32,
     ) -> Result<(), ServerStopError> {
+        if cols > u16::MAX as u32 || rows > u16::MAX as u32 {
+            return Err(ServerStopError::Docker(bollard::errors::Error::IOError {
+                err: io::Error::new(ErrorKind::Other, "Integer overflow"),
+            }));
+        }
+        server_data.size = (cols, rows);
         if !Self::state(id, HashSet::new(), docker, server_data)
             .await
             .map_err(ServerStopError::Docker)?
@@ -78,12 +84,6 @@ impl FetchedServer {
         {
             return Err(ServerStopError::NotRunning);
         }
-        if cols > u16::MAX as u32 || rows > u16::MAX as u32 {
-            return Err(ServerStopError::Docker(bollard::errors::Error::IOError {
-                err: io::Error::new(ErrorKind::Other, "Integer overflow"),
-            }));
-        }
-        server_data.size = (cols, rows);
         docker
             .resize_container_tty(
                 &Self::container_name(id),

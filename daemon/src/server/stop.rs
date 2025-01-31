@@ -3,6 +3,8 @@ use crate::ServerData;
 use bollard::Docker;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
+use std::ops::DerefMut;
+use tokio::io::AsyncWriteExt;
 use tokio::sync::OwnedMutexGuard;
 
 impl FetchedServer {
@@ -17,6 +19,18 @@ impl FetchedServer {
             .stop()
         {
             return Err(ServerStopError::NotRunning);
+        }
+        if let Some(stop_command) = &server_data.stop_command {
+            match server_data.attach_write.lock().await.deref_mut() {
+                None => {}
+                Some(write) => {
+                    let mut content = "\x08".repeat(4096);
+                    content += stop_command;
+                    content += "\n";
+                    let _ = write.write_all(content.as_bytes()).await;
+                    let _ = write.flush().await;
+                }
+            }
         }
         server_data.stopping = true;
         Self::update_status0(self.id, self.locks.clone(), docker, &server_data).await;

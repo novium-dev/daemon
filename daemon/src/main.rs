@@ -560,6 +560,7 @@ pub(crate) struct ServerData {
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) stats_sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) sessions: Arc<Mutex<HashMap<Uuid, TerminalSession>>>,
+    pub(crate) stop_command: Option<String>,
 }
 
 impl Default for ServerData {
@@ -575,6 +576,7 @@ impl Default for ServerData {
             buffer: Arc::new(Mutex::new(AllocRingBuffer::new(
                 crate::common::DAEMON_TERMINAL_BUFFER_LIMIT,
             ))),
+            stop_command: None,
         }
     }
 }
