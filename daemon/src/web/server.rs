@@ -491,11 +491,12 @@ async fn modify0(
         }
 
         query!(
-            "UPDATE `servers` SET `uid` = ?, `gid` = ?, `image` = ?, `stop_command` = ? WHERE `id` = ?",
+            "UPDATE `servers` SET `uid` = ?, `gid` = ?, `image` = ?, `stop_command` = ?, `stop_timeout` = ? WHERE `id` = ?",
             build.uid,
             build.gid,
             build.image.id(),
             build.stop_command,
+            build.stop_timeout,
             server_id,
         )
         .execute(&mut **tx)

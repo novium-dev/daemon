@@ -44,6 +44,7 @@ pub struct ServerBuildPayload {
     pub gid: Option<u16>,
 
     pub stop_command: Option<String>,
+    pub stop_timeout: u16,
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]

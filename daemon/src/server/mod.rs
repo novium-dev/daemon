@@ -42,6 +42,7 @@ pub(crate) struct FetchedServer {
     pub(crate) gid: Option<u16>,
 
     pub(crate) stop_command: Option<String>,
+    pub(crate) stop_timeout: u16,
 
     pub(crate) locks: HashSet<String>,
     pub(crate) ports: Vec<Port>,
@@ -249,6 +250,7 @@ impl Server {
             gid: self.gid,
 
             stop_command: self.stop_command,
+            stop_timeout: self.stop_timeout,
 
             locks,
 
@@ -287,6 +289,7 @@ pub(crate) struct Server {
     pub(crate) gid: Option<u16>,
 
     pub(crate) stop_command: Option<String>,
+    pub(crate) stop_timeout: u16,
 }
 
 impl FetchedServer {

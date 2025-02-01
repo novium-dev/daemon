@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS `servers`
   `uid` SMALLINT UNSIGNED DEFAULT NULL,
   `gid` SMALLINT UNSIGNED DEFAULT NULL,
   `stop_command` VARCHAR(255) DEFAULT NULL,
+  `stop_timeout` SMALLINT UNSIGNED NOT NULL DEFAULT 60,
   FOREIGN KEY (`image`) REFERENCES `images`(`id`),
   CONSTRAINT MAX_DISK CHECK ( (`disk`*1024*1024) <= ((POWER(2, 64))/2)-1 ) -- i64 is used heavy (where -1 means null) in the daemon. Do not allow disk limits that would overflow
 );

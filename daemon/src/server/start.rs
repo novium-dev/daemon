@@ -238,6 +238,8 @@ impl FetchedServer {
                         endpoints_config: networks,
                     }),
 
+                    stop_timeout: Some(self.stop_timeout as i64),
+
                     exposed_ports: Some(
                         ports
                             .keys()
