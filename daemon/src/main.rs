@@ -89,11 +89,6 @@ async fn main() {
     #[cfg(not(all(feature = "sentry", not(debug_assertions))))]
     reg.init();
 
-    if env::args().nth(1).is_some_and(|s| s.eq("setup")) {
-        let _ = tokio::task::spawn_blocking(setup::setup).await;
-        return;
-    }
-
     #[cfg(all(feature = "sentry", not(debug_assertions)))]
     {
         reg.with(sentry::integrations::tracing::layer()).init();
@@ -105,6 +100,11 @@ async fn main() {
             info!("Enabled Sentry integration");
             std::env::set_var("RUST_BACKTRACE", "1");
         }
+    }
+
+    if env::args().nth(1).is_some_and(|s| s.eq("setup")) {
+        let _ = tokio::task::spawn_blocking(setup::setup).await;
+        return;
     }
 
     let mut config_buffer = String::new();
