@@ -58,6 +58,7 @@ pub(crate) fn setup() {
         capctl::prctl::set_keepcaps(true).unwrap();
         let mut capstate = capctl::CapState::get_current().unwrap();
         capstate.permitted.add(capctl::Cap::NET_BIND_SERVICE);
+        capstate.permitted.add(capctl::Cap::DAC_OVERRIDE);
         capstate.set_current().unwrap();
 
         capctl::cap_set_ids(
@@ -69,6 +70,7 @@ pub(crate) fn setup() {
 
         let mut capstate = capctl::CapState::get_current().unwrap();
         capstate.effective.add(capctl::Cap::NET_BIND_SERVICE);
+        capstate.effective.add(capctl::Cap::DAC_OVERRIDE);
         capstate.set_current().unwrap();
     }
 
