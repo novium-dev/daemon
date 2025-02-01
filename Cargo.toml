@@ -54,7 +54,7 @@ path = "daemon/sdk"
 path = "backend/api"
 
 [workspace.dependencies.rustls]
-version = "0.23.21"
+version = "0.23.22"
 
 [workspace.dependencies.reqwest]
 version = "0.12.12"
