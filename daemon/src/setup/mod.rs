@@ -54,8 +54,22 @@ pub(crate) fn setup() {
         )
         .unwrap();
         env::set_current_dir(PathBuf::from("/var/lib/novium_daemon")).unwrap();
-        users::switch::set_effective_gid(crate::common::CONTAINER_DEFAULT_GID as u32).unwrap();
-        users::switch::set_effective_uid(crate::common::CONTAINER_DEFAULT_UID as u32).unwrap();
+
+        capctl::prctl::set_keepcaps(true).unwrap();
+        let mut capstate = capctl::CapState::get_current().unwrap();
+        capstate.permitted.add(capctl::Cap::NET_BIND_SERVICE);
+        capstate.set_current().unwrap();
+
+        capctl::cap_set_ids(
+            Some(crate::common::CONTAINER_DEFAULT_UID as u32),
+            Some(crate::common::CONTAINER_DEFAULT_GID as u32),
+            None,
+        )
+        .unwrap();
+
+        let mut capstate = capctl::CapState::get_current().unwrap();
+        capstate.effective.add(capctl::Cap::NET_BIND_SERVICE);
+        capstate.set_current().unwrap();
     }
 
     match File::open("config.toml") {
