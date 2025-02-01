@@ -561,6 +561,7 @@ pub(crate) struct ServerData {
     pub(crate) stats_sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) sessions: Arc<Mutex<HashMap<Uuid, TerminalSession>>>,
     pub(crate) stop_command: Option<String>,
+    pub(crate) failure_counter: u8,
 }
 
 impl Default for ServerData {
@@ -577,6 +578,7 @@ impl Default for ServerData {
                 crate::common::DAEMON_TERMINAL_BUFFER_LIMIT,
             ))),
             stop_command: None,
+            failure_counter: 0,
         }
     }
 }
