@@ -4,7 +4,7 @@ use daemon_common::payload::IdResponse;
 use http::Method;
 
 impl<T: DaemonSDKExtra> DaemonSDK<T> {
-    pub async fn network_create(&self, ipv4: u16, ipv6: u16) -> Result<u32, DaemonSDKError> {
+    pub async fn create_network(&self, ipv4: u16, ipv6: u16) -> Result<u32, DaemonSDKError> {
         let response = self
             .wrapper(
                 Method::PUT,
@@ -23,7 +23,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
             .map_err(DaemonSDKError::Reqwest)
     }
 
-    pub async fn network_delete(&self, network: u32) -> Result<(), DaemonSDKError> {
+    pub async fn delete_network(&self, network: u32) -> Result<(), DaemonSDKError> {
         let response = self
             .wrapper(
                 Method::DELETE,
