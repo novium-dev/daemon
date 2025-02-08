@@ -1,3 +1,5 @@
+#![warn(clippy::string_to_string)]
+
 pub use daemon_common as common;
 use std::collections::HashMap;
 pub mod server;

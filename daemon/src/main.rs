@@ -1,3 +1,5 @@
+#![warn(clippy::string_to_string)]
+
 use axum::extract::Request;
 use bollard::network::CreateNetworkOptions;
 use bollard::Docker;

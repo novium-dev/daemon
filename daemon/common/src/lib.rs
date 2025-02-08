@@ -1,3 +1,5 @@
+#![warn(clippy::string_to_string)]
+
 pub mod payload;
 
 pub mod files;

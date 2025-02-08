@@ -1,3 +1,5 @@
+#![warn(clippy::string_to_string)]
+
 mod constants;
 mod r#macro;
 mod plugin;
