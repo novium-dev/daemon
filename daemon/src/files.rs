@@ -390,6 +390,10 @@ pub(crate) async fn write_file_by_url(
             })
             .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
     }
+    writer
+        .flush()
+        .await
+        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     drop(lock);
     Ok(())

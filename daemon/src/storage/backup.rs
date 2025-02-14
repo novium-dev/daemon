@@ -133,8 +133,10 @@ async fn create_backup0(
     id: StorageIdentifier,
     backup: &BackupEntry,
     #[allow(unused)] storage: &StorageEntry,
-    exclude: HashSet<String>,
+    mut exclude: HashSet<String>,
 ) -> Result<i64, io::Error> {
+    exclude.insert(".tmp/".to_string());
+
     let dir = PathBuf::from(path);
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     if !tokio::fs::try_exists(&target_dir).await? {
