@@ -8,6 +8,7 @@ use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
 #[cfg(feature = "ssh")]
 use russh::server::{Config, Server as SSHServer};
+use russh::SshId;
 use signal_hook::iterator::Signals;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{query, MySql, Pool};
@@ -66,6 +67,8 @@ mod web;
 #[openapi()]
 struct ApiDoc;
 
+const GIT_HASH: &str = env!("GIT_HASH");
+
 #[tokio::main]
 async fn main() {
     rustls::crypto::ring::default_provider()
@@ -121,7 +124,7 @@ async fn main() {
         .inspect_err(|_err| error!("Failed to read config file"))
         .unwrap();
 
-    info!("Starting Daemon on version {}", env!("GIT_HASH"));
+    info!("Starting Daemon on version {}", GIT_HASH);
 
     let servers = HashMap::new();
 
@@ -387,6 +390,11 @@ async fn main() {
                 .run_on_address(
                     Arc::new(Config {
                         keys,
+                        server_id: SshId::Standard(format!(
+                            "{}{}",
+                            common::SSH_BANNER_PREFIX,
+                            GIT_HASH
+                        )),
                         ..Config::default()
                     }),
                     &config1.ssh.bind,
