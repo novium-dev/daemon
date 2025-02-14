@@ -21,4 +21,4 @@ CREATE TABLE IF NOT EXISTS `database_user`
   PRIMARY KEY (`database`, `name_suffix`)
 );
 
-CREATE USER IF NOT EXISTS 'server'@'%' IDENTIFIED WITH '{{MARIADB_PLUGIN_NAME}}';
+CREATE USER IF NOT EXISTS 'server'@'%' IDENTIFIED WITH 'novium_daemon_auth';

@@ -1,8 +1,12 @@
+use sqlx::migrate::Migrator;
 use sqlx::mysql::MySqlArguments;
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
 use sqlx::{query, raw_sql, Connection, Executor, MySql, Pool};
 use std::fmt::Debug;
+
+static MIGRATOR: Migrator = sqlx::migrate!();
+static DATABASE_MIGRATOR: Migrator = sqlx::migrate!("./migrations_db");
 
 pub(crate) struct PreparedQuery(Query<'static, MySql, MySqlArguments>);
 
@@ -99,17 +103,9 @@ impl<E: From<sqlx::Error> + Debug> MultiTransactionApplyExt<E>
 }
 
 pub(crate) async fn init(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
-    sqlx::raw_sql(include_str!("sql/init.sql"))
-        .execute(pool)
-        .await?;
+    MIGRATOR.run(pool).await?;
 
-    #[cfg(feature = "database")]
-    sqlx::raw_sql(&include_str!("sql/init_database.sql").replace(
-        "{{MARIADB_PLUGIN_NAME}}",
-        crate::common::MARIADB_PLUGIN_NAME,
-    ))
-    .execute(pool)
-    .await?;
+    DATABASE_MIGRATOR.run(pool).await?;
     Ok(())
 }
 
@@ -191,4 +187,15 @@ pub(crate) fn drop_database(name: impl Into<String>) -> PreparedQuery {
 #[allow(unused)]
 pub(crate) fn flush_privileges() -> PreparedQuery {
     PreparedQuery(query!("SET @STATEMENT = 'FLUSH PRIVILEGES'"))
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::sql::{DATABASE_MIGRATOR, MIGRATOR};
+
+    #[test]
+    fn check_migrations_found() {
+        assert!(MIGRATOR.iter().len() > 0);
+        assert!(DATABASE_MIGRATOR.iter().len() > 0);
+    }
 }
