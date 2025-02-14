@@ -6,6 +6,7 @@ use sqlx::{query, raw_sql, Connection, Executor, MySql, Pool};
 use std::fmt::Debug;
 
 static MIGRATOR: Migrator = sqlx::migrate!();
+#[cfg(feature = "database")]
 static DATABASE_MIGRATOR: Migrator = sqlx::migrate!("./migrations_db");
 
 pub(crate) struct PreparedQuery(Query<'static, MySql, MySqlArguments>);
@@ -105,6 +106,7 @@ impl<E: From<sqlx::Error> + Debug> MultiTransactionApplyExt<E>
 pub(crate) async fn init(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
     MIGRATOR.run(pool).await?;
 
+    #[cfg(feature = "database")]
     DATABASE_MIGRATOR.run(pool).await?;
     Ok(())
 }
@@ -191,11 +193,12 @@ pub(crate) fn flush_privileges() -> PreparedQuery {
 
 #[cfg(test)]
 mod tests {
-    use crate::sql::{DATABASE_MIGRATOR, MIGRATOR};
+    use crate::sql::MIGRATOR;
 
     #[test]
     fn check_migrations_found() {
         assert!(MIGRATOR.iter().len() > 0);
-        assert!(DATABASE_MIGRATOR.iter().len() > 0);
+        #[cfg(feature = "database")]
+        assert!(crate::sql::DATABASE_MIGRATOR.iter().len() > 0);
     }
 }
