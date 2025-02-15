@@ -1,4 +1,7 @@
-use sqlx::migrate::Migrator;
+use futures_util::future::BoxFuture;
+use futures_util::FutureExt;
+use sqlx::error::BoxDynError;
+use sqlx::migrate::{Migration, MigrationSource, Migrator};
 use sqlx::mysql::MySqlArguments;
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
@@ -8,6 +11,15 @@ use std::fmt::Debug;
 static MIGRATOR: Migrator = sqlx::migrate!();
 #[cfg(feature = "database")]
 static DATABASE_MIGRATOR: Migrator = sqlx::migrate!("./migrations_db");
+
+#[derive(Debug)]
+struct MergedMigrationSource(Vec<Migration>);
+
+impl<'s> MigrationSource<'s> for MergedMigrationSource {
+    fn resolve(self) -> BoxFuture<'s, Result<Vec<Migration>, BoxDynError>> {
+        async move { Ok(self.0) }.boxed()
+    }
+}
 
 pub(crate) struct PreparedQuery(Query<'static, MySql, MySqlArguments>);
 
@@ -104,10 +116,19 @@ impl<E: From<sqlx::Error> + Debug> MultiTransactionApplyExt<E>
 }
 
 pub(crate) async fn init(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
-    MIGRATOR.run(pool).await?;
+    #[allow(unused_mut)]
+    let mut current: Vec<_> = MIGRATOR.iter().cloned().collect();
 
     #[cfg(feature = "database")]
-    DATABASE_MIGRATOR.run(pool).await?;
+    {
+        current.extend(DATABASE_MIGRATOR.iter().cloned());
+    }
+
+    Migrator::new(MergedMigrationSource(current))
+        .await?
+        .run(pool)
+        .await?;
+
     Ok(())
 }
 
