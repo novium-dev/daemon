@@ -275,8 +275,8 @@ impl FetchedServer {
                         }),
 
                         console_size: Some(vec![
-                            server_data.size.0 as i32,
                             server_data.size.1 as i32,
+                            server_data.size.0 as i32,
                         ]),
 
                         ..HostConfig::default()
