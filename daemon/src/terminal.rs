@@ -1,5 +1,6 @@
 use crate::server::stop::ServerStopError;
 use crate::server::FetchedServer;
+use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};
 use bollard::Docker;
@@ -11,7 +12,6 @@ use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 use uuid::Uuid;

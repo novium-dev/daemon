@@ -1,4 +1,5 @@
 use crate::server::FetchedServer;
+use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
 use crate::ServerData;
 #[cfg(feature = "user")]
@@ -14,7 +15,6 @@ use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::sync::Arc;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::Mutex;
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
 

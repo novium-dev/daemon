@@ -20,6 +20,7 @@ impl FetchedServer {
         {
             return Err(ServerStopError::NotRunning);
         }
+        server_data.stopping = true;
         if let Some(stop_command) = &server_data.stop_command {
             match server_data.attach_write.lock().await.deref_mut() {
                 None => {}
@@ -32,7 +33,6 @@ impl FetchedServer {
                 }
             }
         }
-        server_data.stopping = true;
         Self::update_status0(self.id, self.locks.clone(), docker, &server_data).await;
         drop(server_data);
         docker

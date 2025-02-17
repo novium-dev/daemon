@@ -9,7 +9,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::{io, mem};
-use tokio::sync::Mutex;
 use tokio_util::io::SyncIoBridge;
 
 use crate::server::status::InternalServerState;
@@ -57,16 +56,16 @@ pub(crate) async fn database(
 
 pub(crate) async fn server(
     conn: &Pool<MySql>,
-    servers: &Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>,
+    servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
     server_id: u32,
-) -> Result<Option<(FetchedServer, Arc<Mutex<ServerData>>)>, sqlx::Error> {
+) -> Result<Option<(FetchedServer, Arc<crate::sync::Mutex<ServerData>>)>, sqlx::Error> {
     let Some(server) = generic_server_select(conn, server_id).await? else {
         return Ok(None);
     };
     let mut servers = servers.lock().await;
     servers
         .entry(server_id)
-        .or_insert_with(|| Arc::new(Mutex::new(ServerData::default())));
+        .or_insert_with(|| Arc::new(crate::sync::Mutex::new(ServerData::default())));
     Ok(Some((server, servers.get(&server_id).unwrap().clone())))
 }
 

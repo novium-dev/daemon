@@ -1,5 +1,6 @@
 use crate::server::start::ServerStartError;
 use crate::server::FetchedServer;
+use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
 use crate::{DaemonState, ServerData};
 use async_std::prelude::Stream;
@@ -15,7 +16,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::{Mutex, OwnedRwLockReadGuard};
+use tokio::sync::OwnedRwLockReadGuard;
 use tokio::time::Instant;
 
 #[allow(clippy::too_many_arguments)]

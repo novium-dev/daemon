@@ -1,3 +1,4 @@
+use crate::sync::Mutex;
 use async_std::prelude::Stream;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
@@ -13,7 +14,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncWrite, AsyncWriteExt};
-use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 

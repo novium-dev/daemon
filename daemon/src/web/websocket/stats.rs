@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::sync::Mutex;
 use axum::extract::ws::WebSocket;
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
@@ -8,7 +9,6 @@ use axum::response::IntoResponse;
 use sqlx::{MySql, Pool};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 

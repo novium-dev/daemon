@@ -1,5 +1,7 @@
 use crate::config::{DaemonConfig, StorageEntry};
 use crate::storage::{ensure_exists, StorageIdentifier};
+use crate::sync::Mutex;
+use crate::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use crate::utils::generic_server_select;
 use crate::web::sql_error_to_http;
 use crate::StorageData;
@@ -12,7 +14,6 @@ use std::io;
 use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use tokio::time::error::Elapsed;
 use tracing::{debug, warn};
 

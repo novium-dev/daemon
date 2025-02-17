@@ -1,4 +1,5 @@
 use crate::ssh::handler::DaemonSSHHandler;
+use crate::sync::Mutex;
 use crate::terminal::{new_session, TerminalData};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::ServerData;
@@ -11,7 +12,6 @@ use std::io::{self, ErrorKind};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::sync::Mutex;
 use tracing::debug;
 
 impl DaemonSSHHandler {

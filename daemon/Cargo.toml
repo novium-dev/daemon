@@ -8,10 +8,16 @@ license = "AGPL-3.0-only"
 [package.metadata.deb]
 name = "novium-daemon"
 depends = ["novium-daemon-mariadb-plugin", "adduser (>=3.40)", "docker.io | docker-ce", "vim", "liblzma5"]
+conflicts = "novium_daemon_trace"
 assets = [["target/release/daemon", "/usr/bin/novium_daemon", "755"]]
 maintainer-scripts = "debian/"
 systemd-units = { unit-name = "novium_daemon", enable = false }
 section = "admin"
+
+[package.metadata.deb.variants.trace]
+name = "novium-daemon-trace"
+conflicts = "novium_daemon"
+features = ["trace_sync"]
 
 [features]
 ssl = []
@@ -28,6 +34,7 @@ sentry = ["dep:sentry"]
 default = ["ssl", "ssh", "sftp", "ssh_control", "database", "user", "sentry", "btrfs"]
 full = ["default"]
 full_bypass = ["full", "ssh_debug_auth_bypass", "user_debug_auth_bypass"]
+trace_sync = []
 
 [dependencies]
 libc.workspace = true

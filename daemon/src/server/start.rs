@@ -2,6 +2,7 @@ use crate::server::watcher::attach;
 use crate::server::FetchedServer;
 use crate::storage::sync::{storage_read, StorageError, StorageLockData};
 use crate::storage::StorageIdentifier;
+use crate::sync::Mutex;
 use crate::utils::from_mib;
 use crate::{utils, DaemonState, ServerData};
 use bollard::container::{Config, CreateContainerOptions, NetworkingConfig};
@@ -22,7 +23,7 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::sync::{Mutex, OwnedRwLockReadGuard};
+use tokio::sync::OwnedRwLockReadGuard;
 use tracing::warn;
 
 #[allow(unused)]

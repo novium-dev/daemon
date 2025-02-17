@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 
+use crate::sync::Mutex;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use bollard::Docker;
-use tokio::sync::Mutex;
 
 use crate::terminal::{new_session, update_size, TerminalData};
 use crate::utils::ChannelInterceptor;

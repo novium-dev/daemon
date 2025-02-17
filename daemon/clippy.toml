@@ -1,0 +1,4 @@
+disallowed-methods = [
+    "tokio::sync::Mutex::new",
+    "tokio::sync::RwLock::new",
+]

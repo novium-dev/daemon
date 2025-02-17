@@ -17,6 +17,9 @@ pub(crate) mod user;
 #[cfg(feature = "user")]
 pub(crate) mod websocket;
 
+#[cfg(feature = "trace_sync")]
+pub(crate) mod trace;
+
 pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
     if let sqlx::Error::Database(database) = &err {
         if database.is_unique_violation()
@@ -32,6 +35,7 @@ pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
 }
 
 pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+    #[allow(unused_mut)]
     let mut router = OpenApiRouter::new()
         .merge(server::config())
         .merge(resource::config())
@@ -51,4 +55,14 @@ pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
         .merge(websocket::user_config())
         .merge(backup::user_config())
         .merge(files::user_config())
+}
+
+pub(crate) fn config_unauthorized() -> OpenApiRouter<DaemonState> {
+    #[allow(unused_mut)]
+    let mut router = OpenApiRouter::new();
+    #[cfg(feature = "trace_sync")]
+    {
+        router = router.merge(trace::config());
+    }
+    router
 }

@@ -1,5 +1,10 @@
 #![warn(clippy::string_to_string)]
+#![cfg_attr(feature = "trace_sync", deny(clippy::disallowed_methods))]
+#![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
+use crate::sync::broadcast::Sender;
+use crate::sync::Mutex;
+use crate::sync::RwLock;
 use axum::extract::Request;
 use bollard::network::CreateNetworkOptions;
 use bollard::Docker;
@@ -23,8 +28,6 @@ use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::runtime::Handle;
-use tokio::sync::broadcast::Sender;
-use tokio::sync::{Mutex, RwLock};
 use tokio::task::JoinSet;
 use tower_http::trace::TraceLayer;
 use tower_http::validate_request::ValidateRequestHeaderLayer;
@@ -59,6 +62,7 @@ mod storage;
 mod ctlsock;
 mod network;
 pub(crate) mod setup;
+mod sync;
 mod terminal;
 mod utils;
 mod web;
@@ -328,7 +332,8 @@ async fn main() {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(web::config())
-        .route_layer(ValidateRequestHeaderLayer::bearer(&config.token));
+        .route_layer(ValidateRequestHeaderLayer::bearer(&config.token))
+        .merge(web::config_unauthorized());
 
     #[cfg(feature = "user")]
     {
@@ -440,7 +445,14 @@ async fn main() {
     });
 
     let state1 = state.clone();
-    if cfg!(debug_assertions) {
+
+    let deadlock_detection = if let Ok(level) = env::var("DEADLOCK_DETECTION") {
+        level.eq("1")
+    } else {
+        cfg!(debug_assertions)
+    };
+    if deadlock_detection {
+        info!("Automatic Deadlock detection is enabled.");
         tokio::task::spawn(async move {
             loop {
                 tokio::time::sleep(Duration::from_secs(10)).await;
@@ -495,7 +507,7 @@ async fn main() {
                                     }
                                 }
                                 Err(_) => {
-                                    warn!("Deadlock detected on server_data: {}", id);
+                                    warn!("Deadlock detected on server_data (this is normal if an image build is in progress): {}", id);
                                 }
                             }
                         }
