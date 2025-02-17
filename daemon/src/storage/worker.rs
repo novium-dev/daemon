@@ -85,8 +85,11 @@ async fn resolve(
                 )),
             })
             .clone();
+        drop(storages);
         let servers = state.servers.lock().await;
-        let sender = match servers.get(&id) {
+        let server = servers.get(&id).cloned();
+        drop(servers);
+        let sender = match server {
             None => None,
             Some(sender) => Some(sender.lock().await.stats_sender.clone()),
         };
