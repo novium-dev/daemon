@@ -1,6 +1,6 @@
 use crate::DaemonSDKError;
 use crate::*;
-use daemon_common::payload::backup::BackupResponseEntry;
+use daemon_common::payload::backup::{BackupResponseEntry, BackupUpdatePayload};
 use http::Method;
 
 impl<T: DaemonSDKExtra> DaemonSDK<T> {
@@ -102,6 +102,31 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
                 Method::GET,
                 format!("backup/{}/{}/{}/restore", server, storage, backup),
                 RequestBody::<()>::None,
+                None::<&()>,
+            )
+            .await?;
+        if !response.status().is_success() {
+            return Err(DaemonSDKError::StatusCode(response.status()));
+        }
+        response
+            .bytes()
+            .await
+            .map(|_| ())
+            .map_err(DaemonSDKError::Reqwest)
+    }
+
+    pub async fn server_set_backup_name(
+        &self,
+        server: u32,
+        storage: String,
+        backup: i64,
+        name: Option<String>,
+    ) -> Result<(), DaemonSDKError> {
+        let response = self
+            .wrapper(
+                Method::PATCH,
+                format!("backup/{}/{}/{}", server, storage, backup),
+                RequestBody::Json(BackupUpdatePayload { name }),
                 None::<&()>,
             )
             .await?;

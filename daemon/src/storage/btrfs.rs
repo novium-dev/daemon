@@ -2,11 +2,10 @@ use libbtrfs::btrfs::*;
 use libbtrfs::btrfs_tree::*;
 use libc::ioctl;
 use std::collections::HashMap;
-use std::fs::File;
 use std::os::fd::AsRawFd;
 use std::{io, mem};
 
-pub(crate) fn get_subvol_id(file: Result<File, io::Error>) -> std::io::Result<u64> {
+pub(crate) fn get_subvol_id(file: Result<impl AsRawFd, io::Error>) -> std::io::Result<u64> {
     let args = btrfs_ioctl_ino_lookup_args {
         objectid: BTRFS_FIRST_FREE_OBJECTID,
         ..Default::default()
@@ -21,7 +20,7 @@ pub(crate) fn get_subvol_id(file: Result<File, io::Error>) -> std::io::Result<u6
 }
 
 pub(crate) fn search_quotas(
-    file: Result<File, io::Error>,
+    file: Result<impl AsRawFd, io::Error>,
     out: &mut HashMap<u64, u64>,
 ) -> Result<(), io::Error> {
     let file = file?;

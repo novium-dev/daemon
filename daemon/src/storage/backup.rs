@@ -9,10 +9,12 @@ use axum::http::{HeaderMap, StatusCode};
 use chrono::{TimeZone, Utc};
 use daemon_common::payload::backup::BackupResponseEntry;
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io;
-use std::io::ErrorKind;
+use std::io::{Error, ErrorKind};
 use std::ops::Deref;
+use std::os::fd::{AsRawFd, RawFd};
+use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
@@ -22,6 +24,7 @@ use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
 use tokio_tar::{Archive, Builder};
 use tokio_util::io::ReaderStream;
 use tracing::{debug, error};
+use xattr::FileExt;
 
 pub(crate) async fn create_backup_order(
     state: &DaemonState,
@@ -294,7 +297,7 @@ async fn list_backups0(
     id: StorageIdentifier,
 ) -> Result<Vec<BackupResponseEntry>, io::Error> {
     let mut entries = Vec::new();
-    for (name, backup_storage) in &state.config.backup {
+    for (storage, backup_storage) in &state.config.backup {
         let target_dir = PathBuf::from(backup_storage.path()).join(id.as_pathbuf());
         match backup_storage {
             BackupEntry::Archive {
@@ -303,37 +306,88 @@ async fn list_backups0(
                 let mut readdir = tokio::fs::read_dir(&target_dir).await?;
                 while let Some(entry) = readdir.next_entry().await? {
                     let metadata = entry.metadata().await?;
+
                     if !metadata.file_type().is_file() {
                         continue;
                     }
+                    let entry_path = entry.path();
+                    let size = metadata.size();
                     let filename = entry.file_name().to_string_lossy().to_string();
                     if !filename.ends_with(&format!(".tar{}", compression.ext())) {
                         continue;
                     }
                     let entry = &filename[0..filename.len() - (4 + compression.ext().len())];
                     let entry: Result<i64, _> = entry.parse();
+
+                    let file = File::open(entry_path).await?;
+                    let name = file.get_backup_name().await?;
                     if let Ok(entry) = entry {
                         entries.push(BackupResponseEntry {
                             time: entry,
-                            storage: name.clone(),
+                            storage: storage.clone(),
+                            size: Some(size),
+                            name,
                         });
                     }
                 }
             }
             #[cfg(feature = "btrfs")]
-            BackupEntry::Btrfs { .. } => {
+            BackupEntry::Btrfs { quota, .. } => {
                 let mut readdir = tokio::fs::read_dir(&target_dir).await?;
+
+                let mut quotas = HashMap::new();
+                if *quota {
+                    quotas = tokio::task::spawn_blocking(move || {
+                        if let Err(err) = super::btrfs::search_quotas(
+                            std::fs::File::open(target_dir),
+                            &mut quotas,
+                        ) {
+                            error!(
+                                "Unable to retrieve quotas: {:?}. Ensure quotas are enabled",
+                                err
+                            );
+                        }
+                        quotas
+                    })
+                    .await?;
+                }
                 while let Some(entry) = readdir.next_entry().await? {
                     let metadata = entry.metadata().await?;
                     if !metadata.file_type().is_dir() {
                         continue;
                     }
+                    let entry_path = entry.path();
                     let entry = entry.file_name().to_string_lossy().to_string();
                     let entry: Result<i64, _> = entry.parse();
+
+                    let file = File::open(&entry_path).await?;
+                    let name = file.get_backup_name().await?;
+                    let size = if *quota {
+                        match tokio::task::spawn_blocking(move || {
+                            super::btrfs::get_subvol_id(Ok(file))
+                        })
+                        .await?
+                        {
+                            Ok(subvol) => quotas.get(&subvol).copied(),
+                            Err(err) => {
+                                error!(
+                                    "Unable to retrieve subvolume id: {:?} in {:?}. Ensure this backup is a subvolume and not a directory!",
+                                    err,
+                                    entry_path.to_string_lossy(),
+                                );
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+
                     if let Ok(entry) = entry {
                         entries.push(BackupResponseEntry {
                             time: entry,
-                            storage: name.clone(),
+                            storage: storage.clone(),
+                            size,
+                            name,
                         });
                     }
                 }
@@ -341,6 +395,66 @@ async fn list_backups0(
         }
     }
     Ok(entries)
+}
+
+pub(crate) async fn set_backup_name(
+    state: &DaemonState,
+    id: StorageIdentifier,
+    backup_id: i64,
+    backup_storage: &String,
+    name: Option<String>,
+) -> Result<(), StatusCode> {
+    let StorageLockData { lock, .. } =
+        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
+            .await
+            .map_err(StorageError::into_http)?;
+    let backup = state
+        .config
+        .backup
+        .get(backup_storage)
+        .ok_or(StatusCode::NOT_FOUND)
+        .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
+
+    set_backup_name0(id, backup_id, backup, name)
+        .await
+        .inspect_err(|err| {
+            if err.kind() == ErrorKind::NotFound {
+                debug!("Failed to set backup name: {:?}", err)
+            } else {
+                error!("Failed to set backup name: {:?}", err)
+            }
+        })
+        .map_err(|err| {
+            if err.kind() == ErrorKind::NotFound {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        })?;
+
+    drop(lock);
+
+    Ok(())
+}
+
+#[inline(always)]
+async fn set_backup_name0(
+    id: StorageIdentifier,
+    backup_id: i64,
+    backup: &BackupEntry,
+    name: Option<String>,
+) -> Result<(), io::Error> {
+    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
+    let target = match backup {
+        BackupEntry::Archive { compression, .. } => {
+            target_dir.join(format!("{}.tar{}", backup_id, compression.ext()))
+        }
+        #[cfg(feature = "btrfs")]
+        BackupEntry::Btrfs { .. } => target_dir.join(backup_id.to_string()),
+    };
+    let file = File::open(target).await?;
+    file.set_backup_name(name).await?;
+    Ok(())
 }
 
 pub(crate) async fn backup_to_stream(
@@ -364,8 +478,20 @@ pub(crate) async fn backup_to_stream(
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
     let body = backup_to_stream0(id, backup_id, backup, backup_exclude)
         .await
-        .inspect_err(|err| error!("Failed to create a backup stream: {:?}", err))
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .inspect_err(|err| {
+            if err.kind() == ErrorKind::NotFound {
+                debug!("Failed to create a backup stream: {:?}", err)
+            } else {
+                error!("Failed to create a backup stream: {:?}", err)
+            }
+        })
+        .map_err(|err| {
+            if err.kind() == ErrorKind::NotFound {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        })?;
     drop(lock);
 
     Ok(body)
@@ -508,8 +634,20 @@ pub(crate) async fn delete_backup(
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
     delete_backup0(id, backup_id, backup)
         .await
-        .inspect_err(|err| error!("Failed to delete a backup: {:?}", err))
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;
+        .inspect_err(|err| {
+            if err.kind() == ErrorKind::NotFound {
+                debug!("Failed to delete a backup: {:?}", err)
+            } else {
+                error!("Failed to delete a backup: {:?}", err)
+            }
+        })
+        .map_err(|err| {
+            if err.kind() == ErrorKind::NotFound {
+                StatusCode::NOT_FOUND
+            } else {
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        })?;
     drop(lock);
     Ok(())
 }
@@ -530,15 +668,12 @@ async fn delete_backup0(
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
-            use std::io::ErrorKind;
             return tokio::task::spawn_blocking(move || {
                 let target = target_dir.join(backup_id.to_string());
-                libbtrfs::subvolume::remove(&target.to_string_lossy())
-                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                libbtrfs::subvolume::remove(&target.to_string_lossy())?;
                 Ok(())
             })
-            .await
-            .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+            .await?;
         }
     }
     Ok(())
@@ -603,3 +738,52 @@ impl<W: AsyncWrite + Unpin + Send> AppendDirAllExclude for Builder<W> {
         Ok(())
     }
 }
+
+trait BackupNameExtension {
+    async fn get_backup_name(&self) -> Result<Option<String>, io::Error>;
+
+    async fn set_backup_name(&self, name: Option<String>) -> Result<(), io::Error>;
+}
+
+impl<T: AsRawFd> BackupNameExtension for T {
+    async fn get_backup_name(&self) -> Result<Option<String>, Error> {
+        let file = RawFdContainer(self.as_raw_fd());
+        tokio::task::spawn_blocking(move || {
+            match file.get_xattr(crate::common::DAEMON_BACKUP_NAME_XATTR) {
+                Ok(None) => Ok(None),
+                Ok(Some(bytes)) => Ok(Some(String::from_utf8_lossy(&bytes).into_owned())),
+                Err(err) if err.raw_os_error() == Some(libc::ENOTSUP) => Ok(None),
+                Err(err) => Err(err),
+            }
+        })
+        .await?
+    }
+
+    async fn set_backup_name(&self, name: Option<String>) -> Result<(), Error> {
+        let file = RawFdContainer(self.as_raw_fd());
+        tokio::task::spawn_blocking(move || {
+            match name {
+                Some(name) => {
+                    file.set_xattr(crate::common::DAEMON_BACKUP_NAME_XATTR, name.as_bytes())?
+                }
+                None => match file.remove_xattr(crate::common::DAEMON_BACKUP_NAME_XATTR) {
+                    Ok(_) => {}
+                    Err(err) if err.raw_os_error() == Some(libc::ENODATA) => {}
+                    Err(err) => return Err(err),
+                },
+            }
+            Ok(())
+        })
+        .await?
+    }
+}
+
+struct RawFdContainer(RawFd);
+
+impl AsRawFd for RawFdContainer {
+    fn as_raw_fd(&self) -> RawFd {
+        self.0
+    }
+}
+
+impl FileExt for RawFdContainer {}

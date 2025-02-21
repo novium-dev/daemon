@@ -97,6 +97,7 @@ pub(crate) enum BackupEntry {
         jit_compression: ArchiveCompression,
         path: String,
         group: String,
+        quota: bool,
         order: Option<i8>,
     },
 }

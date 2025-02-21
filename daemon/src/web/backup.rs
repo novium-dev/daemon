@@ -19,6 +19,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
         .routes(routes!(server_delete_backup))
         .routes(routes!(server_list_backups))
         .routes(routes!(server_restore_backup))
+        .routes(routes!(server_update_backup))
 }
 
 #[cfg(feature = "user")]
@@ -292,4 +293,36 @@ pub(crate) async fn server_restore_backup(
 ) -> Result<(), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     storage::backup::restore_backup(&state, storage, backup_id, &backup_storage).await
+}
+
+#[utoipa::path(patch,
+    path = "/backup/{server_id}/{backup_storage}/{backup_id}",
+    tag = "backup",
+    description = "Sets the name of an existing backup",
+    request_body(
+        content = BackupUpdatePayload,
+        description = "The backup update",
+        content_type = "application/json",
+    ),
+    responses(
+        (status = 200, description = "Ok"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server, backup storage or the backup does not exist"),
+        (status = 401, description = "Your authorization token is invalid")
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("backup_storage" = String, description = "The id of the storage, in which the backup is stored"),
+        ("backup_id" = i64, description = "The id of the backup"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
+pub(crate) async fn server_update_backup(
+    State(state): State<DaemonState>,
+    Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
+    Json(BackupUpdatePayload { name }): Json<BackupUpdatePayload>,
+) -> Result<(), StatusCode> {
+    let storage = StorageIdentifier::Primary(server_id);
+    storage::backup::set_backup_name(&state, storage, backup_id, &backup_storage, name).await
 }
