@@ -11,9 +11,13 @@ fn main() {
 
     println!("cargo:rustc-env=GIT_HASH={}", git_hash);
 
-    #[cfg(target_os = "linux")]
-    println!("cargo:rustc-env=DATABASE_URL=mysql://root@localhost/daemon?socket=mysql/sockets/mysqld.sock");
+    if let Ok(env) = std::env::var("DAEMON_DATABASE_URL") {
+        println!("cargo:rustc-env=DATABASE_URL={}", env);
+    } else {
+        #[cfg(target_os = "linux")]
+        println!("cargo:rustc-env=DATABASE_URL=mysql://root@localhost/daemon?socket=mysql/sockets/mysqld.sock");
 
-    #[cfg(target_os = "macos")]
-    println!("cargo:rustc-env=DATABASE_URL=mysql://root@mysql.mac.orb.local/daemon");
+        #[cfg(target_os = "macos")]
+        println!("cargo:rustc-env=DATABASE_URL=mysql://root@mysql.mac.orb.local/daemon");
+    }
 }
