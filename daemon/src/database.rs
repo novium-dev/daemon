@@ -16,7 +16,7 @@ pub(crate) struct Database {
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct FetchedDatabase {
     pub name_suffix: String,
-    pub passwordless: HashMap<u32, i32>,
+    pub passwordless: HashMap<u32, i8>,
     pub users: HashMap<String, DatabaseUser>,
 }
 
@@ -25,7 +25,7 @@ pub(crate) struct DatabaseUser {
     pub(crate) database: u32,
     pub(crate) name_suffix: String,
     pub(crate) password_hash: String,
-    pub(crate) permissions: i32,
+    pub(crate) permissions: i8,
 }
 
 impl Database {

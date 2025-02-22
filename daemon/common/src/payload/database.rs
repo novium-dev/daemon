@@ -45,7 +45,7 @@ pub struct DatabasePasswordlessPayload(pub HashMap<u32, DatabaseUserPermissions>
 
 bitflags! {
     #[derive(Eq, PartialEq, Hash, Clone, Copy)]
-    pub struct DatabaseUserPermissions: i32 {
+    pub struct DatabaseUserPermissions: i8 {
         const SELECT = 1 << 0;
         const INSERT = 1 << 1;
         const UPDATE = 1 << 2;
@@ -73,7 +73,7 @@ impl Serialize for DatabaseUserPermissions {
     where
         S: Serializer,
     {
-        serializer.serialize_i32(self.bits())
+        serializer.serialize_i8(self.bits())
     }
 }
 
@@ -82,7 +82,7 @@ impl<'de> Deserialize<'de> for DatabaseUserPermissions {
     where
         D: Deserializer<'de>,
     {
-        i32::deserialize(deserializer).map(DatabaseUserPermissions::from_bits_truncate)
+        i8::deserialize(deserializer).map(DatabaseUserPermissions::from_bits_truncate)
     }
 }
 
