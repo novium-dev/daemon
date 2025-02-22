@@ -35,6 +35,12 @@ case "$1" in
     ;;
 esac
 
+systemctl --system daemon-reload >/dev/null || true
+if systemctl is-enabled novium_daemon.service >/dev/null
+then
+    deb-systemd-invoke restart novium_daemon.service >/dev/null || true
+fi
+
 #DEBHELPER#
 
 

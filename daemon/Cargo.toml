@@ -7,7 +7,7 @@ license = "AGPL-3.0-only"
 
 [package.metadata.deb]
 name = "novium-daemon"
-depends = ["novium-daemon-mariadb-plugin", "adduser (>=3.40)", "docker.io | docker-ce", "vim", "liblzma5"]
+depends = ["novium-daemon-mariadb-plugin", "adduser (>=3.40)", "docker.io | docker-ce", "vim", "liblzma5", "init-system-helpers"]
 conflicts = "novium_daemon_trace"
 assets = [["target/release/daemon", "/usr/bin/novium_daemon", "755"]]
 maintainer-scripts = "debian/"

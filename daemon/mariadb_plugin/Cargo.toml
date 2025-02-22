@@ -7,7 +7,7 @@ license = "AGPL-3.0-only"
 
 [package.metadata.deb]
 name = "novium-daemon-mariadb-plugin"
-depends = ["mariadb-server", "docker.io | docker-ce"]
+depends = ["mariadb-server", "docker.io | docker-ce", "init-system-helpers"]
 assets = [
     [
         "target/release/libdaemon_mariadb_plugin.so",
