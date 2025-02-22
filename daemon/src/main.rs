@@ -13,7 +13,7 @@ use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
 #[cfg(feature = "ssh")]
 use russh::server::{Config, Server as SSHServer};
-use russh::SshId;
+use russh::{MethodKind, MethodSet, SshId};
 use signal_hook::iterator::Signals;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::{query, MySql, Pool};
@@ -400,6 +400,7 @@ async fn main() {
                             common::SSH_BANNER_PREFIX,
                             GIT_HASH
                         )),
+                        methods: MethodSet::from(&[MethodKind::Password]),
                         ..Config::default()
                     }),
                     &config1.ssh.bind,
