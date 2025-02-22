@@ -129,5 +129,7 @@ bitflags! {
 
         const CONTROL_VIEW = 1 << 6;
         const CONTROL_POWER = 1 << 7;
+
+        const BACKUP_DOWNLOAD = 1 << 8;
     }
 }

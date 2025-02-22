@@ -343,6 +343,51 @@ impl Handler for DaemonSSHHandler {
                                 }
                             }
                         }
+                        if server
+                            .permissions
+                            .contains(BackendAuthServerPermissions::BACKUP_DOWNLOAD)
+                        {
+                            let identifier = StorageIdentifier::Primary(server.id);
+                            for (name, backup) in &self.state.config.backup {
+                                if let Ok(StorageLockData { lock, .. }) = storage_read(
+                                    &self.state.config,
+                                    self.state.conn.deref(),
+                                    &self.state.storages,
+                                    identifier,
+                                    true,
+                                )
+                                .await
+                                {
+                                    let base =
+                                        PathBuf::from(backup.path()).join(identifier.as_pathbuf());
+                                    match Dir::open_ambient_dir(&base, ambient_authority())
+                                        .await
+                                        .inspect_err(|err| {
+                                            error!(
+                                                "Failed to open backup directory: {} {:?}",
+                                                base.to_string_lossy(),
+                                                err
+                                            )
+                                        }) {
+                                        Ok(storage) => {
+                                            sftp.access.insert(
+                                                vec![
+                                                    "backups".to_string(),
+                                                    name.clone(),
+                                                    server.name.clone(),
+                                                ],
+                                                (
+                                                    Arc::new(storage),
+                                                    BackendAuthServerPermissions::FILES_READ,
+                                                    lock,
+                                                ),
+                                            );
+                                        }
+                                        Err(_err) => continue,
+                                    }
+                                }
+                            }
+                        }
                     }
                     russh_sftp::server::run(channel.unwrap().into_stream(), sftp).await;
                     session.channel_success(channel_id)
