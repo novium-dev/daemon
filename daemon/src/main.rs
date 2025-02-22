@@ -391,6 +391,8 @@ async fn main() {
                 state: state1,
                 cache_invalidation: Duration::from_millis(config1.ssh.auth_cache_duration),
             };
+            let mut methods = MethodSet::empty();
+            methods.push(MethodKind::Password);
             if let Err(err) = server
                 .run_on_address(
                     Arc::new(Config {
@@ -400,7 +402,7 @@ async fn main() {
                             common::SSH_BANNER_PREFIX,
                             GIT_HASH
                         )),
-                        methods: MethodSet::from(&[MethodKind::Password]),
+                        methods,
                         ..Config::default()
                     }),
                     &config1.ssh.bind,
