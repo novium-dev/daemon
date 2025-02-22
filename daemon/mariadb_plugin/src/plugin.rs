@@ -1,7 +1,3 @@
-// only allow linux
-#[cfg(not(target_os = "linux"))]
-compile_error!("This module is only available on linux");
-
 pub mod proxy;
 
 use crate::plugin::proxy::authenticate_proxy_mode;
@@ -16,14 +12,15 @@ use std::io::ErrorKind;
 use std::mem::{size_of, MaybeUninit};
 use std::net::{SocketAddr, TcpStream};
 use std::os::fd::{FromRawFd, IntoRawFd};
+use std::sync::RwLock;
 use tokio::runtime::Runtime;
 
-static mut DOCKER: Option<Docker> = None;
-static mut RUNTIME: Option<Runtime> = None;
+static DOCKER: tokio::sync::RwLock<Option<Docker>> = tokio::sync::RwLock::const_new(None);
+static RUNTIME: RwLock<Option<Runtime>> = RwLock::new(None);
 
-pub unsafe fn init() -> Result<(), i32> {
-    DOCKER = Some(Docker::connect_with_unix_defaults().map_err(|_err| -1)?);
-    RUNTIME = Some(
+pub fn init() -> Result<(), i32> {
+    *DOCKER.blocking_write() = Some(Docker::connect_with_unix_defaults().map_err(|_err| -1)?);
+    *RUNTIME.write().unwrap() = Some(
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
             .build()
@@ -32,13 +29,13 @@ pub unsafe fn init() -> Result<(), i32> {
     Ok(())
 }
 
-pub unsafe fn deinit() -> Result<(), i32> {
-    DOCKER = None;
-    RUNTIME = None;
+pub fn deinit() -> Result<(), i32> {
+    *DOCKER.blocking_write() = None;
+    *RUNTIME.write().unwrap() = None;
     Ok(())
 }
 
-pub unsafe fn authenticate(vio: &mut PluginVIO, info: &mut ServerAuthInfo) -> AuthStatus {
+pub fn authenticate(vio: &mut PluginVIO, info: &mut ServerAuthInfo) -> AuthStatus {
     let mut pkt: MaybeUninit<*mut c_uchar> = MaybeUninit::uninit();
     if info.user_name.is_null() && vio.read_packet(&mut pkt) < 0 {
         return AuthStatus::Error;
@@ -59,10 +56,12 @@ pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
                 Err(err) => return Err(err.into()),
             };
             let _ = tcp.into_raw_fd();
-            #[allow(static_mut_refs)]
-            unsafe {
-                RUNTIME.as_ref().unwrap().block_on(identify_tcp(addr))
-            }
+            RUNTIME
+                .read()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .block_on(identify_tcp(addr))
         }
         PluginVIOInfoProtocol::MYSQL_VIO_SOCKET => {
             let mut cred: MaybeUninit<ucred> = MaybeUninit::uninit();
@@ -79,8 +78,9 @@ pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
                     return Err(io::Error::new(ErrorKind::Other, "Unable to read pid").into());
                 }
 
-                #[allow(static_mut_refs)]
                 RUNTIME
+                    .read()
+                    .unwrap()
                     .as_ref()
                     .unwrap()
                     .block_on(identify_unix(cred.assume_init()))
@@ -108,7 +108,7 @@ pub(crate) fn authenticate_as(
     AuthStatus::Ok
 }
 
-async unsafe fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
+async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
     let addr = match peer_addr {
         SocketAddr::V4(addr) => addr,
 
@@ -123,8 +123,9 @@ async unsafe fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error
 
     let mut matching = None;
 
-    #[allow(static_mut_refs)]
     let network = DOCKER
+        .read()
+        .await
         .as_ref()
         .unwrap()
         .inspect_network::<String>(crate::NETWORK_DEFAULT, None)
@@ -146,8 +147,9 @@ async unsafe fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error
         }
     }
     if matching.is_none() {
-        #[allow(static_mut_refs)]
         let network = DOCKER
+            .read()
+            .await
             .as_ref()
             .unwrap()
             .inspect_network::<String>(crate::NETWORK_INTERNET, None)
@@ -198,7 +200,7 @@ async unsafe fn identify_unix(cred: ucred) -> Result<u32, Box<dyn Error>> {
     {
         println!("Connection through pid: {}", pid);
     }
-    daemon_common::utils::identify_container_by_pid(DOCKER.as_ref().unwrap(), pid)
+    daemon_common::utils::identify_container_by_pid(DOCKER.read().await.as_ref().unwrap(), pid)
         .await
         .map_err(|err| err.into())
 }

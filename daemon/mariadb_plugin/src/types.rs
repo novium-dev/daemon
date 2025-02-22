@@ -4,6 +4,7 @@ use std::mem::MaybeUninit;
 
 #[non_exhaustive]
 #[repr(i32)]
+#[allow(dead_code)]
 pub enum PluginType {
     /// User-Defined Function.
     Udf = 0,
@@ -16,6 +17,7 @@ pub enum PluginType {
 
 /// The license under which the plugin is being published.
 #[repr(i32)]
+#[allow(dead_code)]
 pub enum License {
     /// A proprietary license.
     Proprietary = 0,
@@ -135,6 +137,7 @@ pub enum AuthStatus {
 
 #[repr(C)]
 #[allow(non_camel_case_types)]
+#[allow(dead_code)]
 pub enum PluginVIOInfoProtocol {
     MYSQL_VIO_INVALID,
     MYSQL_VIO_TCP,
