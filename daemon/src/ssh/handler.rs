@@ -360,6 +360,9 @@ impl Handler for DaemonSSHHandler {
                                 {
                                     let base =
                                         PathBuf::from(backup.path()).join(identifier.as_pathbuf());
+                                    if let Ok(false) = tokio::fs::try_exists(&base).await {
+                                        let _ = tokio::fs::create_dir_all(&base).await;
+                                    }
                                     match Dir::open_ambient_dir(&base, ambient_authority())
                                         .await
                                         .inspect_err(|err| {
