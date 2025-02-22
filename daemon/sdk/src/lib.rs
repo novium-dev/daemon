@@ -1,3 +1,4 @@
+#![forbid(unsafe_code)]
 #![warn(clippy::string_to_string)]
 
 pub use daemon_common as common;

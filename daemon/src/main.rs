@@ -225,7 +225,7 @@ async fn main() {
     };
     sql::init(&state.conn)
         .await
-        .inspect_err(|_err| error!("Failed to initialize sql"))
+        .inspect_err(|err| error!("Failed to initialize sql: {:?}", err))
         .unwrap();
 
     if let Ok(containers) = state
