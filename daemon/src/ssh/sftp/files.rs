@@ -1,6 +1,5 @@
 mod fsetstat;
 mod fstat;
-mod lstat;
 mod mkdir;
 mod open;
 mod read;
@@ -17,7 +16,6 @@ mod write;
 
 pub(crate) use fsetstat::fsetstat;
 pub(crate) use fstat::fstat;
-pub(crate) use lstat::lstat;
 pub(crate) use mkdir::mkdir;
 pub(crate) use open::open;
 pub(crate) use read::read;
