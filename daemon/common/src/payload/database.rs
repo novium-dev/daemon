@@ -13,14 +13,14 @@ pub struct DatabaseCreatePayload {
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, utoipa::ToSchema)]
 pub struct DatabaseModifyPayload {
-    pub passwordless: HashMap<u32, DatabasePermissions>,
+    pub passwordless: HashMap<u32, DatabaseUserPermissions>,
     pub users: HashMap<String, DatabaseUserPayload>,
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash, utoipa::ToSchema)]
 pub struct DatabaseUserPayload {
     pub password_hash: String,
-    pub permissions: DatabasePermissions,
+    pub permissions: DatabaseUserPermissions,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -41,11 +41,11 @@ impl From<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
 
 #[derive(Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct DatabasePasswordlessPayload(pub HashMap<u32, DatabasePermissions>);
+pub struct DatabasePasswordlessPayload(pub HashMap<u32, DatabaseUserPermissions>);
 
 bitflags! {
     #[derive(Eq, PartialEq, Hash, Clone, Copy)]
-    pub struct DatabasePermissions: i32 {
+    pub struct DatabaseUserPermissions: i32 {
         const SELECT = 1 << 0;
         const INSERT = 1 << 1;
         const UPDATE = 1 << 2;
@@ -56,19 +56,19 @@ bitflags! {
     }
 }
 
-impl PartialSchema for DatabasePermissions {
+impl PartialSchema for DatabaseUserPermissions {
     fn schema() -> RefOr<Schema> {
         i32::schema()
     }
 }
 
-impl ToSchema for DatabasePermissions {
+impl ToSchema for DatabaseUserPermissions {
     fn name() -> Cow<'static, str> {
         Cow::Borrowed("DatabasePermissions")
     }
 }
 
-impl Serialize for DatabasePermissions {
+impl Serialize for DatabaseUserPermissions {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -77,23 +77,23 @@ impl Serialize for DatabasePermissions {
     }
 }
 
-impl<'de> Deserialize<'de> for DatabasePermissions {
+impl<'de> Deserialize<'de> for DatabaseUserPermissions {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        i32::deserialize(deserializer).map(DatabasePermissions::from_bits_truncate)
+        i32::deserialize(deserializer).map(DatabaseUserPermissions::from_bits_truncate)
     }
 }
 
-impl From<DatabasePasswordlessPayload> for HashMap<u32, DatabasePermissions> {
+impl From<DatabasePasswordlessPayload> for HashMap<u32, DatabaseUserPermissions> {
     fn from(value: DatabasePasswordlessPayload) -> Self {
         value.0
     }
 }
 
-impl From<HashMap<u32, DatabasePermissions>> for DatabasePasswordlessPayload {
-    fn from(value: HashMap<u32, DatabasePermissions>) -> Self {
+impl From<HashMap<u32, DatabaseUserPermissions>> for DatabasePasswordlessPayload {
+    fn from(value: HashMap<u32, DatabaseUserPermissions>) -> Self {
         DatabasePasswordlessPayload(value)
     }
 }

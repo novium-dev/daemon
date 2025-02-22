@@ -1,7 +1,7 @@
 use crate::common::payload::database::DatabaseModifyPayload;
 use crate::sql;
 use crate::sql::MultiTransactionApply;
-use daemon_common::payload::database::DatabasePermissions;
+use daemon_common::payload::database::DatabaseUserPermissions;
 use regex::Regex;
 use sqlx::{query, query_as, Error, Executor, MySql};
 use std::collections::{HashMap, HashSet};
@@ -207,7 +207,7 @@ impl DatabasePayloadFunctionExtension for DatabaseModifyPayload {
             ), vec![
                 query!("INSERT INTO `database_user` (`database`, `name_suffix`, `password_hash`, `permissions`) VALUES (?, ?, ?, 0)", id, &user, data.password_hash)
             ]);
-            let mut applied = DatabasePermissions::empty();
+            let mut applied = DatabaseUserPermissions::empty();
             for (perm_name, perm) in data.permissions.iter_names() {
                 applied |= perm;
                 transaction.add(sql::grant_privilege(
@@ -231,7 +231,7 @@ impl DatabasePayloadFunctionExtension for DatabaseModifyPayload {
                 "INSERT INTO `database_passwordless` (`database`, `server`, `permissions`) VALUES (?, ?, 0)",
                 id, server,
             )]);
-            let mut applied = DatabasePermissions::empty();
+            let mut applied = DatabaseUserPermissions::empty();
             for (perm_name, perm) in permissions.iter_names() {
                 applied |= perm;
                 transaction.add(sql::grant_privilege(
