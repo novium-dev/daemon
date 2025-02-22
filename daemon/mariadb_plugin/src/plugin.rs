@@ -10,8 +10,9 @@ use std::ffi::{c_char, c_uchar, c_void, CString};
 use std::io;
 use std::io::ErrorKind;
 use std::mem::{size_of, MaybeUninit};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::os::fd::{FromRawFd, IntoRawFd};
+use std::str::FromStr;
 use std::sync::RwLock;
 use tokio::runtime::Runtime;
 
@@ -109,16 +110,9 @@ pub(crate) fn authenticate_as(
 }
 
 async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
-    let addr = match peer_addr {
-        SocketAddr::V4(addr) => addr,
-
-        // Connection to the database over ipv6 is currently unsupported.
-        // This will change, when the default docker bridge gets ipv6 support enabled by default)
-        _ => return Err(io::Error::new(ErrorKind::Other, "Connection attempt using ipv6").into()),
-    };
     #[cfg(debug_assertions)]
     {
-        println!("Connection through IPv4: {}", addr.ip());
+        println!("Connection through TCP: {}", peer_addr);
     }
 
     let mut matching = None;
@@ -132,11 +126,28 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
         .await?;
     if let Some(containers) = network.containers {
         for network in containers.values() {
-            if let Some(ref ipv4) = network.ipv4_address {
-                let ipv4 = ipv4.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv4);
-                if ipv4.eq(&addr.ip().to_string()) {
-                    matching = Some(network.name.clone().unwrap_or_default());
-                    break;
+            match peer_addr.ip() {
+                IpAddr::V4(addr) => {
+                    if let Some(ref ipv4) = network.ipv4_address {
+                        let ipv4 = ipv4.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv4);
+                        let docker_ipv4 = Ipv4Addr::from_str(ipv4);
+
+                        if docker_ipv4.eq(&Ok(addr)) {
+                            matching = Some(network.name.clone().unwrap_or_default());
+                            break;
+                        }
+                    }
+                }
+                IpAddr::V6(addr) => {
+                    if let Some(ref ipv6) = network.ipv6_address {
+                        let ipv6 = ipv6.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv6);
+                        let docker_ipv6 = Ipv6Addr::from_str(ipv6);
+
+                        if docker_ipv6.eq(&Ok(addr)) {
+                            matching = Some(network.name.clone().unwrap_or_default());
+                            break;
+                        }
+                    }
                 }
             }
         }
@@ -156,11 +167,28 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
             .await?;
         if let Some(containers) = network.containers {
             for network in containers.values() {
-                if let Some(ref ipv4) = network.ipv4_address {
-                    let ipv4 = ipv4.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv4);
-                    if ipv4.eq(&addr.ip().to_string()) {
-                        matching = Some(network.name.clone().unwrap_or_default());
-                        break;
+                match peer_addr.ip() {
+                    IpAddr::V4(addr) => {
+                        if let Some(ref ipv4) = network.ipv4_address {
+                            let ipv4 = ipv4.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv4);
+                            let docker_ipv4 = Ipv4Addr::from_str(ipv4);
+
+                            if docker_ipv4.eq(&Ok(addr)) {
+                                matching = Some(network.name.clone().unwrap_or_default());
+                                break;
+                            }
+                        }
+                    }
+                    IpAddr::V6(addr) => {
+                        if let Some(ref ipv6) = network.ipv6_address {
+                            let ipv6 = ipv6.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv6);
+                            let docker_ipv6 = Ipv6Addr::from_str(ipv6);
+
+                            if docker_ipv6.eq(&Ok(addr)) {
+                                matching = Some(network.name.clone().unwrap_or_default());
+                                break;
+                            }
+                        }
                     }
                 }
             }
