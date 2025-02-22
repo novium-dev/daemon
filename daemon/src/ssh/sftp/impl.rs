@@ -154,7 +154,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Lstat {} {}", id, path);
-        let handle = super::files::open(self, path, &OpenOptions::new()).await?;
+        let handle = super::files::open(self, path, &OpenOptions::new().read(true)).await?;
         let mut handle = self.file_handles.remove(&handle).unwrap();
         super::files::fstat(&mut handle)
             .await
