@@ -21,6 +21,9 @@ section = "database"
 [lib]
 crate-type = ["cdylib"]
 
+[features]
+ci = []
+
 [dependencies]
 libc.workspace = true
 bollard.workspace = true

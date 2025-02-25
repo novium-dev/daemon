@@ -20,7 +20,10 @@ static DOCKER: tokio::sync::RwLock<Option<Docker>> = tokio::sync::RwLock::const_
 static RUNTIME: RwLock<Option<Runtime>> = RwLock::new(None);
 
 pub fn init() -> Result<(), i32> {
-    *DOCKER.blocking_write() = Some(Docker::connect_with_unix_defaults().map_err(|_err| -1)?);
+    #[cfg(not(feature = "ci"))]
+    {
+        *DOCKER.blocking_write() = Some(Docker::connect_with_unix_defaults().map_err(|_err| -1)?);
+    }
     *RUNTIME.write().unwrap() = Some(
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
