@@ -5,7 +5,8 @@ workdir/
 storage/*
 storages/*
 valkey/*
-mysql/*
+mysql/data/
+mysql/sockets/
 build/
 
 # Don't leak information
