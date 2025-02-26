@@ -266,7 +266,7 @@ impl DatabasePayloadFunctionExtension for DatabaseModifyPayload {
     }
 
     fn validate_sql_string(str: &str) -> Result<(), DatabaseUpdateError> {
-        if Regex::new("[a-zA-Z0-9_-]+").unwrap().is_match(str) {
+        if Regex::new("[a-zA-Z0-9_]+").unwrap().is_match(str) {
             Ok(())
         } else {
             Err(DatabaseUpdateError::Invalid)

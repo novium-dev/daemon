@@ -38,7 +38,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
     ),
     responses(
         (status = 200, description = "Database was created successfully", body = IdResponse, content_type = "application/json"),
-        (status = 400, description = "Some parts of the payload are not present"),
+        (status = 400, description = "Name suffix is invalid"),
         (status = 500, description = "An unexpected error occurred"),
         (status = 401, description = "Your authorization token is invalid")
     ),
