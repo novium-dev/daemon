@@ -1,8 +1,6 @@
 use crate::DaemonSDKError;
 use crate::*;
-use daemon_common::payload::database::{
-    DatabaseCreatePayload, DatabaseModifyPayload, DatabasePasswordlessPayload, DatabaseUsersPayload,
-};
+use daemon_common::payload::database::{DatabaseCreatePayload, DatabaseModifyPayload, DatabaseUserPayload, DatabaseUserPermissions};
 use daemon_common::payload::IdResponse;
 use http::Method;
 impl<T: DaemonSDKExtra> DaemonSDK<T> {
@@ -28,16 +26,16 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
     pub async fn update_database(
         &self,
         database: u32,
-        users: DatabaseUsersPayload,
-        passwordless: DatabasePasswordlessPayload,
+        users: HashMap<String, DatabaseUserPayload>,
+        passwordless: HashMap<u32, DatabaseUserPermissions>,
     ) -> Result<(), DaemonSDKError> {
         let response = self
             .wrapper(
                 Method::PATCH,
                 format!("database/{}", database),
                 RequestBody::Json(DatabaseModifyPayload {
-                    users: users.0,
-                    passwordless: passwordless.0,
+                    users,
+                    passwordless,
                 }),
                 None::<&()>,
             )

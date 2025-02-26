@@ -23,26 +23,6 @@ pub struct DatabaseUserPayload {
     pub permissions: DatabaseUserPermissions,
 }
 
-#[derive(Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct DatabaseUsersPayload(pub HashMap<String, DatabaseUserPayload>);
-
-impl From<DatabaseUsersPayload> for HashMap<String, DatabaseUserPayload> {
-    fn from(value: DatabaseUsersPayload) -> Self {
-        value.0
-    }
-}
-
-impl From<HashMap<String, DatabaseUserPayload>> for DatabaseUsersPayload {
-    fn from(value: HashMap<String, DatabaseUserPayload>) -> Self {
-        DatabaseUsersPayload(value)
-    }
-}
-
-#[derive(Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct DatabasePasswordlessPayload(pub HashMap<u32, DatabaseUserPermissions>);
-
 bitflags! {
     #[derive(Eq, PartialEq, Hash, Clone, Copy)]
     pub struct DatabaseUserPermissions: i8 {
@@ -83,17 +63,5 @@ impl<'de> Deserialize<'de> for DatabaseUserPermissions {
         D: Deserializer<'de>,
     {
         i8::deserialize(deserializer).map(DatabaseUserPermissions::from_bits_truncate)
-    }
-}
-
-impl From<DatabasePasswordlessPayload> for HashMap<u32, DatabaseUserPermissions> {
-    fn from(value: DatabasePasswordlessPayload) -> Self {
-        value.0
-    }
-}
-
-impl From<HashMap<u32, DatabaseUserPermissions>> for DatabasePasswordlessPayload {
-    fn from(value: HashMap<u32, DatabaseUserPermissions>) -> Self {
-        DatabasePasswordlessPayload(value)
     }
 }
