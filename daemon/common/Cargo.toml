@@ -7,7 +7,6 @@ edition = "2021"
 crate-type = ["rlib", "staticlib"]
 
 [features]
-database = []
 user = ["axum"]
 btrfs = []
 ssh = []

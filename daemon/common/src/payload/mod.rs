@@ -1,5 +1,4 @@
 pub mod backup;
-#[cfg(feature = "database")]
 pub mod database;
 pub mod files;
 pub mod network;

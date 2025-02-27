@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-database = ["daemon_common/database"]
+database = []
 user = ["ed25519-dalek", "pkcs8"]
 btrfs = ["daemon_common/btrfs"]
 default = ["database", "user", "btrfs"]
