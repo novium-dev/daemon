@@ -24,7 +24,7 @@ pub struct DatabaseUserPayload {
 }
 
 bitflags! {
-    #[derive(Eq, PartialEq, Hash, Clone, Copy)]
+    #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
     pub struct DatabaseUserPermissions: i8 {
         const SELECT = 1 << 0;
         const INSERT = 1 << 1;
