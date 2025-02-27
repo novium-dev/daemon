@@ -1,6 +1,8 @@
 use crate::DaemonSDKError;
 use crate::*;
-use daemon_common::payload::database::{DatabaseCreatePayload, DatabaseModifyPayload, DatabaseUserPayload, DatabaseUserPermissions};
+use daemon_common::payload::database::{
+    DatabaseCreatePayload, DatabaseModifyPayload, DatabaseUserPayload, DatabaseUserPermissions,
+};
 use daemon_common::payload::IdResponse;
 use http::Method;
 impl<T: DaemonSDKExtra> DaemonSDK<T> {

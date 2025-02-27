@@ -17,8 +17,14 @@ fn main() {
     } else {
         #[cfg(target_os = "linux")]
         {
-            if let Ok(path) = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("../mysql/sockets/mysqld.sock").canonicalize() {
-                println!("cargo:rustc-env=DATABASE_URL=mysql://root@localhost/daemon?socket={}", path.to_string_lossy());
+            if let Ok(path) = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
+                .join("../mysql/sockets/mysqld.sock")
+                .canonicalize()
+            {
+                println!(
+                    "cargo:rustc-env=DATABASE_URL=mysql://root@localhost/daemon?socket={}",
+                    path.to_string_lossy()
+                );
             }
         }
 
