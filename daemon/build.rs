@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
@@ -15,7 +16,11 @@ fn main() {
         println!("cargo:rustc-env=DATABASE_URL={}", env);
     } else {
         #[cfg(target_os = "linux")]
-        println!("cargo:rustc-env=DATABASE_URL=mysql://root@localhost/daemon?socket=mysql/sockets/mysqld.sock");
+        {
+            if let Ok(path) = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("../mysql/sockets/mysqld.sock").canonicalize() {
+                println!("cargo:rustc-env=DATABASE_URL=mysql://root@localhost/daemon?socket={}", path.to_string_lossy());
+            }
+        }
 
         #[cfg(target_os = "macos")]
         println!("cargo:rustc-env=DATABASE_URL=mysql://root@mysql.mac.orb.local/daemon");
