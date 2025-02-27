@@ -169,7 +169,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Mkdir {} {}", id, path);
         let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_CREATE)
+            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)
             .await?;
         super::files::mkdir(storage, path, attrs.permissions).await?;
         Self::success(id)
@@ -207,10 +207,10 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Rename {} {} to {}", id, oldpath, newpath);
         let (old_storage, old_path) = self
-            .sandboxed_path(oldpath, BackendAuthServerPermissions::FILES_DELETE)
+            .sandboxed_path(oldpath, BackendAuthServerPermissions::FILES_WRITE)
             .await?;
         let (new_storage, new_path) = self
-            .sandboxed_path(newpath, BackendAuthServerPermissions::FILES_CREATE)
+            .sandboxed_path(newpath, BackendAuthServerPermissions::FILES_WRITE)
             .await?;
         super::files::rename(old_storage, old_path, new_storage, new_path).await?;
         Self::success(id)
@@ -219,7 +219,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
         debug!("Remove {} {}", id, filename);
         let (storage, path) = self
-            .sandboxed_path(filename, BackendAuthServerPermissions::FILES_DELETE)
+            .sandboxed_path(filename, BackendAuthServerPermissions::FILES_WRITE)
             .await?;
         super::files::remove(storage, path).await?;
         Self::success(id)
@@ -228,7 +228,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
         debug!("rmdir {} {}", id, path);
         let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_DELETE)
+            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)
             .await?;
         super::files::rmdir(storage, path).await?;
         Self::success(id)
@@ -242,7 +242,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Symlink {} {} {}", id, linkpath, targetpath);
         let (storage, path) = self
-            .sandboxed_path(linkpath, BackendAuthServerPermissions::FILES_CREATE)
+            .sandboxed_path(linkpath, BackendAuthServerPermissions::FILES_WRITE)
             .await?;
         super::files::symlink(storage, path, targetpath).await?;
         Self::success(id)

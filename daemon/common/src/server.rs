@@ -124,8 +124,6 @@ bitflags! {
 
         const FILES_READ = 1 << 2;
         const FILES_WRITE = 1 << 3;
-        const FILES_DELETE = 1 << 4;
-        const FILES_CREATE = 1 << 5;
 
         const CONTROL_VIEW = 1 << 6;
         const CONTROL_POWER = 1 << 7;
