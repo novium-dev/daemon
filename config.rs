@@ -29,7 +29,7 @@ pub const NETWORK_PREFIX: &str = "novium-daemon-network_";
 pub const IPV4_PREFIX: [u8; 2] = [10, 235];
 pub const IPV6_PREFIX: [u16; 3] = [0xfd33, 0x214f, 0x9578];
 
-pub const HOSTNAME: &str = "daemon_host";
+pub const HOSTNAME: &[&str] = &["daemon_host"];
 
 pub const DAEMON_TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024; // 1 MiB
 

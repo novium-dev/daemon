@@ -256,10 +256,12 @@ impl FetchedServer {
 
                         port_bindings: Some(ports),
 
-                        extra_hosts: Some(vec![format!(
-                            "{}:host-gateway",
+                        extra_hosts: Some(
                             crate::common::HOSTNAME
-                        )]),
+                                .iter()
+                                .map(|hostname| format!("{}:host-gateway", hostname,))
+                                .collect(),
+                        ),
 
                         cap_add: Some(self.cap_add.iter().cloned().collect()),
                         cap_drop: Some(self.cap_drop.iter().cloned().collect()),
