@@ -11,3 +11,6 @@ build/
 
 # Don't leak information
 *.pem
+
+backend/minecraft/agent/build/
+backend/minecraft/agent/.gradle/
