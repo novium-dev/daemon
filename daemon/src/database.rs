@@ -116,6 +116,14 @@ impl DatabasePayloadFunctionExtension for DatabaseModifyPayload {
         for (user, data) in &to.users {
             Self::validate_sql_string(user)?;
             Self::validate_hash(&data.password_hash)?;
+            if data.permissions.is_empty() {
+                return Err(DatabaseUpdateError::Invalid);
+            }
+        }
+        for perms in to.passwordless.values() {
+            if perms.is_empty() {
+                return Err(DatabaseUpdateError::Invalid);
+            }
         }
         self.update_unvalidated(id, name_suffix, to)
     }
@@ -137,7 +145,12 @@ impl DatabasePayloadFunctionExtension for DatabaseModifyPayload {
             }
         }
         for (server, permissions) in &to.passwordless {
-            if !self.passwordless.contains_key(server) {
+            if let Some(old_permissions) = self.passwordless.get(server) {
+                if !old_permissions.eq(permissions) {
+                    remove_server.insert(*server);
+                    add_server.insert(*server, *permissions);
+                }
+            } else {
                 add_server.insert(*server, *permissions);
             }
         }
