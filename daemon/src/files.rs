@@ -5,6 +5,8 @@ use std::os::unix::prelude::*;
 use std::path::PathBuf;
 
 use crate::config::StorageEntry;
+use crate::storage::archive::compression::ArchiveCompression;
+use crate::storage::archive::TarSandboxedUnpackExtension;
 use crate::storage::sync::{storage_read, StorageError, StorageLockData};
 use crate::storage::StorageIdentifier;
 use crate::utils::path_relative;
@@ -19,6 +21,7 @@ use daemon_common::payload::files::FileResponse;
 use daemon_common::payload::server::ServerFileWrite;
 use futures_util::TryStreamExt;
 use reqwest::Url;
+use tar::Archive;
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_util::io::{ReaderStream, StreamReader};
 use tracing::{debug, error, warn};
@@ -28,6 +31,7 @@ fn err(err: io::Error) -> StatusCode {
         ErrorKind::NotFound => StatusCode::NOT_FOUND,
         ErrorKind::PermissionDenied => StatusCode::FORBIDDEN,
         ErrorKind::IsADirectory | ErrorKind::NotADirectory => StatusCode::BAD_REQUEST,
+        ErrorKind::UnexpectedEof => StatusCode::PRECONDITION_FAILED,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -42,7 +46,7 @@ pub(crate) async fn list_files(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     let files = list_files0(storage, path)
         .await
         .inspect_err(|err| match err.kind() {
@@ -96,7 +100,7 @@ pub(crate) async fn stat_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     let file = stat_file0(storage, path)
         .await
         .inspect_err(|err| match err.kind() {
@@ -155,7 +159,7 @@ pub(crate) async fn rename_file(
             .map_err(StorageError::into_http)?;
     let from = path_relative(from);
     let to = path_relative(to);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     storage
         .rename(from, &storage, to)
         .await
@@ -184,7 +188,7 @@ pub(crate) async fn copy_file(
             .map_err(StorageError::into_http)?;
     let from = path_relative(from);
     let to = path_relative(to);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     storage
         .copy(from, &storage, to)
         .await
@@ -211,7 +215,7 @@ pub(crate) async fn download_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     let headers = path
         .file_name()
         .map(|str| str.to_string_lossy())
@@ -253,7 +257,7 @@ pub(crate) async fn write_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     let mut reader =
         StreamReader::new(stream.map_err(|err| io::Error::new(io::ErrorKind::Other, err)));
     let fd: OwnedFd = storage
@@ -298,7 +302,7 @@ pub(crate) async fn write_file_by_template(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
 
     let fd: OwnedFd = storage
         .open_with(path, OpenOptions::new().create(true).read(true).write(true))
@@ -343,7 +347,7 @@ pub(crate) async fn write_file_by_url(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     let mut response = state
         .client
         .get(url.clone())
@@ -410,7 +414,7 @@ pub(crate) async fn mkdir_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     tokio::task::spawn_blocking(move || {
         if recursive {
             storage.create_dir_all(&path)
@@ -445,7 +449,7 @@ pub(crate) async fn symlink_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     storage
         .symlink(content, path)
         .await
@@ -473,7 +477,7 @@ pub(crate) async fn delete_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let storage = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, storage).await?;
     if recursive {
         storage.remove_dir_all(&path).await
     } else {
@@ -491,12 +495,72 @@ pub(crate) async fn delete_file(
     Ok(())
 }
 
-async fn storage_path(id: StorageIdentifier, storage: &StorageEntry) -> Result<Dir, StatusCode> {
-    let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
-    Dir::open_ambient_dir(&base, ambient_authority())
+pub(crate) async fn unpack_archive(
+    state: &DaemonState,
+    id: StorageIdentifier,
+    path: String,
+    dest: String,
+) -> Result<(), StatusCode> {
+    let StorageLockData { lock, storage, .. } =
+        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
+            .await
+            .map_err(StorageError::into_http)?;
+    let path = path_relative(path);
+    let (storage, storage_path) = storage_path(id, storage).await?;
+    if !unpack_archive0(storage, storage_path, path, dest)
         .await
-        .inspect_err(|err| error!("Failed to open storage {:?}: {:?}", id, err))
-        .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory => debug!("Failed to unpack archive: {:?}", err),
+            _ => error!("Failed to unpack archive: {:?}", err),
+        })
+        .map_err(err)?
+    {
+        debug!("Failed to unpack archive: unknown archive format/compression");
+        return Err(StatusCode::PRECONDITION_FAILED);
+    }
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn unpack_archive0(
+    storage: Dir,
+    storage_path: PathBuf,
+    path: PathBuf,
+    dest: String,
+) -> Result<bool, io::Error> {
+    let file = storage.open(path).await?;
+
+    let fd: OwnedFd = file.into_std().into();
+    let mut file = std::fs::File::from(fd);
+    let (Some(compression), file) = tokio::task::spawn_blocking(move || {
+        Ok::<_, io::Error>((ArchiveCompression::detect_blocking(&mut file)?, file))
+    })
+    .await??
+    else {
+        return Ok(false);
+    };
+    let archive = Archive::new(compression.create_decoder(file)?);
+    archive.unpack_sandboxed(storage_path, dest, ()).await?;
+
+    Ok(true)
+}
+
+async fn storage_path(
+    id: StorageIdentifier,
+    storage: &StorageEntry,
+) -> Result<(Dir, PathBuf), StatusCode> {
+    let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
+    Ok((
+        Dir::open_ambient_dir(&base, ambient_authority())
+            .await
+            .inspect_err(|err| error!("Failed to open storage {:?}: {:?}", id, err))
+            .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?,
+        base,
+    ))
 }
 
 pub trait IntoFileResponse {

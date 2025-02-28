@@ -47,3 +47,9 @@ pub struct PathUrlQuery {
     pub path: String,
     pub url: String,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct PathDestinationQuery {
+    pub path: String,
+    pub dest: String,
+}

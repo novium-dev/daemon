@@ -157,3 +157,5 @@ version = "0.5.2"
 version = "0.3.6"
 features = []
 
+[dependencies.lz4]
+version = "1.28.1"
