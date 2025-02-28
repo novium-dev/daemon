@@ -1,9 +1,9 @@
 use crate::config::{BackupEntry, StorageEntry};
+use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::{TarSandboxedAppendExtension, TarSandboxedUnpackExtension};
-use crate::storage::sync::{storage_read, storage_write, StorageError, StorageLockData};
-use crate::storage::StorageIdentifier;
-use crate::{storage, DaemonState};
+use crate::storage::sync::{StorageError, StorageLockData, storage_read, storage_write};
+use crate::{DaemonState, storage};
 use axum::body::Body;
 use axum::http;
 use axum::http::{HeaderMap, StatusCode};
@@ -17,8 +17,8 @@ use std::ops::Deref;
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use tar::{Archive, Builder};
 use tokio::fs::File;
 use tokio_util::io::{ReaderStream, SyncIoBridge};
@@ -146,9 +146,7 @@ async fn create_backup0(
     }
     let timestamp = Utc::now().timestamp_millis();
     match backup {
-        BackupEntry::Archive {
-            ref compression, ..
-        } => {
+        BackupEntry::Archive { compression, .. } => {
             let file = tokio::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
@@ -243,9 +241,7 @@ async fn restore_backup0(
     let dir = PathBuf::from(path);
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
-        BackupEntry::Archive {
-            ref compression, ..
-        } => {
+        BackupEntry::Archive { compression, .. } => {
             let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
             let file = File::open(target).await?;
             let decoder = compression.create_decoder(file.into_std().await)?;
@@ -299,9 +295,7 @@ async fn list_backups0(
     for (storage, backup_storage) in &state.config.backup {
         let target_dir = PathBuf::from(backup_storage.path()).join(id.as_pathbuf());
         match backup_storage {
-            BackupEntry::Archive {
-                ref compression, ..
-            } => {
+            BackupEntry::Archive { compression, .. } => {
                 let mut readdir = tokio::fs::read_dir(&target_dir).await?;
                 while let Some(entry) = readdir.next_entry().await? {
                     let metadata = entry.metadata().await?;
@@ -505,9 +499,7 @@ async fn backup_to_stream0(
 ) -> Result<(HeaderMap, Body), io::Error> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
-        BackupEntry::Archive {
-            ref compression, ..
-        } => {
+        BackupEntry::Archive { compression, .. } => {
             let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
             let headers = HeaderMap::from_iter([(
                 http::header::CONTENT_DISPOSITION,
@@ -526,8 +518,7 @@ async fn backup_to_stream0(
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs {
-            ref jit_compression,
-            ..
+            jit_compression, ..
         } => {
             let compression = *jit_compression;
             let headers = HeaderMap::from_iter([(
@@ -655,9 +646,7 @@ async fn delete_backup0(
 ) -> Result<(), io::Error> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
-        BackupEntry::Archive {
-            ref compression, ..
-        } => {
+        BackupEntry::Archive { compression, .. } => {
             let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
             tokio::fs::remove_file(target).await?;
         }
