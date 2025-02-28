@@ -75,6 +75,8 @@ const GIT_HASH: &str = env!("GIT_HASH");
 
 #[tokio::main]
 async fn main() {
+    dev_setup();
+
     rustls::crypto::ring::default_provider()
         .install_default()
         .unwrap();
@@ -617,3 +619,32 @@ compile_error!("SSH Auth Bypass was enabled in production!");
 
 #[cfg(all(not(debug_assertions), feature = "user_debug_auth_bypass"))]
 compile_error!("Websocket Auth Bypass was enabled in production!");
+
+fn dev_setup() {
+    #[cfg(all(debug_assertions, target_os = "linux"))]
+    {
+        capctl::prctl::set_keepcaps(true).unwrap();
+        let mut capstate = capctl::CapState::get_current().unwrap();
+        capstate.permitted.add(capctl::Cap::NET_BIND_SERVICE);
+        capstate.permitted.add(capctl::Cap::DAC_OVERRIDE);
+        capstate.permitted.add(capctl::Cap::FOWNER);
+        capstate.permitted.add(capctl::Cap::SYS_CHROOT);
+        capstate.permitted.add(capctl::Cap::SYS_ADMIN);
+        capstate.set_current().unwrap();
+
+        capctl::cap_set_ids(
+            Some(crate::common::CONTAINER_DEFAULT_UID as u32),
+            Some(crate::common::CONTAINER_DEFAULT_GID as u32),
+            None,
+        )
+        .unwrap();
+
+        let mut capstate = capctl::CapState::get_current().unwrap();
+        capstate.effective.add(capctl::Cap::NET_BIND_SERVICE);
+        capstate.effective.add(capctl::Cap::DAC_OVERRIDE);
+        capstate.effective.add(capctl::Cap::FOWNER);
+        capstate.effective.add(capctl::Cap::SYS_CHROOT);
+        capstate.effective.add(capctl::Cap::SYS_ADMIN);
+        capstate.set_current().unwrap();
+    }
+}
