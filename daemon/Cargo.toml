@@ -107,10 +107,6 @@ features = ["docker"]
 [dependencies.tar]
 version = "0.4.44"
 
-[dependencies.compression]
-version = "0.1.5"
-features = ["all"]
-
 [dependencies.reqwest]
 workspace = true
 

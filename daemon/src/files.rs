@@ -513,10 +513,16 @@ pub(crate) async fn unpack_archive(
             ErrorKind::NotFound
             | ErrorKind::PermissionDenied
             | ErrorKind::IsADirectory
-            | ErrorKind::NotADirectory => debug!("Failed to unpack archive: {:?}", err),
+            | ErrorKind::NotADirectory
+            | ErrorKind::InvalidData => debug!("Failed to unpack archive: {:?}", err),
             _ => error!("Failed to unpack archive: {:?}", err),
         })
-        .map_err(err)?
+        .map_err(|error| {
+            if error.kind() == ErrorKind::InvalidData {
+                return StatusCode::PRECONDITION_FAILED;
+            }
+            err(error)
+        })?
     {
         debug!("Failed to unpack archive: unknown archive format/compression");
         return Err(StatusCode::PRECONDITION_FAILED);
@@ -536,17 +542,21 @@ async fn unpack_archive0(
 
     let fd: OwnedFd = file.into_std().into();
     let mut file = std::fs::File::from(fd);
-    let (Some(compression), file) = tokio::task::spawn_blocking(move || {
+    match tokio::task::spawn_blocking(move || {
         Ok::<_, io::Error>((ArchiveCompression::detect_blocking(&mut file)?, file))
     })
-    .await??
-    else {
-        return Ok(false);
-    };
-    let archive = Archive::new(compression.create_decoder(file)?);
-    archive.unpack_sandboxed(storage_path, dest, ()).await?;
+    .await?
+    {
+        Ok((Some(compression), file)) => {
+            let archive = Archive::new(compression.create_decoder(file)?);
+            archive.unpack_sandboxed(storage_path, dest, ()).await?;
 
-    Ok(true)
+            Ok(true)
+        }
+        Ok(_) => Ok(false),
+        Err(err) if err.kind() == ErrorKind::UnexpectedEof => Ok(false),
+        Err(err) => Err(err),
+    }
 }
 
 async fn storage_path(

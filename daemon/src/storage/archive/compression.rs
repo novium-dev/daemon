@@ -1,11 +1,12 @@
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
+use std::cmp::PartialEq;
 use std::fmt::Formatter;
 use std::io;
 use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
 use tracing::error;
 
-#[derive(Serialize, Deserialize, Copy, Clone, Debug)]
+#[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
 pub(crate) enum ArchiveCompression {
     #[serde(rename = "none")]
@@ -58,14 +59,14 @@ impl ArchiveCompression {
     pub(crate) fn detect_blocking<'a, R: Read + Seek + Send + Sync + 'a>(
         mut read: R,
     ) -> Result<Option<Self>, io::Error> {
+        const TAR_MAGIC_OFFSET: u64 = 257;
+
         let mut buf = [0u8; 8];
         read.seek(SeekFrom::Start(0))?;
         read.read_exact(&mut buf)?;
 
         // Sources: https://en.wikipedia.org/wiki/List_of_file_signatures
         let compression = match buf {
-            [0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
-            | [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00] => ArchiveCompression::None,
             [0x28, 0xB5, 0x2F, 0xFD, _, _, _, _] => ArchiveCompression::Zstd {
                 level: CompressionLevel::Default,
             },
@@ -91,18 +92,31 @@ impl ArchiveCompression {
             [0x42, 0x5A, 0x68, _, _, _, _, _] => ArchiveCompression::Bzip2 {
                 level: CompressionLevel::Default,
             },
-            _ => return Ok(None),
+            _ => {
+                read.seek(SeekFrom::Start(TAR_MAGIC_OFFSET))?;
+                read.read_exact(&mut buf)?;
+                if buf == [0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
+                    || buf == [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00]
+                {
+                    ArchiveCompression::None
+                } else {
+                    return Ok(None);
+                }
+            }
         };
+        if compression != ArchiveCompression::None {
+            read.seek(SeekFrom::Start(0))?;
+            let mut decoder = compression.create_decoder(&mut read)?;
+            decoder.read_exact(&mut [0; TAR_MAGIC_OFFSET as usize])?;
+            decoder.read_exact(&mut buf)?;
+            drop(decoder);
+            if buf != [0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
+                && buf != [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00]
+            {
+                return Ok(None);
+            }
+        }
         read.seek(SeekFrom::Start(0))?;
-        let mut decoder = compression.create_decoder(&mut read)?;
-        decoder.read_exact(&mut buf)?;
-        drop(decoder);
-        read.seek(SeekFrom::Start(0))?;
-        let ([0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
-        | [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00]) = buf
-        else {
-            return Ok(None);
-        };
         Ok(Some(compression))
     }
 
@@ -229,7 +243,7 @@ impl ArchiveCompression {
     }
 }
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum CompressionLevel {
     Fastest,
     Best,
