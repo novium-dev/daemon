@@ -3,8 +3,8 @@ pub(crate) mod compression;
 use std::collections::HashSet;
 use std::io::{Error, Read, Write};
 use std::path::{Path, PathBuf};
-use std::{io, thread};
-use tar::{Archive, Builder};
+use std::{fs, io, mem, thread};
+use tar::{Archive, Builder, HeaderMode};
 
 fn chroot(dest: PathBuf) -> Result<(), io::Error> {
     use rustix::thread::*;
@@ -131,7 +131,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
         chroot_dst: P,
         path: F,
         target_dst: E,
-        _exclude: HashSet<String>,
+        exclude: HashSet<String>,
         lock: T,
         finish: bool,
     ) -> Result<(Self, T), Error>
@@ -145,10 +145,9 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
         let target_dst = target_dst.as_ref();
         let target_dst = PathBuf::from(target_dst);
 
-        // TODO: Exclude
         thread::spawn(move || {
             chroot(chroot_dst)?;
-            self.append_dir_all(path, target_dst)?;
+            append_dir_all(&mut self, &path, &target_dst, exclude)?;
             if finish {
                 self.finish()?;
             }
@@ -157,4 +156,54 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
         .join()
         .unwrap()
     }
+}
+
+fn append_dir_all<W: Write>(
+    archive: &mut Builder<W>,
+    path: &Path,
+    src_path: &Path,
+    exclude: HashSet<String>,
+) -> io::Result<()> {
+    #[allow(dead_code)]
+    struct BuilderCopy<W: Write> {
+        options: BuilderOptionsCopy,
+        finished: bool,
+        obj: Option<W>,
+    }
+    #[derive(Clone, Copy)]
+    #[allow(dead_code)]
+    struct BuilderOptionsCopy {
+        mode: HeaderMode,
+        follow: bool,
+        sparse: bool,
+    }
+    let follow_symlinks = unsafe { mem::transmute::<&tar::Builder<W>, &BuilderCopy<W>>(&*archive) }
+        .options
+        .follow;
+
+    let mut stack = vec![(src_path.to_path_buf(), true, false)];
+    while let Some((src, is_dir, is_symlink)) = stack.pop() {
+        let dest = path.join(src.strip_prefix(src_path).unwrap());
+        let mut dest_str = dest.to_string_lossy().to_string();
+        if is_dir && !dest_str.ends_with("/") {
+            dest_str += "/";
+        }
+        if exclude.contains(&dest_str) {
+            continue;
+        }
+        // In case of a symlink pointing to a directory, is_dir is false, but src.is_dir() will return true
+        if is_dir || (is_symlink && follow_symlinks && src.is_dir()) {
+            for entry in fs::read_dir(&src)? {
+                let entry = entry?;
+                let file_type = entry.file_type()?;
+                stack.push((entry.path(), file_type.is_dir(), file_type.is_symlink()));
+            }
+            if dest != Path::new("") {
+                archive.append_dir(&dest, &src)?;
+            }
+        } else {
+            archive.append_path_with_name(&src, &dest)?;
+        }
+    }
+    Ok(())
 }
