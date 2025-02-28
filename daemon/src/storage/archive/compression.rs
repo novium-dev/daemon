@@ -92,29 +92,17 @@ impl ArchiveCompression {
             [0x42, 0x5A, 0x68, _, _, _, _, _] => ArchiveCompression::Bzip2 {
                 level: CompressionLevel::Default,
             },
-            _ => {
-                read.seek(SeekFrom::Start(TAR_MAGIC_OFFSET))?;
-                read.read_exact(&mut buf)?;
-                if buf == [0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
-                    || buf == [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00]
-                {
-                    ArchiveCompression::None
-                } else {
-                    return Ok(None);
-                }
-            }
+            _ => ArchiveCompression::None,
         };
-        if compression != ArchiveCompression::None {
-            read.seek(SeekFrom::Start(0))?;
-            let mut decoder = compression.create_decoder(&mut read)?;
-            decoder.read_exact(&mut [0; TAR_MAGIC_OFFSET as usize])?;
-            decoder.read_exact(&mut buf)?;
-            drop(decoder);
-            if buf != [0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
-                && buf != [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00]
-            {
-                return Ok(None);
-            }
+        read.seek(SeekFrom::Start(0))?;
+        let mut decoder = compression.create_decoder(&mut read)?;
+        decoder.read_exact(&mut [0; TAR_MAGIC_OFFSET as usize])?;
+        decoder.read_exact(&mut buf)?;
+        drop(decoder);
+        if buf != [0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
+            && buf != [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00]
+        {
+            return Ok(None);
         }
         read.seek(SeekFrom::Start(0))?;
         Ok(Some(compression))

@@ -10,6 +10,7 @@ pub struct FileResponse {
     pub size: u64,
     pub relative_path: String, // for recursive listing like /plugins/essentials
     pub path: Option<String>,  // for symlinks
+    pub archive: bool,
 }
 
 #[derive(Serialize, Deserialize)]

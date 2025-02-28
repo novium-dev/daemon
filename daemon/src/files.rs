@@ -69,6 +69,10 @@ async fn list_files0(storage: Dir, path: PathBuf) -> Result<Vec<FileResponse>, i
         let entry = entry?;
         let metadata = entry.metadata()?;
         let mut link_path = None;
+        let mut archive = false;
+
+        let relative_path = path.join(entry.file_name());
+        let file_name = entry.file_name().to_string_lossy().to_string();
         if metadata.is_symlink() {
             link_path = Some(
                 storage
@@ -77,13 +81,25 @@ async fn list_files0(storage: Dir, path: PathBuf) -> Result<Vec<FileResponse>, i
                     .to_string_lossy()
                     .to_string(),
             );
+        } else {
+            archive = tokio::task::spawn_blocking(move || {
+                let file = entry.open()?;
+                let fd: OwnedFd = file.into_std().into();
+                let file = std::fs::File::from(fd);
+                if let Ok(Some(_)) = ArchiveCompression::detect_blocking(file) {
+                    Ok::<_, io::Error>(true)
+                } else {
+                    Ok(false)
+                }
+            })
+            .await??;
         }
 
-        let relative_path = path.join(entry.file_name());
         vec.push(metadata.into_fileresponse(
-            entry.file_name().to_string_lossy().to_string(),
+            file_name,
             relative_path.to_string_lossy().to_string(),
             link_path,
+            archive,
         ));
     }
 
@@ -129,6 +145,7 @@ async fn stat_file0(storage: Dir, path: PathBuf) -> Result<FileResponse, io::Err
         Some(filename) => filename.to_string_lossy().to_string(),
     };
     let mut link_path = None;
+    let mut archive = false;
     if metadata.is_symlink() {
         link_path = Some(
             storage
@@ -137,6 +154,18 @@ async fn stat_file0(storage: Dir, path: PathBuf) -> Result<FileResponse, io::Err
                 .to_string_lossy()
                 .to_string(),
         );
+    } else {
+        let file = storage.open(&path).await?;
+        archive = tokio::task::spawn_blocking(move || {
+            let fd: OwnedFd = file.into_std().into();
+            let file = std::fs::File::from(fd);
+            if let Ok(Some(_)) = ArchiveCompression::detect_blocking(file) {
+                Ok::<_, io::Error>(true)
+            } else {
+                Ok(false)
+            }
+        })
+        .await??;
     }
 
     let relative_path = path.join(filename.clone());
@@ -144,6 +173,7 @@ async fn stat_file0(storage: Dir, path: PathBuf) -> Result<FileResponse, io::Err
         filename,
         relative_path.to_string_lossy().to_string(),
         link_path,
+        archive,
     ))
 }
 
@@ -579,6 +609,7 @@ pub trait IntoFileResponse {
         filename: String,
         relative_path: String,
         path: Option<String>,
+        archive: bool,
     ) -> FileResponse;
 }
 
@@ -588,6 +619,7 @@ impl IntoFileResponse for Metadata {
         filename: String,
         relative_path: String,
         path: Option<String>,
+        archive: bool,
     ) -> FileResponse {
         let mut r#type = 0;
         let file_type = self.file_type();
@@ -614,6 +646,7 @@ impl IntoFileResponse for Metadata {
             size: self.size(),
             uid: self.uid(),
             gid: self.gid(),
+            archive,
         }
     }
 }
