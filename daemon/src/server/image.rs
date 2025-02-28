@@ -8,8 +8,8 @@ use indexmap::IndexMap;
 use ringbuffer::AllocRingBuffer;
 use sqlx::{query, query_scalar, Executor, MySql};
 use std::collections::{HashMap, HashSet};
+use tar::{Builder, Header};
 use termion::clear;
-use tokio_tar::{Builder, Header};
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct BuildImage {
@@ -137,10 +137,9 @@ impl FetchedServer {
                     header.set_cksum();
                     let mut ar = Builder::new(Vec::new());
                     ar.append(&header, dockerfile)
-                        .await
                         .map_err(ServerStartError::IO)?;
-                    ar.finish().await.map_err(ServerStartError::IO)?;
-                    ar.into_inner().await.map_err(ServerStartError::IO)?
+                    ar.finish().map_err(ServerStartError::IO)?;
+                    ar.into_inner().map_err(ServerStartError::IO)?
                 };
                 let mut args = image.args.clone();
                 if args.get("BACKEND_URL").eq(&Some(&String::new())) {

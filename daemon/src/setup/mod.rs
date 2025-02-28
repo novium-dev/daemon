@@ -1,4 +1,5 @@
 use crate::config::{BackupEntry, DaemonConfig, MountPoint, StorageEntry};
+use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use axum::routing::get;
 use axum::Router;
 use base64::prelude::BASE64_STANDARD;
@@ -254,8 +255,8 @@ pub(crate) fn new() {
             "local".to_string(),
             crate::config::BackupEntry::Archive {
                 path: "./backups".to_string(),
-                compression: crate::config::ArchiveCompression::Zstd {
-                    level: async_compression::Level::Precise(12),
+                compression: ArchiveCompression::Zstd {
+                    level: CompressionLevel::Best,
                 },
                 order: Some(0),
             },

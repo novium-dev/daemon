@@ -104,15 +104,19 @@ features = ["tokio1"]
 workspace = true
 features = ["docker"]
 
-[dependencies.tokio-tar]
-version = "0.3.1"
+[dependencies.tar]
+version = "0.4.44"
 
-[dependencies.async-compression]
-version = "0.4.18"
+[dependencies.compression]
+version = "0.1.5"
 features = ["all"]
 
 [dependencies.reqwest]
 workspace = true
+
+[dependencies.url]
+workspace = true
+features = ["serde"]
 
 [dependencies.libbtrfs]
 version = "0.0.12"
@@ -133,3 +137,11 @@ features = ["crossterm"]
 [dependencies.crossterm]
 version = "0.28.1"
 features = ["event-stream", "events"]
+
+[dependencies.rustix]
+version = "0.38.44"
+features = ["thread"]
+
+[dependencies.zstd]
+version = "0.13.2"
+features = ["thin-lto"]

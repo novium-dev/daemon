@@ -1,3 +1,4 @@
+pub(crate) mod archive;
 pub(crate) mod backup;
 #[cfg(feature = "btrfs")]
 pub(crate) mod btrfs;

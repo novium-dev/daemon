@@ -1,8 +1,9 @@
-use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
+use crate::config::{BackupEntry, StorageEntry};
+use crate::storage::archive::compression::ArchiveCompression;
+use crate::storage::archive::{TarSandboxedAppendExtension, TarSandboxedUnpackExtension};
 use crate::storage::sync::{storage_read, storage_write, StorageError, StorageLockData};
 use crate::storage::StorageIdentifier;
 use crate::{storage, DaemonState};
-use async_trait::async_trait;
 use axum::body::Body;
 use axum::http;
 use axum::http::{HeaderMap, StatusCode};
@@ -11,18 +12,16 @@ use daemon_common::payload::backup::BackupResponseEntry;
 use serde_json::json;
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::io::{Error, ErrorKind};
+use std::io::{Error, ErrorKind, Write};
 use std::ops::Deref;
 use std::os::fd::{AsRawFd, RawFd};
 use std::os::unix::fs::MetadataExt;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
-use tokio::fs;
-use tokio::fs::{File, OpenOptions};
-use tokio::io::{AsyncWrite, AsyncWriteExt, BufReader};
-use tokio_tar::{Archive, Builder};
-use tokio_util::io::ReaderStream;
+use tar::{Archive, Builder};
+use tokio::fs::File;
+use tokio_util::io::{ReaderStream, SyncIoBridge};
 use tracing::{debug, error};
 use xattr::FileExt;
 
@@ -150,20 +149,20 @@ async fn create_backup0(
         BackupEntry::Archive {
             ref compression, ..
         } => {
-            let file = OpenOptions::new()
+            let file = tokio::fs::OpenOptions::new()
                 .create(true)
                 .write(true)
                 .truncate(true)
                 .open(target_dir.join(format!("{}.tar{}", timestamp, compression.ext())))
                 .await?;
-            let encoder = compression.create_encoder(file);
-            let mut archive = tokio_tar::Builder::new(encoder);
+            let encoder = compression.create_encoder(file.into_std().await)?;
+            let mut archive = tar::Builder::new(encoder);
             archive.follow_symlinks(false);
-            archive
-                .append_dir_all_exclude("", &dir, exclude, false)
+            // TODO: Exclude
+            let (archive, _) = archive
+                .append_dir_all_sandboxed(&dir, "", "/", (), true)
                 .await?;
-            archive.finish().await?;
-            archive.into_inner().await.unwrap().shutdown().await?;
+            tokio::task::spawn_blocking(move || archive.into_inner().unwrap().flush()).await??;
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { group, .. } => {
@@ -249,11 +248,11 @@ async fn restore_backup0(
         } => {
             let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
             let file = File::open(target).await?;
-            let decoder = compression.create_decoder(BufReader::new(file));
-            let mut archive = Archive::new(decoder);
+            let decoder = compression.create_decoder(file.into_std().await)?;
+            let archive = Archive::new(decoder);
             storage::delete(storage, id).await?;
             storage::ensure_exists(id, storage, value, disk).await?;
-            archive.unpack(&dir).await?;
+            archive.unpack_sandboxed(&dir, "/", ()).await?;
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
@@ -596,20 +595,16 @@ async fn stream_realtime0(
 async fn stream_realtime1(
     compression: ArchiveCompression,
     target: PathBuf,
-    exclude: HashSet<String>,
+    _exclude: HashSet<String>,
 ) -> Result<Body, io::Error> {
-    use tokio::io::AsyncWriteExt;
-
     let (sender, recv) = tokio::io::duplex(1024 * 1024);
-    tokio::task::spawn(async move {
-        let encoder = compression.create_encoder(sender);
+    tokio::task::spawn_blocking(move || {
+        let encoder = compression.create_encoder(SyncIoBridge::new(sender))?;
         let mut archive = Builder::new(encoder);
         archive.follow_symlinks(false);
-        archive
-            .append_dir_all_exclude("", &target, exclude, false)
-            .await?;
-        archive.finish().await?;
-        archive.into_inner().await.unwrap().shutdown().await?;
+        // TODO: Exclude
+        let (archive, _) = archive.append_dir_all_sandboxed_blocking(&target, "", "/", (), true)?;
+        archive.into_inner().unwrap().flush()?;
         Ok::<(), io::Error>(())
     });
     let stream = ReaderStream::new(recv);
@@ -677,66 +672,6 @@ async fn delete_backup0(
         }
     }
     Ok(())
-}
-
-#[async_trait]
-trait AppendDirAllExclude {
-    async fn append_dir_all_exclude<P, Q>(
-        &mut self,
-        path: P,
-        src_path: Q,
-        exclude: HashSet<String>,
-        follow: bool,
-    ) -> Result<(), io::Error>
-    where
-        P: AsRef<Path> + Send,
-        Q: AsRef<Path> + Send;
-}
-
-#[async_trait]
-impl<W: AsyncWrite + Unpin + Send> AppendDirAllExclude for Builder<W> {
-    async fn append_dir_all_exclude<P, Q>(
-        &mut self,
-        path: P,
-        src_path: Q,
-        exclude: HashSet<String>,
-        follow: bool,
-    ) -> Result<(), io::Error>
-    where
-        P: AsRef<Path> + Send,
-        Q: AsRef<Path> + Send,
-    {
-        let mut stack = vec![(src_path.as_ref().to_path_buf(), true, false)];
-        while let Some((src, is_dir, is_symlink)) = stack.pop() {
-            let dest = path
-                .as_ref()
-                .join(src.strip_prefix(src_path.as_ref()).unwrap());
-            let mut dest_str = dest.to_string_lossy().to_string();
-            if is_dir && !dest_str.ends_with("/") {
-                dest_str += "/";
-            }
-            if exclude.contains(&dest_str) {
-                continue;
-            }
-            // In case of a symlink pointing to a directory, is_dir is false, but src.is_dir() will return true
-            if is_dir || (is_symlink && follow && src.is_dir()) {
-                let mut entries = fs::read_dir(&src).await?;
-                while let Some(entry) = entries.next_entry().await.transpose() {
-                    let entry = entry?;
-                    let file_type = entry.file_type().await?;
-                    stack.push((entry.path(), file_type.is_dir(), file_type.is_symlink()));
-                }
-                if dest != Path::new("") {
-                    self.append_dir(&dest, src).await?;
-                }
-            } else if !follow && is_symlink {
-                self.append_path_with_name(&src, &dest).await?;
-            } else {
-                self.append_file(&dest, &mut File::open(src).await?).await?;
-            }
-        }
-        Ok(())
-    }
 }
 
 trait BackupNameExtension {
