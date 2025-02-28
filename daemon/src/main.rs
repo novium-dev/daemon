@@ -20,6 +20,7 @@ use sqlx::{query, MySql, Pool};
 use std::collections::HashMap;
 use std::env;
 use std::ops::{Deref, DerefMut};
+use std::os::unix::fs::MetadataExt;
 use std::pin::Pin;
 use std::process::exit;
 use std::sync::atomic::AtomicI64;
@@ -623,6 +624,9 @@ compile_error!("Websocket Auth Bypass was enabled in production!");
 fn dev_setup() {
     #[cfg(all(debug_assertions, target_os = "linux"))]
     {
+        if std::fs::metadata("/proc/self/").unwrap().uid() != 0 {
+            return;
+        }
         capctl::prctl::set_keepcaps(true).unwrap();
         let mut capstate = capctl::CapState::get_current().unwrap();
         capstate.permitted.add(capctl::Cap::NET_BIND_SERVICE);

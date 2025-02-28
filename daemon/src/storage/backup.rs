@@ -158,9 +158,8 @@ async fn create_backup0(
             let encoder = compression.create_encoder(file.into_std().await)?;
             let mut archive = tar::Builder::new(encoder);
             archive.follow_symlinks(false);
-            // TODO: Exclude
             let (archive, _) = archive
-                .append_dir_all_sandboxed(&dir, "", "/", (), true)
+                .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true)
                 .await?;
             tokio::task::spawn_blocking(move || archive.into_inner().unwrap().finish()?.flush())
                 .await??;
@@ -596,15 +595,15 @@ async fn stream_realtime0(
 async fn stream_realtime1(
     compression: ArchiveCompression,
     target: PathBuf,
-    _exclude: HashSet<String>,
+    exclude: HashSet<String>,
 ) -> Result<Body, io::Error> {
     let (sender, recv) = tokio::io::duplex(1024 * 1024);
     tokio::task::spawn_blocking(move || {
         let encoder = compression.create_encoder(SyncIoBridge::new(sender))?;
         let mut archive = Builder::new(encoder);
         archive.follow_symlinks(false);
-        // TODO: Exclude
-        let (archive, _) = archive.append_dir_all_sandboxed_blocking(&target, "", "/", (), true)?;
+        let (archive, _) =
+            archive.append_dir_all_sandboxed_blocking(&target, "", "/", exclude, (), true)?;
         archive.into_inner().unwrap().finish()?.flush()?;
         Ok::<(), io::Error>(())
     });

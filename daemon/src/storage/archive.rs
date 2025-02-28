@@ -1,5 +1,6 @@
 pub(crate) mod compression;
 
+use std::collections::HashSet;
 use std::io::{Error, Read, Write};
 use std::path::{Path, PathBuf};
 use std::{io, thread};
@@ -37,6 +38,7 @@ pub trait TarSandboxedAppendExtension {
         chroot_dst: P,
         path: F,
         target_dst: E,
+        exclude: HashSet<String>,
         lock: T,
         finish: bool,
     ) -> Result<(Self, T), Error>
@@ -53,6 +55,7 @@ pub trait TarSandboxedAppendExtension {
         chroot_dst: P,
         path: F,
         target_dst: E,
+        exclude: HashSet<String>,
         lock: T,
         finish: bool,
     ) -> Result<(Self, T), Error>
@@ -96,6 +99,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
         chroot_dst: P,
         path: F,
         target_dst: E,
+        exclude: HashSet<String>,
         lock: T,
         finish: bool,
     ) -> Result<(Self, T), Error>
@@ -110,7 +114,9 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
         let target_dst = PathBuf::from(target_dst);
 
         tokio::task::spawn_blocking(move || {
-            self.append_dir_all_sandboxed_blocking(chroot_dst, path, target_dst, lock, finish)
+            self.append_dir_all_sandboxed_blocking(
+                chroot_dst, path, target_dst, exclude, lock, finish,
+            )
         })
         .await?
     }
@@ -125,6 +131,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
         chroot_dst: P,
         path: F,
         target_dst: E,
+        _exclude: HashSet<String>,
         lock: T,
         finish: bool,
     ) -> Result<(Self, T), Error>
@@ -138,6 +145,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
         let target_dst = target_dst.as_ref();
         let target_dst = PathBuf::from(target_dst);
 
+        // TODO: Exclude
         thread::spawn(move || {
             chroot(chroot_dst)?;
             self.append_dir_all(path, target_dst)?;

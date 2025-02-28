@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io;
 use std::io::ErrorKind;
 use std::ops::Deref;
@@ -642,7 +643,7 @@ async fn create_archive0(
     let file = std::fs::File::from(fd);
     let archive = Builder::new(compression.create_encoder(file)?);
     let (archive, _) = archive
-        .append_dir_all_sandboxed(storage_path, "", src, (), true)
+        .append_dir_all_sandboxed(storage_path, "", src, HashSet::new(), (), true)
         .await?;
 
     tokio::task::spawn_blocking(move || {
