@@ -1,13 +1,13 @@
-use crate::server::watcher::attach;
 use crate::server::FetchedServer;
-use crate::storage::sync::{storage_read, StorageError, StorageLockData};
+use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
+use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::sync::Mutex;
 use crate::utils::from_mib;
-use crate::{utils, DaemonState, ServerData};
+use crate::{DaemonState, ServerData, utils};
+use bollard::Docker;
 use bollard::container::{Config, CreateContainerOptions, NetworkingConfig};
 use bollard::models::{EndpointSettings, HostConfig, PortBinding};
-use bollard::Docker;
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, OpenOptions};
 use ringbuffer::RingBuffer;

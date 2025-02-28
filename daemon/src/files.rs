@@ -5,13 +5,13 @@ use std::ops::Deref;
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
 
+use crate::DaemonState;
 use crate::config::StorageEntry;
+use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::{TarSandboxedAppendExtension, TarSandboxedUnpackExtension};
-use crate::storage::sync::{storage_read, StorageError, StorageLockData};
-use crate::storage::StorageIdentifier;
+use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::utils::path_relative;
-use crate::DaemonState;
 use axum::body::{Body, BodyDataStream};
 use axum::http;
 use axum::http::{HeaderMap, StatusCode};
@@ -142,7 +142,7 @@ async fn stat_file0(storage: Dir, path: PathBuf) -> Result<FileResponse, io::Err
             return Err(io::Error::new(
                 ErrorKind::Other,
                 "Final component of path is missing",
-            ))
+            ));
         }
         Some(filename) => filename.to_string_lossy().to_string(),
     };

@@ -4,12 +4,12 @@ use crate::plugin::proxy::authenticate_proxy_mode;
 use crate::types::{AuthStatus, PluginVIO, PluginVIOInfoProtocol, ServerAuthInfo};
 use bollard::Docker;
 
-use libc::{socklen_t, ucred, SO_PEERCRED};
+use libc::{SO_PEERCRED, socklen_t, ucred};
 use std::error::Error;
-use std::ffi::{c_char, c_uchar, c_void, CString};
+use std::ffi::{CString, c_char, c_uchar, c_void};
 use std::io;
 use std::io::ErrorKind;
-use std::mem::{size_of, MaybeUninit};
+use std::mem::{MaybeUninit, size_of};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::os::fd::{FromRawFd, IntoRawFd};
 use std::str::FromStr;

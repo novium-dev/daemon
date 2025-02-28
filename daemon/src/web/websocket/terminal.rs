@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 use crate::sync::Mutex;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
@@ -8,7 +8,7 @@ use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use bollard::Docker;
 
-use crate::terminal::{new_session, update_size, TerminalData};
+use crate::terminal::{TerminalData, new_session, update_size};
 use crate::utils::ChannelInterceptor;
 use crate::web::user::authenticate_user;
 use crate::web::websocket::WebsocketTerminalQuery;

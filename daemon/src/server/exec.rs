@@ -1,10 +1,10 @@
-use crate::server::stop::ServerStopError;
-use crate::server::FetchedServer;
 use crate::ServerData;
+use crate::server::FetchedServer;
+use crate::server::stop::ServerStopError;
 use async_std::prelude::Stream;
+use bollard::Docker;
 use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, StartExecResults};
-use bollard::Docker;
 use std::pin::Pin;
 use tokio::io::AsyncWrite;
 

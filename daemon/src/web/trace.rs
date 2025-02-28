@@ -1,9 +1,9 @@
+use crate::DaemonState;
 use crate::storage::StorageIdentifier;
 use crate::sync::mutex::TraceableMutex;
 use crate::sync::rwlock::TraceableRwLock;
-use crate::DaemonState;
-use axum::extract::{Path, State};
 use axum::Json;
+use axum::extract::{Path, State};
 use serde::Serialize;
 use std::ops::Deref;
 use utoipa_axum::router::OpenApiRouter;

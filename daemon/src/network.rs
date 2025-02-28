@@ -1,9 +1,9 @@
 use crate::web::sql_error_to_http;
 use axum::http::StatusCode;
+use bollard::Docker;
 use bollard::models::{Ipam, IpamConfig};
 use bollard::network::{CreateNetworkOptions, DisconnectNetworkOptions};
-use bollard::Docker;
-use sqlx::{query, query_as, Error, Executor, MySql, Transaction};
+use sqlx::{Error, Executor, MySql, Transaction, query, query_as};
 
 #[derive(Debug)]
 pub(crate) enum NetworkError {

@@ -1,7 +1,7 @@
 use crate::config::StorageEntry;
+use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
 use crate::server::stop::ServerStopError;
-use crate::server::FetchedServer;
 use crate::storage::StorageIdentifier;
 use crate::utils::ChannelWriteData;
 use crate::{DaemonState, StorageData};
@@ -11,8 +11,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::thread;
 use std::time::{Duration, SystemTime};
 use tokio::runtime::Handle;

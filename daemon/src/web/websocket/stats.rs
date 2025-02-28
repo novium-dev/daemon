@@ -7,15 +7,15 @@ use axum::extract::{Path, Query, State, WebSocketUpgrade};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use sqlx::{MySql, Pool};
-use tokio::sync::broadcast::error::RecvError;
 use tokio::sync::broadcast::Sender;
+use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 
-use crate::server::status::InternalServerState;
 use crate::server::FetchedServer;
+use crate::server::status::InternalServerState;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
-use crate::web::user::{authenticate_user, GenericUserQuery};
+use crate::web::user::{GenericUserQuery, authenticate_user};
 use crate::{DaemonState, ServerData};
 
 #[utoipa::path(get,

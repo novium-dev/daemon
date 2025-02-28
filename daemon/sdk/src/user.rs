@@ -1,7 +1,7 @@
-use crate::builder::user::WithUserKey;
 use crate::DaemonSDK;
-use base64::prelude::BASE64_STANDARD;
+use crate::builder::user::WithUserKey;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use ed25519_dalek::Signer;
 use std::clone::Clone;
 use url::Url;

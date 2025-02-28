@@ -2,12 +2,12 @@
 #![cfg_attr(feature = "trace_sync", deny(clippy::disallowed_methods))]
 #![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
-use crate::sync::broadcast::Sender;
 use crate::sync::Mutex;
 use crate::sync::RwLock;
+use crate::sync::broadcast::Sender;
 use axum::extract::Request;
-use bollard::network::CreateNetworkOptions;
 use bollard::Docker;
+use bollard::network::CreateNetworkOptions;
 use libc::SIGINT;
 use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
@@ -16,15 +16,15 @@ use russh::server::{Config, Server as SSHServer};
 use russh::{MethodKind, MethodSet, SshId};
 use signal_hook::iterator::Signals;
 use sqlx::mysql::MySqlPoolOptions;
-use sqlx::{query, MySql, Pool};
+use sqlx::{MySql, Pool, query};
 use std::collections::HashMap;
 use std::env;
 use std::ops::{Deref, DerefMut};
 use std::os::unix::fs::MetadataExt;
 use std::pin::Pin;
 use std::process::exit;
-use std::sync::atomic::AtomicI64;
 use std::sync::Arc;
+use std::sync::atomic::AtomicI64;
 use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWrite};
@@ -42,10 +42,10 @@ use uuid::Uuid;
 pub use daemon_common as common;
 
 use crate::config::DaemonConfig;
-use crate::server::watcher::attach;
 use crate::server::FetchedServer;
-use crate::storage::sync::{storage_read, StorageLockData};
+use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
+use crate::storage::sync::{StorageLockData, storage_read};
 use crate::terminal::TerminalSession;
 use crate::utils::ChannelWriteData;
 
@@ -104,10 +104,13 @@ async fn main() {
     #[cfg(all(feature = "sentry", not(debug_assertions)))]
     {
         reg.with(sentry::integrations::tracing::layer()).init();
-        let sentry = sentry::init(("https://79a1f560730aef34fdc4e4a3f3d9ce92@o4507044844404736.ingest.us.sentry.io/4508313795297280", sentry::ClientOptions {
-            release: sentry::release_name!(),
-            ..Default::default()
-        }));
+        let sentry = sentry::init((
+            "https://79a1f560730aef34fdc4e4a3f3d9ce92@o4507044844404736.ingest.us.sentry.io/4508313795297280",
+            sentry::ClientOptions {
+                release: sentry::release_name!(),
+                ..Default::default()
+            },
+        ));
         if sentry.is_enabled() {
             info!("Enabled Sentry integration");
             std::env::set_var("RUST_BACKTRACE", "1");
@@ -513,7 +516,10 @@ async fn main() {
                                     }
                                 }
                                 Err(_) => {
-                                    warn!("Deadlock detected on server_data (this is normal if an image build is in progress): {}", id);
+                                    warn!(
+                                        "Deadlock detected on server_data (this is normal if an image build is in progress): {}",
+                                        id
+                                    );
                                 }
                             }
                         }

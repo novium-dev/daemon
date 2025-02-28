@@ -1,5 +1,5 @@
-use crate::server::start::ServerStartError;
 use crate::server::FetchedServer;
+use crate::server::start::ServerStartError;
 use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
 use crate::{DaemonState, ServerData};
@@ -12,11 +12,11 @@ use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
 use std::ops::{Add, Deref, DerefMut};
 use std::pin::Pin;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
-use tokio::sync::broadcast::Sender;
 use tokio::sync::OwnedRwLockReadGuard;
+use tokio::sync::broadcast::Sender;
 use tokio::time::Instant;
 
 #[allow(clippy::too_many_arguments)]

@@ -51,17 +51,13 @@ impl DaemonSDKBuilder<RequiresToken> {
 
 impl DaemonSDKBuilder<RequiresBaseURL> {
     pub fn with_url(self, base_url: impl IntoUrl) -> Result<DaemonSDKBuilder<()>, reqwest::Error> {
-        Ok(DaemonSDKBuilder((
-            self.0 .0,
-            self.0 .1,
-            base_url.into_url()?,
-        )))
+        Ok(DaemonSDKBuilder((self.0.0, self.0.1, base_url.into_url()?)))
     }
 }
 
 impl DaemonSDKBuilder<()> {
     pub fn build(self) -> Arc<DaemonSDK<()>> {
-        Self::build0(self.0 .0, self.0 .1, self.0 .2, ())
+        Self::build0(self.0.0, self.0.1, self.0.2, ())
     }
 }
 

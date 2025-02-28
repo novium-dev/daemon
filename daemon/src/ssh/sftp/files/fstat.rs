@@ -1,5 +1,5 @@
 use crate::ssh::sftp::ext::IntoFileAttributes;
-use crate::ssh::sftp::{internal_directory_attributes, sftp_err, FileHandle};
+use crate::ssh::sftp::{FileHandle, internal_directory_attributes, sftp_err};
 use cap_async_std::fs::*;
 use russh_sftp::protocol::*;
 use std::fs::Metadata as StdMetadata;

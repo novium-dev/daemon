@@ -1,5 +1,5 @@
-use crate::ssh::sftp::ext::IntoFileAttributes;
 use crate::ssh::sftp::FileHandle;
+use crate::ssh::sftp::ext::IntoFileAttributes;
 use indexmap::IndexMap;
 use russh_sftp::protocol::*;
 use std::io::ErrorKind;
@@ -54,7 +54,7 @@ async fn readdir_regular(
             }
             Some(Err(err)) => break Err(err),
             None if has_read && files.is_empty() => {
-                break Err(io::Error::new(ErrorKind::UnexpectedEof, ""))
+                break Err(io::Error::new(ErrorKind::UnexpectedEof, ""));
             }
             None => break Ok(files),
         }

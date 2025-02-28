@@ -1,8 +1,8 @@
-use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::DaemonState;
+use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
-use axum::extract::ws::{Message, WebSocket};
 use axum::Error;
+use axum::extract::ws::{Message, WebSocket};
 use bytes::Bytes;
 use futures_util::SinkExt;
 use serde::Deserialize;

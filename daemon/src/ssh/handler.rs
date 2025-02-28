@@ -1,7 +1,7 @@
-use crate::ssh::auth::{password_auth, InvalidationCacheMap};
+use crate::ssh::auth::{InvalidationCacheMap, password_auth};
 use crate::ssh::sftp::DaemonSftpSession;
-use crate::storage::sync::{storage_read, StorageLockData};
 use crate::storage::StorageIdentifier;
+use crate::storage::sync::{StorageLockData, storage_read};
 use crate::sync::Mutex;
 use crate::terminal::update_size;
 use crate::{DaemonState, ServerData};
@@ -16,8 +16,8 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use tracing::{debug, error};
 
 pub(crate) type DaemonChannel = (

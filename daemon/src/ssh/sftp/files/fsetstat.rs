@@ -1,4 +1,4 @@
-use crate::ssh::sftp::{sftp_err, FileHandle};
+use crate::ssh::sftp::{FileHandle, sftp_err};
 use russh_sftp::protocol::StatusCode;
 use std::fs::Permissions;
 use std::io;

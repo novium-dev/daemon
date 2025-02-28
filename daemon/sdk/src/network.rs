@@ -1,6 +1,6 @@
 use crate::{DaemonSDK, DaemonSDKError, DaemonSDKExtra, RequestBody};
-use daemon_common::payload::network::NetworkPayload;
 use daemon_common::payload::IdResponse;
+use daemon_common::payload::network::NetworkPayload;
 use http::Method;
 
 impl<T: DaemonSDKExtra> DaemonSDK<T> {

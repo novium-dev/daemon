@@ -1,13 +1,13 @@
 use crate::DaemonState;
-use axum::extract::{connect_info, ConnectInfo, State};
+use axum::Router;
+use axum::extract::{ConnectInfo, State, connect_info};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::serve::IncomingStream;
-use axum::Router;
 use libc::umask;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::net::{unix::UCred, UnixListener};
+use tokio::net::{UnixListener, unix::UCred};
 use tracing::{error, warn};
 
 #[derive(Clone, Debug)]
@@ -67,7 +67,9 @@ async fn restart(
     let servers = state.servers.lock().await;
     match servers.get(&container) {
         None => {
-            warn!("Mark restart got called from a server that has no server data allocated (the server should be offline)");
+            warn!(
+                "Mark restart got called from a server that has no server data allocated (the server should be offline)"
+            );
         }
         Some(server) => {
             let server = server.clone();

@@ -15,12 +15,12 @@ impl DaemonSDKBuilderState for WithUserKey {
 
 impl DaemonSDKBuilder<()> {
     pub fn with_user_key(self, user_key: SigningKey) -> DaemonSDKBuilder<WithUserKey> {
-        DaemonSDKBuilder((self.0 .0, self.0 .1, self.0 .2, user_key))
+        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, user_key))
     }
 }
 
 impl DaemonSDKBuilder<WithUserKey> {
     pub fn build(self) -> Arc<DaemonSDK<WithUserKey>> {
-        Self::build0(self.0 .0, self.0 .1, self.0 .2, WithUserKey(self.0 .3))
+        Self::build0(self.0.0, self.0.1, self.0.2, WithUserKey(self.0.3))
     }
 }

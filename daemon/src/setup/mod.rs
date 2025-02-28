@@ -1,20 +1,20 @@
 use crate::config::{BackupEntry, DaemonConfig, MountPoint, StorageEntry};
 use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
-use axum::routing::get;
 use axum::Router;
-use base64::prelude::BASE64_STANDARD;
+use axum::routing::get;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use daemon_common::payload::node::{BackupStorage, NodeRegistrationRequest, ServerStorage};
 #[cfg(feature = "user")]
 use ed25519_dalek::VerifyingKey;
 use inquire::autocompletion::Replacement;
 use inquire::validator::{ErrorMessage, StringValidator, Validation};
 use inquire::{Autocomplete, CustomUserError, Text};
-use rand::rngs::OsRng;
 use rand::TryRngCore;
+use rand::rngs::OsRng;
 use regex::Regex;
 use reqwest::{Client, Url};
-use sqlx::{query_scalar, Connection, MySqlConnection, QueryBuilder};
+use sqlx::{Connection, MySqlConnection, QueryBuilder, query_scalar};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::{File, OpenOptions};
@@ -22,7 +22,7 @@ use std::io::{Read, Write};
 use std::net::SocketAddr;
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
-use std::process::{exit, Stdio};
+use std::process::{Stdio, exit};
 use std::time::Duration;
 use std::{env, io, thread};
 use tokio::runtime::Handle;
@@ -181,7 +181,11 @@ pub(crate) fn new() {
 
     let mut mounts = Vec::new();
 
-    println!("\nPlease enter the mariadb connection url.\nIt is important that the database is reliable, meaning it should be installed locally and accessed through a unix domain socket.\nThis Database is shared among servers. {}Ensure that the root user is only accessible through a password.{}\nOn most Linux systems the unix socket for the mariadb server is located at /var/run/mysqld/mysqld.sock\nSyntax: mysql://<user>[:<password>]@<host>/<database>[?socket=<unixSocketPath>]\n<...> = required\n[...] = technically optional, but strongly recommended\n", termion::color::Bg(termion::color::Red), termion::style::Reset);
+    println!(
+        "\nPlease enter the mariadb connection url.\nIt is important that the database is reliable, meaning it should be installed locally and accessed through a unix domain socket.\nThis Database is shared among servers. {}Ensure that the root user is only accessible through a password.{}\nOn most Linux systems the unix socket for the mariadb server is located at /var/run/mysqld/mysqld.sock\nSyntax: mysql://<user>[:<password>]@<host>/<database>[?socket=<unixSocketPath>]\n<...> = required\n[...] = technically optional, but strongly recommended\n",
+        termion::color::Bg(termion::color::Red),
+        termion::style::Reset
+    );
     let mysql = Text::new("URL: ")
         .with_validator(MySQLValidator)
         .prompt()
@@ -206,7 +210,9 @@ pub(crate) fn new() {
     OsRng.try_fill_bytes(&mut bytes).unwrap();
     let token = BASE64_STANDARD.encode(bytes);
 
-    println!("\nPlease enter the node identification.\nThis is a string for the identification of the node in the backend and for authentication. It should not be visible to the user.");
+    println!(
+        "\nPlease enter the node identification.\nThis is a string for the identification of the node in the backend and for authentication. It should not be visible to the user."
+    );
     let identifier = Text::new("Identifier: ")
         .with_validator(RegexValidator(Regex::new("[A-Za-z0-9_\\.-]+").unwrap()))
         .with_validator(LengthValidator(1..=16))

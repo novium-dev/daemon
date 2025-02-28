@@ -1,11 +1,11 @@
-use futures_util::future::BoxFuture;
 use futures_util::FutureExt;
+use futures_util::future::BoxFuture;
 use sqlx::error::BoxDynError;
 use sqlx::migrate::{Migration, MigrationSource, Migrator};
 use sqlx::mysql::MySqlArguments;
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
-use sqlx::{query, raw_sql, Connection, Executor, MySql, Pool};
+use sqlx::{Connection, Executor, MySql, Pool, query, raw_sql};
 use std::fmt::Debug;
 
 static MIGRATOR: Migrator = sqlx::migrate!();
@@ -143,14 +143,36 @@ pub(crate) fn create_user(
     let hash = hash.into();
     PreparedQuery(if let Some(hash) = hash {
         if lock {
-            query!("SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(?), '@', QUOTE(?), ' IDENTIFIED WITH ', QUOTE(?), ' AS ', QUOTE(?), ' ACCOUNT LOCK')", user.into(), host.into(), plugin.into(), hash)
+            query!(
+                "SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(?), '@', QUOTE(?), ' IDENTIFIED WITH ', QUOTE(?), ' AS ', QUOTE(?), ' ACCOUNT LOCK')",
+                user.into(),
+                host.into(),
+                plugin.into(),
+                hash
+            )
         } else {
-            query!("SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(?), '@', QUOTE(?), ' IDENTIFIED WITH ', QUOTE(?), ' AS ', QUOTE(?))", user.into(), host.into(), plugin.into(), hash)
+            query!(
+                "SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(?), '@', QUOTE(?), ' IDENTIFIED WITH ', QUOTE(?), ' AS ', QUOTE(?))",
+                user.into(),
+                host.into(),
+                plugin.into(),
+                hash
+            )
         }
     } else if lock {
-        query!("SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(?), '@', QUOTE(?), ' IDENTIFIED WITH ', QUOTE(?), ' ACCOUNT LOCK')", user.into(), host.into(), plugin.into())
+        query!(
+            "SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(?), '@', QUOTE(?), ' IDENTIFIED WITH ', QUOTE(?), ' ACCOUNT LOCK')",
+            user.into(),
+            host.into(),
+            plugin.into()
+        )
     } else {
-        query!("SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(?), '@', QUOTE(?), ' IDENTIFIED WITH ', QUOTE(?))", user.into(), host.into(), plugin.into())
+        query!(
+            "SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ', QUOTE(?), '@', QUOTE(?), ' IDENTIFIED WITH ', QUOTE(?))",
+            user.into(),
+            host.into(),
+            plugin.into()
+        )
     })
 }
 
@@ -169,7 +191,13 @@ pub(crate) fn grant_privilege(
     user: impl Into<String>,
     host: impl Into<String>,
 ) -> PreparedQuery {
-    PreparedQuery(query!("SET @STATEMENT = CONCAT('GRANT ', ?, ' ON TABLE `', ?, '`.* TO ', QUOTE(?), '@', QUOTE(?))", privilege.into(), table.into(), user.into(), host.into()))
+    PreparedQuery(query!(
+        "SET @STATEMENT = CONCAT('GRANT ', ?, ' ON TABLE `', ?, '`.* TO ', QUOTE(?), '@', QUOTE(?))",
+        privilege.into(),
+        table.into(),
+        user.into(),
+        host.into()
+    ))
 }
 
 #[allow(unused)]
@@ -178,7 +206,12 @@ pub(crate) fn revoke_all_privileges(
     user: impl Into<String>,
     host: impl Into<String>,
 ) -> PreparedQuery {
-    PreparedQuery(query!("SET @STATEMENT = CONCAT('REVOKE ALL PRIVILEGES ON `', ?, '`.* FROM ', QUOTE(?), '@', QUOTE(?))", table.into(), user.into(), host.into()))
+    PreparedQuery(query!(
+        "SET @STATEMENT = CONCAT('REVOKE ALL PRIVILEGES ON `', ?, '`.* FROM ', QUOTE(?), '@', QUOTE(?))",
+        table.into(),
+        user.into(),
+        host.into()
+    ))
 }
 
 #[allow(unused)]
@@ -188,7 +221,13 @@ pub(crate) fn grant_proxy(
     proxy_user: impl Into<String>,
     proxy_host: impl Into<String>,
 ) -> PreparedQuery {
-    PreparedQuery(query!("SET @STATEMENT = CONCAT('GRANT PROXY ON ', QUOTE(?), '@', QUOTE(?), ' TO ', QUOTE(?), '@', QUOTE(?))", user.into(), host.into(), proxy_user.into(), proxy_host.into()))
+    PreparedQuery(query!(
+        "SET @STATEMENT = CONCAT('GRANT PROXY ON ', QUOTE(?), '@', QUOTE(?), ' TO ', QUOTE(?), '@', QUOTE(?))",
+        user.into(),
+        host.into(),
+        proxy_user.into(),
+        proxy_host.into()
+    ))
 }
 
 #[allow(unused)]

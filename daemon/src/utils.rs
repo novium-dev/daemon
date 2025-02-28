@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use daemon_common::server::ServerStats;
-use sqlx::{query_as, Executor, MySql, Pool};
+use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::fmt::Debug;
 use std::future::Future;
@@ -11,9 +11,9 @@ use std::sync::Arc;
 use std::{io, mem};
 use tokio_util::io::SyncIoBridge;
 
+use crate::ServerData;
 use crate::server::status::InternalServerState;
 use crate::server::*;
-use crate::ServerData;
 
 pub(crate) trait ResourceData {
     fn into_u64(self) -> u64;
@@ -176,14 +176,12 @@ pub struct ChannelInterceptor<
 
 #[allow(unused)]
 impl<
-        C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>>
-            + Send
-            + 'static,
-        A: ChannelAdapter<E, J, Q> + Send,
-        E: Send + 'static,
-        J: Send + 'static,
-        Q: Send + 'static,
-    > ChannelInterceptor<A, E, J, Q, C>
+    C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>> + Send + 'static,
+    A: ChannelAdapter<E, J, Q> + Send,
+    E: Send + 'static,
+    J: Send + 'static,
+    Q: Send + 'static,
+> ChannelInterceptor<A, E, J, Q, C>
 {
     #[allow(clippy::default_constructed_unit_structs)]
     pub(crate) fn new(state: A, intercept: C) -> Self {
@@ -199,14 +197,12 @@ impl<
 
 #[async_trait]
 impl<
-        C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>>
-            + Send
-            + 'static,
-        A: ChannelAdapter<E, J, Q> + Send,
-        E: Send + 'static,
-        J: Send + 'static,
-        Q: Send + 'static,
-    > ChannelAdapter<E, J, Q> for ChannelInterceptor<A, E, J, Q, C>
+    C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>> + Send + 'static,
+    A: ChannelAdapter<E, J, Q> + Send,
+    E: Send + 'static,
+    J: Send + 'static,
+    Q: Send + 'static,
+> ChannelAdapter<E, J, Q> for ChannelInterceptor<A, E, J, Q, C>
 {
     async fn read(&mut self) -> E {
         let result = self.0.read().await;

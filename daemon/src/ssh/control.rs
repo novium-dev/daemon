@@ -1,11 +1,11 @@
-use crate::server::status::InternalServerState;
 use crate::server::FetchedServer;
+use crate::server::status::InternalServerState;
 use crate::ssh::handler::DaemonSSHHandler;
-use crate::storage::sync::storage_read;
 use crate::storage::StorageIdentifier;
+use crate::storage::sync::storage_read;
 use crate::sync::Mutex;
 use crate::utils::{ChannelWriteData, SyncIOBridgeExt};
-use crate::{utils, DaemonState, ServerData};
+use crate::{DaemonState, ServerData, utils};
 use chrono::{TimeZone, Utc};
 use crossterm::terminal::ClearType;
 use daemon_common::server::{BackendAuthServerPermissions, ServerStats};
@@ -23,8 +23,8 @@ use russh::{ChannelId, ChannelStream};
 use std::cmp::{max, min};
 use std::io::{ErrorKind, Write};
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use std::{io, mem};
 use tokio::io::{AsyncReadExt, AsyncWrite};
@@ -533,11 +533,13 @@ fn draw_cpu_chart(
         .enumerate()
         .map(|(index, cpu)| (index as f64, cpu as f64))
         .collect();
-    let cpu = Chart::new(vec![Dataset::default()
-        .fg(Color::Yellow)
-        .graph_type(GraphType::Line)
-        .marker(Marker::Braille)
-        .data(&cpu_data)])
+    let cpu = Chart::new(vec![
+        Dataset::default()
+            .fg(Color::Yellow)
+            .graph_type(GraphType::Line)
+            .marker(Marker::Braille)
+            .data(&cpu_data),
+    ])
     .x_axis(Axis::default().bounds([0.0, 30.0]).labels(["30s", "0s"]))
     .y_axis(
         Axis::default()

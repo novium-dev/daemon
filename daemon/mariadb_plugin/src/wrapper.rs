@@ -2,7 +2,7 @@ use crate::types::{
     AuthHandler, AuthStatus, AuthenticateFunc, DeinitFunc, InitFunc, License, Plugin, PluginType,
     PluginVIO, ServerAuthInfo,
 };
-use crate::{constants, mysql_declare_plugin, plugin, MARIADB_PLUGIN_NAME};
+use crate::{MARIADB_PLUGIN_NAME, constants, mysql_declare_plugin, plugin};
 use constcat::concat_slices;
 use std::ffi::{c_int, c_void};
 

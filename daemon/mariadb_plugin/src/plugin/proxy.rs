@@ -1,5 +1,5 @@
 use crate::plugin::{authenticate_as, identify};
-use crate::types::{AuthStatus, PluginVIO, ServerAuthInfo, PASSWORD_USED_NO_MENTION};
+use crate::types::{AuthStatus, PASSWORD_USED_NO_MENTION, PluginVIO, ServerAuthInfo};
 
 pub(crate) fn authenticate_proxy_mode(
     vio: &mut PluginVIO,

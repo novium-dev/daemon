@@ -1,6 +1,6 @@
 #![allow(clippy::disallowed_methods)]
 
-pub use tokio::sync::{broadcast, OwnedRwLockReadGuard, OwnedRwLockWriteGuard};
+pub use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, broadcast};
 
 #[cfg(feature = "trace_sync")]
 pub(crate) mod mutex;

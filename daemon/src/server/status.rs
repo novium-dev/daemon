@@ -1,12 +1,12 @@
+use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
-use crate::ServerData;
 #[cfg(feature = "user")]
 use axum::extract::ws::Message;
+use bollard::Docker;
 use bollard::container::ListContainersOptions;
 use bollard::models::HealthStatusEnum;
-use bollard::Docker;
 use chrono::DateTime;
 use daemon_common::server::PublicServerState;
 use serde::{Serialize, Serializer};

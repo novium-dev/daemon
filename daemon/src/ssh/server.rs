@@ -1,6 +1,6 @@
+use crate::DaemonState;
 use crate::ssh::auth::InvalidationCacheMap;
 use crate::ssh::handler::DaemonSSHHandler;
-use crate::DaemonState;
 use russh::server::{Handler, Server};
 use std::collections::HashMap;
 use std::io::ErrorKind;

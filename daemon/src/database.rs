@@ -3,7 +3,7 @@ use crate::sql;
 use crate::sql::MultiTransactionApply;
 use daemon_common::payload::database::DatabaseUserPermissions;
 use regex::Regex;
-use sqlx::{query, query_as, Error, Executor, MySql};
+use sqlx::{Error, Executor, MySql, query, query_as};
 use std::collections::{HashMap, HashSet};
 use tokio::task::JoinError;
 

@@ -1,8 +1,8 @@
+use crate::ServerData;
 use crate::ssh::handler::DaemonSSHHandler;
 use crate::sync::Mutex;
-use crate::terminal::{new_session, TerminalData};
+use crate::terminal::{TerminalData, new_session};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
-use crate::ServerData;
 use async_trait::async_trait;
 use daemon_common::server::BackendAuthServerPermissions;
 use russh::server::{Msg, Session};

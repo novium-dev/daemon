@@ -1,5 +1,5 @@
-use crate::server::FetchedServer;
 use crate::ServerData;
+use crate::server::FetchedServer;
 use bollard::Docker;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};

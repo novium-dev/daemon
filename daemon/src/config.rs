@@ -7,9 +7,9 @@ use base64::prelude::*;
 use ed25519_dalek::VerifyingKey;
 use reqwest::Url;
 #[cfg(feature = "ssh")]
-use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
-#[cfg(feature = "ssh")]
 use russh::keys::PrivateKey;
+#[cfg(feature = "ssh")]
+use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
 use serde::{Deserialize, Serialize, Serializer};
 use std::collections::HashMap;
 #[cfg(feature = "ssl")]
@@ -124,8 +124,8 @@ fn deserialize_user_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Erro
 where
     D: serde::Deserializer<'de>,
 {
-    use base64::prelude::*;
     use base64::Engine;
+    use base64::prelude::*;
     use serde::de::Error;
 
     let str = String::deserialize(deserializer)?;

@@ -1,10 +1,10 @@
-use crate::server::stop::ServerStopError;
-use crate::server::FetchedServer;
-use crate::utils::ChannelWriteData;
 use crate::ServerData;
+use crate::server::FetchedServer;
+use crate::server::stop::ServerStopError;
+use crate::utils::ChannelWriteData;
+use bollard::Docker;
 use bollard::container::ResizeContainerTtyOptions;
 use bollard::exec::ResizeExecOptions;
-use bollard::Docker;
 use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
 use std::io;

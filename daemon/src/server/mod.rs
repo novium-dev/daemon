@@ -1,11 +1,11 @@
 use crate::server::image::BuildImage;
 use crate::server::network::{AssignedNetwork, Port};
-use base64::prelude::BASE64_STANDARD;
 use base64::Engine;
+use base64::prelude::BASE64_STANDARD;
 use daemon_common::payload::server::ServerFileWrite;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
-use sqlx::{query, query_as, query_scalar, Database, Decode, Encode, Executor, MySql, Pool};
+use sqlx::{Database, Decode, Encode, Executor, MySql, Pool, query, query_as, query_scalar};
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::io;
