@@ -2,7 +2,8 @@ use crate::DaemonSDKError;
 use crate::*;
 use bytes::Bytes;
 use daemon_common::payload::files::{
-    FileResponse, PathDirectoryQuery, PathQuery, PathSymlinkQuery, PathUrlQuery, TwoPathQuery,
+    FileResponse, PathCompressionSourceQuery, PathDestinationQuery, PathDirectoryQuery, PathQuery,
+    PathSymlinkQuery, PathUrlQuery, TwoPathQuery,
 };
 use daemon_common::payload::server::ServerFileWrite;
 use futures_util::StreamExt;
@@ -367,6 +368,59 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
                 format!("files/{}/symlink", server),
                 RequestBody::<()>::None,
                 Some(&PathSymlinkQuery { path, content }),
+            )
+            .await?;
+        if !response.status().is_success() {
+            return Err(DaemonSDKError::StatusCode(response.status()));
+        }
+        response
+            .bytes()
+            .await
+            .map(|_| ())
+            .map_err(DaemonSDKError::Reqwest)
+    }
+
+    pub async fn server_create_archive(
+        &self,
+        server: u32,
+        path: String,
+        src: String,
+        compression: String,
+    ) -> Result<(), DaemonSDKError> {
+        let response: Response = self
+            .wrapper(
+                Method::GET,
+                format!("files/{}/archive/create", server),
+                RequestBody::<()>::None,
+                Some(&PathCompressionSourceQuery {
+                    path,
+                    src,
+                    compression,
+                }),
+            )
+            .await?;
+        if !response.status().is_success() {
+            return Err(DaemonSDKError::StatusCode(response.status()));
+        }
+        response
+            .bytes()
+            .await
+            .map(|_| ())
+            .map_err(DaemonSDKError::Reqwest)
+    }
+
+    pub async fn server_unpack_archive(
+        &self,
+        server: u32,
+        path: String,
+        dest: String,
+    ) -> Result<(), DaemonSDKError> {
+        let response: Response = self
+            .wrapper(
+                Method::GET,
+                format!("files/{}/archive/unpack", server),
+                RequestBody::<()>::None,
+                Some(&PathDestinationQuery { path, dest }),
             )
             .await?;
         if !response.status().is_success() {
