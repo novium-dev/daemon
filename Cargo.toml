@@ -15,7 +15,7 @@ members = [
     "daemon",
     "daemon/mariadb_plugin",
 ]
-resolver = "2"
+resolver = "3"
 
 [workspace.dependencies]
 libc = "0.2"
