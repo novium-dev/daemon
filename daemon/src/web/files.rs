@@ -1,7 +1,7 @@
 use crate::common::payload::files::FileResponse;
 use crate::files::{
-    copy_file, delete_file, download_file, list_files, mkdir_file, rename_file, stat_file,
-    symlink_file, unpack_archive, write_file, write_file_by_template, write_file_by_url,
+    copy_file, create_archive, delete_file, download_file, list_files, mkdir_file, rename_file,
+    stat_file, symlink_file, unpack_archive, write_file, write_file_by_template, write_file_by_url,
 };
 use crate::storage::StorageIdentifier;
 use crate::DaemonState;
@@ -10,8 +10,8 @@ use axum::extract::{Path, Query, Request, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::Json;
 use daemon_common::payload::files::{
-    PathDestinationQuery, PathDirectoryQuery, PathQuery, PathSymlinkQuery, PathUrlQuery,
-    TwoPathQuery,
+    PathCompressionSourceQuery, PathDestinationQuery, PathDirectoryQuery, PathQuery,
+    PathSymlinkQuery, PathUrlQuery, TwoPathQuery,
 };
 use daemon_common::payload::server::ServerFileWrite;
 use utoipa_axum::router::OpenApiRouter;
@@ -31,6 +31,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
         .routes(routes!(server_mkdir))
         .routes(routes!(server_symlink))
         .routes(routes!(server_unpack_archive))
+        .routes(routes!(server_create_archive))
 }
 
 #[cfg(feature = "user")]
@@ -412,7 +413,8 @@ pub(crate) async fn server_symlink(
         (status = 503, description = "The storage of this server can't be accessed right now"),
         (status = 404, description = "The server or file does not exist"),
         (status = 403, description = "You tried to access files outside of the servers storage"),
-        (status = 401, description = "Your authorization token is invalid")
+        (status = 401, description = "Your authorization token is invalid"),
+        (status = 412, description = "The file is not an supported archive"),
     ),
     params(
         ("server_id" = u32, description = "The id of the server"),
@@ -428,4 +430,36 @@ pub(crate) async fn server_unpack_archive(
 ) -> Result<(), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
     unpack_archive(&state, storage, path, dest).await
+}
+
+#[utoipa::path(get,
+    path = "/files/{server_id}/archive/create",
+    tag = "files",
+    description = "Creates an archive",
+    responses(
+        (status = 200, description = "Ok"),
+        (status = 500, description = "An unexpected error occurred"),
+        (status = 503, description = "The storage of this server can't be accessed right now"),
+        (status = 404, description = "The server or file does not exist"),
+        (status = 403, description = "You tried to access files outside of the servers storage"),
+        (status = 401, description = "Your authorization token is invalid"),
+    ),
+    params(
+        ("server_id" = u32, description = "The id of the server"),
+        ("path" = String, Query, description = "The path of the archive"),
+        ("src" = String, Query, description = "The path of the archive source"),
+        ("Authorization", Header, description = "The token used for authentication"),
+   )
+)]
+pub(crate) async fn server_create_archive(
+    State(state): State<DaemonState>,
+    Path((server_id,)): Path<(u32,)>,
+    Query(PathCompressionSourceQuery {
+        path,
+        src,
+        compression,
+    }): Query<PathCompressionSourceQuery>,
+) -> Result<(), StatusCode> {
+    let storage = StorageIdentifier::Primary(server_id);
+    create_archive(&state, storage, path, src, compression).await
 }

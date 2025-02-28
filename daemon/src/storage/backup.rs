@@ -162,7 +162,8 @@ async fn create_backup0(
             let (archive, _) = archive
                 .append_dir_all_sandboxed(&dir, "", "/", (), true)
                 .await?;
-            tokio::task::spawn_blocking(move || archive.into_inner().unwrap().flush()).await??;
+            tokio::task::spawn_blocking(move || archive.into_inner().unwrap().finish()?.flush())
+                .await??;
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { group, .. } => {
@@ -604,7 +605,7 @@ async fn stream_realtime1(
         archive.follow_symlinks(false);
         // TODO: Exclude
         let (archive, _) = archive.append_dir_all_sandboxed_blocking(&target, "", "/", (), true)?;
-        archive.into_inner().unwrap().flush()?;
+        archive.into_inner().unwrap().finish()?.flush()?;
         Ok::<(), io::Error>(())
     });
     let stream = ReaderStream::new(recv);

@@ -54,3 +54,10 @@ pub struct PathDestinationQuery {
     pub path: String,
     pub dest: String,
 }
+
+#[derive(Serialize, Deserialize)]
+pub struct PathCompressionSourceQuery {
+    pub path: String,
+    pub src: String,
+    pub compression: String,
+}

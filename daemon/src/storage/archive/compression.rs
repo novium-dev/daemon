@@ -1,9 +1,12 @@
+use bzip2::write::BzEncoder;
+use flate2::write::{GzEncoder, ZlibEncoder};
+use liblzma::write::XzEncoder;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use std::cmp::PartialEq;
-use std::fmt::Formatter;
+use std::fmt::{Arguments, Formatter};
 use std::io;
-use std::io::{ErrorKind, Read, Seek, SeekFrom, Write};
+use std::io::{ErrorKind, IoSlice, Read, Seek, SeekFrom, Write};
 use tracing::error;
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
@@ -168,7 +171,7 @@ impl ArchiveCompression {
     pub(crate) fn create_encoder<W: Write + Send + 'static>(
         &self,
         write: W,
-    ) -> Result<Box<dyn Write + Send + 'static>, io::Error> {
+    ) -> Result<Box<dyn CompressionEncoder<W> + Send + 'static>, io::Error> {
         if !self.valid_level() {
             error!("Invalid level in compression tried to use: {:?}", self);
             return Err(io::Error::new(
@@ -177,7 +180,7 @@ impl ArchiveCompression {
             ));
         }
         Ok(match self {
-            ArchiveCompression::None => Box::new(write),
+            ArchiveCompression::None => Box::new(PassthroughEncoder(write)),
             ArchiveCompression::Zstd { level } => Box::new(zstd::Encoder::new(
                 write,
                 match level {
@@ -318,4 +321,75 @@ where
     }
     let visitor = CompressionLevelVisitor;
     deserializer.deserialize_any(visitor)
+}
+
+pub trait CompressionEncoder<W: Write>: Write {
+    fn finish(self: Box<Self>) -> Result<W, io::Error>;
+}
+
+pub struct PassthroughEncoder<W: Write>(W);
+
+impl<W: Write> Write for PassthroughEncoder<W> {
+    fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+        self.0.write_all(buf)
+    }
+
+    fn write_fmt(&mut self, fmt: Arguments<'_>) -> io::Result<()> {
+        self.0.write_fmt(fmt)
+    }
+
+    fn write_vectored(&mut self, bufs: &[IoSlice<'_>]) -> io::Result<usize> {
+        self.0.write_vectored(bufs)
+    }
+
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl<W: Write> CompressionEncoder<W> for PassthroughEncoder<W> {
+    fn finish(self: Box<Self>) -> Result<W, io::Error> {
+        Ok(self.0)
+    }
+}
+
+impl<W: Write> CompressionEncoder<W> for zstd::Encoder<'_, W> {
+    fn finish(self: Box<Self>) -> Result<W, io::Error> {
+        (*self).try_finish().map_err(|(_, err)| err)
+    }
+}
+
+impl<W: Write> CompressionEncoder<W> for XzEncoder<W> {
+    fn finish(self: Box<Self>) -> Result<W, io::Error> {
+        (*self).finish()
+    }
+}
+
+impl<W: Write> CompressionEncoder<W> for ZlibEncoder<W> {
+    fn finish(self: Box<Self>) -> Result<W, io::Error> {
+        (*self).finish()
+    }
+}
+
+impl<W: Write> CompressionEncoder<W> for lz4::Encoder<W> {
+    fn finish(self: Box<Self>) -> Result<W, io::Error> {
+        let (inner, result) = (*self).finish();
+        result.map(|_| inner)
+    }
+}
+
+impl<W: Write> CompressionEncoder<W> for GzEncoder<W> {
+    fn finish(self: Box<Self>) -> Result<W, io::Error> {
+        (*self).finish()
+    }
+}
+
+impl<W: Write> CompressionEncoder<W> for BzEncoder<W> {
+    fn finish(self: Box<Self>) -> Result<W, io::Error> {
+        (*self).finish()
+    }
 }

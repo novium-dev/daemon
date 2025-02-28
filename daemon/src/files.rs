@@ -6,7 +6,7 @@ use std::path::PathBuf;
 
 use crate::config::StorageEntry;
 use crate::storage::archive::compression::ArchiveCompression;
-use crate::storage::archive::TarSandboxedUnpackExtension;
+use crate::storage::archive::{TarSandboxedAppendExtension, TarSandboxedUnpackExtension};
 use crate::storage::sync::{storage_read, StorageError, StorageLockData};
 use crate::storage::StorageIdentifier;
 use crate::utils::path_relative;
@@ -21,7 +21,8 @@ use daemon_common::payload::files::FileResponse;
 use daemon_common::payload::server::ServerFileWrite;
 use futures_util::TryStreamExt;
 use reqwest::Url;
-use tar::Archive;
+use serde_json::json;
+use tar::{Archive, Builder};
 use tokio::io::{AsyncWriteExt, BufWriter};
 use tokio_util::io::{ReaderStream, StreamReader};
 use tracing::{debug, error, warn};
@@ -587,6 +588,69 @@ async fn unpack_archive0(
         Err(err) if err.kind() == ErrorKind::UnexpectedEof => Ok(false),
         Err(err) => Err(err),
     }
+}
+
+pub(crate) async fn create_archive(
+    state: &DaemonState,
+    id: StorageIdentifier,
+    path: String,
+    src: String,
+    compression: String,
+) -> Result<(), StatusCode> {
+    let StorageLockData { lock, storage, .. } =
+        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
+            .await
+            .map_err(StorageError::into_http)?;
+    let path = path_relative(path);
+
+    let compression: ArchiveCompression = serde_json::from_value(json!({
+        "type": compression
+    }))
+    .map_err(|_err| StatusCode::BAD_REQUEST)?;
+
+    let (storage, storage_path) = storage_path(id, storage).await?;
+    create_archive0(storage, storage_path, path, src, compression)
+        .await
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::IsADirectory
+            | ErrorKind::NotADirectory => debug!("Failed to create archive: {:?}", err),
+            _ => error!("Failed to create archive: {:?}", err),
+        })
+        .map_err(err)?;
+    drop(lock);
+    Ok(())
+}
+
+#[inline(always)]
+async fn create_archive0(
+    storage: Dir,
+    storage_path: PathBuf,
+    path: PathBuf,
+    src: String,
+    compression: ArchiveCompression,
+) -> Result<(), io::Error> {
+    let file = storage
+        .open_with(
+            path,
+            OpenOptions::new().create(true).truncate(true).write(true),
+        )
+        .await?;
+
+    let fd: OwnedFd = file.into_std().into();
+    let file = std::fs::File::from(fd);
+    let archive = Builder::new(compression.create_encoder(file)?);
+    let (archive, _) = archive
+        .append_dir_all_sandboxed(storage_path, "", src, (), true)
+        .await?;
+
+    tokio::task::spawn_blocking(move || {
+        use std::io::Write;
+        archive.into_inner().unwrap().finish()?.flush()
+    })
+    .await??;
+    Ok(())
 }
 
 async fn storage_path(
