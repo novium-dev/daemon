@@ -1,4 +1,5 @@
 #![warn(clippy::string_to_string)]
+#![forbid(unsafe_code)]
 
 pub mod payload;
 

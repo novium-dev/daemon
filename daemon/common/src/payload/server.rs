@@ -5,9 +5,6 @@ use serde_yaml::Mapping;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::io::{ErrorKind, Seek, SeekFrom};
-use std::mem::ManuallyDrop;
-use std::ops::DerefMut;
-use std::os::fd::{AsRawFd, FromRawFd};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tracing::debug;
 
@@ -131,7 +128,7 @@ pub enum ServerFileWrite {
 }
 
 impl ServerFileWrite {
-    pub async fn apply(&self, file: &mut tokio::fs::File) -> Result<(), io::Error> {
+    pub async fn apply(&self, mut file: tokio::fs::File) -> Result<(), io::Error> {
         match self {
             ServerFileWrite::WRITE { data } => {
                 file.set_len(0).await?;
@@ -139,11 +136,10 @@ impl ServerFileWrite {
                 file.write_all(data).await
             }
             ServerFileWrite::PROPERTIES { content } => {
-                let fd = file.as_raw_fd();
                 let content = content.clone();
+                let mut file = file.into_std().await;
                 tokio::task::spawn_blocking(move || {
-                    let mut file = ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) });
-                    let mut current = java_properties::read(file.deref_mut())
+                    let mut current = java_properties::read(&mut file)
                         .inspect_err(|err| debug!("Failed to read properties file: {:?}", err))
                         .unwrap_or_default();
                     for (key, val) in content {
@@ -152,7 +148,7 @@ impl ServerFileWrite {
 
                     file.set_len(0)?;
                     file.seek(SeekFrom::Start(0))?;
-                    java_properties::write(file.deref_mut(), &current)
+                    java_properties::write(&mut file, &current)
                         .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
                     Ok(())
                 })
@@ -160,20 +156,18 @@ impl ServerFileWrite {
                 .map_err(|err| io::Error::new(ErrorKind::Other, err))?
             }
             ServerFileWrite::JSON { content } => {
-                let fd = file.as_raw_fd();
+                let mut file = file.into_std().await;
                 let content = content.clone();
-                let mut value: Value = tokio::task::spawn_blocking(move || {
-                    let mut file = ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) });
-                    match serde_json::from_reader(file.deref_mut()) {
-                        Ok(val) => Ok(val),
+                let (mut value, mut file) =
+                    tokio::task::spawn_blocking(move || match serde_json::from_reader(&mut file) {
+                        Ok(val) => Ok((val, file)),
                         Err(err) if err.is_io() => {
                             Err(io::Error::new(err.io_error_kind().unwrap(), err))
                         }
-                        Err(_err) => Ok(Value::Object(Map::new())),
-                    }
-                })
-                .await
-                .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+                        Err(_err) => Ok((Value::Object(Map::new()), file)),
+                    })
+                    .await
+                    .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
 
                 for (key, val) in content {
                     let components: Vec<String> = key.split(".").map(String::from).collect();
@@ -227,22 +221,21 @@ impl ServerFileWrite {
                     *current = val;
                 }
                 tokio::task::spawn_blocking(move || {
-                    let mut file = ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) });
                     file.set_len(0)?;
                     file.seek(SeekFrom::Start(0))?;
-                    serde_json::to_writer_pretty(file.deref_mut(), &value)
+                    serde_json::to_writer_pretty(&mut file, &value)
                         .map_err(|err| io::Error::new(ErrorKind::Other, err))
                 })
                 .await
                 .map_err(|err| io::Error::new(ErrorKind::Other, err))?
             }
             ServerFileWrite::YAML { content } => {
-                let fd = file.as_raw_fd();
+                let mut file = file.into_std().await;
                 let content = content.clone();
-                let mut value: serde_yaml::Value = tokio::task::spawn_blocking(move || {
-                    let mut file = ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) });
-                    serde_yaml::from_reader(file.deref_mut())
+                let (mut value, mut file) = tokio::task::spawn_blocking(move || {
+                    serde_yaml::from_reader(&mut file)
                         .map_err(|err| io::Error::new(ErrorKind::Other, err))
+                        .map(|val: serde_yaml::Value| (val, file))
                 })
                 .await
                 .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
@@ -299,10 +292,9 @@ impl ServerFileWrite {
                     *current = val;
                 }
                 tokio::task::spawn_blocking(move || {
-                    let mut file = ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(fd) });
                     file.set_len(0)?;
                     file.seek(SeekFrom::Start(0))?;
-                    serde_yaml::to_writer(file.deref_mut(), &value)
+                    serde_yaml::to_writer(&mut file, &value)
                         .map_err(|err| io::Error::new(ErrorKind::Other, err))
                 })
                 .await

@@ -351,9 +351,9 @@ pub(crate) async fn write_file_by_template(
         .map_err(err)?
         .into_std()
         .into();
-    let mut file = tokio::fs::File::from_std(std::fs::File::from(fd));
+    let file = tokio::fs::File::from_std(std::fs::File::from(fd));
     template
-        .apply(&mut file)
+        .apply(file)
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound
