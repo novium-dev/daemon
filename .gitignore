@@ -10,7 +10,7 @@ valkey/sockets/
 node_modules/
 *.wasm
 *.pem
-!daemon/src/test_ed25519.pem
+!test_ed25519.pem
 config.toml
 dependencies.txt
 
