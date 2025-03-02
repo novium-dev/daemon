@@ -1,19 +1,7 @@
 [workspace]
 members = [
-    "backend/api",
-    "backend/core",
-    "backend/auth",
-    "backend/http",
-    "backend/grpc",
-    "backend/bot",
-    "backend/minecraft",
-    "backend/generic",
-    "backend/dev",
-    "backend/bootstrap",
-    "daemon/common",
-    "daemon/sdk",
-    "daemon",
-    "daemon/mariadb_plugin",
+    "backend/*",
+    "daemon/*"
 ]
 resolver = "3"
 
