@@ -153,7 +153,6 @@ features = []
 version = "1.28.1"
 
 [build-dependencies]
-pkg-config = "0.3.32"
 bindgen = "0.71.1"
 
 
