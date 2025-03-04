@@ -11,6 +11,7 @@ build/
 
 # Don't leak information
 *.pem
+!test_ed25519.pem
 
 backend/minecraft/agent/build/
 backend/minecraft/agent/.gradle/

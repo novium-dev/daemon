@@ -6,14 +6,11 @@ pub(crate) mod sync;
 pub(crate) mod worker;
 
 use crate::config::StorageEntry;
-use crate::utils;
 use std::io;
-use std::os::fd::AsRawFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicI64, Ordering};
 use tokio::fs;
-use tokio::fs::File;
 use tracing::error;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
@@ -59,52 +56,25 @@ pub(crate) async fn ensure_exists(
             StorageEntry::Btrfs { .. } => {
                 use std::io::ErrorKind;
                 let dir = dir.clone();
-                if let Some(parent) = dir.parent() {
-                    fs::create_dir_all(parent).await.inspect_err(|err| {
-                        error!("Unable to create parents of storage directory: {:?}", err)
-                    })?;
-                }
-                tokio::task::spawn_blocking(move || {
-                    libbtrfs::subvolume::new(&dir.to_string_lossy())?;
-                    Ok::<(), io::Error>(())
-                })
-                .await
-                .map_err(|err| io::Error::new(ErrorKind::Other, err))?
-                .inspect_err(|err| {
-                    error!("Unable to create subvolume of storage directory: {:?}", err)
+                let Some(parent) = dir.parent() else {
+                    error!("Got path without parent: {:?}", dir.to_string_lossy());
+                    return Err(io::Error::new(ErrorKind::Other, "Invalid path: No parent"));
+                };
+                fs::create_dir_all(parent).await.inspect_err(|err| {
+                    error!("Unable to create parents of storage directory: {:?}", err)
                 })?;
+                btrfs::new_subvolume(parent, dir.file_name().unwrap().to_str().unwrap())
+                    .await
+                    .inspect_err(|err| {
+                        error!("Unable to create subvolume of storage directory: {:?}", err)
+                    })?;
             }
         }
     }
 
     #[cfg(feature = "btrfs")]
     if let StorageEntry::Btrfs { quota: true, .. } = &storage {
-        use libbtrfs::btrfs::*;
-        use std::io::ErrorKind;
-
-        let args = btrfs_ioctl_qgroup_limit_args {
-            qgroupid: 0,
-            lim: btrfs_qgroup_limit {
-                flags: BTRFS_QGROUP_LIMIT_RFER_CMPR
-                    | BTRFS_QGROUP_LIMIT_EXCL_CMPR
-                    | BTRFS_QGROUP_LIMIT_MAX_RFER,
-                max_rfer: disk.map(utils::from_mib).unwrap_or(u64::MAX), // This is the value for no limit
-
-                rsv_rfer: 0,
-                rsv_excl: 0,
-                max_excl: 0,
-            },
-        };
-        let file = File::open(&dir).await?;
-
-        let ret = tokio::task::spawn_blocking(move || unsafe {
-            libc::ioctl(file.as_raw_fd(), BTRFS_IOC_QGROUP_LIMIT, &args)
-        })
-        .await
-        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
-        if ret < 0 {
-            return Err(io::Error::last_os_error());
-        }
+        btrfs::apply_qgroup_limit(&dir, disk).await?;
     }
     value
         .1
@@ -128,13 +98,15 @@ pub(crate) async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Res
     {
         if let StorageEntry::Btrfs { .. } = storage {
             use std::io::ErrorKind;
-            return tokio::task::spawn_blocking(move || {
-                libbtrfs::subvolume::remove(&dir.to_string_lossy())?;
-                Ok(())
-            })
-            .await
-            .inspect_err(|err| error!("Unable to remove subvolume of storage directory: {:?}", err))
-            .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+            let Some(parent) = dir.parent() else {
+                error!("Got path without parent: {:?}", dir.to_string_lossy());
+                return Err(io::Error::new(ErrorKind::Other, "Invalid path: No parent"));
+            };
+            btrfs::remove_subvolume(parent, dir.file_name().unwrap().to_str().unwrap())
+                .await
+                .inspect_err(|err| {
+                    error!("Unable to remove subvolume of storage directory: {:?}", err)
+                })?;
         }
     }
     if dir

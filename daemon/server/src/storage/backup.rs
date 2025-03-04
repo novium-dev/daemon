@@ -2,6 +2,7 @@ use crate::config::{BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::{TarSandboxedAppendExtension, TarSandboxedUnpackExtension};
+use crate::storage::btrfs::{new_snapshot, remove_subvolume};
 use crate::storage::sync::{StorageError, StorageLockData, storage_read, storage_write};
 use crate::{DaemonState, storage};
 use axum::body::Body;
@@ -171,17 +172,7 @@ async fn create_backup0(
                 return Err(io::Error::new(ErrorKind::InvalidInput, "Group mismatch!"));
             }
 
-            tokio::task::spawn_blocking(move || {
-                let target = target_dir.join(timestamp.to_string());
-                libbtrfs::subvolume::snapshot(
-                    &dir.to_string_lossy(),
-                    &target.to_string_lossy(),
-                    true,
-                )?;
-                Ok::<(), io::Error>(())
-            })
-            .await?
-            .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+            new_snapshot(&dir, &target_dir, &timestamp.to_string(), true).await?;
         }
     }
     Ok(timestamp)
@@ -254,17 +245,18 @@ async fn restore_backup0(
         BackupEntry::Btrfs { .. } => {
             use std::io::ErrorKind;
             let target = target_dir.join(backup_id.to_string());
-            tokio::task::spawn_blocking(move || {
-                libbtrfs::subvolume::remove(&dir.to_string_lossy())?;
-                libbtrfs::subvolume::snapshot(
-                    &target.to_string_lossy(),
-                    &dir.to_string_lossy(),
-                    false,
-                )?;
-                Ok::<(), io::Error>(())
-            })
-            .await
-            .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+            let Some(parent) = dir.parent() else {
+                error!("Got path without parent: {:?}", dir.to_string_lossy());
+                return Err(io::Error::new(ErrorKind::Other, "Invalid path: No parent"));
+            };
+            remove_subvolume(parent, dir.file_name().unwrap().to_str().unwrap()).await?;
+            new_snapshot(
+                &target,
+                parent,
+                dir.file_name().unwrap().to_str().unwrap(),
+                false,
+            )
+            .await?;
         }
     }
     Ok(())
@@ -652,12 +644,7 @@ async fn delete_backup0(
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
-            return tokio::task::spawn_blocking(move || {
-                let target = target_dir.join(backup_id.to_string());
-                libbtrfs::subvolume::remove(&target.to_string_lossy())?;
-                Ok(())
-            })
-            .await?;
+            remove_subvolume(&target_dir, &backup_id.to_string()).await?;
         }
     }
     Ok(())

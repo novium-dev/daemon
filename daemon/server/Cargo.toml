@@ -27,11 +27,13 @@ ssh_debug_auth_bypass = ["ssh"]
 sftp = ["ssh", "russh-sftp"]
 database = []
 user_debug_auth_bypass = ["user"]
-btrfs = ["daemon_common/btrfs", "libbtrfs"]
+btrfs = ["daemon_common/btrfs"]
 user = ["axum/ws", "daemon_common/user"]
 sentry = ["dep:sentry"]
 
-default = ["ssl", "ssh", "sftp", "ssh_control", "database", "user", "sentry", "btrfs"]
+default_generic = ["ssl", "ssh", "sftp", "ssh_control", "database", "user", "sentry", "btrfs"]
+default = ["default_generic", "bindgen/runtime"]
+default_musl = ["default_generic", "bindgen/static"]
 full = ["default"]
 full_bypass = ["full", "ssh_debug_auth_bypass", "user_debug_auth_bypass"]
 trace_sync = []
@@ -114,10 +116,6 @@ workspace = true
 workspace = true
 features = ["serde"]
 
-[dependencies.libbtrfs]
-version = "0.0.12"
-optional = true
-
 [dependencies.russh]
 version = "0.50.2"
 optional = true
@@ -155,3 +153,12 @@ features = []
 
 [dependencies.lz4]
 version = "1.28.1"
+
+[build-dependencies]
+pkg-config = "0.3.32"
+
+[build-dependencies.bindgen]
+version = "0.71.1"
+default-features = false
+features = ["prettyplease", "logging"]
+

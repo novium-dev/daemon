@@ -20,7 +20,6 @@ use sqlx::{MySql, Pool, query};
 use std::collections::HashMap;
 use std::env;
 use std::ops::{Deref, DerefMut};
-use std::os::unix::fs::MetadataExt;
 use std::pin::Pin;
 use std::process::exit;
 use std::sync::Arc;
@@ -113,7 +112,6 @@ async fn main() {
         ));
         if sentry.is_enabled() {
             info!("Enabled Sentry integration");
-            std::env::set_var("RUST_BACKTRACE", "1");
         }
     }
 
@@ -630,6 +628,7 @@ compile_error!("Websocket Auth Bypass was enabled in production!");
 fn dev_setup() {
     #[cfg(all(debug_assertions, target_os = "linux"))]
     {
+        use std::os::unix::fs::MetadataExt;
         if std::fs::metadata("/proc/self/").unwrap().uid() != 0 {
             return;
         }

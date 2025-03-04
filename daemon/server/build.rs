@@ -31,4 +31,29 @@ fn main() {
         #[cfg(target_os = "macos")]
         println!("cargo:rustc-env=DATABASE_URL=mysql://root@mysql.mac.orb.local/daemon");
     }
+
+    #[cfg(feature = "btrfs")]
+    gen_btrfs_bindings();
+}
+
+#[cfg(feature = "btrfs")]
+fn gen_btrfs_bindings() {
+    println!("cargo:rerun-if-changed=wrapper.h");
+
+    let bindings = bindgen::Builder::default()
+        .header("btrfs/wrapper.h")
+        .derive_default(true)
+        .ignore_functions()
+        .clang_macro_fallback()
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
+        .default_enum_style(bindgen::EnumVariation::ModuleConsts)
+        .size_t_is_usize(true)
+        .generate()
+        .expect("Unable to generate bindings");
+
+    // Write the bindings to the $OUT_DIR/bindings.rs file.
+    let out_path = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+    bindings
+        .write_to_file(out_path.join("btrfs_bindings.rs"))
+        .expect("Couldn't write bindings!");
 }
