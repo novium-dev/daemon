@@ -8,6 +8,7 @@ use crate::sync::broadcast::Sender;
 use axum::extract::Request;
 use bollard::Docker;
 use bollard::network::CreateNetworkOptions;
+use capctl::Cap;
 use libc::SIGINT;
 use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
@@ -112,6 +113,19 @@ async fn main() {
         ));
         if sentry.is_enabled() {
             info!("Enabled Sentry integration");
+        }
+    }
+
+    let capstate = capctl::CapState::get_current().unwrap();
+    for i in [
+        Cap::SYS_CHROOT,
+        Cap::SYS_ADMIN,
+        Cap::FOWNER,
+        Cap::DAC_OVERRIDE,
+        Cap::NET_BIND_SERVICE,
+    ] {
+        if !capstate.effective.has(i) {
+            error!("Capability missing: {}", i);
         }
     }
 
