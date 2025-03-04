@@ -31,9 +31,7 @@ btrfs = ["daemon_common/btrfs"]
 user = ["axum/ws", "daemon_common/user"]
 sentry = ["dep:sentry"]
 
-default_generic = ["ssl", "ssh", "sftp", "ssh_control", "database", "user", "sentry", "btrfs"]
-default = ["default_generic", "bindgen/runtime"]
-default_musl = ["default_generic", "bindgen/static"]
+default = ["ssl", "ssh", "sftp", "ssh_control", "database", "user", "sentry", "btrfs"]
 full = ["default"]
 full_bypass = ["full", "ssh_debug_auth_bypass", "user_debug_auth_bypass"]
 trace_sync = []
@@ -156,9 +154,6 @@ version = "1.28.1"
 
 [build-dependencies]
 pkg-config = "0.3.32"
+bindgen = "0.71.1"
 
-[build-dependencies.bindgen]
-version = "0.71.1"
-default-features = false
-features = ["prettyplease", "logging"]
 
