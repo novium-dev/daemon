@@ -22,6 +22,8 @@ RUN mkdir -p /var/lib/novium_daemon && chown 25335:25335 /var/lib/novium_daemon
 
 WORKDIR /var/lib/novium_daemon
 
+STOPSIGNAL SIGINT
+
 # Copy the binary directly to root directory (/)
 COPY --from=build /work/target/release/daemon /daemon
 
