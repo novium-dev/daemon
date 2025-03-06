@@ -10,14 +10,15 @@ use sys::*;
 use tokio::fs::File;
 
 pub(crate) fn get_subvol_id(file: Result<impl AsRawFd, io::Error>) -> std::io::Result<u64> {
-    let args = btrfs_ioctl_ino_lookup_args {
+    let mut args = btrfs_ioctl_ino_lookup_args {
+        treeid: 0,
         objectid: BTRFS_FIRST_FREE_OBJECTID as _,
         ..Default::default()
     };
     let file = file?;
     let fd = file.as_raw_fd();
 
-    if unsafe { ioctl(fd, BTRFS_IOC_INO_LOOKUP as _, &args) } < 0 {
+    if unsafe { ioctl(fd, BTRFS_IOC_INO_LOOKUP as _, &mut args) } < 0 {
         return Err(std::io::Error::last_os_error());
     }
     Ok(args.treeid)
@@ -48,7 +49,7 @@ pub(crate) fn search_quotas(
     let mut off: u64;
 
     'l: loop {
-        if unsafe { ioctl(fd, BTRFS_IOC_TREE_SEARCH as _, &args) } < 0 {
+        if unsafe { ioctl(fd, BTRFS_IOC_TREE_SEARCH as _, &mut args) } < 0 {
             return Err(std::io::Error::last_os_error());
         }
         let sk = &mut args.key;
