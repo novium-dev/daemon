@@ -75,10 +75,13 @@ struct ApiDoc;
 
 const GIT_HASH: &str = env!("GIT_HASH");
 
-#[tokio::main]
-async fn main() {
+fn main() {
     cap_setup();
+    main0();
+}
 
+#[tokio::main]
+async fn main0() {
     rustls::crypto::ring::default_provider()
         .install_default()
         .unwrap();
