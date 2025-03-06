@@ -139,7 +139,8 @@ pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: Stora
                     }
                 };
                 let Some(size) = quotas.get(&subvol) else {
-                    warn!("Quota missing for {:?}", id);
+                    warn!("Quota missing for {:?} (subvolid {})", id, subvol);
+                    warn!("Retrived quotas: {:?}", quotas);
                     continue;
                 };
                 let size = if *size > i64::MAX as u64 {
