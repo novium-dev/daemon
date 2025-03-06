@@ -15,3 +15,8 @@ build/
 
 backend/minecraft/agent/build/
 backend/minecraft/agent/.gradle/
+
+daemon/server/wrapper-precompile.h
+daemon/server/wrapper-precompile.h.pch
+daemon/server/.macro_eval.c
+
