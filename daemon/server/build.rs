@@ -18,7 +18,7 @@ fn main() {
         #[cfg(target_os = "linux")]
         {
             if let Ok(path) = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
-                .join("../mysql/sockets/mysqld.sock")
+                .join("../../mysql/sockets/mysqld.sock")
                 .canonicalize()
             {
                 println!(
