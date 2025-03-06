@@ -1,4 +1,4 @@
-use crate::config::{BackupEntry, DaemonConfig, MountPoint, StorageEntry};
+use crate::config::{BackupEntry, DaemonConfig, MountPoint, NetworkConfig, StorageEntry};
 use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use axum::Router;
 use axum::routing::get;
@@ -267,6 +267,7 @@ pub(crate) fn new() {
                 order: Some(0),
             },
         )]),
+        network: NetworkConfig::default(),
         mounts,
     };
 

@@ -16,11 +16,11 @@ RUN FEATURES="$FEATURES" RUSTFLAGS="-C linker=clang-19 -C link-arg=-fuse-ld=lld 
 
 FROM debian:latest
 
+RUN apt update && apt upgrade -y && apt install -y vim
+
 RUN mkdir -p /var/lib/novium_daemon && chown 25335:25335 /var/lib/novium_daemon
 
 WORKDIR /var/lib/novium_daemon
-
-USER 25335:25335
 
 # Copy the binary directly to root directory (/)
 COPY --from=build /work/target/release/daemon /daemon

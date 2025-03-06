@@ -38,6 +38,8 @@ pub(crate) struct DaemonConfig {
     pub(crate) ssl: SSLConfig,
     #[cfg(feature = "ssh")]
     pub(crate) ssh: SSHConfig,
+    #[serde(default)]
+    pub(crate) network: NetworkConfig,
     pub(crate) mounts: Vec<MountPoint>,
 }
 
@@ -148,6 +150,11 @@ pub(crate) struct SSLConfig {
     pub(crate) enabled: bool,
     pub(crate) private_key: Option<String>,
     pub(crate) certificate: Option<String>,
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+pub(crate) struct NetworkConfig {
+    // TODO: Assign dedicated ipv6 address to container, see #312
 }
 
 #[cfg(feature = "ssl")]

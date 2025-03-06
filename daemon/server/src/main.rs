@@ -7,6 +7,7 @@ use crate::sync::RwLock;
 use crate::sync::broadcast::Sender;
 use axum::extract::Request;
 use bollard::Docker;
+use bollard::models::{Ipam, IpamConfig};
 use bollard::network::CreateNetworkOptions;
 use capctl::Cap;
 use libc::SIGINT;
@@ -76,7 +77,7 @@ const GIT_HASH: &str = env!("GIT_HASH");
 
 #[tokio::main]
 async fn main() {
-    dev_setup();
+    cap_setup();
 
     rustls::crypto::ring::default_provider()
         .install_default()
@@ -123,6 +124,7 @@ async fn main() {
         Cap::FOWNER,
         Cap::DAC_OVERRIDE,
         Cap::NET_BIND_SERVICE,
+        Cap::CHOWN,
     ] {
         if !capstate.effective.has(i) {
             error!("Capability missing: {}", i);
@@ -177,6 +179,14 @@ async fn main() {
                         ),
                     ]),
                     internal: false,
+                    enable_ipv6: true,
+                    ipam: Ipam {
+                        config: Some(vec![IpamConfig {
+                            subnet: Some(crate::common::BRIDGE_DEFAULT_IPV6_PREFIX.to_string()),
+                            ..IpamConfig::default()
+                        }]),
+                        ..Ipam::default()
+                    },
                     ..CreateNetworkOptions::default()
                 })
                 .await
@@ -208,6 +218,14 @@ async fn main() {
                         ),
                     ]),
                     internal: false,
+                    enable_ipv6: true,
+                    ipam: Ipam {
+                        config: Some(vec![IpamConfig {
+                            subnet: Some(crate::common::BRIDGE_INTERNET_IPV6_PREFIX.to_string()),
+                            ..IpamConfig::default()
+                        }]),
+                        ..Ipam::default()
+                    },
                     ..CreateNetworkOptions::default()
                 })
                 .await
@@ -639,8 +657,8 @@ compile_error!("SSH Auth Bypass was enabled in production!");
 #[cfg(all(not(debug_assertions), feature = "user_debug_auth_bypass"))]
 compile_error!("Websocket Auth Bypass was enabled in production!");
 
-fn dev_setup() {
-    #[cfg(all(debug_assertions, target_os = "linux"))]
+fn cap_setup() {
+    #[cfg(target_os = "linux")]
     {
         use std::os::unix::fs::MetadataExt;
         if std::fs::metadata("/proc/self/").unwrap().uid() != 0 {
@@ -651,6 +669,7 @@ fn dev_setup() {
         capstate.permitted.add(capctl::Cap::NET_BIND_SERVICE);
         capstate.permitted.add(capctl::Cap::DAC_OVERRIDE);
         capstate.permitted.add(capctl::Cap::FOWNER);
+        capstate.permitted.add(capctl::Cap::CHOWN);
         capstate.permitted.add(capctl::Cap::SYS_CHROOT);
         capstate.permitted.add(capctl::Cap::SYS_ADMIN);
         capstate.set_current().unwrap();
@@ -666,6 +685,7 @@ fn dev_setup() {
         capstate.effective.add(capctl::Cap::NET_BIND_SERVICE);
         capstate.effective.add(capctl::Cap::DAC_OVERRIDE);
         capstate.effective.add(capctl::Cap::FOWNER);
+        capstate.effective.add(capctl::Cap::CHOWN);
         capstate.effective.add(capctl::Cap::SYS_CHROOT);
         capstate.effective.add(capctl::Cap::SYS_ADMIN);
         capstate.set_current().unwrap();
