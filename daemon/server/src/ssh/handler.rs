@@ -84,6 +84,7 @@ impl Handler for DaemonSSHHandler {
             Err(err) => match err {
                 err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
                     proceed_with_methods: None,
+                    partial_success: false,
                 }),
                 err => Err(russh::Error::IO(err)),
             },
@@ -114,6 +115,7 @@ impl Handler for DaemonSSHHandler {
             Err(err) => match err {
                 err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
                     proceed_with_methods: None,
+                    partial_success: false,
                 }),
                 err => Err(russh::Error::IO(err)),
             },
@@ -141,6 +143,7 @@ impl Handler for DaemonSSHHandler {
             Err(err) => match err {
                 err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
                     proceed_with_methods: None,
+                    partial_success: false,
                 }),
                 err => Err(russh::Error::IO(err)),
             },

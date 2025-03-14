@@ -64,10 +64,10 @@ sqlx.workspace = true
 hex.workspace = true
 tokio-util.workspace = true
 serde_yaml.workspace = true
-
 indexmap.workspace = true
 futures-util.workspace = true
 futures.workspace = true
+
 sysinfo = "0.33.1"
 inquire = "0.7.5"
 num-traits = "0.2.19"
