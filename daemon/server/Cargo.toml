@@ -98,7 +98,7 @@ version = "3.4.2"
 features = ["tokio1"]
 
 [dependencies.async-std]
-version = "1.13.0"
+version = "1.13.1"
 features = ["tokio1"]
 
 [dependencies.daemon_common]
@@ -132,7 +132,7 @@ version = "0.28.1"
 features = ["event-stream", "events"]
 
 [dependencies.rustix]
-version = "1.0.2"
+version = "1.0.3"
 features = ["thread"]
 
 [dependencies.zstd]
