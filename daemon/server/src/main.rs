@@ -78,14 +78,6 @@ const GIT_HASH: &str = env!("GIT_HASH");
 
 fn main() {
     cap_setup();
-    main0();
-}
-
-#[tokio::main]
-async fn main0() {
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .unwrap();
 
     let reg = tracing_subscriber::registry()
         .with(tracing_subscriber::filter::LevelFilter::from_level(
@@ -107,7 +99,7 @@ async fn main0() {
     reg.init();
 
     #[cfg(all(feature = "sentry", not(debug_assertions)))]
-    {
+    let guard = {
         reg.with(sentry::integrations::tracing::layer()).init();
         let sentry = sentry::init((
             "https://79a1f560730aef34fdc4e4a3f3d9ce92@o4507044844404736.ingest.us.sentry.io/4508313795297280",
@@ -119,7 +111,21 @@ async fn main0() {
         if sentry.is_enabled() {
             info!("Enabled Sentry integration");
         }
-    }
+        sentry
+    };
+
+    main0();
+
+    // Ensure it gets dropped, only after the daemon exists
+    #[cfg(all(feature = "sentry", not(debug_assertions)))]
+    drop(guard);
+}
+
+#[tokio::main]
+async fn main0() {
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .unwrap();
 
     let capstate = capctl::CapState::get_current().unwrap();
     for i in [
