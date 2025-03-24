@@ -663,7 +663,9 @@ impl Default for ServerData {
     }
 }
 
-// Some safeguards (macos and linux are supported)
+// Some safeguards
+// Linux Maintainer: Markus Probst <markustieger@gmail.com>
+// Macos Maintainer: InvalidJoker <0limitdev@gmail.com>
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 compile_error!("This daemon only runs on Unix.");
 
