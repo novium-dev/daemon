@@ -7,7 +7,7 @@ use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::error;
+use tracing::debug;
 
 #[derive(Clone)]
 pub struct DaemonSSHServer {
@@ -36,6 +36,6 @@ impl Server for DaemonSSHServer {
                 return;
             }
         }
-        error!("Session error: {:?}", error);
+        debug!("Session error: {:?}", error);
     }
 }
