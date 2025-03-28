@@ -17,6 +17,7 @@ pub(crate) mod user;
 #[cfg(feature = "user")]
 pub(crate) mod websocket;
 
+mod schedule;
 #[cfg(feature = "trace_sync")]
 pub(crate) mod trace;
 
@@ -41,7 +42,8 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
         .merge(resource::config())
         .merge(backup::config())
         .merge(files::config())
-        .merge(network::config());
+        .merge(network::config())
+        .merge(schedule::config());
     #[cfg(feature = "database")]
     {
         router = router.merge(database::config());

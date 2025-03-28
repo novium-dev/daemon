@@ -24,6 +24,9 @@ serde_yaml.workspace = true
 tracing.workspace = true
 lazy_static.workspace = true
 regex.workspace = true
+cron.workspace = true
+chrono-tz.workspace = true
+
 crc64 = "2.0.0"
 
 [dependencies.bollard]

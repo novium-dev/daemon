@@ -1,46 +1,19 @@
 use crate::DaemonState;
-use crate::schedules::worker::task;
+use crate::schedule::worker::task;
 use chrono_tz::Tz;
 use cron::Schedule;
-use serde::{Deserialize, Serialize};
+use daemon_common::payload::schedule::ScheduleRunPolicy;
 use sqlx::types::JsonValue;
 use sqlx::{query, query_scalar};
 use std::str::FromStr;
-use std::time::Duration;
 use tracing::error;
 
-mod worker;
-
-#[derive(Clone, Serialize, Deserialize, Debug)]
-#[serde(tag = "type")]
-pub(crate) enum ScheduleStep {
-    #[serde(rename = "start")]
-    Start,
-    #[serde(rename = "stop")]
-    Stop,
-    #[serde(rename = "restart")]
-    Restart,
-    #[serde(rename = "kill")]
-    Kill,
-    #[serde(rename = "sleep")]
-    Sleep { time: Duration },
-    #[serde(rename = "terminal")]
-    TerminalCommand { command: String },
-    #[serde(rename = "container")]
-    ContainerCommand { command: Vec<String> },
-}
+pub(crate) mod worker;
 
 #[derive(Clone, Copy, Hash)]
 pub(crate) enum ScheduleStepResult {
     Continue,
     Interrupt,
-}
-
-#[derive(Clone, Copy, Hash)]
-pub(crate) enum ScheduleRunPolicy {
-    Always,
-    Running,
-    Stopped,
 }
 
 pub(crate) async fn init(state: &DaemonState) -> Result<(), sqlx::Error> {

@@ -63,7 +63,7 @@ mod storage;
 
 mod ctlsock;
 mod network;
-mod schedules;
+mod schedule;
 pub(crate) mod setup;
 mod sync;
 mod terminal;
@@ -374,10 +374,10 @@ async fn main0() {
         }
     }
 
-    info!("Running schedules...");
+    info!("Running schedule...");
 
-    if let Err(err) = schedules::init(&state).await {
-        error!("Failed to run schedules: {:?}", err);
+    if let Err(err) = schedule::init(&state).await {
+        error!("Failed to run schedule: {:?}", err);
         exit(-1);
     }
 

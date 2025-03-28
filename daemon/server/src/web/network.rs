@@ -23,7 +23,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
     tag = "network",
     description = "Creates a new network",
     responses(
-        (status = 200, description = "Network was deleted successfully", body = IdResponse, content_type = "application/json"),
+        (status = 200, description = "Network was created successfully", body = IdResponse, content_type = "application/json"),
         (status = 500, description = "An unexpected error occurred"),
         (status = 401, description = "Your authorization token is invalid"),
         (status = 400, description = "Invalid network")

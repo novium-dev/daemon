@@ -1,5 +1,5 @@
 use crate::DaemonState;
-use crate::schedules::{ScheduleRunPolicy, ScheduleStep, ScheduleStepResult};
+use crate::schedule::ScheduleStepResult;
 use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
 use crate::server::status::InternalServerState;
@@ -9,6 +9,7 @@ use crate::storage::sync::{StorageError, storage_read};
 use crate::utils::server;
 use chrono::{TimeDelta, TimeZone, Utc};
 use cron::Schedule;
+use daemon_common::payload::schedule::{ScheduleRunPolicy, ScheduleStep};
 use sqlx::__rt::timeout;
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};

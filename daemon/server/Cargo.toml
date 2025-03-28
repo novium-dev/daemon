@@ -76,6 +76,8 @@ utoipa-axum = "0.2.0"
 fs_extra = "1.3.0"
 xattr = "1.5.0"
 bytes.workspace = true
+cron.workspace = true
+chrono-tz.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 capctl = "0.2.4"
@@ -151,12 +153,6 @@ features = []
 
 [dependencies.lz4]
 version = "1.28.1"
-
-[dependencies.cron]
-version = "0.15.0"
-
-[dependencies.chrono-tz]
-version = "0.10.3"
 
 [build-dependencies]
 bindgen = "0.71.1"

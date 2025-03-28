@@ -79,6 +79,15 @@ features = [
     "reqwest",
 ]
 
+
+[workspace.dependencies.cron]
+version = "0.15.0"
+features = ["serde"]
+
+[workspace.dependencies.chrono-tz]
+version = "0.10.3"
+features = ["serde"]
+
 [workspace.dependencies.bitflags]
 version = "2.9.0"
 features = ["serde"]
