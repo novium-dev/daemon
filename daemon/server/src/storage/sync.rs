@@ -17,18 +17,18 @@ use std::time::Duration;
 use tokio::time::error::Elapsed;
 use tracing::{debug, warn};
 
-pub(crate) struct StorageLockData<'a, T> {
+pub(crate) struct StorageLockData<T> {
     pub(crate) path: String,
     pub(crate) lock: T,
     pub(crate) backup_exclude: HashSet<String>,
-    pub(crate) storage: &'a StorageEntry,
+    pub(crate) storage: StorageEntry,
     pub(crate) value: Arc<(AtomicI64, AtomicI64)>,
     pub(crate) stats_lock: Arc<Mutex<()>>,
     pub(crate) disk: Option<u64>,
 }
 
-async fn storage_lock<'a>(
-    config: &'a DaemonConfig,
+async fn storage_lock(
+    config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
@@ -37,7 +37,7 @@ async fn storage_lock<'a>(
         Option<u64>,
         Arc<RwLock<()>>,
         HashSet<String>,
-        &'a StorageEntry,
+        StorageEntry,
         Arc<(AtomicI64, AtomicI64)>,
         Arc<Mutex<()>>,
     )>,
@@ -78,16 +78,16 @@ async fn storage_lock<'a>(
             lock.stats_lock.clone(),
         ),
     };
-    Ok(Some((disk, lock, backup_exclude, entry, value, stats_lock)))
+    Ok(Some((disk, lock, backup_exclude, entry.clone(), value, stats_lock)))
 }
 
 pub(crate) async fn storage_read<'a>(
-    config: &'a DaemonConfig,
+    config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
     timeout: bool,
-) -> Result<StorageLockData<'a, OwnedRwLockReadGuard<()>>, StorageError> {
+) -> Result<StorageLockData<OwnedRwLockReadGuard<()>>, StorageError> {
     let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
         storage_lock(config, conn, storages, storage)
             .await
@@ -102,7 +102,7 @@ pub(crate) async fn storage_read<'a>(
     } else {
         lock.read_owned().await
     };
-    let path = ensure_exists(storage, entry, value.clone(), disk)
+    let path = ensure_exists(storage, &entry, value.clone(), disk)
         .await
         .map_err(StorageError::IO)?;
     Ok(StorageLockData {
@@ -117,12 +117,12 @@ pub(crate) async fn storage_read<'a>(
 }
 
 pub(crate) async fn storage_write<'a>(
-    config: &'a DaemonConfig,
+    config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
     timeout: bool,
-) -> Result<StorageLockData<'a, OwnedRwLockWriteGuard<()>>, StorageError> {
+) -> Result<StorageLockData<OwnedRwLockWriteGuard<()>>, StorageError> {
     let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
         storage_lock(config, conn, storages, storage)
             .await
@@ -137,7 +137,7 @@ pub(crate) async fn storage_write<'a>(
     } else {
         lock.write_owned().await
     };
-    let path = ensure_exists(storage, entry, value.clone(), disk)
+    let path = ensure_exists(storage, &entry, value.clone(), disk)
         .await
         .map_err(StorageError::IO)?;
     Ok(StorageLockData {

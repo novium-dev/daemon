@@ -51,7 +51,7 @@ pub(crate) async fn create_backup_order(
     storages.sort_by_key(|storage| storage.1);
     let mut suitable = None;
     for (_, _order, entry) in storages {
-        if compatible(storage, entry) {
+        if compatible(&storage, entry) {
             suitable = Some(entry);
             break;
         }
@@ -60,7 +60,7 @@ pub(crate) async fn create_backup_order(
         return Err(StatusCode::EXPECTATION_FAILED);
     }
 
-    let id = create_backup0(path, id, suitable.unwrap(), storage, backup_exclude)
+    let id = create_backup0(path, id, suitable.unwrap(), &storage, backup_exclude)
         .await
         .inspect_err(|err| {
             if err.kind() == ErrorKind::InvalidInput {
@@ -116,7 +116,7 @@ pub(crate) async fn create_backup(
         .ok_or(StatusCode::NOT_FOUND)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
-    let id = create_backup0(path, id, backup, storage, backup_exclude)
+    let id = create_backup0(path, id, backup, &storage, backup_exclude)
         .await
         .inspect_err(|err| debug!("Backup creation failed: {:?}", err))
         .map_err(|err| {
@@ -204,7 +204,7 @@ pub(crate) async fn restore_backup(
 
     restore_backup0(
         id,
-        storage,
+        &storage,
         path,
         backup_id,
         backup,

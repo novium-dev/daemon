@@ -48,7 +48,7 @@ pub(crate) async fn list_files(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     let files = list_files0(storage, path)
         .await
         .inspect_err(|err| match err.kind() {
@@ -118,7 +118,7 @@ pub(crate) async fn stat_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     let file = stat_file0(storage, path)
         .await
         .inspect_err(|err| match err.kind() {
@@ -191,7 +191,7 @@ pub(crate) async fn rename_file(
             .map_err(StorageError::into_http)?;
     let from = path_relative(from);
     let to = path_relative(to);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     storage
         .rename(from, &storage, to)
         .await
@@ -220,7 +220,7 @@ pub(crate) async fn copy_file(
             .map_err(StorageError::into_http)?;
     let from = path_relative(from);
     let to = path_relative(to);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     storage
         .copy(from, &storage, to)
         .await
@@ -247,7 +247,7 @@ pub(crate) async fn download_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     let headers = path
         .file_name()
         .map(|str| str.to_string_lossy())
@@ -289,7 +289,7 @@ pub(crate) async fn write_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     let mut reader =
         StreamReader::new(stream.map_err(|err| io::Error::new(io::ErrorKind::Other, err)));
     let fd: OwnedFd = storage
@@ -334,7 +334,7 @@ pub(crate) async fn write_file_by_template(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
 
     let fd: OwnedFd = storage
         .open_with(path, OpenOptions::new().create(true).read(true).write(true))
@@ -379,7 +379,7 @@ pub(crate) async fn write_file_by_url(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     let mut response = state
         .client
         .get(url.clone())
@@ -446,7 +446,7 @@ pub(crate) async fn mkdir_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     tokio::task::spawn_blocking(move || {
         if recursive {
             storage.create_dir_all(&path)
@@ -481,7 +481,7 @@ pub(crate) async fn symlink_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     storage
         .symlink(content, path)
         .await
@@ -509,7 +509,7 @@ pub(crate) async fn delete_file(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, _) = storage_path(id, storage).await?;
+    let (storage, _) = storage_path(id, &storage).await?;
     if recursive {
         storage.remove_dir_all(&path).await
     } else {
@@ -538,7 +538,7 @@ pub(crate) async fn unpack_archive(
             .await
             .map_err(StorageError::into_http)?;
     let path = path_relative(path);
-    let (storage, storage_path) = storage_path(id, storage).await?;
+    let (storage, storage_path) = storage_path(id, &storage).await?;
     if !unpack_archive0(storage, storage_path, path, dest)
         .await
         .inspect_err(|err| match err.kind() {
@@ -609,7 +609,7 @@ pub(crate) async fn create_archive(
     }))
     .map_err(|_err| StatusCode::BAD_REQUEST)?;
 
-    let (storage, storage_path) = storage_path(id, storage).await?;
+    let (storage, storage_path) = storage_path(id, &storage).await?;
     create_archive0(storage, storage_path, path, src, compression)
         .await
         .inspect_err(|err| match err.kind() {

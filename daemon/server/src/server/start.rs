@@ -58,7 +58,7 @@ impl FetchedServer {
             value: storage_value,
             stats_lock: storage_stats_lock,
             ..
-        }: StorageLockData<'_, OwnedRwLockReadGuard<()>>,
+        }: StorageLockData<OwnedRwLockReadGuard<()>>,
         server_data_arc: Arc<Mutex<ServerData>>,
         state: &DaemonState,
     ) -> Result<(), ServerStartError> {
@@ -368,7 +368,7 @@ impl FetchedServer {
         docker: Arc<Docker>,
         server_data: &'a mut ServerData,
         server_data_arc: Arc<Mutex<ServerData>>,
-        storage: StorageLockData<'a, OwnedRwLockReadGuard<()>>,
+        storage: StorageLockData<OwnedRwLockReadGuard<()>>,
         state: &'a DaemonState,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
         Box::pin(self.start(docker, server_data, storage, server_data_arc, state))

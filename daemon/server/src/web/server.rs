@@ -565,21 +565,17 @@ pub(crate) async fn start_server(
     debug!("Starting Server {:?}", server);
 
     tokio::task::spawn(async move {
-        let (server_data_locked, storage_locked) = tokio::join!(
+        let (server_data_locked, storage) = tokio::join!(
             timeout(Duration::from_millis(100), server_data.lock()),
-            timeout(
-                Duration::from_millis(100),
-                storage_read(
+            storage_read(
                     &state.config,
                     state.conn.deref(),
                     &state.storages,
                     StorageIdentifier::Primary(server_id),
-                    false
+                    true
                 )
-            ),
         );
         if let Ok(mut server_data_locked) = server_data_locked {
-            if let Ok(storage) = storage_locked {
                 match storage {
                     Ok(storage) => {
                         if let Err(err) = server
@@ -595,6 +591,9 @@ pub(crate) async fn start_server(
                             warn!("Failed to start server: {:?}", err);
                         }
                     }
+                    Err(StorageError::Timeout(_)) => {
+                         debug!("Timeout locking storage. Ignoring start request...");
+                    }
                     Err(err) => {
                         warn!(
                             "Failed to start server: {:?}",
@@ -602,10 +601,9 @@ pub(crate) async fn start_server(
                         );
                     }
                 }
-            } else {
+        } else {
                 debug!("Timeout locking server data. Ignoring start request...");
             }
-        }
     });
 
     Ok(())
@@ -811,7 +809,7 @@ pub(crate) async fn wipe_server(
     )
     .await
     .map_err(StorageError::into_http)?;
-    storage::delete(entry, StorageIdentifier::Primary(server_id))
+    storage::delete(&entry, StorageIdentifier::Primary(server_id))
         .await
         .inspect_err(|err| error!("Failed to wipe server: {:?}", err))
         .map_err(|_err| StatusCode::INTERNAL_SERVER_ERROR)?;

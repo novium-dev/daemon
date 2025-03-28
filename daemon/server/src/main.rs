@@ -68,6 +68,7 @@ mod sync;
 mod terminal;
 mod utils;
 mod web;
+mod schedules;
 
 #[derive(OpenApi)]
 #[openapi()]
@@ -604,6 +605,7 @@ pub(crate) struct DaemonState {
     pub(crate) config: Arc<DaemonConfig>,
     pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
     pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, StorageData>>>,
+    pub(crate) schedules: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerScheduleData>>>>>,
     pub(crate) docker: Arc<Docker>,
     pub(crate) conn: Arc<Pool<MySql>>,
     pub(crate) client: Arc<Client>,
@@ -629,6 +631,11 @@ pub(crate) struct ServerData {
     pub(crate) sessions: Arc<Mutex<HashMap<Uuid, TerminalSession>>>,
     pub(crate) stop_command: Option<String>,
     pub(crate) failure_counter: u8,
+}
+
+#[derive(Default)]
+pub(crate) struct ServerScheduleData {
+    pub(crate) schedules: HashMap<u32, tokio::sync::oneshot::Sender<()>>,
 }
 
 impl Default for ServerData {
