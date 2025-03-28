@@ -21,6 +21,8 @@ futures-core.workspace = true
 url.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
+chrono-tz.workspace = true
+cron.workspace = true
 
 [dependencies.reqwest]
 workspace = true

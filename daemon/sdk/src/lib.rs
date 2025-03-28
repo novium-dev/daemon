@@ -12,6 +12,7 @@ pub mod database;
 pub mod files;
 pub mod network;
 pub mod resource;
+pub mod schedule;
 #[cfg(feature = "user")]
 pub mod user;
 
