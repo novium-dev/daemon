@@ -374,10 +374,10 @@ async fn main0() {
         }
     }
 
-    info!("Running schedule...");
+    info!("Running schedules...");
 
     if let Err(err) = schedule::init(&state).await {
-        error!("Failed to run schedule: {:?}", err);
+        error!("Failed to run schedules: {:?}", err);
         exit(-1);
     }
 
