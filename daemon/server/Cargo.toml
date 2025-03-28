@@ -68,7 +68,7 @@ indexmap.workspace = true
 futures-util.workspace = true
 futures.workspace = true
 
-sysinfo = "0.33.1"
+sysinfo = "0.34.0"
 inquire = "0.7.5"
 num-traits = "0.2.19"
 ringbuffer = "0.15.0"
@@ -147,7 +147,7 @@ features = ["zlib"]
 version = "0.5.2"
 
 [dependencies.liblzma]
-version = "0.3.6"
+version = "0.4.0"
 features = []
 
 [dependencies.lz4]
