@@ -13,7 +13,7 @@ impl FetchedServer {
         docker: &Docker,
         mut server_data: OwnedMutexGuard<ServerData>,
     ) -> Result<(), ServerStopError> {
-        if !Self::state(self.id, self.locks.clone(), docker, &server_data)
+        if !Self::state(self.id, self.locks.clone(), docker, Some(&server_data))
             .await
             .map_err(ServerStopError::Docker)?
             .stop()
@@ -47,7 +47,7 @@ impl FetchedServer {
         docker: &Docker,
         server_data: OwnedMutexGuard<ServerData>,
     ) -> Result<(), ServerStopError> {
-        if !Self::state(self.id, self.locks.clone(), docker, &server_data)
+        if !Self::state(self.id, self.locks.clone(), docker, Some(&server_data))
             .await
             .map_err(ServerStopError::Docker)?
             .kill()
@@ -67,7 +67,7 @@ impl FetchedServer {
         docker: &Docker,
         mut server_data: OwnedMutexGuard<ServerData>,
     ) -> Result<(), ServerStopError> {
-        if !Self::state(self.id, self.locks.clone(), docker, &server_data)
+        if !Self::state(self.id, self.locks.clone(), docker, Some(&server_data))
             .await
             .map_err(ServerStopError::Docker)?
             .stop()

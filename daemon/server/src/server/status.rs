@@ -39,7 +39,7 @@ impl FetchedServer {
         docker: &Docker,
         server_data: &ServerData,
     ) {
-        if let Ok(state) = Self::state(id, locks, docker, server_data).await {
+        if let Ok(state) = Self::state(id, locks, docker, Some(server_data)).await {
             let _ = server_data
                 .stats_sender
                 .send(ChannelWriteData::Status(state));
@@ -50,7 +50,7 @@ impl FetchedServer {
         id: u32,
         locks: HashSet<String>,
         docker: &Docker,
-        server_data: &ServerData,
+        server_data: Option<&ServerData>,
     ) -> Result<InternalServerState, bollard::errors::Error> {
         let list = docker
             .list_containers(Some(ListContainersOptions {
@@ -83,8 +83,8 @@ impl FetchedServer {
                 } else {
                     InternalServerState::Locked
                 }
-            } else if server_data.stopping {
-                if server_data.restart {
+            } else if server_data.map(|data| data.stopping).unwrap_or_default() {
+                if server_data.unwrap().restart {
                     InternalServerState::Restarting(created)
                 } else {
                     InternalServerState::Stopping(created)

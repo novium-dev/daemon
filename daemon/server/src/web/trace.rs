@@ -40,12 +40,14 @@ struct ServerTraceResult {
     sessions: Option<TraceResult<LastMutexTrace>>,
     storage: Option<TraceResult<LastRwLockTrace>>,
     storage_stats: Option<TraceResult<LastMutexTrace>>,
+    schedule: Option<TraceResult<LastMutexTrace>>,
 }
 
 #[derive(Debug, Serialize)]
 struct DaemonTraceResult {
     servers: TraceResult<LastMutexTrace>,
     storages: TraceResult<LastMutexTrace>,
+    schedules: TraceResult<LastMutexTrace>,
 }
 
 pub(crate) fn config() -> OpenApiRouter<DaemonState> {
@@ -66,6 +68,7 @@ async fn daemon_trace(State(state): State<DaemonState>) -> Json<DaemonTraceResul
     Json(DaemonTraceResult {
         servers: generic_mutex_trace(state.servers.deref()),
         storages: generic_mutex_trace(state.storages.deref()),
+        schedules: generic_mutex_trace(state.schedules.deref()),
     })
 }
 
@@ -126,6 +129,16 @@ async fn server_trace(
         }
         Err(_) => (None, None),
     };
+    let (schedule) = match state.schedules.try_lock_hidden() {
+        Ok(schedules) => {
+            let schedule = schedules.get(&server_id).cloned();
+            match schedule {
+                None => None,
+                Some(schedule_data) => Some(generic_mutex_trace(schedule_data.deref())),
+            }
+        }
+        Err(_) => None,
+    };
 
     Json(ServerTraceResult {
         data,
@@ -134,6 +147,7 @@ async fn server_trace(
         sessions,
         storage,
         storage_stats,
+        schedule,
     })
 }
 

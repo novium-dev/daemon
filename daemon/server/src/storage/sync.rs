@@ -78,7 +78,14 @@ async fn storage_lock(
             lock.stats_lock.clone(),
         ),
     };
-    Ok(Some((disk, lock, backup_exclude, entry.clone(), value, stats_lock)))
+    Ok(Some((
+        disk,
+        lock,
+        backup_exclude,
+        entry.clone(),
+        value,
+        stats_lock,
+    )))
 }
 
 pub(crate) async fn storage_read<'a>(

@@ -253,6 +253,12 @@ pub(crate) async fn delete_server(
 
             state.servers.lock().await.remove(&server_id);
 
+            if let Some(schedules) = state.schedules.lock().await.remove(&server_id) {
+                for (_, sender) in schedules.lock().await.schedules.drain() {
+                    let _ = sender.send(());
+                }
+            }
+
             tokio::task::spawn(async move {
                 if let Some(storage) = state.config.storage.get(&server.storage) {
                     let _ = storage::delete(storage, StorageIdentifier::Primary(server_id)).await;
@@ -568,42 +574,42 @@ pub(crate) async fn start_server(
         let (server_data_locked, storage) = tokio::join!(
             timeout(Duration::from_millis(100), server_data.lock()),
             storage_read(
-                    &state.config,
-                    state.conn.deref(),
-                    &state.storages,
-                    StorageIdentifier::Primary(server_id),
-                    true
-                )
+                &state.config,
+                state.conn.deref(),
+                &state.storages,
+                StorageIdentifier::Primary(server_id),
+                true
+            )
         );
         if let Ok(mut server_data_locked) = server_data_locked {
-                match storage {
-                    Ok(storage) => {
-                        if let Err(err) = server
-                            .start(
-                                state.docker.clone(),
-                                server_data_locked.deref_mut(),
-                                storage,
-                                server_data.clone(),
-                                &state,
-                            )
-                            .await
-                        {
-                            warn!("Failed to start server: {:?}", err);
-                        }
-                    }
-                    Err(StorageError::Timeout(_)) => {
-                         debug!("Timeout locking storage. Ignoring start request...");
-                    }
-                    Err(err) => {
-                        warn!(
-                            "Failed to start server: {:?}",
-                            ServerStartError::Storage(err)
-                        );
+            match storage {
+                Ok(storage) => {
+                    if let Err(err) = server
+                        .start(
+                            state.docker.clone(),
+                            server_data_locked.deref_mut(),
+                            storage,
+                            server_data.clone(),
+                            &state,
+                        )
+                        .await
+                    {
+                        warn!("Failed to start server: {:?}", err);
                     }
                 }
-        } else {
-                debug!("Timeout locking server data. Ignoring start request...");
+                Err(StorageError::Timeout(_)) => {
+                    debug!("Timeout locking storage. Ignoring start request...");
+                }
+                Err(err) => {
+                    warn!(
+                        "Failed to start server: {:?}",
+                        ServerStartError::Storage(err)
+                    );
+                }
             }
+        } else {
+            debug!("Timeout locking server data. Ignoring start request...");
+        }
     });
 
     Ok(())
@@ -852,7 +858,7 @@ pub(crate) async fn server_status(
                 server.id,
                 server.locks,
                 &state.docker,
-                server_data.deref_mut(),
+                Some(server_data.deref_mut()),
             )
             .await
             .inspect_err(|err| debug!("Failed to get current server state: {:?}", err))

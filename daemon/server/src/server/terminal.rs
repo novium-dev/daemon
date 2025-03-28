@@ -77,7 +77,7 @@ impl FetchedServer {
             }));
         }
         server_data.size = (cols, rows);
-        if !Self::state(id, HashSet::new(), docker, server_data)
+        if !Self::state(id, HashSet::new(), docker, Some(server_data))
             .await
             .map_err(ServerStopError::Docker)?
             .stop()

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS `schedules` (
 
 CREATE TABLE IF NOT EXISTS `schedule_steps` (
     `schedule` INT(255) UNSIGNED NOT NULL,
+    `index` INT UNSIGNED NOT NULL,
     `value` JSON NOT NULL, -- I do not like json in sql, but its the best way here I guess
     FOREIGN KEY (`schedule`) REFERENCES `schedules`(`id`) ON DELETE CASCADE
 );

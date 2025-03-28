@@ -63,12 +63,12 @@ mod storage;
 
 mod ctlsock;
 mod network;
+mod schedules;
 pub(crate) mod setup;
 mod sync;
 mod terminal;
 mod utils;
 mod web;
-mod schedules;
 
 #[derive(OpenApi)]
 #[openapi()]
@@ -265,6 +265,7 @@ async fn main0() {
         config: config.clone(),
         servers: Arc::new(Mutex::new(servers)),
         storages: Arc::new(Mutex::new(HashMap::new())),
+        schedules: Arc::new(Mutex::new(HashMap::new())),
         docker: Arc::new(docker),
         conn: Arc::new(conn),
         client: Arc::new(Client::default()),
@@ -371,6 +372,13 @@ async fn main0() {
         if restored > 0 {
             info!("Successfully reattached to {} container", restored);
         }
+    }
+
+    info!("Running schedules...");
+
+    if let Err(err) = schedules::init(&state).await {
+        error!("Failed to run schedules: {:?}", err);
+        exit(-1);
     }
 
     info!("Starting Webserver...");
