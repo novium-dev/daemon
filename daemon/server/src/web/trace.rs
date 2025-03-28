@@ -129,14 +129,11 @@ async fn server_trace(
         }
         Err(_) => (None, None),
     };
-    let (schedule) = match state.schedules.try_lock_hidden() {
-        Ok(schedules) => {
-            let schedule = schedules.get(&server_id).cloned();
-            match schedule {
-                None => None,
-                Some(schedule_data) => Some(generic_mutex_trace(schedule_data.deref())),
-            }
-        }
+    let schedule = match state.schedules.try_lock_hidden() {
+        Ok(schedules) => schedules
+            .get(&server_id)
+            .cloned()
+            .map(|schedule_data| generic_mutex_trace(schedule_data.deref())),
         Err(_) => None,
     };
 
