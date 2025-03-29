@@ -128,7 +128,7 @@ version = "0.7.2"
 features = ["tls-rustls-no-provider"]
 
 [workspace.dependencies.axum]
-version = "0.8.1"
+version = "0.8.3"
 features = ["json", "macros", "http2"]
 
 [workspace.dependencies.axum-extra]

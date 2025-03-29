@@ -68,7 +68,7 @@ indexmap.workspace = true
 futures-util.workspace = true
 futures.workspace = true
 
-sysinfo = "0.34.0"
+sysinfo = "0.34.1"
 inquire = "0.7.5"
 num-traits = "0.2.19"
 ringbuffer = "0.15.0"
