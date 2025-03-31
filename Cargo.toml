@@ -139,7 +139,7 @@ version = "0.8.3"
 features = ["json", "macros", "http2"]
 
 [workspace.dependencies.axum-extra]
-version = "0.10.0"
+version = "0.10.1"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.axum-auth]
