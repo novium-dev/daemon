@@ -1,6 +1,7 @@
 FROM rust:latest AS build
 
-RUN apt update && apt upgrade -y && apt install -y curl mariadb-server mariadb-client git clang-19 lld-19 llvm-19 libbtrfs-dev
+RUN apt update && apt upgrade -y && apt install -y curl mariadb-server mariadb-client git clang-19 lld-19 llvm-19 libbtrfs-dev && \
+    rustup default stable
 
 COPY . /work
 WORKDIR /work

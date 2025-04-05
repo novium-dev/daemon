@@ -1,6 +1,7 @@
 FROM rust:latest AS build
 
-RUN apt update && apt upgrade -y && apt install -y git clang-19 lld-19 llvm-19
+RUN apt update && apt upgrade -y && apt install -y git clang-19 lld-19 llvm-19 && \
+    rustup default stable
 
 COPY . /work
 WORKDIR /work
