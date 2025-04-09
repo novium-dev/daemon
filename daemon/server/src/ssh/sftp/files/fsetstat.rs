@@ -1,16 +1,17 @@
+use crate::ssh::sftp::files::fstat;
 use crate::ssh::sftp::{FileHandle, sftp_err};
-use russh_sftp::protocol::StatusCode;
+use russh_sftp::protocol::{FileAttributes, StatusCode};
 use std::fs::Permissions;
 use std::io;
 use std::os::fd::OwnedFd;
 use std::os::unix::fs::PermissionsExt;
-use tracing::{debug, error};
+use tracing::error;
 
 pub(crate) async fn fsetstat(
     handle: &mut FileHandle,
     permissions: Option<u32>,
     size: Option<u64>,
-) -> Result<(), StatusCode> {
+) -> Result<FileAttributes, StatusCode> {
     match handle {
         FileHandle::RegularFile(file, _) => fsetstat_regular(file, permissions, size).await,
         FileHandle::RegularDir(dir, _, _, _) => {
@@ -28,13 +29,11 @@ pub(crate) async fn fsetstat(
             )
             .await
         }
-        _ => {
-            debug!("Fsetstat on a not regular file handle: {:?}", handle);
-            return Err(StatusCode::OpUnsupported);
-        }
+        _ => Ok(()),
     }
     .inspect_err(|err| error!("Failed to fsetstat: {:?}", err))
-    .map_err(sftp_err)
+    .map_err(sftp_err)?;
+    fstat(handle).await
 }
 
 #[inline(always)]

@@ -1,5 +1,4 @@
 use crate::ssh::sftp::{DaemonSftpSession, FileHandle};
-use async_trait::async_trait;
 use cap_async_std::fs::{OpenOptions, OpenOptionsExt};
 use daemon_common::server::BackendAuthServerPermissions;
 use indexmap::IndexMap;
@@ -18,7 +17,6 @@ impl DaemonSftpSession {
     }
 }
 
-#[async_trait]
 impl russh_sftp::server::Handler for DaemonSftpSession {
     type Error = StatusCode;
 
@@ -145,11 +143,12 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         id: u32,
         handle: String,
         attrs: FileAttributes,
-    ) -> Result<Status, Self::Error> {
+    ) -> Result<Attrs, Self::Error> {
         debug!("Fsetstat {} {}", id, handle);
         let handle = self.handle(handle, BackendAuthServerPermissions::FILES_WRITE)?;
-        super::files::fsetstat(handle, attrs.permissions, attrs.size).await?;
-        Self::success(id)
+        super::files::fsetstat(handle, attrs.permissions, attrs.size)
+            .await
+            .map(|attrs| Attrs { id, attrs })
     }
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {

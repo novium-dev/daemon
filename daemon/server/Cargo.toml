@@ -69,7 +69,7 @@ indexmap.workspace = true
 futures-util.workspace = true
 futures.workspace = true
 
-sysinfo = "0.34.1"
+sysinfo = "0.34.2"
 inquire = "0.7.5"
 num-traits = "0.2.19"
 ringbuffer = "0.15.0"
@@ -95,7 +95,7 @@ version = "9.0.0"
 features = ["axum"]
 
 [dependencies.cap-async-std]
-version = "3.4.2"
+version = "3.4.3"
 features = ["tokio1"]
 
 [dependencies.async-std]
@@ -129,11 +129,11 @@ version = "0.29.0"
 features = ["crossterm"]
 
 [dependencies.crossterm]
-version = "0.28.1"
+version = "0.29.0"
 features = ["event-stream", "events"]
 
 [dependencies.rustix]
-version = "1.0.3"
+version = "1.0.5"
 features = ["thread"]
 
 [dependencies.zstd]
@@ -141,7 +141,7 @@ version = "0.13.3"
 features = []
 
 [dependencies.flate2]
-version = "1.1.0"
+version = "1.1.1"
 features = ["zlib"]
 
 [dependencies.bzip2]
