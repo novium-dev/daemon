@@ -21,7 +21,7 @@ use crate::server::FetchedServer;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelInterceptor, ChannelWriteData, server};
 use crate::web::sql_error_to_http;
 use crate::web::user::authenticate_user;
-use crate::{DaemonState, ServerData};
+use crate::{Daemon, ServerData};
 
 #[derive(Debug, Deserialize)]
 pub(crate) struct ExecUserQuery {
@@ -48,7 +48,7 @@ pub(crate) struct ExecUserQuery {
    )
 )]
 pub(crate) async fn websocket(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     query: Query<ExecUserQuery>,
     ws: WebSocketUpgrade,

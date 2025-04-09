@@ -1,0 +1,23 @@
+[package]
+name = "daemon_framework"
+version = "0.1.0"
+edition = "2024"
+authors = ["Markus Probst <markustieger@gmail.com>"]
+license = "AGPL-3.0-only"
+
+[dependencies]
+axum-extra.workspace = true
+paste = "1.0.15"
+serde.workspace = true
+daemon_framework_macros.workspace = true
+async-trait.workspace = true
+http.workspace = true
+serde_json.workspace = true
+utoipa.workspace = true
+utoipa-axum.workspace = true
+reqwest.workspace = true
+sqlx.workspace = true
+
+[dependencies.axum]
+workspace = true
+features = ["ws"]

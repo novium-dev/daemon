@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::schedule::worker::task;
 use chrono_tz::Tz;
 use cron::Schedule;
@@ -16,7 +16,7 @@ pub(crate) enum ScheduleStepResult {
     Interrupt,
 }
 
-pub(crate) async fn init(state: &DaemonState) -> Result<(), sqlx::Error> {
+pub(crate) async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
     let mut conn = state.conn.acquire().await?;
     let mut schedules = state.schedules.lock().await;
     'sched: for schedule in query!("SELECT * FROM `schedules`")

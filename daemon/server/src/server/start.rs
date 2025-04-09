@@ -4,7 +4,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::sync::Mutex;
 use crate::utils::from_mib;
-use crate::{DaemonState, ServerData, utils};
+use crate::{Daemon, ServerData, utils};
 use bollard::Docker;
 use bollard::container::{Config, CreateContainerOptions, NetworkingConfig};
 use bollard::models::{EndpointSettings, HostConfig, PortBinding};
@@ -60,7 +60,7 @@ impl FetchedServer {
             ..
         }: StorageLockData<OwnedRwLockReadGuard<()>>,
         server_data_arc: Arc<Mutex<ServerData>>,
-        state: &DaemonState,
+        state: &Daemon,
     ) -> Result<(), ServerStartError> {
         if !Self::state(self.id, self.locks.clone(), &docker, Some(server_data))
             .await
@@ -321,7 +321,7 @@ impl FetchedServer {
         Ok(())
     }
 
-    pub(crate) async fn queue_start(server_id: u32, state: DaemonState, duration: Duration) {
+    pub(crate) async fn queue_start(server_id: u32, state: Daemon, duration: Duration) {
         if let Err(err) = Self::queue_start0(server_id, state, duration).await {
             warn!("Failed to queue start: {:?}", err);
         }
@@ -330,7 +330,7 @@ impl FetchedServer {
     #[inline(always)]
     async fn queue_start0(
         server_id: u32,
-        state: DaemonState,
+        state: Daemon,
         duration: Duration,
     ) -> Result<(), ServerStartError> {
         let Some((server, server_data)) = utils::server(&state.conn, &state.servers, server_id)
@@ -369,7 +369,7 @@ impl FetchedServer {
         server_data: &'a mut ServerData,
         server_data_arc: Arc<Mutex<ServerData>>,
         storage: StorageLockData<OwnedRwLockReadGuard<()>>,
-        state: &'a DaemonState,
+        state: &'a Daemon,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
         Box::pin(self.start(docker, server_data, storage, server_data_arc, state))
         // It needs to be pinned to be called recursively

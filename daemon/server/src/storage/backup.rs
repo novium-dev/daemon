@@ -4,7 +4,7 @@ use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::{TarSandboxedAppendExtension, TarSandboxedUnpackExtension};
 use crate::storage::btrfs::{new_snapshot, remove_subvolume};
 use crate::storage::sync::{StorageError, StorageLockData, storage_read, storage_write};
-use crate::{DaemonState, storage};
+use crate::{Daemon, storage};
 use axum::body::Body;
 use axum::http;
 use axum::http::{HeaderMap, StatusCode};
@@ -27,7 +27,7 @@ use tracing::{debug, error};
 use xattr::FileExt;
 
 pub(crate) async fn create_backup_order(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
 ) -> Result<i64, StatusCode> {
     let StorageLockData {
@@ -95,7 +95,7 @@ fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
 }
 
 pub(crate) async fn create_backup(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     backup_storage: &String,
 ) -> Result<i64, StatusCode> {
@@ -179,7 +179,7 @@ async fn create_backup0(
 }
 
 pub(crate) async fn restore_backup(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,
@@ -263,7 +263,7 @@ async fn restore_backup0(
 }
 
 pub(crate) async fn list_backups(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
 ) -> Result<Vec<BackupResponseEntry>, StatusCode> {
     let StorageLockData { lock, .. } =
@@ -280,7 +280,7 @@ pub(crate) async fn list_backups(
 
 #[inline(always)]
 async fn list_backups0(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
 ) -> Result<Vec<BackupResponseEntry>, io::Error> {
     let mut entries = Vec::new();
@@ -383,7 +383,7 @@ async fn list_backups0(
 }
 
 pub(crate) async fn set_backup_name(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,
@@ -443,7 +443,7 @@ async fn set_backup_name0(
 }
 
 pub(crate) async fn backup_to_stream(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,
@@ -533,7 +533,7 @@ async fn backup_to_stream0(
 }
 
 pub(crate) async fn stream_realtime(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     compression: String,
 ) -> Result<(HeaderMap, Body), StatusCode> {
@@ -595,7 +595,7 @@ async fn stream_realtime1(
 }
 
 pub(crate) async fn delete_backup(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,

@@ -11,12 +11,14 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({"id": 1}))]
+#[deprecated]
 pub struct IdResponse {
     pub id: u32,
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({"time": 1731160477597i64}))]
+#[deprecated]
 pub struct TimeIdResponse {
     pub time: i64,
 }

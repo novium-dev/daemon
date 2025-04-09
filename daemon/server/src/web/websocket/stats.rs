@@ -16,7 +16,7 @@ use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::web::user::{GenericUserQuery, authenticate_user};
-use crate::{DaemonState, ServerData};
+use crate::{Daemon, ServerData};
 
 #[utoipa::path(get,
     tag = "server",
@@ -36,7 +36,7 @@ use crate::{DaemonState, ServerData};
    )
 )]
 pub(crate) async fn websocket(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     query: Query<GenericUserQuery>,
     ws: WebSocketUpgrade,

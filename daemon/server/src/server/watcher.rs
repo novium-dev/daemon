@@ -2,7 +2,7 @@ use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
 use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
-use crate::{DaemonState, ServerData};
+use crate::{Daemon, ServerData};
 use async_std::prelude::Stream;
 use async_std::stream::StreamExt;
 use bollard::container::{AttachContainerOptions, LogOutput, Stats, StatsOptions};
@@ -22,7 +22,7 @@ use tokio::time::Instant;
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn attach(
     server_id: u32,
-    state: &DaemonState,
+    state: &Daemon,
     cpu_max: f32,
     ram_max: i64,
     swap_max: i64,
@@ -88,7 +88,7 @@ pub(crate) async fn watch(
     sender: Sender<ChannelWriteData>,
     stats_sender: Sender<ChannelWriteData>,
     buffer: Arc<Mutex<AllocRingBuffer<u8>>>,
-    state: DaemonState,
+    state: Daemon,
     cpu_max: f32,
     ram_max: i64,
     swap_max: i64,

@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use axum::http;
 use daemon_common::ssh::DaemonBackendAuthResponse;
 use russh::keys::{HashAlg, PublicKey};
@@ -44,7 +44,7 @@ impl<T: Clone + Hash + Eq, E: Clone> InvalidationCacheMap<T, E> {
 }
 
 pub(crate) async fn password_auth(
-    state: &DaemonState,
+    state: &Daemon,
     user: &str,
     password: &str,
 ) -> Result<DaemonBackendAuthResponse, io::Error> {
@@ -76,7 +76,7 @@ pub(crate) async fn password_auth(
 }
 
 pub(crate) async fn publickey_auth(
-    state: &DaemonState,
+    state: &Daemon,
     user: &str,
     public_key: &PublicKey,
 ) -> Result<DaemonBackendAuthResponse, io::Error> {
@@ -120,7 +120,7 @@ impl
 {
     pub(crate) async fn get_resolved(
         &mut self,
-        state: &DaemonState,
+        state: &Daemon,
         user: &str,
         public_key: &PublicKey,
     ) -> Result<DaemonBackendAuthResponse, io::Error> {

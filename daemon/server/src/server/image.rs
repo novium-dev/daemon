@@ -1,6 +1,6 @@
 use crate::server::start::ServerStartError;
 use crate::server::{FetchedServer, Server};
-use crate::{DaemonState, ServerData};
+use crate::{Daemon, ServerData};
 use async_std::stream::StreamExt;
 use bollard::Docker;
 use bollard::image::{BuildImageOptions, ListImagesOptions};
@@ -82,7 +82,7 @@ impl BuildImage {
 impl FetchedServer {
     pub(crate) async fn prepare_image(
         &self,
-        state: &DaemonState,
+        state: &Daemon,
         docker: &Docker,
         buffer: &mut AllocRingBuffer<u8>,
         server_data: &mut ServerData,

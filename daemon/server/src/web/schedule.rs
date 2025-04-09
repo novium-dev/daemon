@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::schedule::worker::task;
 use crate::utils::server;
 use crate::web::sql_error_to_http;
@@ -13,7 +13,7 @@ use tracing::error;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .routes(routes!(create_schedule))
         .routes(routes!(update_schedule))
@@ -36,7 +36,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
    )
 )]
 async fn create_schedule(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Json(payload): Json<SchedulePayload>,
 ) -> Result<Json<IdResponse>, StatusCode> {
@@ -116,7 +116,7 @@ async fn create_schedule(
    )
 )]
 async fn update_schedule(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id, schedule_id)): Path<(u32, u32)>,
     Json(payload): Json<SchedulePayload>,
 ) -> Result<(), StatusCode> {
@@ -211,7 +211,7 @@ async fn update_schedule(
    )
 )]
 async fn delete_schedule(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id, schedule_id)): Path<(u32, u32)>,
 ) -> Result<(), StatusCode> {
     let Some(_) = server(state.conn.deref(), &state.servers, server_id)

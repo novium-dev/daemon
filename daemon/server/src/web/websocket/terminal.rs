@@ -12,7 +12,7 @@ use crate::terminal::{TerminalData, new_session, update_size};
 use crate::utils::ChannelInterceptor;
 use crate::web::user::authenticate_user;
 use crate::web::websocket::WebsocketTerminalQuery;
-use crate::{DaemonState, ServerData};
+use crate::{Daemon, ServerData};
 
 #[utoipa::path(get,
     tag = "server",
@@ -35,7 +35,7 @@ use crate::{DaemonState, ServerData};
    )
 )]
 pub(crate) async fn websocket(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     query: Query<WebsocketTerminalQuery>,
     ws: WebSocketUpgrade,

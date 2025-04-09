@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::ssh::auth::InvalidationCacheMap;
 use crate::ssh::handler::DaemonSSHHandler;
 use russh::server::{Handler, Server};
@@ -11,7 +11,7 @@ use tracing::debug;
 
 #[derive(Clone)]
 pub struct DaemonSSHServer {
-    pub(crate) state: Arc<DaemonState>,
+    pub(crate) state: Arc<Daemon>,
     pub(crate) cache_invalidation: Duration,
 }
 

@@ -4,7 +4,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read};
 use crate::sync::Mutex;
 use crate::terminal::update_size;
-use crate::{DaemonState, ServerData};
+use crate::{Daemon, ServerData};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::Dir;
 use daemon_common::server::BackendAuthServerPermissions;
@@ -28,7 +28,7 @@ pub(crate) type DaemonChannel = (
 );
 
 pub struct DaemonSSHHandler {
-    pub(crate) state: Arc<DaemonState>,
+    pub(crate) state: Arc<Daemon>,
     pub(crate) channels: HashMap<ChannelId, DaemonChannel>,
     pub(crate) publickey_cache: InvalidationCacheMap<
         (String, [u8; HashAlg::Sha512.digest_size()]),

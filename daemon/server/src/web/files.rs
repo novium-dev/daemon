@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::common::payload::files::FileResponse;
 use crate::files::{
     copy_file, create_archive, delete_file, download_file, list_files, mkdir_file, rename_file,
@@ -17,7 +17,7 @@ use daemon_common::payload::server::ServerFileWrite;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .routes(routes!(server_list_files))
         .routes(routes!(server_stat_file))
@@ -35,7 +35,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
 }
 
 #[cfg(feature = "user")]
-pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new().routes(routes!(server_user_download_file))
 }
 
@@ -58,7 +58,7 @@ pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
    )
 )]
 pub(crate) async fn server_list_files(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<Json<Vec<FileResponse>>, StatusCode> {
@@ -85,7 +85,7 @@ pub(crate) async fn server_list_files(
    )
 )]
 pub(crate) async fn server_stat_file(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<Json<FileResponse>, StatusCode> {
@@ -113,7 +113,7 @@ pub(crate) async fn server_stat_file(
    )
 )]
 pub(crate) async fn server_rename_file(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(TwoPathQuery { from, to }): Query<TwoPathQuery>,
 ) -> Result<(), StatusCode> {
@@ -141,7 +141,7 @@ pub(crate) async fn server_rename_file(
    )
 )]
 pub(crate) async fn server_copy_file(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(TwoPathQuery { from, to }): Query<TwoPathQuery>,
 ) -> Result<(), StatusCode> {
@@ -168,7 +168,7 @@ pub(crate) async fn server_copy_file(
    )
 )]
 pub(crate) async fn server_download_file(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
 ) -> Result<(Option<HeaderMap>, Body), StatusCode> {
@@ -197,7 +197,7 @@ pub(crate) async fn server_download_file(
 ))]
 #[cfg(feature = "user")]
 pub(crate) async fn server_user_download_file(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(daemon_common::payload::files::PathUserQuery {
         path,
@@ -240,7 +240,7 @@ pub(crate) async fn server_user_download_file(
    )
 )]
 pub(crate) async fn server_write_file(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
     request: Request,
@@ -277,7 +277,7 @@ pub(crate) async fn server_write_file(
    )
 )]
 pub(crate) async fn server_write_file_by_url(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathUrlQuery { path, url }): Query<PathUrlQuery>,
 ) -> Result<(), StatusCode> {
@@ -310,7 +310,7 @@ pub(crate) async fn server_write_file_by_url(
    )
 )]
 pub(crate) async fn server_write_file_by_template(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathQuery { path }): Query<PathQuery>,
     Json(template): Json<ServerFileWrite>,
@@ -339,7 +339,7 @@ pub(crate) async fn server_write_file_by_template(
    )
 )]
 pub(crate) async fn server_delete_file(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathDirectoryQuery { path, recursive }): Query<PathDirectoryQuery>,
 ) -> Result<(), StatusCode> {
@@ -367,7 +367,7 @@ pub(crate) async fn server_delete_file(
    )
 )]
 pub(crate) async fn server_mkdir(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathDirectoryQuery { path, recursive }): Query<PathDirectoryQuery>,
 ) -> Result<(), StatusCode> {
@@ -395,7 +395,7 @@ pub(crate) async fn server_mkdir(
    )
 )]
 pub(crate) async fn server_symlink(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathSymlinkQuery { path, content }): Query<PathSymlinkQuery>,
 ) -> Result<(), StatusCode> {
@@ -424,7 +424,7 @@ pub(crate) async fn server_symlink(
    )
 )]
 pub(crate) async fn server_unpack_archive(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathDestinationQuery { path, dest }): Query<PathDestinationQuery>,
 ) -> Result<(), StatusCode> {
@@ -452,7 +452,7 @@ pub(crate) async fn server_unpack_archive(
    )
 )]
 pub(crate) async fn server_create_archive(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(PathCompressionSourceQuery {
         path,

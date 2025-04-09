@@ -183,6 +183,23 @@ impl InternalServerState {
             _ => None,
         }
     }
+
+    pub(crate) fn public(&self) -> PublicServerState {
+        PublicServerState {
+            label: self.to_string(),
+            healthcheck: match self {
+                InternalServerState::Starting(_, healthcheck)
+                | InternalServerState::Unhealthy(_, healthcheck)
+                | InternalServerState::Running(_, healthcheck) => healthcheck,
+                _ => &None,
+            }
+            .clone(),
+            start: self.start(),
+            stop: self.stop(),
+            kill: self.kill_show(),
+            time: self.since(),
+        }
+    }
 }
 
 impl Display for InternalServerState {
@@ -211,20 +228,6 @@ impl Serialize for InternalServerState {
     where
         S: Serializer,
     {
-        PublicServerState {
-            label: self.to_string(),
-            healthcheck: match self {
-                InternalServerState::Starting(_, healthcheck)
-                | InternalServerState::Unhealthy(_, healthcheck)
-                | InternalServerState::Running(_, healthcheck) => healthcheck,
-                _ => &None,
-            }
-            .clone(),
-            start: self.start(),
-            stop: self.stop(),
-            kill: self.kill_show(),
-            time: self.since(),
-        }
-        .serialize(serializer)
+        self.public().serialize(serializer)
     }
 }

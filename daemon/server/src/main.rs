@@ -64,6 +64,7 @@ mod storage;
 mod ctlsock;
 mod network;
 mod schedule;
+mod service;
 pub(crate) mod setup;
 mod sync;
 mod terminal;
@@ -261,7 +262,7 @@ async fn main0() {
     };
 
     let config = Arc::new(config);
-    let state = DaemonState {
+    let state = Daemon {
         config: config.clone(),
         servers: Arc::new(Mutex::new(servers)),
         storages: Arc::new(Mutex::new(HashMap::new())),
@@ -615,7 +616,7 @@ async fn main0() {
 }
 
 #[derive(Clone)]
-pub(crate) struct DaemonState {
+pub(crate) struct Daemon {
     pub(crate) config: Arc<DaemonConfig>,
     pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
     pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, StorageData>>>,

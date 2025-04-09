@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::web::sql_error_to_http;
 use axum::Json;
 use axum::extract::State;
@@ -20,7 +20,7 @@ struct ResourceSummary {
     swap: Option<BigDecimal>,
 }
 
-pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new().routes(routes!(resource_get))
 }
 
@@ -38,7 +38,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
    )
 )]
 pub(crate) async fn resource_get(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
 ) -> Result<Json<ResourceResponse>, StatusCode> {
     let ResourceSummary {
         ram: mem_allocated,

@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::network::{Network, NetworkError};
 use crate::web::sql_error_to_http;
 use axum::Json;
@@ -12,7 +12,7 @@ use tracing::error;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .routes(routes!(create_network))
         .routes(routes!(delete_network))
@@ -33,7 +33,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
    )
 )]
 async fn create_network(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Json(NetworkPayload { ipv4, ipv6 }): Json<NetworkPayload>,
 ) -> Result<Json<IdResponse>, StatusCode> {
     let mut conn = state.conn.acquire().await.map_err(sql_error_to_http)?;
@@ -63,7 +63,7 @@ async fn create_network(
    )
 )]
 async fn delete_network(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((network_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
     let Some(network) = Network::resolve(state.conn.deref(), network_id)

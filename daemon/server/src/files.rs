@@ -5,7 +5,7 @@ use std::ops::Deref;
 use std::os::unix::prelude::*;
 use std::path::PathBuf;
 
-use crate::DaemonState;
+use crate::Daemon;
 use crate::config::StorageEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
@@ -39,7 +39,7 @@ fn err(err: io::Error) -> StatusCode {
 }
 
 pub(crate) async fn list_files(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
 ) -> Result<Vec<FileResponse>, StatusCode> {
@@ -109,7 +109,7 @@ async fn list_files0(storage: Dir, path: PathBuf) -> Result<Vec<FileResponse>, i
 }
 
 pub(crate) async fn stat_file(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
 ) -> Result<FileResponse, StatusCode> {
@@ -180,7 +180,7 @@ async fn stat_file0(storage: Dir, path: PathBuf) -> Result<FileResponse, io::Err
 }
 
 pub(crate) async fn rename_file(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     from: String,
     to: String,
@@ -209,7 +209,7 @@ pub(crate) async fn rename_file(
 }
 
 pub(crate) async fn copy_file(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     from: String,
     to: String,
@@ -238,7 +238,7 @@ pub(crate) async fn copy_file(
 }
 
 pub(crate) async fn download_file(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
 ) -> Result<(Option<HeaderMap>, Body), StatusCode> {
@@ -279,7 +279,7 @@ pub(crate) async fn download_file(
 }
 
 pub(crate) async fn write_file(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
     stream: BodyDataStream,
@@ -324,7 +324,7 @@ pub(crate) async fn write_file(
 }
 
 pub(crate) async fn write_file_by_template(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
     template: ServerFileWrite,
@@ -369,7 +369,7 @@ pub(crate) async fn write_file_by_template(
 }
 
 pub(crate) async fn write_file_by_url(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
     url: Url,
@@ -436,7 +436,7 @@ pub(crate) async fn write_file_by_url(
 }
 
 pub(crate) async fn mkdir_file(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
     recursive: bool,
@@ -471,7 +471,7 @@ pub(crate) async fn mkdir_file(
 }
 
 pub(crate) async fn symlink_file(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
     content: String,
@@ -499,7 +499,7 @@ pub(crate) async fn symlink_file(
 }
 
 pub(crate) async fn delete_file(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
     recursive: bool,
@@ -528,7 +528,7 @@ pub(crate) async fn delete_file(
 }
 
 pub(crate) async fn unpack_archive(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
     dest: String,
@@ -592,7 +592,7 @@ async fn unpack_archive0(
 }
 
 pub(crate) async fn create_archive(
-    state: &DaemonState,
+    state: &Daemon,
     id: StorageIdentifier,
     path: String,
     src: String,

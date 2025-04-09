@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use axum::http::StatusCode;
 use tracing::{debug, warn};
 use utoipa_axum::router::OpenApiRouter;
@@ -21,6 +21,7 @@ mod schedule;
 #[cfg(feature = "trace_sync")]
 pub(crate) mod trace;
 
+#[deprecated]
 pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
     if let sqlx::Error::Database(database) = &err {
         if database.is_unique_violation()
@@ -35,7 +36,7 @@ pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
 
-pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::new()
         .merge(server::config())
@@ -52,14 +53,14 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
 }
 
 #[cfg(feature = "user")]
-pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .merge(websocket::user_config())
         .merge(backup::user_config())
         .merge(files::user_config())
 }
 
-pub(crate) fn config_unauthorized() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config_unauthorized() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::new();
     #[cfg(feature = "trace_sync")]

@@ -5,7 +5,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::storage_read;
 use crate::sync::Mutex;
 use crate::utils::{ChannelWriteData, SyncIOBridgeExt};
-use crate::{DaemonState, ServerData, utils};
+use crate::{Daemon, ServerData, utils};
 use chrono::{TimeZone, Utc};
 use crossterm::terminal::ClearType;
 use daemon_common::server::{BackendAuthServerPermissions, ServerStats};
@@ -142,7 +142,7 @@ impl DaemonSSHHandler {
 fn new_control_session(
     server_id: u32,
     name: String,
-    state: Arc<DaemonState>,
+    state: Arc<Daemon>,
     power: bool,
     mut stream: ChannelStream<Msg>,
     arc: Arc<Mutex<ServerData>>,
@@ -773,7 +773,7 @@ impl<T: AsyncWrite + Unpin> SyncIOBridgeExt<T>
 
 #[allow(clippy::too_many_arguments)]
 async fn read(
-    state: Arc<DaemonState>,
+    state: Arc<Daemon>,
     server_id: u32,
     server_state: InternalServerState,
     stream: &mut ChannelStream<Msg>,
@@ -857,7 +857,7 @@ async fn read(
 }
 
 async fn launch_selected(
-    state: Arc<DaemonState>,
+    state: Arc<Daemon>,
     server_id: u32,
     selected: u8,
     (start, stop, restart, kill): (bool, bool, bool, bool),

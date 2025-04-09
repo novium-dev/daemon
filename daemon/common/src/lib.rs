@@ -5,6 +5,7 @@ pub mod payload;
 
 pub mod files;
 pub mod server;
+pub mod service;
 pub mod ssh;
 pub mod utils;
 

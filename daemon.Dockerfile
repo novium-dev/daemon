@@ -1,12 +1,11 @@
 FROM rust:latest AS build
 
-RUN apt update && apt upgrade -y && apt install -y curl mariadb-server mariadb-client git clang-19 lld-19 llvm-19 libbtrfs-dev && \
-    rustup default beta
+RUN apt update && apt upgrade -y && apt install -y curl mariadb-server mariadb-client git clang-19 lld-19 llvm-19 libbtrfs-dev
 
 COPY . /work
 WORKDIR /work
 
-ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C linker-plugin-lto -C lto=thin -C embed-bitcode"
+ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C linker-plugin-lto -C lto=thin -C embed-bitcode -C link-arg=-Wl,--icf=safe"
 ARG FEATURES="default"
 
 RUN RUSTFLAGS="-C opt-level=0" cargo install sqlx-cli --debug --no-default-features --features mysql,rustls

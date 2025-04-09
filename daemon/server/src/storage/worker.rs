@@ -4,7 +4,7 @@ use crate::server::status::InternalServerState;
 use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
 use crate::utils::ChannelWriteData;
-use crate::{DaemonState, StorageData};
+use crate::{Daemon, StorageData};
 use daemon_common::server::ServerStats;
 use sqlx::query;
 use std::collections::HashMap;
@@ -21,7 +21,7 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 use tracing::{error, warn};
 
-pub(crate) async fn run(state: DaemonState) {
+pub(crate) async fn run(state: Daemon) {
     let state2 = state.clone();
     for (storage_id, storage_entry) in state.config.storage.clone() {
         let state = state2.clone();
@@ -30,7 +30,7 @@ pub(crate) async fn run(state: DaemonState) {
 }
 
 async fn resolve(
-    state: &DaemonState,
+    state: &Daemon,
     storage_id: String,
     storage_entry: &StorageEntry,
 ) -> Option<
@@ -102,7 +102,7 @@ async fn resolve(
     Some(available)
 }
 
-pub(crate) fn watch(state: DaemonState, storage_id: String, storage_entry: StorageEntry) {
+pub(crate) fn watch(state: Daemon, storage_id: String, storage_entry: StorageEntry) {
     let mut last = SystemTime::UNIX_EPOCH;
     loop {
         let Some(storages) =

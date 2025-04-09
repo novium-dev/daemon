@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::schedule::ScheduleStepResult;
 use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
@@ -21,7 +21,7 @@ use tracing::error;
 
 pub(crate) async fn task(
     server_id: u32,
-    state: DaemonState,
+    state: Daemon,
     policy: ScheduleRunPolicy,
     steps: Vec<ScheduleStep>,
     recv: Receiver<()>,
@@ -57,12 +57,7 @@ fn determine_next_run(schedule: &Schedule, timezone: &(impl TimeZone + Copy)) ->
 }
 
 // Ensure this function is cancel-safe
-async fn run(
-    server_id: u32,
-    state: DaemonState,
-    policy: ScheduleRunPolicy,
-    steps: &Vec<ScheduleStep>,
-) {
+async fn run(server_id: u32, state: Daemon, policy: ScheduleRunPolicy, steps: &Vec<ScheduleStep>) {
     let running = match FetchedServer::state(server_id, HashSet::new(), &state.docker, None).await {
         Ok(
             InternalServerState::Running(_, _)
@@ -108,7 +103,7 @@ async fn run(
 }
 
 #[inline(always)]
-async fn start(server_id: u32, state: DaemonState) -> ScheduleStepResult {
+async fn start(server_id: u32, state: Daemon) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -159,7 +154,7 @@ async fn start(server_id: u32, state: DaemonState) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn stop(server_id: u32, state: DaemonState) -> ScheduleStepResult {
+async fn stop(server_id: u32, state: Daemon) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -186,7 +181,7 @@ async fn stop(server_id: u32, state: DaemonState) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn restart(server_id: u32, state: DaemonState) -> ScheduleStepResult {
+async fn restart(server_id: u32, state: Daemon) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -213,7 +208,7 @@ async fn restart(server_id: u32, state: DaemonState) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn kill(server_id: u32, state: DaemonState) -> ScheduleStepResult {
+async fn kill(server_id: u32, state: Daemon) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -240,7 +235,7 @@ async fn kill(server_id: u32, state: DaemonState) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn exec(server_id: u32, command: Vec<String>, state: DaemonState) -> ScheduleStepResult {
+async fn exec(server_id: u32, command: Vec<String>, state: Daemon) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -275,7 +270,7 @@ async fn exec(server_id: u32, command: Vec<String>, state: DaemonState) -> Sched
 }
 
 #[inline(always)]
-async fn terminal(server_id: u32, command: &str, state: DaemonState) -> ScheduleStepResult {
+async fn terminal(server_id: u32, command: &str, state: Daemon) -> ScheduleStepResult {
     let Ok(Some((_, server_data))) = server(&state.conn, &state.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))

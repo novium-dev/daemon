@@ -8,9 +8,9 @@ use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
 use crate::storage::StorageIdentifier;
-use crate::{DaemonState, storage};
+use crate::{Daemon, storage};
 
-pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .routes(routes!(server_create_backup))
         .routes(routes!(server_create_backup_order))
@@ -23,7 +23,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
 }
 
 #[cfg(feature = "user")]
-pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .routes(routes!(server_user_download_backup))
         .routes(routes!(server_user_backup_realtime))
@@ -47,7 +47,7 @@ pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
    )
 )]
 pub(crate) async fn server_create_backup(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id, backup_storage)): Path<(u32, String)>,
 ) -> Result<Json<TimeIdResponse>, StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
@@ -75,7 +75,7 @@ pub(crate) async fn server_create_backup(
    )
 )]
 pub(crate) async fn server_create_backup_order(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<Json<TimeIdResponse>, StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
@@ -103,7 +103,7 @@ pub(crate) async fn server_create_backup_order(
    )
 )]
 pub(crate) async fn server_download_backup(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
 ) -> Result<(HeaderMap, Body), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
@@ -131,7 +131,7 @@ pub(crate) async fn server_download_backup(
 ))]
 #[cfg(feature = "user")]
 pub(crate) async fn server_user_download_backup(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
     axum::extract::Query(crate::web::user::GenericUserQuery { timestamp, verify }): axum::extract::Query<crate::web::user::GenericUserQuery>,
 ) -> Result<(HeaderMap, Body), StatusCode> {
@@ -169,7 +169,7 @@ pub(crate) async fn server_user_download_backup(
    )
 )]
 pub(crate) async fn server_backup_realtime(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     Query(CompressionQuery { compression }): Query<CompressionQuery>,
 ) -> Result<(HeaderMap, Body), StatusCode> {
@@ -198,7 +198,7 @@ pub(crate) async fn server_backup_realtime(
 ))]
 #[cfg(feature = "user")]
 pub(crate) async fn server_user_backup_realtime(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
     axum::extract::Query(UserCompressionQuery {
         timestamp,
@@ -238,7 +238,7 @@ pub(crate) async fn server_user_backup_realtime(
    )
 )]
 pub(crate) async fn server_delete_backup(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
 ) -> Result<(), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
@@ -262,7 +262,7 @@ pub(crate) async fn server_delete_backup(
    )
 )]
 pub(crate) async fn server_list_backups(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Result<Json<Vec<BackupResponseEntry>>, StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
@@ -288,7 +288,7 @@ pub(crate) async fn server_list_backups(
    )
 )]
 pub(crate) async fn server_restore_backup(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
 ) -> Result<(), StatusCode> {
     let storage = StorageIdentifier::Primary(server_id);
@@ -319,7 +319,7 @@ pub(crate) async fn server_restore_backup(
    )
 )]
 pub(crate) async fn server_update_backup(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id, backup_storage, backup_id)): Path<(u32, String, i64)>,
     Json(BackupUpdatePayload { name }): Json<BackupUpdatePayload>,
 ) -> Result<(), StatusCode> {

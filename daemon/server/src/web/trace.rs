@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::storage::StorageIdentifier;
 use crate::sync::mutex::TraceableMutex;
 use crate::sync::rwlock::TraceableRwLock;
@@ -50,7 +50,7 @@ struct DaemonTraceResult {
     schedules: TraceResult<LastMutexTrace>,
 }
 
-pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .routes(routes!(daemon_trace))
         .routes(routes!(server_trace))
@@ -64,7 +64,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
         (status = 200, description = "Trace result"),
     ),
 )]
-async fn daemon_trace(State(state): State<DaemonState>) -> Json<DaemonTraceResult> {
+async fn daemon_trace(State(state): State<Daemon>) -> Json<DaemonTraceResult> {
     Json(DaemonTraceResult {
         servers: generic_mutex_trace(state.servers.deref()),
         storages: generic_mutex_trace(state.storages.deref()),
@@ -84,7 +84,7 @@ async fn daemon_trace(State(state): State<DaemonState>) -> Json<DaemonTraceResul
    )
 )]
 async fn server_trace(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,
 ) -> Json<ServerTraceResult> {
     let (data, buffer, attach_write, sessions) = match state.servers.try_lock_hidden() {

@@ -4,7 +4,7 @@ use base64::prelude::BASE64_STANDARD;
 use serde::Deserialize;
 use tracing::debug;
 
-use crate::DaemonState;
+use crate::Daemon;
 
 #[allow(unused)]
 #[derive(Deserialize)]
@@ -17,7 +17,7 @@ pub(crate) struct GenericUserQuery {
 pub(crate) async fn authenticate_user(
     name: &str,
     #[allow(unused)] server_id: u32,
-    #[allow(unused)] state: &DaemonState,
+    #[allow(unused)] state: &Daemon,
     timestamp: &str,
     verify: &String,
     #[allow(unused)] extra: Option<String>,

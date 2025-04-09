@@ -17,7 +17,7 @@ pub struct ServerPayload {
     pub network: Option<ServerNetworkPayload>,
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerResourcePayload {
     pub cpu: Option<f32>,
     pub ram: Option<u32>,
@@ -25,7 +25,7 @@ pub struct ServerResourcePayload {
     pub disk: Option<u64>,
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerBuildPayload {
     pub image: ServerBuildImage,
 
@@ -44,7 +44,7 @@ pub struct ServerBuildPayload {
     pub stop_timeout: u16,
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(no_recursion)]
 pub struct ServerBuildImage {
     pub dockerfile: String,
@@ -97,13 +97,13 @@ impl ServerBuildImage {
     }
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerNetworkPayload {
     pub internet_access: bool,
     pub networks: Vec<NetworkAttachment>,
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct NetworkAttachment {
     pub network: u32,
     pub ipv4: u8,
@@ -304,7 +304,7 @@ impl ServerFileWrite {
     }
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerPortEntryPayload {
     pub internal_port: u16,
     pub external_port: u16,

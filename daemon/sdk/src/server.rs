@@ -1,5 +1,4 @@
 use crate::{DaemonSDK, DaemonSDKError, DaemonSDKExtra, RequestBody};
-use daemon_common::payload::IdResponse;
 use daemon_common::payload::server::{
     ServerBuildPayload, ServerNetworkPayload, ServerPayload, ServerPortEntryPayload,
     ServerResourcePayload,
@@ -49,10 +48,9 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
             return Err(DaemonSDKError::StatusCode(response.status()));
         }
         response
-            .json::<IdResponse>()
+            .json::<u32>()
             .await
             .map_err(DaemonSDKError::Reqwest)
-            .map(|response| response.id)
     }
 
     pub async fn update_server(

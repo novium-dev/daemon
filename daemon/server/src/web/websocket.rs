@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
 use axum::Error;
@@ -91,7 +91,7 @@ impl ChannelAdapter<Option<Result<Message, Error>>, Result<(), Error>, Result<()
     }
 }
 
-pub(crate) fn user_config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .routes(routes!(terminal::websocket))
         .routes(routes!(stats::websocket))

@@ -1,5 +1,9 @@
+use crate::ServerData;
+use crate::server::status::InternalServerState;
+use crate::server::*;
 use async_trait::async_trait;
 use daemon_common::server::ServerStats;
+use daemon_common::service::error_server_not_found::FromServerNotFound;
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::fmt::Debug;
@@ -10,10 +14,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::{io, mem};
 use tokio_util::io::SyncIoBridge;
-
-use crate::ServerData;
-use crate::server::status::InternalServerState;
-use crate::server::*;
 
 pub(crate) trait ResourceData {
     fn into_u64(self) -> u64;
@@ -67,6 +67,17 @@ pub(crate) async fn server(
         .entry(server_id)
         .or_insert_with(|| Arc::new(crate::sync::Mutex::new(ServerData::default())));
     Ok(Some((server, servers.get(&server_id).unwrap().clone())))
+}
+
+pub(crate) async fn server_required<T: From<sqlx::Error> + FromServerNotFound>(
+    conn: &Pool<MySql>,
+    servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
+    server_id: u32,
+) -> Result<(FetchedServer, Arc<crate::sync::Mutex<ServerData>>), T> {
+    match server(conn, servers, server_id).await? {
+        None => Err(<T as FromServerNotFound>::from()),
+        Some(server) => Ok(server),
+    }
 }
 
 pub(crate) fn path_relative(str: String) -> PathBuf {

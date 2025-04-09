@@ -1,7 +1,8 @@
 [workspace]
 members = [
     "backend/*",
-    "daemon/*"
+    "daemon/*",
+    "daemon/framework/macros"
 ]
 resolver = "3"
 
@@ -34,6 +35,12 @@ arrayvec = "0.7.6"
 
 [workspace.dependencies.daemon_common]
 path = "daemon/common"
+
+[workspace.dependencies.daemon_framework]
+path = "daemon/framework"
+
+[workspace.dependencies.daemon_framework_macros]
+path = "daemon/framework/macros"
 
 [workspace.dependencies.daemon_sdk]
 path = "daemon/sdk"
@@ -138,9 +145,16 @@ features = ["cookie", "typed-header"]
 [workspace.dependencies.axum-auth]
 version = "0.8.1"
 
+[workspace.dependencies.tarpc]
+version = "0.36.0"
+features = ["full"]
+
 [workspace.dependencies.utoipa]
 version = "5.3.1"
 features = ["macros", "preserve_path_order"]
+
+[workspace.dependencies.utoipa-axum]
+version = "0.2.0"
 
 [workspace.dependencies.tower]
 version = "0.5.2"

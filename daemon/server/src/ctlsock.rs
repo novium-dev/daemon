@@ -1,4 +1,4 @@
-use crate::DaemonState;
+use crate::Daemon;
 use axum::Router;
 use axum::extract::{ConnectInfo, State, connect_info};
 use axum::http::StatusCode;
@@ -28,7 +28,7 @@ impl connect_info::Connected<IncomingStream<'_, UnixListener>> for UdsConnectInf
     }
 }
 
-pub(crate) async fn run(state: DaemonState) {
+pub(crate) async fn run(state: Daemon) {
     let path = PathBuf::from("./control.sock");
     let _ = tokio::fs::remove_file(&path).await; // Ignore any errors
 
@@ -52,7 +52,7 @@ pub(crate) async fn run(state: DaemonState) {
 }
 
 async fn restart(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     ConnectInfo(info): ConnectInfo<UdsConnectInfo>,
 ) -> Result<(), StatusCode> {
     let Some(pid) = info.peer_cred.pid() else {

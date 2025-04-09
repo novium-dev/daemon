@@ -5,7 +5,7 @@ use crate::sql::MultiTransactionApplyExt;
 use crate::utils::database;
 use crate::web::payload::FromFetchedDatabaseExtension;
 use crate::web::sql_error_to_http;
-use crate::{DaemonState, sql};
+use crate::{Daemon, sql};
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
@@ -17,7 +17,7 @@ use tracing::debug;
 use utoipa_axum::router::OpenApiRouter;
 use utoipa_axum::routes;
 
-pub(crate) fn config() -> OpenApiRouter<DaemonState> {
+pub(crate) fn config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .routes(routes!(create_database))
         .routes(routes!(modify_database))
@@ -47,7 +47,7 @@ pub(crate) fn config() -> OpenApiRouter<DaemonState> {
    )
 )]
 pub(crate) async fn create_database(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Json(payload): Json<DatabaseCreatePayload>,
 ) -> Result<Json<IdResponse>, StatusCode> {
     DatabaseModifyPayload::validate_sql_string(&payload.name_suffix)
@@ -147,7 +147,7 @@ pub(crate) async fn create_database(
    )
 )]
 pub(crate) async fn modify_database(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((database_id,)): Path<(u32,)>,
     Json(payload): Json<DatabaseModifyPayload>,
 ) -> Result<(), StatusCode> {
@@ -198,7 +198,7 @@ pub(crate) async fn modify_database(
    )
 )]
 pub(crate) async fn delete_database(
-    State(state): State<DaemonState>,
+    State(state): State<Daemon>,
     Path((database_id,)): Path<(u32,)>,
 ) -> Result<(), StatusCode> {
     let Some(database) = database(state.conn.deref(), database_id)
