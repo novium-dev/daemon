@@ -71,6 +71,12 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                         #crate_prefix http::StatusCode::#statuscode.as_str(),
                         #crate_prefix utoipa::openapi::ResponseBuilder::new()
                             .description(#msg)
+                            .content(
+                                "application/json",
+                                #crate_prefix utoipa::openapi::content::Content::new(Some(
+                                    #crate_prefix utoipa::openapi::RefOr::T(#crate_prefix internal::error_schema(#error_id, #msg))
+                                )),
+                            )
                             .build(),
                     );
 
@@ -256,7 +262,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
             impl #crate_prefix FrameworkDocumentedResponse for #ident {
 
-                fn openapi(responses: &mut #crate_prefix utoipa::openapi::ResponsesBuilder) {
+                fn openapi(responses: &mut #crate_prefix utoipa::openapi::ResponsesBuilder, _schemas: &mut std::collections::HashMap<String, #crate_prefix utoipa::openapi::RefOr<#crate_prefix utoipa::openapi::schema::Schema>>) {
                     let mut responses_owned = #crate_prefix utoipa::openapi::ResponsesBuilder::new();
                     std::mem::swap(responses, &mut responses_owned);
                     #openapi

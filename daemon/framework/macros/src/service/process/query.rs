@@ -19,25 +19,21 @@ pub(crate) fn process(
         .map(|arg| {
             let FunctionArgument::Query {
                 variable_name,
-                variable_type,
+                variable_type_wopt,
                 required,
+                ..
             } = arg
             else {
                 unreachable!()
             };
-            (variable_name, variable_type, required)
+            (variable_name, variable_type_wopt, required)
         })
         .collect();
     if !fn_args_query.is_empty() {
         let mut query_fields = TokenStream::new();
         let mut query_names = TokenStream::new();
 
-        for (arg_name, variable_type, required) in fn_args_query {
-            let arg_type = if required {
-                variable_type
-            } else {
-                quote! { Option<#variable_type> }
-            };
+        for (arg_name, arg_type, required) in fn_args_query {
             query_fields.extend(quote! {
                 #arg_name: #arg_type,
             });
@@ -54,7 +50,7 @@ pub(crate) fn process(
                         #crate_prefix utoipa::openapi::path::Parameter::new(#variable_literal)
                     )
                     .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Query)
-                    .description(Some([< variable_ #arg_name:snake >]::DESCRIPTION))
+                    .description(Some([< variable_query_ #arg_name:snake >]::DESCRIPTION))
                     .required(#crate_prefix utoipa::openapi::Required::#required),
                 )
             });
@@ -62,7 +58,7 @@ pub(crate) fn process(
 
         routes.extend(quote! {
             #crate_prefix paste::paste! {
-                #[derive(Hash, Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize, Debug)]
+                #[derive(Debug, Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize)]
                 pub(crate) struct [< #fn_ident:camel Query >] {
                     #query_fields
                 }

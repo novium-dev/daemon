@@ -41,7 +41,7 @@ use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
 
 pub use daemon_common as common;
-
+use daemon_common::service::server::ServerService;
 use crate::config::DaemonConfig;
 use crate::server::FetchedServer;
 use crate::server::watcher::attach;
@@ -386,9 +386,10 @@ async fn main0() {
 
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .merge(web::config())
+        .merge(<Daemon as ServerService>::routes(&state))
+        .merge(web::config().with_state(state.clone()))
         .route_layer(ValidateRequestHeaderLayer::bearer(&config.token))
-        .merge(web::config_unauthorized());
+        .merge(web::config_unauthorized().with_state(state.clone()));
 
     #[cfg(feature = "user")]
     {
@@ -399,7 +400,7 @@ async fn main0() {
             .allow_methods([axum::http::Method::GET])
             .allow_headers(tower_http::cors::AllowHeaders::any());
 
-        router = router.merge(web::user_config().layer(cors));
+        router = router.merge(web::user_config().with_state(state.clone()).merge(<Daemon as ServerService>::routes_user(&state)).layer(cors));
     }
 
     #[allow(unused_variables, unused_mut)]
@@ -412,8 +413,7 @@ async fn main0() {
     }
 
     let mut app = router
-        .layer(TraceLayer::new_for_http())
-        .with_state(state.clone());
+        .layer(TraceLayer::new_for_http());
 
     #[cfg(feature = "sentry")]
     {

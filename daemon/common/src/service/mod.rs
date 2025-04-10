@@ -1,5 +1,6 @@
 use crate::service::server::ServerService;
-pub(crate) use daemon_framework::{define_error, define_variable, service};
+pub(crate) use daemon_framework::{define_error, service};
+use daemon_framework::{define_header_variable, define_path_variable};
 
 pub mod server;
 
@@ -31,7 +32,7 @@ define_error!(sql {
     )
 });
 
-define_variable!(server_id "The server id");
-define_variable!(auth "The authentication token");
+define_path_variable!(server_id "The server id");
+define_header_variable!(auth "The authentication token");
 
 pub trait DaemonServices: ServerService {}

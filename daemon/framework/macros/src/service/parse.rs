@@ -18,12 +18,15 @@ pub(crate) enum FunctionArgument {
     },
     Query {
         variable_name: Ident,
+        #[allow(unused)]
         variable_type: TokenStream,
+        variable_type_wopt: TokenStream,
         required: bool,
     },
     Header {
         variable_name: Ident,
         variable_type: TokenStream,
+        variable_type_wopt: TokenStream,
         required: bool,
     },
     Payload {

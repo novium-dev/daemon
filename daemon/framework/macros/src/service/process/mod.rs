@@ -84,7 +84,7 @@ pub(crate) fn process(
     errors: &mut TokenStream,
     routes: &mut TokenStream,
     mut result: Vec<TokenTree>,
-    functions: &mut Vec<(Ident, String, HttpMethod, bool, TokenStream, TokenStream)>,
+    functions: &mut Vec<(Ident, String, HttpMethod, bool, TokenStream, TokenStream, TokenStream)>,
 ) -> Vec<TokenTree> {
     let mut operations = TokenStream::new();
 
@@ -171,6 +171,7 @@ pub(crate) fn process(
             fn_args_identified.push(FunctionArgument::Query {
                 variable_name: fn_arg_name,
                 variable_type: fn_arg_type_opt,
+                variable_type_wopt: fn_arg_type,
                 required: !fn_arg_type_opt_used,
             });
         } else if fn_arg_type_opt
@@ -188,6 +189,7 @@ pub(crate) fn process(
             fn_args_identified.push(FunctionArgument::Header {
                 variable_name: fn_arg_name,
                 variable_type: fn_arg_type_opt,
+                variable_type_wopt: fn_arg_type,
                 required: !fn_arg_type_opt_used,
             });
         } else {
@@ -215,6 +217,8 @@ pub(crate) fn process(
             quote! { #variable_name, }
         })
         .collect();
+
+    let mut schema_extra = TokenStream::new();
 
     path::process(
         crate_prefix,
@@ -251,6 +255,7 @@ pub(crate) fn process(
         &mut http_args,
         &mut func_args,
         &mut operations,
+        &mut schema_extra,
         example,
     );
 
@@ -283,6 +288,7 @@ pub(crate) fn process(
         user,
         TokenStream::from_iter(result),
         operations,
+        schema_extra,
     ));
 
     func
@@ -293,12 +299,12 @@ pub(crate) fn finish(
     trait_ident: &Ident,
     trait_body_output: &mut Vec<TokenTree>,
     output_extra: &mut Vec<TokenTree>,
-    functions: Vec<(Ident, String, HttpMethod, bool, TokenStream, TokenStream)>,
+    functions: Vec<(Ident, String, HttpMethod, bool, TokenStream, TokenStream, TokenStream)>,
 ) {
     let mut routes = TokenStream::new();
     let mut routes_user = TokenStream::new();
 
-    for (ident, path, method, user, result, operations) in functions {
+    for (ident, path, method, user, result, operations, schema) in functions {
         let token = if user { &mut routes_user } else { &mut routes };
 
         let method = method.to_utoipa();
@@ -309,23 +315,27 @@ pub(crate) fn finish(
 
         token.extend(quote! {
 
-            .routes((Vec::new(), {
-                    use #crate_prefix utoipa::PartialSchema;
-                    let mut paths = #crate_prefix utoipa::openapi::path::Paths::new();
-                    paths.add_path_operation(#path, vec![#crate_prefix utoipa::openapi::HttpMethod::#method],
+            .routes(
+                {
+                    let mut schemas = std::collections::HashMap::new();
+                    #schema
+                    let mut builder = #crate_prefix utoipa::openapi::ResponsesBuilder::new();
+                    <#result as #crate_prefix FrameworkDocumentedResponse>::openapi(&mut builder, &mut schemas);
+                    (schemas.into_iter().collect(), {
+                        use #crate_prefix utoipa::PartialSchema;
+                        let mut paths = #crate_prefix utoipa::openapi::path::Paths::new();
+                        paths.add_path_operation(#path, vec![#crate_prefix utoipa::openapi::HttpMethod::#method],
 
-                        OperationBuilder::new()
-                            .responses({
-                                let mut builder = #crate_prefix utoipa::openapi::ResponsesBuilder::new();
-                                <#result as #crate_prefix FrameworkDocumentedResponse>::openapi(&mut builder);
-                                builder
-                            })
-                            .operation_id(Some(#operation_id))
-                            #operations
-                        .build()
-                    );
-                    paths
-                }, MethodRouter::new().on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), __daemon_framework_routes::#ident(self.clone()))))
+                            OperationBuilder::new()
+                                .responses(builder)
+                                .operation_id(Some(#operation_id))
+                                #operations
+                            .build()
+                        );
+                        paths
+                    }, MethodRouter::new().on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), __daemon_framework_routes::#ident(self.clone())))
+                }
+            )
 
         });
     }

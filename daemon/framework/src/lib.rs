@@ -1,8 +1,8 @@
 pub use daemon_framework_macros::define_error;
-pub use daemon_framework_macros::define_variable;
 pub use daemon_framework_macros::error;
 pub use daemon_framework_macros::service;
 use std::any::TypeId;
+use std::collections::HashMap;
 use std::mem;
 
 pub use async_trait::async_trait;
@@ -17,13 +17,14 @@ pub use sqlx;
 pub use utoipa;
 pub use utoipa_axum;
 
-use utoipa::PartialSchema;
-use utoipa::openapi::{Content, Response, ResponsesBuilder};
+use utoipa::ToSchema;
+use utoipa::openapi::{Content, RefOr, Response, ResponsesBuilder, Schema};
+use utoipa::openapi::schema::RefBuilder;
 
 pub const SUCCESS_DESCRIPTION: &str = "Success";
 
 pub trait FrameworkDocumentedResponse {
-    fn openapi(responses: &mut utoipa::openapi::ResponsesBuilder);
+    fn openapi(responses: &mut utoipa::openapi::ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>);
 }
 
 pub trait FrameworkClientImpl {
@@ -118,6 +119,7 @@ pub mod internal {
             OpenApiRouter::new()
         }
     }
+
 }
 
 pub struct WebsocketResponse(pub axum::response::Response);
@@ -131,15 +133,15 @@ impl IntoResponse for WebsocketResponse {
 impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
     for Result<WebsocketResponse, E>
 {
-    fn openapi(responses: &mut ResponsesBuilder) {
-        <Result<(), E>>::openapi(responses)
+    fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
+        <Result<(), E>>::openapi(responses, schemas)
     }
 }
 
-impl<V: PartialSchema + 'static, E: FrameworkDocumentedResponse + 'static>
+impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static>
     FrameworkDocumentedResponse for Result<V, E>
 {
-    fn openapi(responses: &mut ResponsesBuilder) {
+    fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
         let mut responses_owned = ResponsesBuilder::new();
         mem::swap(responses, &mut responses_owned);
         if TypeId::of::<V>() == TypeId::of::<()>() {
@@ -152,12 +154,55 @@ impl<V: PartialSchema + 'static, E: FrameworkDocumentedResponse + 'static>
                 "200",
                 Response::builder()
                     .description(SUCCESS_DESCRIPTION)
-                    .content("application/json", Content::new(Some(V::schema())))
+                    .content("application/json", Content::new(Some(RefBuilder::new().ref_location_from_schema_name(V::name()))))
                     .build(),
             );
+            let mut vals = Vec::new();
+            vals.push((V::name().to_string(), V::schema()));
+            V::schemas(&mut vals);
+            schemas.extend(vals);
         }
         *responses = responses_owned;
 
-        E::openapi(responses)
+        E::openapi(responses, schemas)
     }
+}
+
+#[macro_export]
+macro_rules! define_path_variable {
+    ($name:ident $description:literal) => {
+        $crate::paste::paste! {
+            pub mod [< variable_path_ $name:snake >] {
+
+                pub const DESCRIPTION: &str = $description;
+
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! define_query_variable {
+    ($name:ident $description:literal) => {
+        $crate::paste::paste! {
+            pub mod [< variable_query_ $name:snake >] {
+
+                pub const DESCRIPTION: &str = $description;
+
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! define_header_variable {
+    ($name:ident $description:literal) => {
+        $crate::paste::paste! {
+            pub mod [< variable_header_ $name:snake >] {
+
+                pub const DESCRIPTION: &str = $description;
+
+            }
+        }
+    };
 }

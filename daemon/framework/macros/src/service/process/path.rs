@@ -40,7 +40,7 @@ pub(crate) fn process(
                         #crate_prefix utoipa::openapi::path::Parameter::new(#variable_literal)
                     )
                     .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Path)
-                    .description(Some([< variable_ #arg_name:snake >]::DESCRIPTION)),
+                    .description(Some([< variable_path_ #arg_name:snake >]::DESCRIPTION)),
                 )
             });
         }

@@ -17,7 +17,7 @@ pub(crate) fn process(
                     #crate_prefix utoipa::openapi::path::Parameter::new("Authorization")
                 )
                 .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Header)
-                .description(Some(variable_auth::DESCRIPTION))
+                .description(Some(variable_header_auth::DESCRIPTION))
                 .required(#crate_prefix utoipa::openapi::Required::True),
             )
         });
@@ -27,15 +27,11 @@ pub(crate) fn process(
         let FunctionArgument::Header {
             variable_name,
             variable_type,
+            variable_type_wopt,
             required,
         } = arg
         else {
             continue;
-        };
-        let variable_type_wopt = if *required {
-            variable_type.clone()
-        } else {
-            quote! { Option<#variable_type> }
         };
         http_args.extend(quote! {
             #variable_name: #variable_type_wopt,
@@ -50,7 +46,7 @@ pub(crate) fn process(
                                 #crate_prefix utoipa::openapi::path::Parameter::new(#crate_prefix internal::header_name::<#variable_type, _>().as_str())
                             )
                             .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Query)
-                            .description(Some([< variable_ #variable_name:snake >]::DESCRIPTION))
+                            .description(Some([< variable_header_ #variable_name:snake >]::DESCRIPTION))
                             .required(#crate_prefix utoipa::openapi::Required::#required),
                         )
                     });

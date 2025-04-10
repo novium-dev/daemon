@@ -2,7 +2,6 @@ mod error;
 mod route;
 mod service;
 mod utils;
-mod variable;
 
 use crate::service::args::ServiceArgs;
 use proc_macro2::TokenStream;
@@ -33,14 +32,6 @@ pub fn error(attr: proc_macro::TokenStream) -> proc_macro::TokenStream {
 #[proc_macro]
 pub fn define_error(attr: proc_macro::TokenStream) -> proc_macro::TokenStream {
     proc_macro::TokenStream::from(crate::error::define::define_error0(
-        crate_prefix(),
-        proc_macro2::TokenStream::from(attr),
-    ))
-}
-
-#[proc_macro]
-pub fn define_variable(attr: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    proc_macro::TokenStream::from(crate::variable::define_variable0(
         crate_prefix(),
         proc_macro2::TokenStream::from(attr),
     ))

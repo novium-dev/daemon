@@ -12,6 +12,7 @@ pub(crate) fn process(
     http_args: &mut TokenStream,
     func_args: &mut Vec<TokenStream>,
     operations: &mut TokenStream,
+    schema_extra: &mut TokenStream,
     example: Option<LitStr>,
 ) {
     let fn_args_payload: Vec<_> = fn_args_identified
@@ -55,13 +56,23 @@ pub(crate) fn process(
             .request_body(Some(
                 #crate_prefix utoipa::openapi::request_body::RequestBodyBuilder::new()
                     .content("application/json", #crate_prefix utoipa::openapi::content::Content::builder()
-                        .schema(Some(< #arg_type >::schema()))
+                        .schema(Some(
+                            #crate_prefix utoipa::openapi::schema::RefBuilder::new()
+                                .ref_location_from_schema_name(< #arg_type as #crate_prefix utoipa::ToSchema >::name())
+                                .build()
+                        ))
                         #content_extra
                         .build()
                     )
                     .required(Some(#crate_prefix utoipa::openapi::Required::True))
                     .build()
             ))
+        });
+        schema_extra.extend(quote! {
+            schemas.insert(< #arg_type as #crate_prefix utoipa::ToSchema >::name().to_string(), < #arg_type as #crate_prefix utoipa::PartialSchema >::schema());
+            let mut schemas_vec = Vec::new();
+            < #arg_type as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
+            schemas.extend(schemas_vec);
         });
     } else if !fn_args_payload.is_empty() {
         let mut payload_fields = TokenStream::new();
@@ -99,13 +110,23 @@ pub(crate) fn process(
             .request_body(Some(
                 #crate_prefix utoipa::openapi::request_body::RequestBodyBuilder::new()
                     .content("application/json", #crate_prefix utoipa::openapi::content::Content::builder()
-                        .schema(Some(< __daemon_framework_routes::[< #fn_ident:camel Payload >] >::schema()))
+                        .schema(Some(
+                            #crate_prefix utoipa::openapi::schema::RefBuilder::new()
+                                .ref_location_from_schema_name(< __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name())
+                                .build()
+                        ))
                         #content_extra
                         .build()
                     )
                     .required(Some(#crate_prefix utoipa::openapi::Required::True))
                     .build()
             ))
+        });
+        schema_extra.extend(quote! {
+            schemas.insert(< __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name().to_string(), < __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::PartialSchema >::schema());
+            let mut schemas_vec = Vec::new();
+            < __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
+            schemas.extend(schemas_vec);
         });
     }
 
