@@ -11,7 +11,6 @@ mod network;
 #[cfg(feature = "database")]
 pub(crate) mod payload;
 pub(crate) mod resource;
-pub(crate) mod server;
 #[cfg(feature = "user")]
 pub(crate) mod user;
 #[cfg(feature = "user")]
@@ -39,7 +38,6 @@ pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
 pub(crate) fn config() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::new()
-        .merge(server::config())
         .merge(resource::config())
         .merge(backup::config())
         .merge(files::config())

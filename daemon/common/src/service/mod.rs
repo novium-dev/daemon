@@ -24,6 +24,10 @@ define_error!(storage {
     not_found (
         "The server storage does not exist" BAD_REQUEST
     ),
+    failure (
+        "The server storage failed" INTERNAL_SERVER_ERROR
+    ),
+    mutex_locked ("The server storage is locked (currently in use)" SERVICE_UNAVAILABLE),
 });
 
 define_error!(sql {

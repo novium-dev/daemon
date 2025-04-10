@@ -1,6 +1,8 @@
 use crate::server::FetchedServer;
+use crate::server::start::ServerStartError;
 use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
+use crate::storage::sync::{StorageError, StorageLockData, storage_read, storage_write};
 use crate::utils::server_required;
 use crate::{Daemon, sql, storage};
 use async_trait::async_trait;
@@ -13,13 +15,15 @@ use daemon_common::payload::server::{
 use daemon_common::server::PublicServerState;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::server::error::{
-    CreateServerError, DeleteServerError, ServerStatusError, UpdateServerError,
+    CreateServerError, DeleteServerError, ExecServerError, KillServerError, RestartServerError,
+    ServerStatusError, StartServerError, StopServerError, UpdateServerError, WipeServerError,
 };
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
 use daemon_common::service::server::error_server_image_missing_tag::FromServerImageMissingTag;
 use sqlx::{Connection, MySql, Transaction, query, query_scalar};
 use std::collections::HashSet;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
+use std::sync::atomic::Ordering;
 use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, error, warn};
@@ -162,10 +166,164 @@ impl ServerService for Daemon {
             }
         }
     }
+
+    async fn start_server(&self, server_id: u32) -> Result<(), StartServerError> {
+        let (server, server_data) =
+            server_required::<StartServerError>(self.conn.deref(), &self.servers, server_id)
+                .await?;
+
+        debug!("Starting Server {:?}", server);
+
+        let state = self.clone();
+        tokio::task::spawn(async move {
+            let (server_data_locked, storage) = tokio::join!(
+                timeout(Duration::from_millis(100), server_data.lock()),
+                storage_read(
+                    &state.config,
+                    state.conn.deref(),
+                    &state.storages,
+                    StorageIdentifier::Primary(server_id),
+                    true
+                )
+            );
+            if let Ok(mut server_data_locked) = server_data_locked {
+                match storage {
+                    Ok(storage) => {
+                        if let Err(err) = server
+                            .start(
+                                state.docker.clone(),
+                                server_data_locked.deref_mut(),
+                                storage,
+                                server_data.clone(),
+                                &state,
+                            )
+                            .await
+                        {
+                            warn!("Failed to start server: {:?}", err);
+                        }
+                    }
+                    Err(StorageError::Timeout(_)) => {
+                        debug!("Timeout locking storage. Ignoring start request...");
+                    }
+                    Err(err) => {
+                        warn!(
+                            "Failed to start server: {:?}",
+                            ServerStartError::Storage(err)
+                        );
+                    }
+                }
+            } else {
+                debug!("Timeout locking server data. Ignoring start request...");
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn stop_server(&self, server_id: u32) -> Result<(), StopServerError> {
+        let (server, server_data) =
+            server_required::<StopServerError>(self.conn.deref(), &self.servers, server_id).await?;
+
+        let state = self.clone();
+        tokio::task::spawn(async move {
+            let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
+            if let Ok(server_data) = server_data {
+                if let Err(err) = server.stop(&state.docker, server_data).await {
+                    warn!("Failed to stop server: {:?}", err);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn kill_server(&self, server_id: u32) -> Result<(), KillServerError> {
+        let (server, server_data) =
+            server_required::<KillServerError>(self.conn.deref(), &self.servers, server_id).await?;
+
+        let state = self.clone();
+        tokio::task::spawn(async move {
+            let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
+            if let Ok(server_data) = server_data {
+                if let Err(err) = server.kill(&state.docker, server_data).await {
+                    warn!("Failed to kill server: {:?}", err);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn restart_server(&self, server_id: u32) -> Result<(), RestartServerError> {
+        let (server, server_data) =
+            server_required::<RestartServerError>(self.conn.deref(), &self.servers, server_id)
+                .await?;
+
+        let state = self.clone();
+        tokio::task::spawn(async move {
+            let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
+            if let Ok(server_data) = server_data {
+                if let Err(err) = server.restart(&state.docker, server_data).await {
+                    warn!("Failed to restart server: {:?}", err);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn exec_server(&self, server_id: u32, cmd: Vec<String>) -> Result<(), ExecServerError> {
+        let (server, server_data) =
+            server_required::<ExecServerError>(self.conn.deref(), &self.servers, server_id).await?;
+
+        let state = self.clone();
+        tokio::task::spawn(async move {
+            let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
+            if let Ok(mut server_data) = server_data {
+                if let Err(err) = server
+                    .exec(&state.docker, cmd, server_data.deref_mut(), false)
+                    .await
+                {
+                    warn!("Failed to execute command in server: {:?}", err);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn wipe_server(&self, server_id: u32) -> Result<(), WipeServerError> {
+        let StorageLockData {
+            lock,
+            storage: entry,
+            value: storage_value,
+            ..
+        } = storage_write(
+            &self.config,
+            self.conn.deref(),
+            &self.storages,
+            StorageIdentifier::Primary(server_id),
+            true,
+        )
+        .await
+        .map_err(|err| match err {
+            StorageError::Sqlx(sql) => sql.into(),
+            StorageError::IO(err) => err.into(),
+            StorageError::Timeout(_) => WipeServerError::StorageMutexLocked,
+            StorageError::NotFound => WipeServerError::ServerNotFound,
+        })?;
+        storage::delete(&entry, StorageIdentifier::Primary(server_id))
+            .await
+            .inspect_err(|err| error!("Failed to wipe server: {:?}", err))?;
+        storage_value.0.store(0, Ordering::Relaxed);
+
+        drop(lock);
+        Ok(())
+    }
 }
 
 /// ONLY EXECUTE INSIDE A TRANSACTION
-pub(crate) async fn insert_dummy(
+async fn insert_dummy(
     conn: &mut Transaction<'_, MySql>,
     storage: String,
 ) -> Result<u32, sqlx::Error> {

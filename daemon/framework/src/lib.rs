@@ -18,13 +18,16 @@ pub use utoipa;
 pub use utoipa_axum;
 
 use utoipa::ToSchema;
-use utoipa::openapi::{Content, RefOr, Response, ResponsesBuilder, Schema};
 use utoipa::openapi::schema::RefBuilder;
+use utoipa::openapi::{Content, RefOr, Response, ResponsesBuilder, Schema};
 
 pub const SUCCESS_DESCRIPTION: &str = "Success";
 
 pub trait FrameworkDocumentedResponse {
-    fn openapi(responses: &mut utoipa::openapi::ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>);
+    fn openapi(
+        responses: &mut utoipa::openapi::ResponsesBuilder,
+        schemas: &mut HashMap<String, RefOr<Schema>>,
+    );
 }
 
 pub trait FrameworkClientImpl {
@@ -119,7 +122,6 @@ pub mod internal {
             OpenApiRouter::new()
         }
     }
-
 }
 
 pub struct WebsocketResponse(pub axum::response::Response);
@@ -138,8 +140,8 @@ impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
     }
 }
 
-impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static>
-    FrameworkDocumentedResponse for Result<V, E>
+impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
+    for Result<V, E>
 {
     fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
         let mut responses_owned = ResponsesBuilder::new();
@@ -154,7 +156,12 @@ impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static>
                 "200",
                 Response::builder()
                     .description(SUCCESS_DESCRIPTION)
-                    .content("application/json", Content::new(Some(RefBuilder::new().ref_location_from_schema_name(V::name()))))
+                    .content(
+                        "application/json",
+                        Content::new(Some(
+                            RefBuilder::new().ref_location_from_schema_name(V::name()),
+                        )),
+                    )
                     .build(),
             );
             let mut vals = Vec::new();

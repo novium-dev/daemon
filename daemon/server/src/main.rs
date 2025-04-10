@@ -40,8 +40,6 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
 
-pub use daemon_common as common;
-use daemon_common::service::server::ServerService;
 use crate::config::DaemonConfig;
 use crate::server::FetchedServer;
 use crate::server::watcher::attach;
@@ -49,6 +47,8 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read};
 use crate::terminal::TerminalSession;
 use crate::utils::ChannelWriteData;
+pub use daemon_common as common;
+use daemon_common::service::server::ServerService;
 
 mod config;
 #[cfg(feature = "database")]
@@ -400,7 +400,12 @@ async fn main0() {
             .allow_methods([axum::http::Method::GET])
             .allow_headers(tower_http::cors::AllowHeaders::any());
 
-        router = router.merge(web::user_config().with_state(state.clone()).merge(<Daemon as ServerService>::routes_user(&state)).layer(cors));
+        router = router.merge(
+            web::user_config()
+                .with_state(state.clone())
+                .merge(<Daemon as ServerService>::routes_user(&state))
+                .layer(cors),
+        );
     }
 
     #[allow(unused_variables, unused_mut)]
@@ -412,8 +417,7 @@ async fn main0() {
         router = router.merge(SwaggerUi::new("/docs").url("/docs/openapi.json", api));
     }
 
-    let mut app = router
-        .layer(TraceLayer::new_for_http());
+    let mut app = router.layer(TraceLayer::new_for_http());
 
     #[cfg(feature = "sentry")]
     {

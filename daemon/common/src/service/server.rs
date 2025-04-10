@@ -1,9 +1,9 @@
-use daemon_framework::define_query_variable;
 use super::*;
 use crate::payload::server::{
     ServerBuildPayload, ServerNetworkPayload, ServerPortEntryPayload, ServerResourcePayload,
 };
 use crate::server::PublicServerState;
+use daemon_framework::define_query_variable;
 
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),
@@ -53,4 +53,35 @@ pub trait ServerService {
         server_id: u32,
         precise: Option<bool>,
     ) -> Result<PublicServerState, _>;
+
+    #[route("/{server_id}/start", method = GET)]
+    #[error(server(not_found) sql(failure [sql:*]))]
+    #[doc = "Starts an existing server"]
+    async fn start_server(&self, server_id: u32);
+
+    #[route("/{server_id}/stop", method = GET)]
+    #[error(server(not_found) sql(failure [sql:*]))]
+    #[doc = "Stops an existing server"]
+    async fn stop_server(&self, server_id: u32);
+
+    #[route("/{server_id}/kill", method = GET)]
+    #[error(server(not_found) sql(failure [sql:*]))]
+    #[doc = "Kills an existing server"]
+    async fn kill_server(&self, server_id: u32);
+
+    #[route("/{server_id}/restart", method = GET)]
+    #[error(server(not_found) sql(failure [sql:*]))]
+    #[doc = "Restarts an existing server"]
+    async fn restart_server(&self, server_id: u32);
+
+    #[route("/{server_id}/exec", method = POST)]
+    #[error(server(not_found mutex_locked) sql(failure [sql:*]))]
+    #[example("examples/server.exec.json")]
+    #[doc = "Executes a command in an running server"]
+    async fn exec_server(&self, server_id: u32, cmd: Vec<String>);
+
+    #[route("/{server_id}/wipe", method = GET)]
+    #[error(server(not_found) storage(failure [io:*] mutex_locked) sql(failure [sql:*]))]
+    #[doc = "Deletes all files in an existing server"]
+    async fn wipe_server(&self, server_id: u32);
 }

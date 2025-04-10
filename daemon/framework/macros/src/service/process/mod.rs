@@ -84,7 +84,15 @@ pub(crate) fn process(
     errors: &mut TokenStream,
     routes: &mut TokenStream,
     mut result: Vec<TokenTree>,
-    functions: &mut Vec<(Ident, String, HttpMethod, bool, TokenStream, TokenStream, TokenStream)>,
+    functions: &mut Vec<(
+        Ident,
+        String,
+        HttpMethod,
+        bool,
+        TokenStream,
+        TokenStream,
+        TokenStream,
+    )>,
 ) -> Vec<TokenTree> {
     let mut operations = TokenStream::new();
 
@@ -299,7 +307,15 @@ pub(crate) fn finish(
     trait_ident: &Ident,
     trait_body_output: &mut Vec<TokenTree>,
     output_extra: &mut Vec<TokenTree>,
-    functions: Vec<(Ident, String, HttpMethod, bool, TokenStream, TokenStream, TokenStream)>,
+    functions: Vec<(
+        Ident,
+        String,
+        HttpMethod,
+        bool,
+        TokenStream,
+        TokenStream,
+        TokenStream,
+    )>,
 ) {
     let mut routes = TokenStream::new();
     let mut routes_user = TokenStream::new();
