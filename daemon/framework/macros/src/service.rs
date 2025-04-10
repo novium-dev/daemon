@@ -157,6 +157,8 @@ pub(crate) fn service0(
     output.extend(quote! {
 
         pub mod error {
+            use super::*;
+
             #errors
         }
 

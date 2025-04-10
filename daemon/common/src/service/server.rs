@@ -77,7 +77,7 @@ pub trait ServerService {
     #[route("/{server_id}/exec", method = POST)]
     #[error(server(not_found mutex_locked) sql(failure [sql:*]))]
     #[example("examples/server.exec.json")]
-    #[doc = "Executes a command in an running server"]
+    #[doc = "Executes a command inside an running server"]
     async fn exec_server(&self, server_id: u32, cmd: Vec<String>);
 
     #[route("/{server_id}/wipe", method = GET)]

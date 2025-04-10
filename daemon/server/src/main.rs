@@ -5,6 +5,7 @@
 use crate::sync::Mutex;
 use crate::sync::RwLock;
 use crate::sync::broadcast::Sender;
+use axum::Extension;
 use axum::extract::Request;
 use bollard::Docker;
 use bollard::models::{Ipam, IpamConfig};
@@ -32,7 +33,6 @@ use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::runtime::Handle;
 use tokio::task::JoinSet;
 use tower_http::trace::TraceLayer;
-use tower_http::validate_request::ValidateRequestHeaderLayer;
 use tracing::{error, info, warn};
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -388,8 +388,9 @@ async fn main0() {
     let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
         .merge(<Daemon as ServerService>::routes(&state))
         .merge(web::config().with_state(state.clone()))
-        .route_layer(ValidateRequestHeaderLayer::bearer(&config.token))
-        .merge(web::config_unauthorized().with_state(state.clone()));
+        .layer(axum::middleware::from_fn(service::middleware::middleware))
+        .merge(web::config_unauthorized().with_state(state.clone()))
+        .layer(Extension(state.clone()));
 
     #[cfg(feature = "user")]
     {

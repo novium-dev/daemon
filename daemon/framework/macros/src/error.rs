@@ -92,23 +92,23 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                 });
 
                 response.extend(quote! {
-                    [< #category:camel #error_ident:camel >] => ( super::[< error_ #category _ #error_ident >]::STATUSCODE, #crate_prefix axum::extract::Json(serde_json::json!({
+                    [< #category:camel #error_ident:camel >] => ( [< error_ #category _ #error_ident >]::STATUSCODE, #crate_prefix axum::extract::Json(serde_json::json!({
                         "error": {
                             "id": #error_id,
-                            "msg": super::[< error_ #category _ #error_ident >]::DESCRIPTION,
+                            "msg": [< error_ #category _ #error_ident >]::DESCRIPTION,
                         }
                     }))),
                 });
 
                 openapi.extend(quote! {
                     responses_owned = responses_owned.response(
-                        super::[< error_ #category _ #error_ident >]::STATUSCODE.as_str(),
+                        [< error_ #category _ #error_ident >]::STATUSCODE.as_str(),
                         #crate_prefix utoipa::openapi::ResponseBuilder::new()
-                            .description(super::[< error_ #category _ #error_ident >]::DESCRIPTION)
+                            .description([< error_ #category _ #error_ident >]::DESCRIPTION)
                             .content(
                                 "application/json",
                                 #crate_prefix utoipa::openapi::content::Content::new(Some(
-                                    #crate_prefix utoipa::openapi::RefOr::T(#crate_prefix internal::error_schema(#error_id, super::[< error_ #category _ #error_ident >]::DESCRIPTION))
+                                    #crate_prefix utoipa::openapi::RefOr::T(#crate_prefix internal::error_schema(#error_id, [< error_ #category _ #error_ident >]::DESCRIPTION))
                                 )),
                             )
                             .build(),
@@ -116,7 +116,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                 });
 
                 impls.extend(quote! {
-                    impl super::[< error_ #category _ #error_ident >]::[< From #category:camel #error_ident:camel >] for #ident {
+                    impl [< error_ #category _ #error_ident >]::[< From #category:camel #error_ident:camel >] for #ident {
 
                         fn from() -> Self {
                             Self::[< #category:camel #error_ident:camel >]

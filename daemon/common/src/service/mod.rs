@@ -1,6 +1,6 @@
 use crate::service::server::ServerService;
 pub(crate) use daemon_framework::{define_error, service};
-use daemon_framework::{define_header_variable, define_path_variable};
+use daemon_framework::{define_header_variable, define_path_variable, error};
 
 pub mod server;
 
@@ -38,5 +38,7 @@ define_error!(sql {
 
 define_path_variable!(server_id "The server id");
 define_header_variable!(auth "The authentication token");
+
+error!(MiddlewareError, auth(invalid));
 
 pub trait DaemonServices: ServerService {}
