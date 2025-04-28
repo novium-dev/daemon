@@ -11,15 +11,18 @@ use axum::response::IntoResponse;
 pub use axum_extra;
 pub use http;
 pub use paste;
+pub use reqwest;
+use reqwest::Url;
 pub use serde;
 pub use serde_json;
+pub use serde_urlencoded;
 pub use sqlx;
 pub use utoipa;
-pub use utoipa_axum;
-
+pub use urlencoding;
 use utoipa::ToSchema;
 use utoipa::openapi::schema::RefBuilder;
 use utoipa::openapi::{Content, RefOr, Response, ResponsesBuilder, Schema};
+pub use utoipa_axum;
 
 pub const SUCCESS_DESCRIPTION: &str = "Success";
 
@@ -32,6 +35,8 @@ pub trait FrameworkDocumentedResponse {
 
 pub trait FrameworkClientImpl {
     fn client(&self) -> &reqwest::Client;
+
+    fn base_url(&self) -> &Url;
 }
 
 #[doc(hidden)]
@@ -42,8 +47,11 @@ pub mod internal {
     use axum_extra::TypedHeader;
     use axum_extra::headers::Header;
     use http::HeaderName;
-    use serde::Serialize;
+    use serde::{Serialize, Serializer};
     use std::any::TypeId;
+    use std::fmt::{Debug, Display, Formatter};
+    use serde::ser::Impossible;
+    use thiserror::Error;
     use utoipa::PartialSchema;
     use utoipa::openapi::path::OperationBuilder;
     use utoipa::openapi::{Object, RefOr, Schema, Type};
@@ -120,6 +128,156 @@ pub mod internal {
             Self: Sized,
         {
             OpenApiRouter::new()
+        }
+    }
+
+    pub struct StringSerializer;
+
+    #[derive(Debug, Error)]
+    pub struct StringSerializerError(pub String);
+
+    impl serde::ser::Error for StringSerializerError {
+        fn custom<T: Display>(msg: T) -> Self {
+            Self(msg.to_string())
+        }
+    }
+
+    impl Display for StringSerializerError {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            <Self as Debug>::fmt(self, f)
+        }
+    }
+    
+    impl Serializer for StringSerializer {
+        type Ok = Option<String>;
+        type Error = StringSerializerError;
+        type SerializeSeq = Impossible<Self::Ok, Self::Error>;
+        type SerializeTuple = Impossible<Self::Ok, Self::Error>;
+        type SerializeTupleStruct = Impossible<Self::Ok, Self::Error>;
+        type SerializeTupleVariant = Impossible<Self::Ok, Self::Error>;
+        type SerializeMap = Impossible<Self::Ok, Self::Error>;
+        type SerializeStruct = Impossible<Self::Ok, Self::Error>;
+        type SerializeStructVariant = Impossible<Self::Ok, Self::Error>;
+
+        fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(v.to_string()))
+        }
+
+        fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(String::from_utf8_lossy(v).to_string()))
+        }
+
+        fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
+            Ok(None)
+        }
+
+        fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
+        where
+            T: ?Sized + Serialize
+        {
+            value.serialize(self)
+        }
+
+        fn serialize_unit(self) -> Result<Self::Ok, Self::Error> {
+            Ok(None)
+        }
+
+        fn serialize_unit_struct(self, _name: &'static str) -> Result<Self::Ok, Self::Error> {
+            unimplemented!()
+        }
+
+        fn serialize_unit_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str) -> Result<Self::Ok, Self::Error> {
+            unimplemented!()
+        }
+
+        fn serialize_newtype_struct<T>(self, _name: &'static str, _value: &T) -> Result<Self::Ok, Self::Error>
+        where
+            T: ?Sized + Serialize
+        {
+            unimplemented!()
+        }
+
+        fn serialize_newtype_variant<T>(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _value: &T) -> Result<Self::Ok, Self::Error>
+        where
+            T: ?Sized + Serialize
+        {
+            unimplemented!()
+        }
+
+        fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq, Self::Error> {
+            unimplemented!()
+        }
+
+        fn serialize_tuple(self, _len: usize) -> Result<Self::SerializeTuple, Self::Error> {
+            unimplemented!()
+        }
+
+        fn serialize_tuple_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
+            unimplemented!()
+        }
+
+        fn serialize_tuple_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeTupleVariant, Self::Error> {
+            unimplemented!()
+        }
+
+        fn serialize_map(self, _len: Option<usize>) -> Result<Self::SerializeMap, Self::Error> {
+            unimplemented!()
+        }
+
+        fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct, Self::Error> {
+            unimplemented!()
+        }
+
+        fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant, Self::Error> {
+            unimplemented!()
         }
     }
 }
@@ -211,5 +369,25 @@ macro_rules! define_header_variable {
 
             }
         }
+    };
+}
+
+#[macro_export]
+macro_rules! framework_router {
+    ($base:ident $var:ident { $($tr:ident),* }) => {
+        $crate::utoipa_axum::router::OpenApiRouter::new()
+            $(
+                .merge(<$base as $tr>::routes(&$var))
+            )*
+    };
+}
+
+#[macro_export]
+macro_rules! framework_router_user {
+    ($base:ident $var:ident { $($tr:ident),* }) => {
+        $crate::utoipa_axum::router::OpenApiRouter::new()
+            $(
+                .merge(<$base as $tr>::routes_user(&$var))
+            )*
     };
 }

@@ -3,6 +3,7 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn process(
     crate_prefix: &TokenStream,
     fn_ident: &Ident,
@@ -11,6 +12,10 @@ pub(crate) fn process(
     http_args: &mut TokenStream,
     func_args: &mut Vec<TokenStream>,
     operations: &mut TokenStream,
+    _client_impl_body: &mut TokenStream,
+    client_def_body: &mut TokenStream,
+    fn_def_args: &mut TokenStream,
+    fn_def_call: &mut TokenStream,
 ) {
     let fn_args_query: Vec<_> = fn_args_identified
         .iter()
@@ -30,6 +35,11 @@ pub(crate) fn process(
         })
         .collect();
     if !fn_args_query.is_empty() {
+        let mut client_def_body_pre = TokenStream::new();
+        let mut client_def_body_post = quote! {
+            url.query_pairs_mut()
+        };
+
         let mut query_fields = TokenStream::new();
         let mut query_names = TokenStream::new();
 
@@ -54,7 +64,23 @@ pub(crate) fn process(
                     .required(#crate_prefix utoipa::openapi::Required::#required),
                 )
             });
+
+            fn_def_args.extend(quote! { #arg_name: #arg_type, });
+            fn_def_call.extend(quote! { #arg_name, });
+
+            client_def_body_pre.extend(quote! {
+                let #arg_name: Option<String> = #arg_name.serialize(#crate_prefix internal::StringSerializer).unwrap();
+            });
+            client_def_body_post.extend(quote! {
+                .extend_pairs(#arg_name.map(|val| (#variable_literal, val)).iter())
+            });
+
         }
+
+        client_def_body_post.extend(quote! { ; });
+
+        client_def_body.extend(client_def_body_pre);
+        client_def_body.extend(client_def_body_post);
 
         routes.extend(quote! {
             #crate_prefix paste::paste! {

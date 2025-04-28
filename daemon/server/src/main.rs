@@ -48,7 +48,9 @@ use crate::storage::sync::{StorageLockData, storage_read};
 use crate::terminal::TerminalSession;
 use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
+use daemon_common::service::DaemonServices;
 use daemon_common::service::server::ServerService;
+use daemon_common::{framework_router, framework_router_user};
 
 mod config;
 #[cfg(feature = "database")]
@@ -386,7 +388,7 @@ async fn main0() {
 
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .merge(<Daemon as ServerService>::routes(&state))
+        .merge(framework_router!(Daemon state { ServerService }))
         .merge(web::config().with_state(state.clone()))
         .layer(axum::middleware::from_fn(service::middleware::middleware))
         .merge(web::config_unauthorized().with_state(state.clone()))
@@ -404,7 +406,7 @@ async fn main0() {
         router = router.merge(
             web::user_config()
                 .with_state(state.clone())
-                .merge(<Daemon as ServerService>::routes_user(&state))
+                .merge(framework_router_user!(Daemon state { ServerService }))
                 .layer(cors),
         );
     }
@@ -630,6 +632,8 @@ pub(crate) struct Daemon {
     pub(crate) conn: Arc<Pool<MySql>>,
     pub(crate) client: Arc<Client>,
 }
+
+impl DaemonServices for Daemon {}
 
 #[derive(Clone)]
 pub(crate) struct StorageData {

@@ -9,7 +9,7 @@ use crate::route::RouteArgs;
 use crate::service::args::ServiceArgs;
 use crate::service::parse::FunctionArgument;
 use crate::utils::{TokenStreamArray, type_option};
-use proc_macro2::{Group, Ident, Punct, Span, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::VecDeque;
 use std::str::FromStr;
@@ -68,6 +68,7 @@ impl HttpMethod {
 }
 
 #[allow(clippy::too_many_arguments)]
+#[allow(clippy::type_complexity)]
 pub(crate) fn process(
     crate_prefix: &TokenStream,
     args: &ServiceArgs,
@@ -89,6 +90,8 @@ pub(crate) fn process(
         String,
         HttpMethod,
         bool,
+        TokenStream,
+        TokenStream,
         TokenStream,
         TokenStream,
         TokenStream,
@@ -228,12 +231,22 @@ pub(crate) fn process(
 
     let mut schema_extra = TokenStream::new();
 
+    let mut client_impl_body = quote! { todo!() };
+    let mut client_def_body = TokenStream::new();
+    let mut fn_def_args = quote! { &self, };
+    let mut fn_def_call = TokenStream::new();
+
     path::process(
         crate_prefix,
+        &path,
         &fn_args_identified,
         &mut http_args,
         &mut func_args,
         &mut operations,
+        &mut client_impl_body,
+        &mut client_def_body,
+        &mut fn_def_args,
+        &mut fn_def_call,
     );
 
     query::process(
@@ -244,6 +257,10 @@ pub(crate) fn process(
         &mut http_args,
         &mut func_args,
         &mut operations,
+        &mut client_impl_body,
+        &mut client_def_body,
+        &mut fn_def_args,
+        &mut fn_def_call,
     );
 
     header::process(
@@ -267,8 +284,6 @@ pub(crate) fn process(
         example,
     );
 
-    // TODO: auto client
-
     route::process(
         crate_prefix,
         method,
@@ -282,26 +297,54 @@ pub(crate) fn process(
 
     let mut func = Vec::new();
     func.extend(pre_fn_result);
-    func.push(TokenTree::Ident(fn_keyword));
+    func.push(TokenTree::Ident(fn_keyword.clone()));
     func.push(TokenTree::Ident(fn_ident.clone()));
-    func.push(TokenTree::Group(fn_args));
-    func.append(&mut post_fn);
+    func.push(TokenTree::Group(fn_args.clone()));
+    func.append(&mut post_fn.clone());
     func.append(&mut result.clone());
     func.push(TokenTree::Punct(end_punct));
+
+    let post_fn = TokenStream::from_iter(post_fn);
+    let result = TokenStream::from_iter(result);
+    let fn_def_args = Group::new(Delimiter::Parenthesis, fn_def_args);
+    let fn_args = TokenTree::Group(fn_args);
+
+    if method == HttpMethod::WS {
+        client_impl_body =
+            quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
+    }
+
+    let fn_def_call = Group::new(Delimiter::Parenthesis, fn_def_call);
+    let client_impl = quote! { async #fn_keyword #fn_ident #fn_args #post_fn #result {
+        let url = self.[< #fn_ident _url >] #fn_def_call;
+        #client_impl_body
+    } };
+
+    let client_def = quote! {
+
+        #fn_keyword [< #fn_ident _url >] #fn_def_args -> #crate_prefix reqwest::Url {
+            #client_def_body
+            url
+        }
+
+    };
 
     functions.push((
         fn_ident,
         path,
         method,
         user,
-        TokenStream::from_iter(result),
+        result,
         operations,
         schema_extra,
+        client_impl,
+        client_def,
     ));
 
     func
 }
 
+#[allow(clippy::type_complexity)]
 pub(crate) fn finish(
     crate_prefix: &TokenStream,
     trait_ident: &Ident,
@@ -315,13 +358,21 @@ pub(crate) fn finish(
         TokenStream,
         TokenStream,
         TokenStream,
+        TokenStream,
+        TokenStream,
     )>,
 ) {
     let mut routes = TokenStream::new();
     let mut routes_user = TokenStream::new();
 
-    for (ident, path, method, user, result, operations, schema) in functions {
+    let mut client_impl = TokenStream::new();
+    let mut client_definition = TokenStream::new();
+
+    for (ident, path, method, user, result, operations, schema, client, client_def) in functions {
         let token = if user { &mut routes_user } else { &mut routes };
+
+        client_impl.extend(client);
+        client_definition.extend(client_def);
 
         let method = method.to_utoipa();
 
@@ -388,12 +439,15 @@ pub(crate) fn finish(
 
         #crate_prefix paste::paste! {
 
-            pub trait [< #trait_ident ClientImpl >]: #crate_prefix FrameworkClientImpl {}
+            pub trait [< #trait_ident ClientImpl >]: #crate_prefix FrameworkClientImpl {
+                #client_definition
+            }
 
-            /* TODO: Client #[#crate_prefix async_trait]
-            impl<T: [< #trait_ident ClientImpl >]> #trait_ident for T {
-
-            }*/
+            #[#crate_prefix async_trait]
+            #[allow(unused_variables)] // TODO: Remove when implementation is done
+            impl<T: [< #trait_ident ClientImpl >] + Send + Sync> #trait_ident for T {
+                #client_impl
+            }
 
         }
 

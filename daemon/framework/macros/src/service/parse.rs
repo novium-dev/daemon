@@ -1,13 +1,30 @@
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Group, Ident, TokenStream};
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug)]
 pub(crate) enum ParseExpectation {
     FnKeyword,
-    FunctionIdentifier,
-    ArgumentsTuple,
-    FunctionOrResult,
-    Arrow,
-    Result,
+    FunctionIdentifier {
+        fn_keyword: Ident,
+    },
+    ArgumentsTuple {
+        fn_keyword: Ident,
+        fn_ident: Ident,
+    },
+    FunctionOrResult {
+        fn_keyword: Ident,
+        fn_ident: Ident,
+        fn_args: Group,
+    },
+    Arrow {
+        fn_keyword: Ident,
+        fn_ident: Ident,
+        fn_args: Group,
+    },
+    Result {
+        fn_keyword: Ident,
+        fn_ident: Ident,
+        fn_args: Group,
+    },
 }
 
 #[derive(Clone)]

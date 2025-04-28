@@ -53,34 +53,44 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
             Either::Left((error_ident, statuscode, msg)) => {
                 let error_id = LitStr::new(&error_ident.to_string(), Span::call_site());
 
-                content.extend(quote! {
-                    #error_ident,
-                });
+                if error_ident.to_string().eq("Communication") {
+                    content.extend(quote! {
+                        #error_ident (#crate_prefix reqwest::Error),
+                    });
 
-                response.extend(quote! {
-                    #error_ident => (#crate_prefix http::StatusCode::#statuscode,#crate_prefix axum::extract::Json(serde_json::json!({
-                        "error": {
-                            "id": #error_id,
-                            "msg": #msg,
-                        }
-                    }))),
-                });
+                    response.extend(quote! {
+                        #error_ident(_err) => panic!("You tried to use the communication error entry as response"),
+                    });
+                } else {
+                    content.extend(quote! {
+                        #error_ident,
+                    });
 
-                openapi.extend(quote! {
-                    responses_owned = responses_owned.response(
-                        #crate_prefix http::StatusCode::#statuscode.as_str(),
-                        #crate_prefix utoipa::openapi::ResponseBuilder::new()
-                            .description(#msg)
-                            .content(
-                                "application/json",
-                                #crate_prefix utoipa::openapi::content::Content::new(Some(
-                                    #crate_prefix utoipa::openapi::RefOr::T(#crate_prefix internal::error_schema(#error_id, #msg))
-                                )),
-                            )
-                            .build(),
-                    );
+                    response.extend(quote! {
+                        #error_ident => (#crate_prefix http::StatusCode::#statuscode,#crate_prefix axum::extract::Json(serde_json::json!({
+                            "error": {
+                                "id": #error_id,
+                                "msg": #msg,
+                            }
+                        }))),
+                    });
 
-                });
+                    openapi.extend(quote! {
+                        responses_owned = responses_owned.response(
+                            #crate_prefix http::StatusCode::#statuscode.as_str(),
+                            #crate_prefix utoipa::openapi::ResponseBuilder::new()
+                                .description(#msg)
+                                .content(
+                                    "application/json",
+                                    #crate_prefix utoipa::openapi::content::Content::new(Some(
+                                        #crate_prefix utoipa::openapi::RefOr::T(#crate_prefix internal::error_schema(#error_id, #msg))
+                                    )),
+                                )
+                                .build(),
+                        );
+
+                    });
+                }
                 quote! { [< #error_ident >] }
             }
             Either::Right((category, error_ident)) => {
@@ -244,7 +254,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
     quote! {
         #crate_prefix paste::paste! {
-            #[derive(Debug, Copy, Clone, Hash, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize)]
+            #[derive(Debug)]
             pub enum #ident {
                 #content
             }

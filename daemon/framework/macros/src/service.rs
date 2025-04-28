@@ -53,9 +53,6 @@ pub(crate) fn service0(
     let mut trait_body_output = Vec::new();
 
     let mut expect_fn = ParseExpectation::FnKeyword;
-    let mut fn_keyword = None;
-    let mut fn_ident = None;
-    let mut fn_args = None;
     let mut result = Vec::new();
     let mut pre_fn = Vec::new();
     let mut post_fn = Vec::new();
@@ -73,44 +70,58 @@ pub(crate) fn service0(
             (TokenTree::Ident(ident), ParseExpectation::FnKeyword)
                 if ident.to_string().eq("fn") =>
             {
-                expect_fn = ParseExpectation::FunctionIdentifier;
-                fn_keyword = Some(ident);
+                expect_fn = ParseExpectation::FunctionIdentifier { fn_keyword: ident };
             }
             (item, ParseExpectation::FnKeyword) => {
+                expect_fn = ParseExpectation::FnKeyword;
                 pre_fn.push(item);
             }
-            (TokenTree::Ident(ident), ParseExpectation::FunctionIdentifier) => {
-                fn_ident = Some(ident);
-                expect_fn = ParseExpectation::ArgumentsTuple;
+            (TokenTree::Ident(ident), ParseExpectation::FunctionIdentifier { fn_keyword }) => {
+                expect_fn = ParseExpectation::ArgumentsTuple {
+                    fn_keyword,
+                    fn_ident: ident,
+                };
             }
-            (_, ParseExpectation::FunctionIdentifier) => {
+            (_, ParseExpectation::FunctionIdentifier { .. }) => {
                 panic!("Expected function identifier after fn keyword")
             }
-            (TokenTree::Group(group), ParseExpectation::ArgumentsTuple)
+            (TokenTree::Group(group), ParseExpectation::ArgumentsTuple { fn_keyword, fn_ident })
                 if group.delimiter() == Delimiter::Parenthesis =>
             {
-                fn_args = Some(group.clone());
-                expect_fn = ParseExpectation::FunctionOrResult;
+                expect_fn = ParseExpectation::FunctionOrResult {
+                    fn_keyword,
+                    fn_ident,
+                    fn_args: group,
+                };
             }
-            (item, ParseExpectation::ArgumentsTuple) => {
+            (item, ParseExpectation::ArgumentsTuple { fn_ident, fn_keyword }) => {
+                expect_fn = ParseExpectation::ArgumentsTuple { fn_ident, fn_keyword };
                 post_fn.push(item);
             } // Ignore type parameter if any
-            (TokenTree::Punct(punct), ParseExpectation::FunctionOrResult)
+            (TokenTree::Punct(punct), ParseExpectation::FunctionOrResult { fn_keyword, fn_ident, fn_args })
                 if punct.as_char() == '-' =>
             {
-                expect_fn = ParseExpectation::Arrow;
+                expect_fn = ParseExpectation::Arrow {
+                    fn_keyword,
+                    fn_ident,
+                    fn_args,
+                };
                 post_fn.push(TokenTree::Punct(punct.clone()));
             }
-            (TokenTree::Punct(punct), ParseExpectation::Arrow) if punct.as_char() == '>' => {
-                expect_fn = ParseExpectation::Result;
+            (TokenTree::Punct(punct), ParseExpectation::Arrow { fn_keyword, fn_ident, fn_args }) if punct.as_char() == '>' => {
+                expect_fn = ParseExpectation::Result {
+                    fn_keyword,
+                    fn_ident,
+                    fn_args,
+                };
                 post_fn.push(TokenTree::Punct(punct.clone()));
             }
-            (_, ParseExpectation::Arrow) => {
+            (_, ParseExpectation::Arrow { .. }) => {
                 panic!("Expected > after -, expecting the function result after that.")
             }
             (
                 TokenTree::Punct(punct),
-                ParseExpectation::FunctionOrResult | ParseExpectation::Result,
+                ParseExpectation::FunctionOrResult { fn_keyword, fn_ident, fn_args } | ParseExpectation::Result { fn_keyword, fn_ident, fn_args },
             ) if punct.as_char() == ';' => {
                 expect_fn = ParseExpectation::FnKeyword; // for next function
 
@@ -118,20 +129,21 @@ pub(crate) fn service0(
                     &crate_prefix,
                     &args,
                     &trait_ident,
-                    fn_keyword.take().unwrap(),
-                    fn_ident.take().unwrap(),
+                    fn_keyword,
+                    fn_ident,
                     punct.clone(),
                     pre_fn.drain(..).collect(),
                     take(&mut post_fn),
-                    fn_args.take().unwrap(),
+                    fn_args,
                     &mut errors,
                     &mut routes,
                     take(&mut result),
                     &mut functions,
                 ));
             }
-            (_, ParseExpectation::FunctionOrResult) => panic!("Expected semicolon after function"),
-            (tree, ParseExpectation::Result) => {
+            (_, ParseExpectation::FunctionOrResult { .. } ) => panic!("Expected semicolon after function"),
+            (tree, ParseExpectation::Result { fn_keyword, fn_ident, fn_args }) => {
+                expect_fn = ParseExpectation::Result { fn_keyword, fn_ident, fn_args };
                 result.push(tree);
             }
         }

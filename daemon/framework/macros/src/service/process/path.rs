@@ -1,14 +1,20 @@
 use crate::service::parse::FunctionArgument;
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn process(
     crate_prefix: &TokenStream,
+    path: &str,
     fn_args_identified: &[FunctionArgument],
     http_args: &mut TokenStream,
     func_args: &mut Vec<TokenStream>,
     operations: &mut TokenStream,
+    _client_impl_body: &mut TokenStream,
+    client_def_body: &mut TokenStream,
+    fn_def_args: &mut TokenStream,
+    fn_def_call: &mut TokenStream,
 ) {
     let fn_args_path: Vec<_> = fn_args_identified
         .iter()
@@ -25,6 +31,9 @@ pub(crate) fn process(
             (variable_name, variable_type)
         })
         .collect();
+
+    let mut urlencode = TokenStream::new();
+
     if !fn_args_path.is_empty() {
         let mut path_names = TokenStream::new();
         let mut path_types = TokenStream::new();
@@ -43,6 +52,14 @@ pub(crate) fn process(
                     .description(Some([< variable_path_ #arg_name:snake >]::DESCRIPTION)),
                 )
             });
+
+            fn_def_args.extend(quote! { #arg_name: #arg_type, });
+            fn_def_call.extend(quote! { #arg_name, });
+
+            urlencode.extend(quote! {
+                let #arg_name: String = #arg_name.serialize(#crate_prefix internal::StringSerializer).unwrap().unwrap_or_default();
+                let #arg_name = #crate_prefix urlencoding::encode(& #arg_name);
+            });
         }
 
         http_args.extend(quote! {
@@ -50,4 +67,12 @@ pub(crate) fn process(
         });
         func_args.push(quote! { #crate_prefix axum::extract::Path<(#path_types)> });
     }
+
+    let path = LitStr::new(path, Span::call_site());
+    client_def_body.extend(quote! {
+        use #crate_prefix serde::Serialize;
+        #urlencode
+        let url: String = format!(#path);
+        let mut url = <Self as #crate_prefix FrameworkClientImpl>::base_url(self).join(&url).expect("Expected url");
+    });
 }
