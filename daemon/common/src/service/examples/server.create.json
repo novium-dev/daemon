@@ -1,42 +1,42 @@
 {
-            "storage": "local",
-            "resource": {
-                "cpu": 2.5,
-                "ram": 2048,
-                "swap": null,
-                "disk": null
-            },
-            "build": {
-                "image": {
-                    "tag": "minecraft_paper-1.21.1-131-jre21",
-                    "default_tag": null,
-                    "dockerfile": "<see https://docs.docker.com/get-started/docker-concepts/building-images/writing-a-dockerfile/ for writing a Dockerfile>",
-                    "args": {
-                        "JAVA": 21,
-                        "MINECRAFT_VERSION": "1.21.1",
-                        "PAPER_BUILD": "131"
-                    },
-                    "parents": [],
-                    "base": null,
-                },
-                "backup_exclude": ["cache", "versions"],
-                "files_write": {
-                    "eula.txt": {
-                        "filetype": "properties",
-                        "content": {
-                            "eula": "true"
-                        }
-                    }
-                },
-                "cap_add": [],
-                "cap_drop": ["MKNOD"]
-            },
-            "ports": [
-                {
-                    "internal_port": 25565,
-                    "external_port": 44955,
-                    "external_ip": "0.0.0.0",
-                    "protocol": "tcp"
-                }
-            ]
+  "storage": "local",
+  "resource": {
+    "cpu": 2.5,
+    "ram": 2048,
+    "swap": null,
+    "disk": null
+  },
+  "build": {
+    "image": {
+      "tag": "minecraft_paper-1.21.1-131-jre21",
+      "default_tag": null,
+      "dockerfile": "<see https://docs.docker.com/get-started/docker-concepts/building-images/writing-a-dockerfile/ for writing a Dockerfile>",
+      "args": {
+        "JAVA": 21,
+        "MINECRAFT_VERSION": "1.21.1",
+        "PAPER_BUILD": "131"
+      },
+      "parents": [],
+      "base": null
+    },
+    "backup_exclude": ["cache", "versions"],
+    "files_write": {
+      "eula.txt": {
+        "filetype": "properties",
+        "content": {
+          "eula": "true"
         }
+      }
+    },
+    "cap_add": [],
+    "cap_drop": ["MKNOD"]
+  },
+  "ports": [
+    {
+      "internal_port": 25565,
+      "external_port": 44955,
+      "external_ip": "0.0.0.0",
+      "protocol": "tcp"
+    }
+  ]
+}

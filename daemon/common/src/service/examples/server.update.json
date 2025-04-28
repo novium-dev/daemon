@@ -1,8 +1,8 @@
 {
-            "resource": {
-                "cpu": null,
-                "ram": 2048,
-                "swap": 0,
-                "disk": null
-            }
-        }
+  "resource": {
+    "cpu": null,
+    "ram": 2048,
+    "swap": 0,
+    "disk": null
+  }
+}

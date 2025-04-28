@@ -1,5 +1,5 @@
 use crate::service::parse::FunctionArgument;
-use proc_macro2::{Ident, TokenStream};
+use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
 
@@ -30,10 +30,10 @@ pub(crate) fn process(
             (variable_name, variable_type)
         })
         .collect();
-    let content_extra = if let Some(_example) = example {
-        // TODO
+    let content_extra = if let Some(example) = example {
+        let err = LitStr::new(&format!("Failed to parse example {:?}", example.value()), Span::call_site());
         quote! {
-            .example(Some(serde_json::json!({})))
+            .example(Some(#crate_prefix serde_json::from_str::<'static, #crate_prefix serde_json::Value>(include_str!(#example)).expect(#err)))
         }
     } else {
         TokenStream::new()
