@@ -52,7 +52,7 @@ impl HttpMethod {
     pub(crate) fn to_utoipa(self) -> Ident {
         Ident::new(
             match self {
-                HttpMethod::GET => "Get",
+                HttpMethod::GET | HttpMethod::WS => "Get",
                 HttpMethod::POST => "Post",
                 HttpMethod::PUT => "Put",
                 HttpMethod::DELETE => "Delete",
@@ -60,11 +60,27 @@ impl HttpMethod {
                 HttpMethod::HEAD => "Head",
                 HttpMethod::PATCH => "Patch",
                 HttpMethod::TRACE => "Trace",
-                HttpMethod::WS => "Get",
             },
             Span::call_site(),
         )
     }
+
+    pub(crate) fn to_http(self) -> Ident {
+        Ident::new(
+            match self {
+                HttpMethod::GET | HttpMethod::WS => "GET",
+                HttpMethod::POST => "POST",
+                HttpMethod::PUT => "PUT",
+                HttpMethod::DELETE => "DELETE",
+                HttpMethod::OPTIONS => "OPTIONS",
+                HttpMethod::HEAD => "HEAD",
+                HttpMethod::PATCH => "PATCH",
+                HttpMethod::TRACE => "TRACE",
+            },
+            Span::call_site(),
+        )
+    }
+
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -231,7 +247,7 @@ pub(crate) fn process(
 
     let mut schema_extra = TokenStream::new();
 
-    let mut client_impl_body = quote! { todo!() };
+    let mut client_impl_body = TokenStream::new();
     let mut client_def_body = TokenStream::new();
     let mut fn_def_args = quote! { &self, };
     let mut fn_def_call = TokenStream::new();
@@ -243,7 +259,6 @@ pub(crate) fn process(
         &mut http_args,
         &mut func_args,
         &mut operations,
-        &mut client_impl_body,
         &mut client_def_body,
         &mut fn_def_args,
         &mut fn_def_call,
@@ -257,7 +272,6 @@ pub(crate) fn process(
         &mut http_args,
         &mut func_args,
         &mut operations,
-        &mut client_impl_body,
         &mut client_def_body,
         &mut fn_def_args,
         &mut fn_def_call,
@@ -270,6 +284,7 @@ pub(crate) fn process(
         &mut func_args,
         &mut operations,
         user,
+        &mut client_impl_body,
     );
 
     payload::process(
@@ -282,6 +297,7 @@ pub(crate) fn process(
         &mut operations,
         &mut schema_extra,
         example,
+        &mut client_impl_body,
     );
 
     route::process(
@@ -315,9 +331,24 @@ pub(crate) fn process(
     }
 
     let fn_def_call = Group::new(Delimiter::Parenthesis, fn_def_call);
+    let method_http = method.to_http();
     let client_impl = quote! { async #fn_keyword #fn_ident #fn_args #post_fn #result {
         let url = self.[< #fn_ident _url >] #fn_def_call;
+        let mut request = self.client().request(#crate_prefix http::Method::#method_http, url)
+            .header(#crate_prefix http::header::ACCEPT, "application/json");
         #client_impl_body
+        let response = request
+            .send()
+            .await?;
+        match response.error_for_status_ref() {
+            Ok(_) => {
+                Ok(#crate_prefix internal::FrameworkJsonResponse::from_reqwest(response)
+                    .await?.0)
+            },
+            Err(_err) => {
+                Err(#crate_prefix internal::error_by_response(response).await)
+            }
+        }
     } };
 
     let client_def = quote! {

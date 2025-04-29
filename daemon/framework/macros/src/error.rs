@@ -32,6 +32,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
     let mut content = TokenStream::new();
     let mut response = TokenStream::new();
+    let mut from = TokenStream::new();
     let mut openapi = TokenStream::new();
     let mut impls = TokenStream::new();
 
@@ -64,6 +65,10 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                 } else {
                     content.extend(quote! {
                         #error_ident,
+                    });
+
+                    from.extend(quote! {
+                        #error_id => #error_ident,
                     });
 
                     response.extend(quote! {
@@ -259,6 +264,19 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                 #content
             }
 
+            impl std::str::FromStr for #ident {
+                type Err = ();
+
+                fn from_str(s: &str) -> Result<Self, ()> {
+                    use #ident::*;
+                    match s {
+                        #from
+                        _ => Err(()),
+                    }
+                }
+
+            }
+
             impl #crate_prefix axum::response::IntoResponse for #ident {
 
                 fn into_response(self) -> #crate_prefix http::response::Response<#crate_prefix axum::body::Body> {
@@ -277,6 +295,14 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                     std::mem::swap(responses, &mut responses_owned);
                     #openapi
                     *responses = responses_owned;
+                }
+
+            }
+
+            impl From<#crate_prefix reqwest::Error> for #ident {
+
+                fn from(err: #crate_prefix reqwest::Error) -> Self {
+                    Self::Communication(err)
                 }
 
             }

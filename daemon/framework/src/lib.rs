@@ -4,7 +4,7 @@ pub use daemon_framework_macros::service;
 use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem;
-
+use std::mem::MaybeUninit;
 pub use async_trait::async_trait;
 pub use axum;
 use axum::response::IntoResponse;
@@ -45,11 +45,12 @@ pub mod internal {
     use axum::response::{IntoResponse, Response};
     use axum::routing::MethodRouter;
     use axum_extra::TypedHeader;
-    use axum_extra::headers::Header;
-    use http::HeaderName;
-    use serde::{Serialize, Serializer};
-    use std::any::TypeId;
+    use axum_extra::headers::{Header, HeaderMapExt};
+    use http::{HeaderMap, HeaderName};
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::fmt::{Debug, Display, Formatter};
+    use std::str::FromStr;
+    use serde::de::{DeserializeOwned, Error};
     use serde::ser::Impossible;
     use thiserror::Error;
     use utoipa::PartialSchema;
@@ -57,6 +58,7 @@ pub mod internal {
     use utoipa::openapi::{Object, RefOr, Schema, Type};
     use utoipa_axum::PathItemExt;
     use utoipa_axum::router::OpenApiRouter;
+    use crate::MaybeUnit;
 
     pub fn error_schema(id: &str, msg: &str) -> Schema {
         let mut obj = Object::with_type(Type::Object);
@@ -79,25 +81,49 @@ pub mod internal {
         Schema::Object(obj)
     }
 
-    trait TypedHeaderExt<T: Header> {}
+    trait TypedHeaderExt<T: Header> {
 
-    impl<T: Header> TypedHeaderExt<T> for TypedHeader<T> {}
+        fn inner(self) -> T;
+
+    }
+
+    impl<T: Header> TypedHeaderExt<T> for TypedHeader<T> {
+        fn inner(self) -> T {
+            self.0
+        }
+    }
 
     #[allow(private_bounds)]
     pub fn header_name<T: TypedHeaderExt<E>, E: Header>() -> &'static HeaderName {
         E::name()
     }
 
+    #[allow(private_bounds)]
+    pub fn header_insert<T: TypedHeaderExt<E>, E: Header>(value: T, map: &mut HeaderMap) {
+        map.typed_insert(value.inner())
+    }
+
     pub struct FrameworkJsonResponse<T>(pub T);
 
-    impl<T: Serialize + 'static> IntoResponse for FrameworkJsonResponse<T> {
+    impl<T: Serialize + MaybeUnit + 'static> IntoResponse for FrameworkJsonResponse<T> {
         fn into_response(self) -> Response {
-            if TypeId::of::<T>() == TypeId::of::<()>() {
+            if T::unit().is_some() {
                 ().into_response()
             } else {
                 Json(self.0).into_response()
             }
         }
+    }
+
+    impl<T: DeserializeOwned + MaybeUnit + 'static> FrameworkJsonResponse<T> {
+        pub async fn from_reqwest(response: reqwest::Response) -> Result<Self, reqwest::Error> {
+            if let Some(unit) = T::unit() {
+                Ok(FrameworkJsonResponse(unit))
+            } else {
+                response.json().await.map(FrameworkJsonResponse)
+            }
+        }
+
     }
 
     pub trait FrameworkServerImpl {
@@ -147,7 +173,7 @@ pub mod internal {
             <Self as Debug>::fmt(self, f)
         }
     }
-    
+
     impl Serializer for StringSerializer {
         type Ok = Option<String>;
         type Error = StringSerializerError;
@@ -278,6 +304,57 @@ pub mod internal {
 
         fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant, Self::Error> {
             unimplemented!()
+        }
+    }
+
+    pub async fn error_by_response<T: FromStr<Err=()> + From<reqwest::Error>>(response: reqwest::Response) -> T {
+        struct FromStrData<T: FromStr<Err=()>>(T);
+        impl<'de, T: FromStr<Err=()>> Deserialize<'de> for FromStrData<T> {
+            fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+            where
+                D: Deserializer<'de>
+            {
+                let id = String::deserialize(deserializer)?;
+                T::from_str(&id).map(FromStrData).map_err(|_| D::Error::custom("Error not found!"))
+            }
+        }
+
+        #[derive(Deserialize)]
+        struct ErrorContent<T> {
+            id: T,
+        }
+        #[derive(Deserialize)]
+        struct ErrorStruct<T> {
+            error: ErrorContent<T>,
+        }
+
+        match response.json()
+            .await {
+            Ok(ErrorStruct { error: ErrorContent { id: FromStrData(err) }}) => {
+                err
+            },
+            Err(err) => T::from(err),
+        }
+
+    }
+
+}
+
+pub trait MaybeUnit {
+
+    fn unit() -> Option<Self> where Self: Sized;
+
+}
+
+impl<T: 'static> MaybeUnit for T {
+    fn unit() -> Option<Self>
+    where
+        Self: Sized
+    {
+        if TypeId::of::<()>() == TypeId::of::<T>() {
+            Some(unsafe { MaybeUninit::zeroed().assume_init() }) // Replace with auto traits when stable, see https://github.com/rust-lang/rust/issues/13231    
+        } else {
+            None
         }
     }
 }

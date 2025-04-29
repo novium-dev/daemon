@@ -14,6 +14,7 @@ pub(crate) fn process(
     operations: &mut TokenStream,
     schema_extra: &mut TokenStream,
     example: Option<LitStr>,
+    client_impl_body: &mut TokenStream,
 ) {
     let fn_args_payload: Vec<_> = fn_args_identified
         .iter()
@@ -74,13 +75,17 @@ pub(crate) fn process(
             < #arg_type as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
             schemas.extend(schemas_vec);
         });
+
+        client_impl_body.extend(quote! {
+            request = request.json(&#arg_name);
+        });
     } else if !fn_args_payload.is_empty() {
         let mut payload_fields = TokenStream::new();
         let mut payload_names = TokenStream::new();
 
         for (arg_name, arg_type) in &fn_args_payload {
             payload_fields.extend(quote! {
-                #arg_name: #arg_type,
+                pub(crate) #arg_name: #arg_type,
             });
             payload_names.extend(quote! {
                 #arg_name,
@@ -128,7 +133,9 @@ pub(crate) fn process(
             < __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
             schemas.extend(schemas_vec);
         });
-    }
 
-    if !fn_args_payload.is_empty() {}
+        client_impl_body.extend(quote! {
+            request = request.json(&__daemon_framework_routes::[< #fn_ident:camel Payload >] { #payload_names });
+        });
+    }
 }

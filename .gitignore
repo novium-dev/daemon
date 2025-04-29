@@ -26,6 +26,5 @@ frontend/.svelte-kit/
 build/*
 gen/*
 
-daemon/server/wrapper-precompile.h
-daemon/server/wrapper-precompile.h.pch
+daemon/server/wrapper-precompile.h*
 daemon/server/.macro_eval.c

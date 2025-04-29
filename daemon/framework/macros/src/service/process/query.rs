@@ -12,7 +12,6 @@ pub(crate) fn process(
     http_args: &mut TokenStream,
     func_args: &mut Vec<TokenStream>,
     operations: &mut TokenStream,
-    _client_impl_body: &mut TokenStream,
     client_def_body: &mut TokenStream,
     fn_def_args: &mut TokenStream,
     fn_def_call: &mut TokenStream,
