@@ -14,6 +14,8 @@ pub enum WebsocketType {
 }
 
 impl DaemonSDK<WithUserKey> {
+    
+    #[deprecated]
     fn generate_token(
         &self,
         name: &str,
@@ -96,50 +98,5 @@ impl DaemonSDK<WithUserKey> {
             .append_pair("path", &path);
         url
     }
-
-    pub fn generate_backup_download_url(
-        &self,
-        server: u32,
-        timestamp: u64,
-        storage: String,
-        backup: i64,
-    ) -> Url {
-        let verify = self.generate_token(
-            "backup",
-            server,
-            timestamp,
-            Some(format!("-{}-{}", storage, backup)),
-        );
-        let mut url = self
-            .base_url
-            .join(&format!("user/backup/{}/{}/{}", server, storage, backup))
-            .unwrap();
-        url.query_pairs_mut()
-            .append_pair("timestamp", &timestamp.to_string())
-            .append_pair("verify", &verify);
-        url
-    }
-
-    pub fn generate_realtime_backup_download_url(
-        &self,
-        server: u32,
-        timestamp: u64,
-        compression: String,
-    ) -> Url {
-        let verify = self.generate_token(
-            "backup_rt",
-            server,
-            timestamp,
-            Some(format!("-{}", compression)),
-        );
-        let mut url = self
-            .base_url
-            .join(&format!("user/backup/{}/rt", server))
-            .unwrap();
-        url.query_pairs_mut()
-            .append_pair("timestamp", &timestamp.to_string())
-            .append_pair("verify", &verify)
-            .append_pair("compression", &compression);
-        url
-    }
+    
 }

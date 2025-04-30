@@ -1,6 +1,8 @@
 #![warn(clippy::string_to_string)]
 #![forbid(unsafe_code)]
 
+pub use daemon_framework::FrameworkClientImpl;
+
 pub mod payload;
 
 pub mod files;

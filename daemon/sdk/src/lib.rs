@@ -3,7 +3,6 @@
 
 pub use daemon_common as common;
 use std::collections::HashMap;
-pub mod server;
 
 pub mod backup;
 pub mod builder;
@@ -20,6 +19,10 @@ use http::{Method, StatusCode};
 use reqwest::{Body, Client, Response, Url};
 use serde::Serialize;
 use serde_json::Value;
+use daemon_common::FrameworkClientImpl;
+use daemon_common::service::backup::BackupServiceClientImpl;
+use daemon_common::service::DaemonServicesClientImpl;
+use daemon_common::service::server::ServerServiceClientImpl;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}
@@ -36,6 +39,7 @@ pub struct DaemonSDK<T: DaemonSDKExtra> {
     extra: T,
 }
 
+#[deprecated]
 pub(crate) enum RequestBody<T = ()>
 where
     T: Serialize,
@@ -48,6 +52,8 @@ where
 }
 
 impl<T: DaemonSDKExtra> DaemonSDK<T> {
+    
+    #[deprecated]
     pub(crate) async fn wrapper<J: Serialize>(
         &self,
         method: Method,
@@ -93,6 +99,7 @@ impl<T: DaemonSDKExtra> DaemonSDK<T> {
     }
 }
 
+#[deprecated]
 #[derive(Debug)]
 pub enum DaemonSDKError {
     Reqwest(reqwest::Error),
@@ -100,3 +107,19 @@ pub enum DaemonSDKError {
     StatusCode(StatusCode),
     Limit(usize),
 }
+
+impl<T: DaemonSDKExtra> ServerServiceClientImpl for DaemonSDK<T> {}
+
+impl<T: DaemonSDKExtra> FrameworkClientImpl for DaemonSDK<T> {
+    fn client(&self) -> &Client {
+        &self.client
+    }
+
+    fn base_url(&self) -> &Url {
+        &self.base_url
+    }
+}
+
+impl<T: DaemonSDKExtra> BackupServiceClientImpl for DaemonSDK<T> {}
+
+impl<T: DaemonSDKExtra> DaemonServicesClientImpl for DaemonSDK<T> {}

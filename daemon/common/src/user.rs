@@ -30,11 +30,11 @@ macro_rules! signature_impl {
 
         paste::paste! {
 
-            pub fn [< new_ $id >](key: SigningKey, timestamp: i64, node_identifier: &str, server_id: u32, $( $arg )*) -> Self {
+            pub fn [< new_ $id >](key: &SigningKey, timestamp: i64, node_identifier: &str, server_id: u32, $( $arg )*) -> Self {
                 Self::new(key, timestamp, node_identifier, server_id, $name, $extra)
             }
 
-            pub fn [< verify_ $id >]<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(&self, key: VerifyingKey, timestamp: i64, node_identifier: &str, server_id: u32, $( $arg )*) -> Result<(), E> {
+            pub fn [< verify_ $id >]<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(&self, key: &VerifyingKey, timestamp: i64, node_identifier: &str, server_id: u32, $( $arg )*) -> Result<(), E> {
                 self.verify(key, timestamp, node_identifier, server_id, $name, $extra)
             }
 
@@ -47,7 +47,7 @@ impl UserSignature {
     const THRESHOLD: i128 = 60_000;
 
     fn new(
-        key: SigningKey,
+        key: &SigningKey,
         timestamp: i64,
         node_identifier: &str,
         server_id: u32,
@@ -71,7 +71,7 @@ impl UserSignature {
 
     fn verify<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(
         &self,
-        key: VerifyingKey,
+        key: &VerifyingKey,
         timestamp: i64,
         node_identifier: &str,
         server_id: u32,

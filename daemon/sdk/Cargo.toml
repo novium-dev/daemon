@@ -24,6 +24,8 @@ bytes.workspace = true
 futures-util.workspace = true
 chrono-tz.workspace = true
 cron.workspace = true
+chrono.workspace = true
+
 
 [dependencies.reqwest]
 workspace = true

@@ -1,5 +1,5 @@
-use crate::service::backup::BackupService;
-use crate::service::server::ServerService;
+use crate::service::backup::{BackupService, BackupServiceClientImpl};
+use crate::service::server::{ServerService, ServerServiceClientImpl};
 pub(crate) use daemon_framework::{define_error, service};
 use daemon_framework::{define_header_variable, define_path_variable, error};
 
@@ -44,3 +44,4 @@ define_header_variable!(auth "The authentication token");
 error!(MiddlewareError, auth(invalid));
 
 pub trait DaemonServices: ServerService + BackupService {}
+pub trait DaemonServicesClientImpl: ServerServiceClientImpl + BackupServiceClientImpl {}

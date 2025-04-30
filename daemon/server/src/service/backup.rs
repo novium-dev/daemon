@@ -54,7 +54,7 @@ impl BackupService for Daemon {
         verify: UserSignature,
     ) -> Result<FileResponse, DownloadBackupUserError> {
         verify.verify_backup_download::<DownloadBackupUserError>(
-            self.config.user_key,
+            &self.config.user_key,
             timestamp,
             &self.config.identifier,
             server_id,
@@ -82,7 +82,7 @@ impl BackupService for Daemon {
         compression: String,
     ) -> Result<FileResponse, DownloadRealtimeBackupUserError> {
         verify.verify_backup_realtime_download::<DownloadRealtimeBackupUserError>(
-            self.config.user_key,
+            &self.config.user_key,
             timestamp,
             &self.config.identifier,
             server_id,

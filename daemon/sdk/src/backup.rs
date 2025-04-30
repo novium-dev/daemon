@@ -1,142 +1,20 @@
-use crate::DaemonSDKError;
+use chrono::Utc;
+use daemon_common::user::UserSignature;
 use crate::*;
-use daemon_common::payload::backup::{BackupResponseEntry, BackupUpdatePayload};
-use http::Method;
+use crate::builder::user::WithUserKey;
 
-impl<T: DaemonSDKExtra> DaemonSDK<T> {
-    pub async fn server_list_backups(
-        &self,
-        server: u32,
-    ) -> Result<Vec<BackupResponseEntry>, DaemonSDKError> {
-        let response = self
-            .wrapper(
-                Method::GET,
-                format!("backup/{}", server),
-                RequestBody::<()>::None,
-                None::<&()>,
-            )
-            .await?;
-        if !response.status().is_success() {
-            return Err(DaemonSDKError::StatusCode(response.status()));
-        }
-        response
-            .json::<Vec<BackupResponseEntry>>()
-            .await
-            .map_err(DaemonSDKError::Reqwest)
+impl DaemonSDK<WithUserKey> {
+
+    pub fn download_backup_user_url_signed(&self, server_id: u32, backup_storage: String, backup_id: i64) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature = UserSignature::new_backup_download(&self.extra.0, timestamp, &self.identifier, server_id, &backup_storage, backup_id);
+        self.download_backup_user_url(server_id, backup_storage, backup_id, timestamp, signature)
+    }
+    
+    pub fn download_realtime_backup_user_url_signed(&self, server_id: u32, compression: String) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature = UserSignature::new_backup_realtime_download(&self.extra.0, timestamp, &self.identifier, server_id, &compression);
+        self.download_realtime_backup_user_url(server_id, timestamp, signature, compression)
     }
 
-    pub async fn server_create_backup_order(&self, server: u32) -> Result<(), DaemonSDKError> {
-        let response = self
-            .wrapper(
-                Method::PUT,
-                format!("backup/{}", server),
-                RequestBody::<()>::None,
-                None::<&()>,
-            )
-            .await?;
-        if !response.status().is_success() {
-            return Err(DaemonSDKError::StatusCode(response.status()));
-        }
-        response
-            .bytes()
-            .await
-            .map(|_| ())
-            .map_err(DaemonSDKError::Reqwest)
-    }
-
-    pub async fn server_create_backup(
-        &self,
-        server: u32,
-        storage: String,
-    ) -> Result<(), DaemonSDKError> {
-        let response = self
-            .wrapper(
-                Method::PUT,
-                format!("backup/{}/{}", server, storage),
-                RequestBody::<()>::None,
-                None::<&()>,
-            )
-            .await?;
-        if !response.status().is_success() {
-            return Err(DaemonSDKError::StatusCode(response.status()));
-        }
-        response
-            .bytes()
-            .await
-            .map(|_| ())
-            .map_err(DaemonSDKError::Reqwest)
-    }
-
-    pub async fn server_delete_backup(
-        &self,
-        server: u32,
-        storage: String,
-        backup: i64,
-    ) -> Result<(), DaemonSDKError> {
-        let response = self
-            .wrapper(
-                Method::DELETE,
-                format!("backup/{}/{}/{}", server, storage, backup),
-                RequestBody::<()>::None,
-                None::<&()>,
-            )
-            .await?;
-        if !response.status().is_success() {
-            return Err(DaemonSDKError::StatusCode(response.status()));
-        }
-        response
-            .bytes()
-            .await
-            .map(|_| ())
-            .map_err(DaemonSDKError::Reqwest)
-    }
-
-    pub async fn server_restore_backup(
-        &self,
-        server: u32,
-        storage: String,
-        backup: i64,
-    ) -> Result<(), DaemonSDKError> {
-        let response = self
-            .wrapper(
-                Method::GET,
-                format!("backup/{}/{}/{}/restore", server, storage, backup),
-                RequestBody::<()>::None,
-                None::<&()>,
-            )
-            .await?;
-        if !response.status().is_success() {
-            return Err(DaemonSDKError::StatusCode(response.status()));
-        }
-        response
-            .bytes()
-            .await
-            .map(|_| ())
-            .map_err(DaemonSDKError::Reqwest)
-    }
-
-    pub async fn server_set_backup_name(
-        &self,
-        server: u32,
-        storage: String,
-        backup: i64,
-        name: Option<String>,
-    ) -> Result<(), DaemonSDKError> {
-        let response = self
-            .wrapper(
-                Method::PATCH,
-                format!("backup/{}/{}/{}", server, storage, backup),
-                RequestBody::Json(BackupUpdatePayload { name }),
-                None::<&()>,
-            )
-            .await?;
-        if !response.status().is_success() {
-            return Err(DaemonSDKError::StatusCode(response.status()));
-        }
-        response
-            .bytes()
-            .await
-            .map(|_| ())
-            .map_err(DaemonSDKError::Reqwest)
-    }
 }
