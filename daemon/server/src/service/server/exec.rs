@@ -1,15 +1,14 @@
+use crate::ServerData;
+use crate::server::FetchedServer;
+use crate::service::server::terminal::WEBSOCKET_RESIZE_MAGIC;
 use crate::sync::Mutex;
-use async_std::prelude::Stream;
+use crate::utils::{ChannelAdapter, ChannelError, ChannelInterceptor, ChannelWriteData};
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
-use axum::extract::{Path, Query, State, WebSocketUpgrade};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
 use bollard::Docker;
 use bollard::container::LogOutput;
 use bollard::errors::Error;
+use futures::Stream;
 use futures_util::StreamExt;
-use serde::Deserialize;
-use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
@@ -17,77 +16,22 @@ use tokio::io::{AsyncWrite, AsyncWriteExt};
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 
-use crate::server::FetchedServer;
-use crate::utils::{ChannelAdapter, ChannelError, ChannelInterceptor, ChannelWriteData, server};
-use crate::web::sql_error_to_http;
-use crate::web::user::authenticate_user;
-use crate::{Daemon, ServerData};
-
-#[derive(Debug, Deserialize)]
-pub(crate) struct ExecUserQuery {
-    pub(crate) verify: String,
-    pub(crate) timestamp: String,
-    pub(crate) command: String,
-}
-
-#[utoipa::path(get,
-    tag = "server",
-    path = "/user/server/{server_id}/exec",
-    description = "A websocket for server execution (User Request)",
-    responses(
-        (status = 200, description = "Server does exist"),
-        (status = 404, description = "Server does not exist"),
-        (status = 503, description = "Server can't be accessed right now"),
-        (status = 500, description = "An unexpected error occurred"),
-        (status = 401, description = "The proof of the permission for the user request is invalid")
-    ),
-    params(
-        ("server_id" = u32, description = "The id of the server"),
-        ("timestamp" = u64, Query, description = "The time the user request got permitted as Utc timestamp (milliseconds)"),
-        ("verify" = String, Query, description = "The signature to proof that the user request was permitted")
-   )
-)]
-pub(crate) async fn websocket(
-    State(state): State<Daemon>,
-    Path((server_id,)): Path<(u32,)>,
-    query: Query<ExecUserQuery>,
-    ws: WebSocketUpgrade,
-) -> Result<impl IntoResponse, StatusCode> {
-    authenticate_user(
-        "exec",
-        server_id,
-        &state,
-        &query.timestamp,
-        &query.verify,
-        Some(format!("-{}", query.command)),
-    )
-    .await?;
-    let command: Vec<String> =
-        serde_json::from_str(&query.command).map_err(|_err| StatusCode::BAD_REQUEST)?;
-
-    let Some((server, server_data)) = server(state.conn.deref(), &state.servers, server_id)
-        .await
-        .map_err(sql_error_to_http)?
-    else {
-        return Err(StatusCode::NOT_FOUND);
-    };
-
-    Ok(ws.on_upgrade(move |socket| {
-        exec_websocket_handle(server, server_data, state.docker.clone(), command, socket)
-    }))
-}
-
-pub(crate) async fn exec_websocket_handle(
+pub(super) async fn exec_websocket_handle(
     server: FetchedServer,
     server_data_arc: Arc<Mutex<ServerData>>,
     docker: Arc<Docker>,
     command: Vec<String>,
     socket: WebSocket,
+    cols: u32,
+    rows: u32,
 ) {
     let mut server_data = server_data_arc.lock().await;
     if let Ok(opt) = server.exec(&docker, command, &mut server_data, true).await {
         let (id, output, input) = opt.unwrap();
         drop(server_data);
+
+        let _ = FetchedServer::update_exec_tty_size(id.clone(), &docker, cols, rows).await;
+
         let docker2 = docker.clone();
         tokio::task::spawn(new_exec_session(
             ChannelInterceptor::new(socket, move |_socket, mut message| {
@@ -97,9 +41,7 @@ pub(crate) async fn exec_websocket_handle(
                 Box::pin(async move {
                     if let Some(Ok(Message::Text(data))) = &mut message {
                         let data_str = data.to_string();
-                        if let Some(data2) = data_str
-                            .strip_prefix(crate::web::websocket::terminal::WEBSOCKET_RESIZE_MAGIC)
-                        {
+                        if let Some(data2) = data_str.strip_prefix(WEBSOCKET_RESIZE_MAGIC) {
                             *data = Utf8Bytes::default();
                             if let Some((new_cols, new_rows)) = data2.split_once(':') {
                                 let new_cols = new_cols.parse();

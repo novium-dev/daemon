@@ -1,6 +1,13 @@
+mod exec;
+mod stats;
+mod terminal;
+
 use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
 use crate::server::stop::ServerStopError;
+use crate::service::server::exec::exec_websocket_handle;
+use crate::service::server::stats::stats_websocket_handle;
+use crate::service::server::terminal::terminal_websocket_handle;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{
     StorageError, StorageLockData, storage_read_timeout, storage_write_timeout,
@@ -8,6 +15,7 @@ use crate::storage::sync::{
 use crate::utils::server_required;
 use crate::{Daemon, sql, storage};
 use async_trait::async_trait;
+use axum::extract::WebSocketUpgrade;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use daemon_common::payload::server::{
@@ -17,15 +25,19 @@ use daemon_common::payload::server::{
 use daemon_common::server::PublicServerState;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::server::error::{
-    CreateServerError, DeleteServerError, ExecServerError, KillServerError, RestartServerError,
-    ServerStatusError, StartServerError, StopServerError, UpdateServerError, WipeServerError,
+    CreateServerError, DeleteServerError, ExecServerError, ExecServerInteractiveError,
+    KillServerError, RestartServerError, ServerStatsError, ServerStatusError, ServerTerminalError,
+    StartServerError, StopServerError, UpdateServerError, WipeServerError,
 };
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
 use daemon_common::service::server::error_server_image_missing_tag::FromServerImageMissingTag;
+use daemon_common::user::UserSignature;
+use daemon_common::{JsonVec, WebsocketResponse};
 use sqlx::{Connection, MySql, Transaction, query, query_scalar};
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
-use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, error, warn};
@@ -41,7 +53,7 @@ impl ServerService for Daemon {
         network: ServerNetworkPayload,
     ) -> Result<u32, CreateServerError> {
         let Some(_) = self.config.storage.get(&storage) else {
-            return Err(CreateServerError::StorageNotFound);
+            return Err(CreateServerError::StorageLocationNotFound);
         };
 
         let mut conn = self.conn.acquire().await?;
@@ -313,6 +325,95 @@ impl ServerService for Daemon {
 
         drop(lock);
         Ok(())
+    }
+
+    async fn server_terminal(
+        &self,
+        ws: WebSocketUpgrade,
+        server_id: u32,
+        cols: u32,
+        rows: u32,
+        write: bool,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<WebsocketResponse, ServerTerminalError> {
+        verify.verify_terminal::<ServerTerminalError>(
+            &self.config.user_key,
+            timestamp,
+            &self.config.identifier,
+            server_id,
+            write,
+        )?;
+
+        let (_, server_data) =
+            server_required::<ServerTerminalError>(self.conn.deref(), &self.servers, server_id)
+                .await?;
+        let docker = self.docker.clone();
+        Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
+            terminal_websocket_handle(
+                server_id,
+                docker,
+                server_data,
+                socket,
+                Arc::new(AtomicU32::new(cols)),
+                Arc::new(AtomicU32::new(rows)),
+                write,
+            )
+        })))
+    }
+
+    async fn server_stats(
+        &self,
+        ws: WebSocketUpgrade,
+        server_id: u32,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<WebsocketResponse, ServerStatsError> {
+        verify.verify_stats::<ServerStatsError>(
+            &self.config.user_key,
+            timestamp,
+            &self.config.identifier,
+            server_id,
+        )?;
+
+        let (_, server_data) =
+            server_required::<ServerStatsError>(self.conn.deref(), &self.servers, server_id)
+                .await?;
+        let conn = self.conn.clone();
+        Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
+            stats_websocket_handle(server_id, conn, server_data, socket)
+        })))
+    }
+
+    async fn exec_server_interactive(
+        &self,
+        ws: WebSocketUpgrade,
+        server_id: u32,
+        cols: u32,
+        rows: u32,
+        command: JsonVec<String>,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<WebsocketResponse, ExecServerInteractiveError> {
+        verify.verify_exec::<ExecServerInteractiveError>(
+            &self.config.user_key,
+            timestamp,
+            &self.config.identifier,
+            server_id,
+            &command,
+        )?;
+
+        let (server, server_data) = server_required::<ExecServerInteractiveError>(
+            self.conn.deref(),
+            &self.servers,
+            server_id,
+        )
+        .await?;
+
+        let docker = self.docker.clone();
+        Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
+            exec_websocket_handle(server, server_data, docker, command.0, socket, cols, rows)
+        })))
     }
 }
 

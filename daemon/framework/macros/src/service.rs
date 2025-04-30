@@ -16,7 +16,10 @@ pub(crate) fn service0(
 ) -> TokenStream {
     let mut output = Vec::new();
 
-    output.extend(quote! { #[#crate_prefix async_trait] });
+    output.extend(quote! {
+        #[allow(clippy::too_many_arguments)]
+        #[#crate_prefix async_trait]
+    });
 
     let mut input: VecDeque<_> = input
         .into_iter()

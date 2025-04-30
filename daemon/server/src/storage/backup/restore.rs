@@ -15,9 +15,10 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use tar::Archive;
 use tokio::fs::File;
 use tracing::{debug, error};
+use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 
 pub(crate) async fn restore_backup<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromBackupStorageLocationNotFound,
 >(
     state: &Daemon,
     id: StorageIdentifier,
@@ -37,7 +38,7 @@ pub(crate) async fn restore_backup<
         .config
         .backup
         .get(backup_storage)
-        .ok_or_else(<E as FromStorageNotFound>::from)
+        .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
     restore_backup0::<E>(

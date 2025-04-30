@@ -14,7 +14,6 @@ pub enum WebsocketType {
 }
 
 impl DaemonSDK<WithUserKey> {
-    
     #[deprecated]
     fn generate_token(
         &self,
@@ -41,51 +40,7 @@ impl DaemonSDK<WithUserKey> {
         )
     }
 
-    #[cfg(feature = "user")]
-    pub fn generate_websocket_url(
-        &self,
-        r#type: WebsocketType,
-        server: u32,
-        timestamp: u64,
-        write: Option<bool>,
-        rows: Option<u16>,
-        cols: Option<u16>,
-    ) -> Url {
-        let verify = self.generate_token(
-            match r#type {
-                WebsocketType::TERMINAL => "terminal",
-                WebsocketType::STATS => "stats",
-            },
-            server,
-            timestamp,
-            match r#type {
-                WebsocketType::TERMINAL => Some(format!("-{}", write.unwrap())),
-                WebsocketType::STATS => None,
-            },
-        );
-        let mut url = self
-            .base_url
-            .join(&format!(
-                "user/server/{}/{}",
-                server,
-                match r#type {
-                    WebsocketType::TERMINAL => "terminal",
-                    WebsocketType::STATS => "stats",
-                }
-            ))
-            .unwrap();
-        url.query_pairs_mut()
-            .append_pair("timestamp", &timestamp.to_string())
-            .append_pair("verify", &verify);
-        if let WebsocketType::TERMINAL = r#type {
-            url.query_pairs_mut()
-                .append_pair("write", &write.unwrap().to_string())
-                .append_pair("cols", &cols.unwrap().to_string())
-                .append_pair("rows", &rows.unwrap().to_string());
-        }
-        url
-    }
-
+    #[deprecated]
     pub fn generate_file_download_url(&self, server: u32, timestamp: u64, path: String) -> Url {
         let verify = self.generate_token("file", server, timestamp, Some(format!("-{}", path)));
         let mut url = self
@@ -98,5 +53,4 @@ impl DaemonSDK<WithUserKey> {
             .append_pair("path", &path);
         url
     }
-    
 }

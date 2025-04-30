@@ -15,6 +15,7 @@ use std::io::Write;
 use std::ops::Deref;
 use std::path::PathBuf;
 use tracing::debug;
+use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 
 pub(crate) async fn create_backup_order<
     E: From<io::Error>
@@ -78,7 +79,8 @@ pub(crate) async fn create_backup<
         + From<sqlx::Error>
         + FromStorageNotFound
         + FromStorageMutexLocked
-        + FromBackupStorageIncompatible,
+        + FromBackupStorageIncompatible
+        + FromBackupStorageLocationNotFound,
 >(
     state: &Daemon,
     id: StorageIdentifier,
@@ -96,7 +98,7 @@ pub(crate) async fn create_backup<
         .config
         .backup
         .get(backup_storage)
-        .ok_or_else(<E as FromStorageNotFound>::from)
+        .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
     if !compatible(&storage, backup) {

@@ -2,6 +2,7 @@
 #![forbid(unsafe_code)]
 
 pub use daemon_framework::FrameworkClientImpl;
+pub use daemon_framework::JsonVec;
 
 pub mod payload;
 

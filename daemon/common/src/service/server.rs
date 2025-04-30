@@ -1,21 +1,29 @@
+use chrono::Utc;
+use url::Url;
 use super::*;
 use crate::payload::server::{
     ServerBuildPayload, ServerNetworkPayload, ServerPortEntryPayload, ServerResourcePayload,
 };
 use crate::server::PublicServerState;
-use daemon_framework::define_query_variable;
+use crate::user::*;
+use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable};
 
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),
     image_missing_tag ("Server image does not have a tag" BAD_REQUEST),
 });
 
+define_query_variable!(write "If write access to the terminal should be granted");
+define_query_variable!(cols "The initial value of columns in the terminal");
+define_query_variable!(rows "The initial value of rows in the terminal");
+define_query_variable!(command "The command to be executed encoded as json string array");
+
 define_query_variable!(precise "If stopping or restarting should be determined. Default: true. If false, the server mutex does not have to be locked.");
 
 #[service(path = "/server", tag = "server")]
 pub trait ServerService {
     #[route("", method = PUT)]
-    #[error(server(image_different image_missing_tag) storage(not_found) sql(failure [sql:*]))]
+    #[error(server(image_different image_missing_tag) storage(location_not_found) sql(failure [sql:*]))]
     #[example("examples/server.create.json")]
     #[doc = "Creates a new server"]
     async fn create_server(
@@ -81,7 +89,106 @@ pub trait ServerService {
     async fn exec_server(&self, server_id: u32, cmd: Vec<String>);
 
     #[route("/{server_id}/wipe", method = GET)]
-    #[error(storage(not_found) storage(failure [io:*] mutex_locked) sql(failure [sql:*]))]
+    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
     #[doc = "Deletes all files in an existing server"]
     async fn wipe_server(&self, server_id: u32);
+
+    #[route(!"/user/server/{server_id}/terminal", method = WS, query = [ timestamp, verify, cols, rows, write ], user)]
+    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[doc = "A websocket for interaction with the terminal"]
+    async fn server_terminal(
+        &self,
+        server_id: u32,
+        cols: u32,
+        rows: u32,
+        write: bool,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<WebsocketResponse, _>;
+
+    #[route(!"/user/server/{server_id}/stats", method = WS, query = [ timestamp, verify ], user)]
+    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[doc = "A websocket for server stats"]
+    async fn server_stats(
+        &self,
+        server_id: u32,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<WebsocketResponse, _>;
+
+    #[route(!"/user/server/{server_id}/exec", method = WS, query = [ timestamp, verify, cols, rows, command ], user)]
+    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[doc = "A websocket for server execution"]
+    async fn exec_server_interactive(
+        &self,
+        server_id: u32,
+        cols: u32,
+        rows: u32,
+        command: JsonVec<String>,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<WebsocketResponse, _>;
+}
+
+
+pub trait ServiceServiceUserKeyExtension {
+
+    fn server_terminal_url_signed(
+        &self,
+        server_id: u32,
+        cols: u32,
+        rows: u32,
+        write: bool,
+    ) -> Url;
+
+    fn server_stats_url_signed(
+        &self,
+        server_id: u32,
+    ) -> Url;
+
+    fn exec_server_interactive_url_signed(
+        &self,
+        server_id: u32,
+        cols: u32,
+        rows: u32,
+        command: JsonVec<String>,
+    ) -> Url;
+
+}
+
+impl<T: ServerServiceClientImpl + UserKeyProvider> ServiceServiceUserKeyExtension for T {
+    fn server_terminal_url_signed(&self, server_id: u32, cols: u32, rows: u32, write: bool) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature = UserSignature::new_terminal(
+            self.key(),
+            timestamp,
+            self.node_id(),
+            server_id,
+            write,
+        );
+        self.server_terminal_url(server_id, cols, rows, write, timestamp, signature)
+    }
+
+    fn server_stats_url_signed(&self, server_id: u32) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature = UserSignature::new_stats(
+            self.key(),
+            timestamp,
+            self.node_id(),
+            server_id,
+        );
+        self.server_stats_url(server_id, timestamp, signature)
+    }
+
+    fn exec_server_interactive_url_signed(&self, server_id: u32, cols: u32, rows: u32, command: JsonVec<String>) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature = UserSignature::new_exec(
+            self.key(),
+            timestamp,
+            self.node_id(),
+            server_id,
+            &command,
+        );
+        self.exec_server_interactive_url(server_id, cols, rows, command, timestamp, signature)
+    }
 }

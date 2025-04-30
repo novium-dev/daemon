@@ -24,7 +24,10 @@ define_error!(docker {
 
 define_error!(storage {
     not_found (
-        "The server storage does not exist" BAD_REQUEST
+        "The storage does not exist" NOT_FOUND
+    ),
+    location_not_found (
+        "The storage location does not exist" BAD_REQUEST
     ),
     failure (
         "The server storage failed" INTERNAL_SERVER_ERROR

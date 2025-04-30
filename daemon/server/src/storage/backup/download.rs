@@ -23,9 +23,10 @@ use tar::Builder;
 use tokio::fs::File;
 use tokio_util::io::{ReaderStream, SyncIoBridge};
 use tracing::{debug, error};
+use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 
 pub(crate) async fn backup_to_stream<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromBackupStorageLocationNotFound,
 >(
     state: &Daemon,
     id: StorageIdentifier,
@@ -41,7 +42,7 @@ pub(crate) async fn backup_to_stream<
         .config
         .backup
         .get(backup_storage)
-        .ok_or_else(<E as FromStorageNotFound>::from)
+        .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
     let body = backup_to_stream0::<E>(id, backup_id, backup, backup_exclude).await?;

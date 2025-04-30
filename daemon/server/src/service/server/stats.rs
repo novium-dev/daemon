@@ -1,71 +1,17 @@
-use std::sync::Arc;
-use std::time::Duration;
-
-use crate::sync::Mutex;
-use axum::extract::ws::WebSocket;
-use axum::extract::{Path, Query, State, WebSocketUpgrade};
-use axum::http::StatusCode;
-use axum::response::IntoResponse;
-use sqlx::{MySql, Pool};
-use tokio::sync::broadcast::Sender;
-use tokio::sync::broadcast::error::RecvError;
-use tokio::time::Instant;
-use tracing::{debug, error, warn};
-
+use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
+use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
-use crate::web::user::{GenericUserQuery, authenticate_user};
-use crate::{Daemon, ServerData};
+use axum::extract::ws::WebSocket;
+use sqlx::{MySql, Pool};
+use std::sync::Arc;
+use std::time::{Duration, Instant};
+use tokio::sync::broadcast::Sender;
+use tokio::sync::broadcast::error::RecvError;
+use tracing::{debug, error, warn};
 
-#[utoipa::path(get,
-    tag = "server",
-    path = "/user/server/{server_id}/stats",
-    description = "A websocket for server stats (User Request)",
-    responses(
-        (status = 200, description = "Server does exist"),
-        (status = 404, description = "Server does not exist"),
-        (status = 503, description = "Server can't be accessed right now"),
-        (status = 500, description = "An unexpected error occurred"),
-        (status = 401, description = "The proof of the permission for the user request is invalid")
-    ),
-    params(
-        ("server_id" = u32, description = "The id of the server"),
-        ("timestamp" = u64, Query, description = "The time the user request got permitted as Utc timestamp (milliseconds)"),
-        ("verify" = String, Query, description = "The signature to proof that the user request was permitted")
-   )
-)]
-pub(crate) async fn websocket(
-    State(state): State<Daemon>,
-    Path((server_id,)): Path<(u32,)>,
-    query: Query<GenericUserQuery>,
-    ws: WebSocketUpgrade,
-) -> Result<impl IntoResponse, StatusCode> {
-    authenticate_user(
-        "stats",
-        server_id,
-        &state,
-        &query.timestamp,
-        &query.verify,
-        None,
-    )
-    .await?;
-
-    let mut servers = state.servers.lock().await;
-    let server = match servers.get(&server_id) {
-        None => {
-            servers.insert(server_id, Arc::new(Mutex::new(ServerData::default())));
-            servers.get(&server_id).unwrap()
-        }
-        Some(server) => server,
-    };
-    let server = server.clone();
-    drop(servers);
-    let conn = state.conn;
-    Ok(ws.on_upgrade(move |socket| stats_websocket_handle(server_id, conn, server, socket)))
-}
-
-pub(crate) async fn stats_websocket_handle(
+pub(super) async fn stats_websocket_handle(
     id: u32,
     conn: Arc<Pool<MySql>>,
     server_data_arc: Arc<Mutex<ServerData>>,

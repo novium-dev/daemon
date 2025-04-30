@@ -73,6 +73,7 @@ mod sync;
 mod terminal;
 mod utils;
 mod web;
+mod websocket;
 
 #[derive(OpenApi)]
 #[openapi()]

@@ -3,8 +3,8 @@
 
 pub use daemon_common as common;
 use std::collections::HashMap;
+use ed25519_dalek::SigningKey;
 
-pub mod backup;
 pub mod builder;
 #[cfg(feature = "database")]
 pub mod database;
@@ -15,14 +15,16 @@ pub mod schedule;
 #[cfg(feature = "user")]
 pub mod user;
 
+use daemon_common::FrameworkClientImpl;
+use daemon_common::service::DaemonServicesClientImpl;
+use daemon_common::service::backup::BackupServiceClientImpl;
+use daemon_common::service::server::ServerServiceClientImpl;
 use http::{Method, StatusCode};
 use reqwest::{Body, Client, Response, Url};
 use serde::Serialize;
 use serde_json::Value;
-use daemon_common::FrameworkClientImpl;
-use daemon_common::service::backup::BackupServiceClientImpl;
-use daemon_common::service::DaemonServicesClientImpl;
-use daemon_common::service::server::ServerServiceClientImpl;
+use daemon_common::user::UserKeyProvider;
+use crate::builder::user::WithUserKey;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}
@@ -52,7 +54,6 @@ where
 }
 
 impl<T: DaemonSDKExtra> DaemonSDK<T> {
-    
     #[deprecated]
     pub(crate) async fn wrapper<J: Serialize>(
         &self,
@@ -123,3 +124,13 @@ impl<T: DaemonSDKExtra> FrameworkClientImpl for DaemonSDK<T> {
 impl<T: DaemonSDKExtra> BackupServiceClientImpl for DaemonSDK<T> {}
 
 impl<T: DaemonSDKExtra> DaemonServicesClientImpl for DaemonSDK<T> {}
+
+impl UserKeyProvider for DaemonSDK<WithUserKey> {
+    fn node_id(&self) -> &str {
+        &self.identifier
+    }
+
+    fn key(&self) -> &SigningKey {
+        &self.extra.0
+    }
+}

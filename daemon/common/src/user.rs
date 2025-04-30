@@ -103,6 +103,9 @@ impl UserSignature {
 
     signature_impl!(backup_download, "backup", (backup_storage: impl Into<String>, backup_id: i64), Some(format!("-{}-{}", backup_storage.into(), backup_id)));
     signature_impl!(backup_realtime_download, "backup_rt", (compression: impl Into<String>), Some(format!("-{}", compression.into())));
+    signature_impl!(terminal, "terminal", (write: bool), Some(format!("-{}", write)));
+    signature_impl!(stats, "stats", (), None);
+    signature_impl!(exec, "exec", (command: &[String]), Some(format!("-{}", command.join(";"))));
 }
 
 impl Serialize for UserSignature {
@@ -128,4 +131,12 @@ impl<'de> Deserialize<'de> for UserSignature {
             .map_err(D::Error::custom)
             .map(UserSignature)
     }
+}
+
+pub trait UserKeyProvider {
+    
+    fn node_id(&self) -> &str;
+    
+    fn key(&self) -> &SigningKey;
+    
 }

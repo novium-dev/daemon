@@ -1,3 +1,5 @@
+use chrono::Utc;
+use url::Url;
 use super::*;
 use crate::payload::backup::BackupResponseEntry;
 use crate::service::service;
@@ -24,6 +26,9 @@ define_error!(backup_storage {
     ),
     no_suitable_found (
         "No compatible backup storage for the current server storage could be found" FORBIDDEN
+    ),
+    location_not_found (
+        "The backup storage location does not exist" BAD_REQUEST
     )
 });
 
@@ -33,7 +38,6 @@ define_error!(compression {
 
 #[service(path = "/backup/{server_id}", tag = "backup")]
 pub trait BackupService {
-
     #[route("", method = GET)]
     #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
     #[doc = "Lists all backups of an existing server"]
@@ -45,12 +49,12 @@ pub trait BackupService {
     async fn create_backup_order(&self, server_id: u32) -> Result<i64, _>;
 
     #[route("/{backup_storage}", method = PUT)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(incompatible) sql(failure [sql:*]))]
+    #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(incompatible location_not_found) sql(failure [sql:*]))]
     #[doc = "Creates a new backup"]
     async fn create_backup(&self, server_id: u32, backup_storage: String) -> Result<i64, _>;
 
     #[route("/{backup_storage}/{backup_id}", method = GET, raw)]
-    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(location_not_found) sql(failure [sql:*]))]
     #[doc = "Downloads an existing backup"]
     async fn download_backup(
         &self,
@@ -60,7 +64,7 @@ pub trait BackupService {
     ) -> Result<FileResponse, _>;
 
     #[route(!"/user/backup/{server_id}/{backup_storage}/{backup_id}", method = GET, query = [ timestamp, verify ], raw, user)]
-    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) backup_storage(location_not_found) sql(failure [sql:*]))]
     #[doc = "Downloads an existing backup (called by the user)"]
     async fn download_backup_user(
         &self,
@@ -92,7 +96,7 @@ pub trait BackupService {
     ) -> Result<FileResponse, _>;
 
     #[route("/{backup_storage}/{backup_id}", method = PATCH)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup(not_found [io:NotFound]) sql(failure [sql:*]))]
+    #[error(storage(not_found mutex_locked failure [io:*]) backup(not_found [io:NotFound]) backup_storage(location_not_found) sql(failure [sql:*]))]
     #[doc = "Sets the name of an existing backup"]
     async fn set_backup_name(
         &self,
@@ -103,7 +107,7 @@ pub trait BackupService {
     ) -> Result<(), _>;
 
     #[route("/{backup_storage}/{backup_id}", method = DELETE)]
-    #[error(storage(not_found mutex_locked failure[io:*]) backup(not_found [io:NotFound]) sql(failure [sql:*]))]
+    #[error(storage(not_found mutex_locked failure[io:*]) backup(not_found [io:NotFound]) backup_storage(location_not_found) sql(failure [sql:*]))]
     #[doc = "Deletes an existing backup"]
     async fn delete_backup(
         &self,
@@ -113,7 +117,7 @@ pub trait BackupService {
     ) -> Result<(), _>;
 
     #[route("/{backup_storage}/{backup_id}/restore", method = GET)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup(not_found [io:NotFound]) sql(failure [sql:*]))]
+    #[error(storage(not_found mutex_locked failure [io:*]) backup(not_found [io:NotFound]) backup_storage(location_not_found) sql(failure [sql:*]))]
     #[doc = "Restores an existing backup"]
     async fn restore_backup(
         &self,
@@ -121,5 +125,59 @@ pub trait BackupService {
         backup_storage: String,
         backup_id: i64,
     ) -> Result<(), _>;
+}
+
+pub trait BackupServiceUserKeyExtension {
+
+    fn download_backup_user_url_signed(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        backup_id: i64,
+    ) -> Url;
+
+    fn download_realtime_backup_user_url_signed(
+        &self,
+        server_id: u32,
+        compression: String,
+    ) -> Url;
+
+}
+
+impl<T: BackupServiceClientImpl + UserKeyProvider> BackupServiceUserKeyExtension for T {
+
+    fn download_backup_user_url_signed(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        backup_id: i64,
+    ) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature = UserSignature::new_backup_download(
+            self.key(),
+            timestamp,
+            self.node_id(),
+            server_id,
+            &backup_storage,
+            backup_id,
+        );
+        self.download_backup_user_url(server_id, backup_storage, backup_id, timestamp, signature)
+    }
+
+    fn download_realtime_backup_user_url_signed(
+        &self,
+        server_id: u32,
+        compression: String,
+    ) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature = UserSignature::new_backup_realtime_download(
+            self.key(),
+            timestamp,
+            self.node_id(),
+            server_id,
+            &compression,
+        );
+        self.download_realtime_backup_user_url(server_id, timestamp, signature, compression)
+    }
 
 }

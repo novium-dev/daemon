@@ -49,9 +49,7 @@ pub(crate) fn config() -> OpenApiRouter<Daemon> {
 }
 
 pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
-    OpenApiRouter::new()
-        .merge(websocket::user_config())
-        .merge(files::user_config())
+    OpenApiRouter::new().merge(files::user_config())
 }
 
 pub(crate) fn config_unauthorized() -> OpenApiRouter<Daemon> {

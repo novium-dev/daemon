@@ -10,6 +10,9 @@ pub use paste;
 pub use reqwest;
 use reqwest::Url;
 pub use serde;
+use serde::de::Error as DeError;
+use serde::ser::Error as SerError;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use serde_json;
 pub use serde_urlencoded;
 pub use sqlx;
@@ -17,6 +20,7 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::mem;
 use std::mem::MaybeUninit;
+use std::ops::{Deref, DerefMut};
 pub use urlencoding;
 pub use utoipa;
 use utoipa::ToSchema;
@@ -469,6 +473,43 @@ impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
         *responses = responses_owned;
 
         E::openapi(responses, schemas)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct JsonVec<T: Clone>(pub Vec<T>);
+
+impl<T: Clone> Deref for JsonVec<T> {
+    type Target = Vec<T>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl<T: Clone> DerefMut for JsonVec<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl<T: Serialize + Clone> Serialize for JsonVec<T> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        serde_json::to_string(&self.0)
+            .map_err(S::Error::custom)?
+            .serialize(serializer)
+    }
+}
+
+impl<'de, T: for<'a> Deserialize<'a> + Clone> Deserialize<'de> for JsonVec<T> {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        serde_json::from_str(<&str>::deserialize(deserializer)?).map_err(D::Error::custom)
     }
 }
 
