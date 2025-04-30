@@ -1,9 +1,7 @@
 use crate::storage::archive::compression::ArchiveCompression;
 #[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
-#[cfg(feature = "user")]
 use base64::prelude::*;
-#[cfg(feature = "user")]
 use ed25519_dalek::VerifyingKey;
 use reqwest::Url;
 #[cfg(feature = "ssh")]
@@ -21,14 +19,9 @@ pub(crate) struct DaemonConfig {
     pub(crate) identifier: String,
     pub(crate) token: String,
     pub(crate) backend_url: Url,
-    #[cfg(feature = "user")]
     #[serde(deserialize_with = "deserialize_user_key")]
     #[serde(serialize_with = "serialize_user_key")]
     pub(crate) user_key: VerifyingKey,
-    #[cfg(feature = "user")]
-    #[allow(unused)]
-    pub(crate) user_allow_duration: u64,
-    #[cfg(feature = "user")]
     pub(crate) origin: String,
     pub(crate) storage: HashMap<String, StorageEntry>,
     pub(crate) backup: HashMap<String, BackupEntry>,
@@ -121,7 +114,6 @@ impl BackupEntry {
     }
 }
 
-#[cfg(feature = "user")]
 fn deserialize_user_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>
 where
     D: serde::Deserializer<'de>,
@@ -139,7 +131,6 @@ where
         .map_err(D::Error::custom)
 }
 
-#[cfg(feature = "user")]
 fn serialize_user_key<S: Serializer>(key: &VerifyingKey, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(&BASE64_STANDARD.encode(key.as_bytes()))
 }

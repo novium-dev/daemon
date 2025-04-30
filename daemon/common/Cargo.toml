@@ -9,7 +9,6 @@ license = "AGPL-3.0-only"
 crate-type = ["rlib", "staticlib"]
 
 [features]
-user = []
 btrfs = []
 ssh = []
 docker = ["bollard"]
@@ -28,6 +27,9 @@ regex.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
 daemon_framework.workspace = true
+ed25519-dalek.workspace = true
+base64.workspace = true
+paste.workspace = true
 
 crc64 = "2.0.0"
 

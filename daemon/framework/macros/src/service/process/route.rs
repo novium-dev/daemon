@@ -6,6 +6,7 @@ use quote::quote;
 pub(crate) fn process(
     crate_prefix: &TokenStream,
     method: HttpMethod,
+    raw: bool,
     trait_ident: &Ident,
     fn_ident: &Ident,
     mut func_args: Vec<TokenStream>,
@@ -43,6 +44,8 @@ pub(crate) fn process(
     }
 
     let result_map = if let HttpMethod::WS = method {
+        TokenStream::new()
+    } else if raw {
         TokenStream::new()
     } else {
         quote! { .map(#crate_prefix internal::FrameworkJsonResponse) }

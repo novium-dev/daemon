@@ -28,6 +28,7 @@ use tracing::warn;
 
 #[allow(unused)]
 #[derive(Debug)]
+#[deprecated]
 pub(crate) enum ServerStartError {
     Docker(bollard::errors::Error),
     Storage(StorageError),
@@ -341,12 +342,11 @@ impl FetchedServer {
         };
         let mut server_data_locked = server_data.lock().await;
         tokio::time::sleep(duration).await;
-        let storage = storage_read(
+        let storage = storage_read::<StorageError>(
             &state.config,
             state.conn.deref(),
             &state.storages,
             StorageIdentifier::Primary(server_id),
-            false,
         )
         .await
         .map_err(ServerStartError::Storage)?;

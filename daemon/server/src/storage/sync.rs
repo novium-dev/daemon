@@ -6,6 +6,9 @@ use crate::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use crate::utils::generic_server_select;
 use crate::web::sql_error_to_http;
 use axum::http::StatusCode;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
+use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
+use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use sqlx::{Executor, MySql};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
@@ -14,7 +17,6 @@ use std::io;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 use std::time::Duration;
-use tokio::time::error::Elapsed;
 use tracing::{debug, warn};
 
 pub(crate) struct StorageLockData<T> {
@@ -88,30 +90,24 @@ async fn storage_lock(
     )))
 }
 
-pub(crate) async fn storage_read<'a>(
+pub(crate) async fn storage_read_timeout<
+    'a,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked,
+>(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
-    timeout: bool,
-) -> Result<StorageLockData<OwnedRwLockReadGuard<()>>, StorageError> {
+) -> Result<StorageLockData<OwnedRwLockReadGuard<()>>, E> {
     let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
-        storage_lock(config, conn, storages, storage)
-            .await
-            .map_err(StorageError::Sqlx)?
+        storage_lock(config, conn, storages, storage).await?
     else {
-        return Err(StorageError::NotFound);
+        return Err(<E as FromStorageNotFound>::from());
     };
-    let guard = if timeout {
-        tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
-            .await
-            .map_err(StorageError::Timeout)?
-    } else {
-        lock.read_owned().await
-    };
-    let path = ensure_exists(storage, &entry, value.clone(), disk)
+    let guard = tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
         .await
-        .map_err(StorageError::IO)?;
+        .map_err(|_| <E as FromStorageMutexLocked>::from())?;
+    let path = ensure_exists(storage, &entry, value.clone(), disk).await?;
     Ok(StorageLockData {
         path,
         lock: guard,
@@ -123,30 +119,79 @@ pub(crate) async fn storage_read<'a>(
     })
 }
 
-pub(crate) async fn storage_write<'a>(
+pub(crate) async fn storage_read<
+    'a,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound,
+>(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
-    timeout: bool,
-) -> Result<StorageLockData<OwnedRwLockWriteGuard<()>>, StorageError> {
+) -> Result<StorageLockData<OwnedRwLockReadGuard<()>>, E> {
     let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
-        storage_lock(config, conn, storages, storage)
-            .await
-            .map_err(StorageError::Sqlx)?
+        storage_lock(config, conn, storages, storage).await?
     else {
-        return Err(StorageError::NotFound);
+        return Err(<E as FromStorageNotFound>::from());
     };
-    let guard = if timeout {
-        tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
-            .await
-            .map_err(StorageError::Timeout)?
-    } else {
-        lock.write_owned().await
+    let guard = lock.read_owned().await;
+    let path = ensure_exists(storage, &entry, value.clone(), disk).await?;
+    Ok(StorageLockData {
+        path,
+        lock: guard,
+        backup_exclude,
+        storage: entry,
+        value,
+        stats_lock,
+        disk,
+    })
+}
+
+#[allow(dead_code)]
+pub(crate) async fn storage_write<
+    'a,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound,
+>(
+    config: &DaemonConfig,
+    conn: impl Executor<'_, Database = MySql> + Copy,
+    storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
+    storage: StorageIdentifier,
+) -> Result<StorageLockData<OwnedRwLockWriteGuard<()>>, E> {
+    let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
+        storage_lock(config, conn, storages, storage).await?
+    else {
+        return Err(<E as FromStorageNotFound>::from());
     };
-    let path = ensure_exists(storage, &entry, value.clone(), disk)
+    let guard = lock.write_owned().await;
+    let path = ensure_exists(storage, &entry, value.clone(), disk).await?;
+    Ok(StorageLockData {
+        path,
+        lock: guard,
+        backup_exclude,
+        storage: entry,
+        value,
+        stats_lock,
+        disk,
+    })
+}
+
+pub(crate) async fn storage_write_timeout<
+    'a,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked,
+>(
+    config: &DaemonConfig,
+    conn: impl Executor<'_, Database = MySql> + Copy,
+    storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
+    storage: StorageIdentifier,
+) -> Result<StorageLockData<OwnedRwLockWriteGuard<()>>, E> {
+    let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
+        storage_lock(config, conn, storages, storage).await?
+    else {
+        return Err(<E as FromStorageNotFound>::from());
+    };
+    let guard = tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
         .await
-        .map_err(StorageError::IO)?;
+        .map_err(|_| <E as FromStorageMutexLocked>::from())?;
+    let path = ensure_exists(storage, &entry, value.clone(), disk).await?;
     Ok(StorageLockData {
         path,
         lock: guard,
@@ -162,7 +207,7 @@ pub(crate) async fn storage_write<'a>(
 pub(crate) enum StorageError {
     Sqlx(sqlx::Error),
     IO(io::Error),
-    Timeout(Elapsed),
+    Timeout,
     NotFound,
 }
 
@@ -171,9 +216,39 @@ impl Error for StorageError {
         match self {
             StorageError::Sqlx(err) => Some(err),
             StorageError::IO(err) => Some(err),
-            StorageError::Timeout(err) => Some(err),
+            StorageError::Timeout => None,
             StorageError::NotFound => None,
         }
+    }
+}
+
+impl From<io::Error> for StorageError {
+    fn from(value: io::Error) -> Self {
+        Self::IO(value)
+    }
+}
+
+impl From<sqlx::Error> for StorageError {
+    fn from(value: sqlx::Error) -> Self {
+        Self::Sqlx(value)
+    }
+}
+
+impl FromStorageNotFound for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::NotFound
+    }
+}
+
+impl FromStorageMutexLocked for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::Timeout
     }
 }
 
@@ -184,6 +259,7 @@ impl Display for StorageError {
 }
 
 impl StorageError {
+    #[deprecated]
     pub(crate) fn into_http(self) -> StatusCode {
         match self {
             StorageError::Sqlx(err) => sql_error_to_http(err),
@@ -191,11 +267,47 @@ impl StorageError {
                 warn!("Storage error: {:?}", err);
                 StatusCode::INTERNAL_SERVER_ERROR
             }
-            StorageError::Timeout(_) => {
+            StorageError::Timeout => {
                 debug!("Storage lock timeout");
                 StatusCode::SERVICE_UNAVAILABLE
             }
             StorageError::NotFound => StatusCode::NOT_FOUND,
         }
+    }
+}
+
+pub(crate) struct MapStorageNotFoundIsFailure<T: FromStorageFailure>(T);
+
+impl<T: FromStorageFailure> FromStorageNotFound for MapStorageNotFoundIsFailure<T> {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        MapStorageNotFoundIsFailure(<T as FromStorageFailure>::from())
+    }
+}
+
+impl<T: From<io::Error> + FromStorageFailure> From<io::Error> for MapStorageNotFoundIsFailure<T> {
+    fn from(value: io::Error) -> Self {
+        Self(<T as From<io::Error>>::from(value))
+    }
+}
+
+impl<T: From<sqlx::Error> + FromStorageFailure> From<sqlx::Error>
+    for MapStorageNotFoundIsFailure<T>
+{
+    fn from(value: sqlx::Error) -> Self {
+        Self(<T as From<sqlx::Error>>::from(value))
+    }
+}
+
+impl<T: FromStorageMutexLocked + FromStorageFailure> FromStorageMutexLocked
+    for MapStorageNotFoundIsFailure<T>
+{
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self(<T as FromStorageMutexLocked>::from())
     }
 }

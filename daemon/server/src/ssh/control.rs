@@ -2,7 +2,7 @@ use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
 use crate::ssh::handler::DaemonSSHHandler;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::storage_read;
+use crate::storage::sync::{StorageError, storage_read};
 use crate::sync::Mutex;
 use crate::utils::{ChannelWriteData, SyncIOBridgeExt};
 use crate::{Daemon, ServerData, utils};
@@ -908,12 +908,11 @@ async fn launch_selected(
         };
 
         if selected == start {
-            let Ok(storage) = storage_read(
+            let Ok(storage) = storage_read::<StorageError>(
                 &state.config,
                 state.conn.deref(),
                 &state.storages,
                 StorageIdentifier::Primary(server_id),
-                false,
             )
             .await
             else {

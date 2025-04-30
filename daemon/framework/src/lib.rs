@@ -1,14 +1,10 @@
-pub use daemon_framework_macros::define_error;
-pub use daemon_framework_macros::error;
-pub use daemon_framework_macros::service;
-use std::any::TypeId;
-use std::collections::HashMap;
-use std::mem;
-use std::mem::MaybeUninit;
 pub use async_trait::async_trait;
 pub use axum;
 use axum::response::IntoResponse;
 pub use axum_extra;
+pub use daemon_framework_macros::define_error;
+pub use daemon_framework_macros::error;
+pub use daemon_framework_macros::service;
 pub use http;
 pub use paste;
 pub use reqwest;
@@ -17,8 +13,12 @@ pub use serde;
 pub use serde_json;
 pub use serde_urlencoded;
 pub use sqlx;
-pub use utoipa;
+use std::any::TypeId;
+use std::collections::HashMap;
+use std::mem;
+use std::mem::MaybeUninit;
 pub use urlencoding;
+pub use utoipa;
 use utoipa::ToSchema;
 use utoipa::openapi::schema::RefBuilder;
 use utoipa::openapi::{Content, RefOr, Response, ResponsesBuilder, Schema};
@@ -41,24 +41,24 @@ pub trait FrameworkClientImpl {
 
 #[doc(hidden)]
 pub mod internal {
+    use crate::MaybeUnit;
     use axum::Json;
     use axum::response::{IntoResponse, Response};
     use axum::routing::MethodRouter;
     use axum_extra::TypedHeader;
     use axum_extra::headers::{Header, HeaderMapExt};
     use http::{HeaderMap, HeaderName};
+    use serde::de::{DeserializeOwned, Error};
+    use serde::ser::Impossible;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
     use std::fmt::{Debug, Display, Formatter};
     use std::str::FromStr;
-    use serde::de::{DeserializeOwned, Error};
-    use serde::ser::Impossible;
     use thiserror::Error;
     use utoipa::PartialSchema;
     use utoipa::openapi::path::OperationBuilder;
     use utoipa::openapi::{Object, RefOr, Schema, Type};
     use utoipa_axum::PathItemExt;
     use utoipa_axum::router::OpenApiRouter;
-    use crate::MaybeUnit;
 
     pub fn error_schema(id: &str, msg: &str) -> Schema {
         let mut obj = Object::with_type(Type::Object);
@@ -82,9 +82,7 @@ pub mod internal {
     }
 
     trait TypedHeaderExt<T: Header> {
-
         fn inner(self) -> T;
-
     }
 
     impl<T: Header> TypedHeaderExt<T> for TypedHeader<T> {
@@ -123,7 +121,6 @@ pub mod internal {
                 response.json().await.map(FrameworkJsonResponse)
             }
         }
-
     }
 
     pub trait FrameworkServerImpl {
@@ -247,7 +244,7 @@ pub mod internal {
 
         fn serialize_some<T>(self, value: &T) -> Result<Self::Ok, Self::Error>
         where
-            T: ?Sized + Serialize
+            T: ?Sized + Serialize,
         {
             value.serialize(self)
         }
@@ -260,20 +257,35 @@ pub mod internal {
             unimplemented!()
         }
 
-        fn serialize_unit_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str) -> Result<Self::Ok, Self::Error> {
+        fn serialize_unit_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            _variant: &'static str,
+        ) -> Result<Self::Ok, Self::Error> {
             unimplemented!()
         }
 
-        fn serialize_newtype_struct<T>(self, _name: &'static str, _value: &T) -> Result<Self::Ok, Self::Error>
+        fn serialize_newtype_struct<T>(
+            self,
+            _name: &'static str,
+            _value: &T,
+        ) -> Result<Self::Ok, Self::Error>
         where
-            T: ?Sized + Serialize
+            T: ?Sized + Serialize,
         {
             unimplemented!()
         }
 
-        fn serialize_newtype_variant<T>(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _value: &T) -> Result<Self::Ok, Self::Error>
+        fn serialize_newtype_variant<T>(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            _variant: &'static str,
+            _value: &T,
+        ) -> Result<Self::Ok, Self::Error>
         where
-            T: ?Sized + Serialize
+            T: ?Sized + Serialize,
         {
             unimplemented!()
         }
@@ -286,11 +298,21 @@ pub mod internal {
             unimplemented!()
         }
 
-        fn serialize_tuple_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeTupleStruct, Self::Error> {
+        fn serialize_tuple_struct(
+            self,
+            _name: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeTupleStruct, Self::Error> {
             unimplemented!()
         }
 
-        fn serialize_tuple_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeTupleVariant, Self::Error> {
+        fn serialize_tuple_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            _variant: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeTupleVariant, Self::Error> {
             unimplemented!()
         }
 
@@ -298,24 +320,38 @@ pub mod internal {
             unimplemented!()
         }
 
-        fn serialize_struct(self, _name: &'static str, _len: usize) -> Result<Self::SerializeStruct, Self::Error> {
+        fn serialize_struct(
+            self,
+            _name: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeStruct, Self::Error> {
             unimplemented!()
         }
 
-        fn serialize_struct_variant(self, _name: &'static str, _variant_index: u32, _variant: &'static str, _len: usize) -> Result<Self::SerializeStructVariant, Self::Error> {
+        fn serialize_struct_variant(
+            self,
+            _name: &'static str,
+            _variant_index: u32,
+            _variant: &'static str,
+            _len: usize,
+        ) -> Result<Self::SerializeStructVariant, Self::Error> {
             unimplemented!()
         }
     }
 
-    pub async fn error_by_response<T: FromStr<Err=()> + From<reqwest::Error>>(response: reqwest::Response) -> T {
-        struct FromStrData<T: FromStr<Err=()>>(T);
-        impl<'de, T: FromStr<Err=()>> Deserialize<'de> for FromStrData<T> {
+    pub async fn error_by_response<T: FromStr<Err = ()> + From<reqwest::Error>>(
+        response: reqwest::Response,
+    ) -> T {
+        struct FromStrData<T: FromStr<Err = ()>>(T);
+        impl<'de, T: FromStr<Err = ()>> Deserialize<'de> for FromStrData<T> {
             fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
             where
-                D: Deserializer<'de>
+                D: Deserializer<'de>,
             {
                 let id = String::deserialize(deserializer)?;
-                T::from_str(&id).map(FromStrData).map_err(|_| D::Error::custom("Error not found!"))
+                T::from_str(&id)
+                    .map(FromStrData)
+                    .map_err(|_| D::Error::custom("Error not found!"))
             }
         }
 
@@ -328,31 +364,30 @@ pub mod internal {
             error: ErrorContent<T>,
         }
 
-        match response.json()
-            .await {
-            Ok(ErrorStruct { error: ErrorContent { id: FromStrData(err) }}) => {
-                err
-            },
+        match response.json().await {
+            Ok(ErrorStruct {
+                error: ErrorContent {
+                    id: FromStrData(err),
+                },
+            }) => err,
             Err(err) => T::from(err),
         }
-
     }
-
 }
 
 pub trait MaybeUnit {
-
-    fn unit() -> Option<Self> where Self: Sized;
-
+    fn unit() -> Option<Self>
+    where
+        Self: Sized;
 }
 
 impl<T: 'static> MaybeUnit for T {
     fn unit() -> Option<Self>
     where
-        Self: Sized
+        Self: Sized,
     {
         if TypeId::of::<()>() == TypeId::of::<T>() {
-            Some(unsafe { MaybeUninit::zeroed().assume_init() }) // Replace with auto traits when stable, see https://github.com/rust-lang/rust/issues/13231    
+            Some(unsafe { MaybeUninit::zeroed().assume_init() }) // TODO: Replace with auto traits when stable, see https://github.com/rust-lang/rust/issues/13231
         } else {
             None
         }
@@ -404,6 +439,33 @@ impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static> FrameworkD
             V::schemas(&mut vals);
             schemas.extend(vals);
         }
+        *responses = responses_owned;
+
+        E::openapi(responses, schemas)
+    }
+}
+
+pub struct FileResponse(pub axum::response::Response); // TODO: Add content type as parameter, when https://github.com/rust-lang/rust/issues/95174 is stable
+
+impl IntoResponse for FileResponse {
+    fn into_response(self) -> axum::response::Response {
+        self.0.into_response()
+    }
+}
+
+impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
+    for Result<FileResponse, E>
+{
+    fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
+        let mut responses_owned = ResponsesBuilder::new();
+        mem::swap(responses, &mut responses_owned);
+        responses_owned = responses_owned.response(
+            "200",
+            Response::builder()
+                .description(SUCCESS_DESCRIPTION)
+                .content("application/octet-stream", Content::builder().build())
+                .build(),
+        );
         *responses = responses_owned;
 
         E::openapi(responses, schemas)

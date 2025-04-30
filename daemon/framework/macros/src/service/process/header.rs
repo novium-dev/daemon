@@ -66,8 +66,6 @@ pub(crate) fn process(
                                 .required(#crate_prefix utoipa::openapi::Required::#required),
                             )
                         });
-
-
         }
 
         client_impl_body.extend(quote! {

@@ -12,15 +12,27 @@ pub(crate) struct RouteArgs {
     pub(crate) method: HttpMethod,
     pub(crate) query: HashSet<String>,
     pub(crate) user: bool,
+    pub(crate) raw: bool,
 }
 
 #[allow(clippy::type_complexity)]
 fn parse_route_args_option(
     stream: ParseStream,
-) -> Result<(Option<HttpMethod>, HashSet<String>, Option<bool>), syn::Error> {
+) -> Result<
+    (
+        Option<HttpMethod>,
+        HashSet<String>,
+        Option<bool>,
+        Option<bool>,
+    ),
+    syn::Error,
+> {
     let opt: Ident = stream.parse()?;
     if opt.to_string().eq("user") {
-        return Ok((None, HashSet::new(), Some(true)));
+        return Ok((None, HashSet::new(), Some(true), None));
+    }
+    if opt.to_string().eq("raw") {
+        return Ok((None, HashSet::new(), None, Some(true)));
     }
     if stream.peek(Token![=]) {
         let _: Punct = stream.parse()?;
@@ -28,7 +40,7 @@ fn parse_route_args_option(
             "method" => {
                 let method_ident: Ident = stream.parse()?;
                 match HttpMethod::from_str(&method_ident.to_string()) {
-                    Ok(val) => Ok((Some(val), HashSet::new(), None)),
+                    Ok(val) => Ok((Some(val), HashSet::new(), None, None)),
                     Err(_) => Err(stream.error("Unknown method")),
                 }
             }
@@ -44,6 +56,7 @@ fn parse_route_args_option(
                         .into_iter()
                         .map(|i| i.to_string())
                         .collect(),
+                    None,
                     None,
                 ))
             }
@@ -64,17 +77,21 @@ impl Parse for RouteArgs {
         let mut method = HttpMethod::GET;
         let mut query = HashSet::new();
         let mut user = false;
+        let mut raw = false;
 
         if input.peek(Token![,]) {
             let _: Punct = input.parse()?;
-            for (method_opt, query_opt, auth_opt) in
+            for (method_opt, query_opt, user_opt, raw_opt) in
                 input.parse_terminated(parse_route_args_option, Token![,])?
             {
                 if let Some(opt) = method_opt {
                     method = opt;
                 }
-                if let Some(opt) = auth_opt {
+                if let Some(opt) = user_opt {
                     user = opt;
+                }
+                if let Some(opt) = raw_opt {
+                    raw = opt;
                 }
                 query.extend(query_opt);
             }
@@ -86,6 +103,7 @@ impl Parse for RouteArgs {
             method,
             query,
             user,
+            raw,
         })
     }
 }

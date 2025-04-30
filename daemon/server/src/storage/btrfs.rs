@@ -210,13 +210,12 @@ pub async fn remove_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
 }
 
 pub async fn new_snapshot(
-    subvolpath: &Path,
+    subvol_fd: tokio::fs::File,
     dir: &Path,
     snapshotname: &str,
     readonly: bool,
 ) -> io::Result<()> {
     let fd = tokio::fs::File::open(dir).await?;
-    let subvol_fd = tokio::fs::File::open(subvolpath).await?;
 
     let mut ret = [0; 4040usize];
     ret.iter_mut().take(4039).enumerate().for_each(|(i, item)| {

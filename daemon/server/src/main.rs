@@ -44,11 +44,12 @@ use crate::config::DaemonConfig;
 use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageLockData, storage_read};
+use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::terminal::TerminalSession;
 use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
 use daemon_common::service::DaemonServices;
+use daemon_common::service::backup::BackupService;
 use daemon_common::service::server::ServerService;
 use daemon_common::{framework_router, framework_router_user};
 
@@ -325,12 +326,11 @@ async fn main0() {
                             value: storage_value,
                             stats_lock: storage_stats_lock,
                             ..
-                        } = storage_read(
+                        } = storage_read::<StorageError>(
                             &state.config,
                             state.conn.deref(),
                             &state.storages,
                             StorageIdentifier::Primary(id),
-                            false,
                         )
                         .await
                         .unwrap();
@@ -388,13 +388,12 @@ async fn main0() {
 
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .merge(framework_router!(Daemon state { ServerService }))
+        .merge(framework_router!(Daemon state { ServerService, BackupService }))
         .merge(web::config().with_state(state.clone()))
         .layer(axum::middleware::from_fn(service::middleware::middleware))
         .merge(web::config_unauthorized().with_state(state.clone()))
         .layer(Extension(state.clone()));
 
-    #[cfg(feature = "user")]
     {
         let cors = tower_http::cors::CorsLayer::new()
             .allow_origin(tower_http::cors::AllowOrigin::exact(
@@ -406,7 +405,7 @@ async fn main0() {
         router = router.merge(
             web::user_config()
                 .with_state(state.clone())
-                .merge(framework_router_user!(Daemon state { ServerService }))
+                .merge(framework_router_user!(Daemon state { ServerService, BackupService }))
                 .layer(cors),
         );
     }
@@ -689,9 +688,6 @@ compile_error!("This daemon only runs on Unix.");
 
 #[cfg(all(not(debug_assertions), feature = "ssh_debug_auth_bypass"))]
 compile_error!("SSH Auth Bypass was enabled in production!");
-
-#[cfg(all(not(debug_assertions), feature = "user_debug_auth_bypass"))]
-compile_error!("Websocket Auth Bypass was enabled in production!");
 
 fn cap_setup() {
     #[cfg(target_os = "linux")]

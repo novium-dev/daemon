@@ -3,7 +3,6 @@ use axum::http::StatusCode;
 use tracing::{debug, warn};
 use utoipa_axum::router::OpenApiRouter;
 
-pub(crate) mod backup;
 #[cfg(feature = "database")]
 pub(crate) mod database;
 pub(crate) mod files;
@@ -11,14 +10,14 @@ mod network;
 #[cfg(feature = "database")]
 pub(crate) mod payload;
 pub(crate) mod resource;
-#[cfg(feature = "user")]
-pub(crate) mod user;
-#[cfg(feature = "user")]
 pub(crate) mod websocket;
 
 mod schedule;
 #[cfg(feature = "trace_sync")]
 pub(crate) mod trace;
+
+#[deprecated]
+pub(crate) mod user;
 
 #[deprecated]
 pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
@@ -39,7 +38,6 @@ pub(crate) fn config() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::new()
         .merge(resource::config())
-        .merge(backup::config())
         .merge(files::config())
         .merge(network::config())
         .merge(schedule::config());
@@ -50,11 +48,9 @@ pub(crate) fn config() -> OpenApiRouter<Daemon> {
     router
 }
 
-#[cfg(feature = "user")]
 pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new()
         .merge(websocket::user_config())
-        .merge(backup::user_config())
         .merge(files::user_config())
 }
 

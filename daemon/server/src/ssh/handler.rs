@@ -1,7 +1,7 @@
 use crate::ssh::auth::{InvalidationCacheMap, password_auth};
 use crate::ssh::sftp::DaemonSftpSession;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageLockData, storage_read};
+use crate::storage::sync::{StorageError, StorageLockData, storage_read_timeout};
 use crate::sync::Mutex;
 use crate::terminal::update_size;
 use crate::{Daemon, ServerData};
@@ -316,14 +316,14 @@ impl Handler for DaemonSSHHandler {
                             .contains(BackendAuthServerPermissions::FILES_READ)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
-                            if let Ok(StorageLockData { lock, storage, .. }) = storage_read(
-                                &self.state.config,
-                                self.state.conn.deref(),
-                                &self.state.storages,
-                                identifier,
-                                true,
-                            )
-                            .await
+                            if let Ok(StorageLockData { lock, storage, .. }) =
+                                storage_read_timeout::<StorageError>(
+                                    &self.state.config,
+                                    self.state.conn.deref(),
+                                    &self.state.storages,
+                                    identifier,
+                                )
+                                .await
                             {
                                 let base =
                                     PathBuf::from(storage.path()).join(identifier.as_pathbuf());
@@ -352,14 +352,14 @@ impl Handler for DaemonSSHHandler {
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
                             for (name, backup) in &self.state.config.backup {
-                                if let Ok(StorageLockData { lock, .. }) = storage_read(
-                                    &self.state.config,
-                                    self.state.conn.deref(),
-                                    &self.state.storages,
-                                    identifier,
-                                    true,
-                                )
-                                .await
+                                if let Ok(StorageLockData { lock, .. }) =
+                                    storage_read_timeout::<StorageError>(
+                                        &self.state.config,
+                                        self.state.conn.deref(),
+                                        &self.state.storages,
+                                        identifier,
+                                    )
+                                    .await
                                 {
                                     let base =
                                         PathBuf::from(backup.path()).join(identifier.as_pathbuf());

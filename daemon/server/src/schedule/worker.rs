@@ -5,7 +5,7 @@ use crate::server::start::ServerStartError;
 use crate::server::status::InternalServerState;
 use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageError, storage_read};
+use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::server;
 use chrono::{TimeDelta, TimeZone, Utc};
 use cron::Schedule;
@@ -112,17 +112,16 @@ async fn start(server_id: u32, state: Daemon) -> ScheduleStepResult {
     };
     let (Ok(mut server_data_locked), storage) = tokio::join!(
         timeout(Duration::from_millis(100), server_data.clone().lock_owned()),
-        storage_read(
+        storage_read_timeout::<StorageError>(
             &state.config,
             state.conn.deref(),
             &state.storages,
             StorageIdentifier::Primary(server_id),
-            true
         )
     ) else {
         return ScheduleStepResult::Continue;
     };
-    let Err(StorageError::Timeout(_)) = storage else {
+    let Err(StorageError::Timeout) = storage else {
         return ScheduleStepResult::Continue;
     };
     let Ok(storage) =

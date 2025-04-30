@@ -32,7 +32,10 @@ pub(crate) fn process(
         })
         .collect();
     let content_extra = if let Some(example) = example {
-        let err = LitStr::new(&format!("Failed to parse example {:?}", example.value()), Span::call_site());
+        let err = LitStr::new(
+            &format!("Failed to parse example {:?}", example.value()),
+            Span::call_site(),
+        );
         quote! {
             .example(Some(#crate_prefix serde_json::from_str::<'static, #crate_prefix serde_json::Value>(include_str!(#example)).expect(#err)))
         }

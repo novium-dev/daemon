@@ -5,7 +5,6 @@ use axum::routing::get;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use daemon_common::payload::node::{BackupStorage, NodeRegistrationRequest, ServerStorage};
-#[cfg(feature = "user")]
 use ed25519_dalek::VerifyingKey;
 use inquire::autocompletion::Replacement;
 use inquire::validator::{ErrorMessage, StringValidator, Validation};
@@ -170,13 +169,10 @@ fn test_host(config: &DaemonConfig) {
 pub(crate) fn new() {
     let (backend, code) = default();
 
-    #[cfg(feature = "user")]
     println!("Retrieving public user key...");
-    #[cfg(feature = "user")]
     let user_key = Handle::current()
         .block_on(read_user_key(backend.clone(), code.clone()))
         .unwrap();
-    #[cfg(feature = "user")]
     println!("Success");
 
     let mut mounts = Vec::new();
@@ -225,11 +221,7 @@ pub(crate) fn new() {
         token,
         identifier,
         backend_url: backend.join("/").unwrap(),
-        #[cfg(feature = "user")]
         user_key,
-        #[cfg(feature = "user")]
-        user_allow_duration: 60 * 1000,
-        #[cfg(feature = "user")]
         origin: backend.join("/").unwrap().to_string(),
         #[cfg(feature = "ssl")]
         ssl: crate::config::SSLConfig {
@@ -426,7 +418,6 @@ fn hostname() -> String {
         .unwrap_or_default()
 }
 
-#[cfg(feature = "user")]
 async fn read_user_key(url: Url, code: String) -> Result<VerifyingKey, io::Error> {
     let response = reqwest::Client::default()
         .get(url.join("/api/internal/user_key").unwrap())

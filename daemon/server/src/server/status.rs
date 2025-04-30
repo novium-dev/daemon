@@ -2,7 +2,6 @@ use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
-#[cfg(feature = "user")]
 use axum::extract::ws::Message;
 use bollard::Docker;
 use bollard::container::ListContainersOptions;
@@ -216,7 +215,6 @@ impl Display for InternalServerState {
     }
 }
 
-#[cfg(feature = "user")]
 impl InternalServerState {
     pub fn as_websocket_message(&self) -> Message {
         Message::Text(serde_json::to_string(self).unwrap().into())

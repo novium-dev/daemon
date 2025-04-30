@@ -1,4 +1,3 @@
-#[cfg(feature = "user")]
 use axum::extract::ws::Message;
 use bitflags::bitflags;
 #[cfg(feature = "docker")]
@@ -100,7 +99,6 @@ impl From<Stats> for ServerStats {
     }
 }
 
-#[cfg(feature = "user")]
 impl ServerStats {
     pub fn as_websocket_message(&self) -> Message {
         const STATS_MAGIC: &str = "STATS!";

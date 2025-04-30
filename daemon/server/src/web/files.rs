@@ -34,7 +34,6 @@ pub(crate) fn config() -> OpenApiRouter<Daemon> {
         .routes(routes!(server_create_archive))
 }
 
-#[cfg(feature = "user")]
 pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
     OpenApiRouter::new().routes(routes!(server_user_download_file))
 }
@@ -176,7 +175,7 @@ pub(crate) async fn server_download_file(
     download_file(&state, storage, path).await
 }
 
-#[cfg_attr(feature = "user", utoipa::path(get,
+#[utoipa::path(get,
     path = "/user/files/{server_id}/file",
     tag = "files",
     description = "Downloads a file (User Request)",
@@ -194,8 +193,7 @@ pub(crate) async fn server_download_file(
         ("timestamp" = u64, Query, description = "The time the user request got permitted as Utc timestamp (milliseconds)"),
         ("verify" = String, Query, description = "The signature to proof that the user request was permitted")
    )
-))]
-#[cfg(feature = "user")]
+)]
 pub(crate) async fn server_user_download_file(
     State(state): State<Daemon>,
     Path((server_id,)): Path<(u32,)>,

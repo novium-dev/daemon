@@ -81,7 +81,7 @@ pub trait ServerService {
     async fn exec_server(&self, server_id: u32, cmd: Vec<String>);
 
     #[route("/{server_id}/wipe", method = GET)]
-    #[error(server(not_found) storage(failure [io:*] mutex_locked) sql(failure [sql:*]))]
+    #[error(storage(not_found) storage(failure [io:*] mutex_locked) sql(failure [sql:*]))]
     #[doc = "Deletes all files in an existing server"]
     async fn wipe_server(&self, server_id: u32);
 }

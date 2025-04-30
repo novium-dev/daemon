@@ -10,7 +10,7 @@ use crate::config::StorageEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::{TarSandboxedAppendExtension, TarSandboxedUnpackExtension};
-use crate::storage::sync::{StorageError, StorageLockData, storage_read};
+use crate::storage::sync::{StorageError, StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
 use axum::body::{Body, BodyDataStream};
 use axum::http;
@@ -43,10 +43,14 @@ pub(crate) async fn list_files(
     id: StorageIdentifier,
     path: String,
 ) -> Result<Vec<FileResponse>, StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let files = list_files0(storage, path)
@@ -113,10 +117,14 @@ pub(crate) async fn stat_file(
     id: StorageIdentifier,
     path: String,
 ) -> Result<FileResponse, StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let file = stat_file0(storage, path)
@@ -185,10 +193,14 @@ pub(crate) async fn rename_file(
     from: String,
     to: String,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let from = path_relative(from);
     let to = path_relative(to);
     let (storage, _) = storage_path(id, &storage).await?;
@@ -214,10 +226,14 @@ pub(crate) async fn copy_file(
     from: String,
     to: String,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let from = path_relative(from);
     let to = path_relative(to);
     let (storage, _) = storage_path(id, &storage).await?;
@@ -242,10 +258,14 @@ pub(crate) async fn download_file(
     id: StorageIdentifier,
     path: String,
 ) -> Result<(Option<HeaderMap>, Body), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let headers = path
@@ -284,10 +304,14 @@ pub(crate) async fn write_file(
     path: String,
     stream: BodyDataStream,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let mut reader =
@@ -329,10 +353,14 @@ pub(crate) async fn write_file_by_template(
     path: String,
     template: ServerFileWrite,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
 
@@ -374,10 +402,14 @@ pub(crate) async fn write_file_by_url(
     path: String,
     url: Url,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let mut response = state
@@ -441,10 +473,14 @@ pub(crate) async fn mkdir_file(
     path: String,
     recursive: bool,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     tokio::task::spawn_blocking(move || {
@@ -476,10 +512,14 @@ pub(crate) async fn symlink_file(
     path: String,
     content: String,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     storage
@@ -504,10 +544,14 @@ pub(crate) async fn delete_file(
     path: String,
     recursive: bool,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     if recursive {
@@ -533,10 +577,14 @@ pub(crate) async fn unpack_archive(
     path: String,
     dest: String,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
     let (storage, storage_path) = storage_path(id, &storage).await?;
     if !unpack_archive0(storage, storage_path, path, dest)
@@ -598,10 +646,14 @@ pub(crate) async fn create_archive(
     src: String,
     compression: String,
 ) -> Result<(), StatusCode> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read(&state.config, state.conn.deref(), &state.storages, id, true)
-            .await
-            .map_err(StorageError::into_http)?;
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<StorageError>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await
+    .map_err(StorageError::into_http)?;
     let path = path_relative(path);
 
     let compression: ArchiveCompression = serde_json::from_value(json!({

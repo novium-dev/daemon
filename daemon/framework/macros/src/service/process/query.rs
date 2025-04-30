@@ -73,7 +73,6 @@ pub(crate) fn process(
             client_def_body_post.extend(quote! {
                 .extend_pairs(#arg_name.map(|val| (#variable_literal, val)).iter())
             });
-
         }
 
         client_def_body_post.extend(quote! { ; });

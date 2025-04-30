@@ -2,7 +2,9 @@ use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
 use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageError, StorageLockData, storage_read, storage_write};
+use crate::storage::sync::{
+    StorageError, StorageLockData, storage_read_timeout, storage_write_timeout,
+};
 use crate::utils::server_required;
 use crate::{Daemon, sql, storage};
 use async_trait::async_trait;
@@ -178,12 +180,11 @@ impl ServerService for Daemon {
         tokio::task::spawn(async move {
             let (server_data_locked, storage) = tokio::join!(
                 timeout(Duration::from_millis(100), server_data.lock()),
-                storage_read(
+                storage_read_timeout::<StorageError>(
                     &state.config,
                     state.conn.deref(),
                     &state.storages,
                     StorageIdentifier::Primary(server_id),
-                    true
                 )
             );
             if let Ok(mut server_data_locked) = server_data_locked {
@@ -202,7 +203,7 @@ impl ServerService for Daemon {
                             warn!("Failed to start server: {:?}", err);
                         }
                     }
-                    Err(StorageError::Timeout(_)) => {
+                    Err(StorageError::Timeout) => {
                         debug!("Timeout locking storage. Ignoring start request...");
                     }
                     Err(err) => {
@@ -298,20 +299,13 @@ impl ServerService for Daemon {
             storage: entry,
             value: storage_value,
             ..
-        } = storage_write(
+        } = storage_write_timeout::<WipeServerError>(
             &self.config,
             self.conn.deref(),
             &self.storages,
             StorageIdentifier::Primary(server_id),
-            true,
         )
-        .await
-        .map_err(|err| match err {
-            StorageError::Sqlx(sql) => sql.into(),
-            StorageError::IO(err) => err.into(),
-            StorageError::Timeout(_) => WipeServerError::StorageMutexLocked,
-            StorageError::NotFound => WipeServerError::ServerNotFound,
-        })?;
+        .await?;
         storage::delete(&entry, StorageIdentifier::Primary(server_id))
             .await
             .inspect_err(|err| error!("Failed to wipe server: {:?}", err))?;

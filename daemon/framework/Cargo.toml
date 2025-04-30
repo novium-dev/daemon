@@ -7,7 +7,7 @@ license = "AGPL-3.0-only"
 
 [dependencies]
 axum-extra.workspace = true
-paste = "1.0.15"
+paste.workspace = true
 serde.workspace = true
 daemon_framework_macros.workspace = true
 async-trait.workspace = true

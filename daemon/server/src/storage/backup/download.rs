@@ -1,0 +1,172 @@
+use crate::Daemon;
+use crate::config::BackupEntry;
+use crate::storage::StorageIdentifier;
+use crate::storage::archive::TarSandboxedAppendExtension;
+use crate::storage::archive::compression::ArchiveCompression;
+use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use axum::body::Body;
+use axum::http;
+use axum::http::HeaderMap;
+use axum::response::IntoResponse;
+use chrono::{TimeZone, Utc};
+use daemon_common::FileResponse;
+use daemon_common::service::backup::error_compression_unsupported::FromCompressionUnsupported;
+use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
+use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use serde_json::json;
+use std::collections::HashSet;
+use std::io;
+use std::io::{ErrorKind, Write};
+use std::ops::Deref;
+use std::path::PathBuf;
+use tar::Builder;
+use tokio::fs::File;
+use tokio_util::io::{ReaderStream, SyncIoBridge};
+use tracing::{debug, error};
+
+pub(crate) async fn backup_to_stream<
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked,
+>(
+    state: &Daemon,
+    id: StorageIdentifier,
+    backup_id: i64,
+    backup_storage: &String,
+) -> Result<FileResponse, E> {
+    let StorageLockData {
+        lock,
+        backup_exclude,
+        ..
+    } = storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+    let backup = state
+        .config
+        .backup
+        .get(backup_storage)
+        .ok_or_else(<E as FromStorageNotFound>::from)
+        .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
+
+    let body = backup_to_stream0::<E>(id, backup_id, backup, backup_exclude).await?;
+    drop(lock);
+
+    Ok(FileResponse(body.into_response()))
+}
+
+#[inline(always)]
+async fn backup_to_stream0<E: From<io::Error>>(
+    id: StorageIdentifier,
+    backup_id: i64,
+    backup: &BackupEntry,
+    #[allow(unused)] exclude: HashSet<String>,
+) -> Result<(HeaderMap, Body), E> {
+    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
+    match backup {
+        BackupEntry::Archive { compression, .. } => {
+            let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
+            let headers = HeaderMap::from_iter([(
+                http::header::CONTENT_DISPOSITION,
+                format!(
+                    "attachment; filename=\"{}.tar{}\"",
+                    Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
+                    compression.ext()
+                )
+                .parse()
+                .unwrap(),
+            )]);
+            Ok((
+                headers,
+                Body::from_stream(ReaderStream::new(File::open(target).await.inspect_err(
+                    |err| {
+                        if err.kind() == ErrorKind::NotFound {
+                            debug!("Failed to create a backup stream (open): {:?}", err)
+                        } else {
+                            error!("Failed to create a backup stream (open): {:?}", err)
+                        }
+                    },
+                )?)),
+            ))
+        }
+        #[cfg(feature = "btrfs")]
+        BackupEntry::Btrfs {
+            jit_compression, ..
+        } => {
+            let compression = *jit_compression;
+            let headers = HeaderMap::from_iter([(
+                http::header::CONTENT_DISPOSITION,
+                format!(
+                    "attachment; filename=\"{}.tar{}\"",
+                    Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
+                    compression.ext()
+                )
+                .parse()
+                .unwrap(),
+            )]);
+            let target = target_dir.join(backup_id.to_string());
+            Ok((
+                headers,
+                stream_realtime1(compression, target, exclude).await,
+            ))
+        }
+    }
+}
+
+pub(crate) async fn stream_realtime<
+    E: From<io::Error>
+        + From<sqlx::Error>
+        + FromStorageNotFound
+        + FromStorageMutexLocked
+        + FromCompressionUnsupported,
+>(
+    state: &Daemon,
+    id: StorageIdentifier,
+    compression: String,
+) -> Result<FileResponse, E> {
+    let StorageLockData {
+        path,
+        lock,
+        backup_exclude,
+        ..
+    } = storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+    let compression: ArchiveCompression = serde_json::from_value(json!({
+        "type": compression
+    }))
+    .map_err(|_err| <E as FromCompressionUnsupported>::from())?;
+
+    let body = stream_realtime0(path, backup_exclude, compression).await;
+    drop(lock);
+
+    let headers = HeaderMap::from_iter([(
+        http::header::CONTENT_DISPOSITION,
+        format!("attachment; filename=\"realtime.tar{}\"", compression.ext())
+            .parse()
+            .unwrap(),
+    )]);
+
+    Ok(FileResponse((headers, body).into_response()))
+}
+
+#[inline(always)]
+async fn stream_realtime0(
+    path: String,
+    #[allow(unused)] exclude: HashSet<String>,
+    compression: ArchiveCompression,
+) -> Body {
+    stream_realtime1(compression, PathBuf::from(path), exclude).await
+}
+
+async fn stream_realtime1(
+    compression: ArchiveCompression,
+    target: PathBuf,
+    exclude: HashSet<String>,
+) -> Body {
+    let (sender, recv) = tokio::io::duplex(1024 * 1024);
+    tokio::task::spawn_blocking(move || {
+        let encoder = compression.create_encoder(SyncIoBridge::new(sender))?;
+        let mut archive = Builder::new(encoder);
+        archive.follow_symlinks(false);
+        let (archive, _) =
+            archive.append_dir_all_sandboxed_blocking(&target, "", "/", exclude, (), true)?;
+        archive.into_inner().unwrap().finish()?.flush()?;
+        Ok::<(), io::Error>(())
+    });
+    let stream = ReaderStream::new(recv);
+    Body::from_stream(stream)
+}

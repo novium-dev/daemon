@@ -80,7 +80,6 @@ impl HttpMethod {
             Span::call_site(),
         )
     }
-
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -127,6 +126,7 @@ pub(crate) fn process(
             method,
             query,
             user,
+            raw,
         },
         example,
     ) = macros::process(
@@ -303,6 +303,7 @@ pub(crate) fn process(
     route::process(
         crate_prefix,
         method,
+        raw,
         trait_ident,
         &fn_ident,
         func_args,
@@ -325,30 +326,35 @@ pub(crate) fn process(
     let fn_def_args = Group::new(Delimiter::Parenthesis, fn_def_args);
     let fn_args = TokenTree::Group(fn_args);
 
-    if method == HttpMethod::WS {
-        client_impl_body =
-            quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
-    }
-
     let fn_def_call = Group::new(Delimiter::Parenthesis, fn_def_call);
     let method_http = method.to_http();
-    let client_impl = quote! { async #fn_keyword #fn_ident #fn_args #post_fn #result {
-        let url = self.[< #fn_ident _url >] #fn_def_call;
-        let mut request = self.client().request(#crate_prefix http::Method::#method_http, url)
-            .header(#crate_prefix http::header::ACCEPT, "application/json");
-        #client_impl_body
-        let response = request
-            .send()
-            .await?;
-        match response.error_for_status_ref() {
-            Ok(_) => {
-                Ok(#crate_prefix internal::FrameworkJsonResponse::from_reqwest(response)
-                    .await?.0)
-            },
-            Err(_err) => {
-                Err(#crate_prefix internal::error_by_response(response).await)
+    if method == HttpMethod::WS {
+        client_impl_body = quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
+    } else if raw {
+        client_impl_body = quote! { panic!("Raw data responses are not implemented (and very likely will never be)"); };
+    } else {
+        client_impl_body = quote! {
+            let url = self.[< #fn_ident _url >] #fn_def_call;
+            let mut request = self.client().request(#crate_prefix http::Method::#method_http, url)
+                .header(#crate_prefix http::header::ACCEPT, "application/json");
+            #client_impl_body
+            let response = request
+                .send()
+                .await?;
+            match response.error_for_status_ref() {
+                Ok(_) => {
+                    Ok(#crate_prefix internal::FrameworkJsonResponse::from_reqwest(response)
+                        .await?.0)
+                },
+                Err(_err) => {
+                    Err(#crate_prefix internal::error_by_response(response).await)
+                }
             }
-        }
+        };
+    }
+
+    let client_impl = quote! { async #fn_keyword #fn_ident #fn_args #post_fn #result {
+        #client_impl_body
     } };
 
     let client_def = quote! {
