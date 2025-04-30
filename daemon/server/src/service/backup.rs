@@ -13,6 +13,19 @@ use daemon_common::user::UserSignature;
 
 #[async_trait]
 impl BackupService for Daemon {
+    async fn list_backups(
+        &self,
+        server_id: u32,
+    ) -> Result<Vec<BackupResponseEntry>, ListBackupsError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        storage::backup::list_backups(self, storage).await
+    }
+
+    async fn create_backup_order(&self, server_id: u32) -> Result<i64, CreateBackupOrderError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        storage::backup::create_backup_order(self, storage).await
+    }
+
     async fn create_backup(
         &self,
         server_id: u32,
@@ -20,11 +33,6 @@ impl BackupService for Daemon {
     ) -> Result<i64, CreateBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::create_backup(self, storage, &backup_storage).await
-    }
-
-    async fn create_backup_order(&self, server_id: u32) -> Result<i64, CreateBackupOrderError> {
-        let storage = StorageIdentifier::Primary(server_id);
-        storage::backup::create_backup_order(self, storage).await
     }
 
     async fn download_backup(
@@ -84,6 +92,17 @@ impl BackupService for Daemon {
         storage::backup::stream_realtime(self, storage, compression).await
     }
 
+    async fn set_backup_name(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        backup_id: i64,
+        name: Option<String>,
+    ) -> Result<(), SetBackupNameError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        storage::backup::set_backup_name(self, storage, backup_id, &backup_storage, name).await
+    }
+
     async fn delete_backup(
         &self,
         server_id: u32,
@@ -94,14 +113,6 @@ impl BackupService for Daemon {
         storage::backup::delete_backup(self, storage, backup_id, &backup_storage).await
     }
 
-    async fn list_backups(
-        &self,
-        server_id: u32,
-    ) -> Result<Vec<BackupResponseEntry>, ListBackupsError> {
-        let storage = StorageIdentifier::Primary(server_id);
-        storage::backup::list_backups(self, storage).await
-    }
-
     async fn restore_backup(
         &self,
         server_id: u32,
@@ -110,16 +121,5 @@ impl BackupService for Daemon {
     ) -> Result<(), RestoreBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::restore_backup(self, storage, backup_id, &backup_storage).await
-    }
-
-    async fn set_backup_name(
-        &self,
-        server_id: u32,
-        backup_storage: String,
-        backup_id: i64,
-        name: Option<String>,
-    ) -> Result<(), SetBackupNameError> {
-        let storage = StorageIdentifier::Primary(server_id);
-        storage::backup::set_backup_name(self, storage, backup_id, &backup_storage, name).await
     }
 }

@@ -33,15 +33,21 @@ define_error!(compression {
 
 #[service(path = "/backup/{server_id}", tag = "backup")]
 pub trait BackupService {
-    #[route("/{backup_storage}", method = PUT)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(incompatible) sql(failure [sql:*]))]
-    #[doc = "Creates a new backup"]
-    async fn create_backup(&self, server_id: u32, backup_storage: String) -> Result<i64, _>;
+
+    #[route("", method = GET)]
+    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[doc = "Lists all backups of an existing server"]
+    async fn list_backups(&self, server_id: u32) -> Result<Vec<BackupResponseEntry>, _>;
 
     #[route("", method = PUT)]
     #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(no_suitable_found) sql(failure [sql:*]))]
     #[doc = "Creates a new backup (selecting the backup storage by order)"]
     async fn create_backup_order(&self, server_id: u32) -> Result<i64, _>;
+
+    #[route("/{backup_storage}", method = PUT)]
+    #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(incompatible) sql(failure [sql:*]))]
+    #[doc = "Creates a new backup"]
+    async fn create_backup(&self, server_id: u32, backup_storage: String) -> Result<i64, _>;
 
     #[route("/{backup_storage}/{backup_id}", method = GET, raw)]
     #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
@@ -85,6 +91,17 @@ pub trait BackupService {
         compression: String,
     ) -> Result<FileResponse, _>;
 
+    #[route("/{backup_storage}/{backup_id}", method = PATCH)]
+    #[error(storage(not_found mutex_locked failure [io:*]) backup(not_found [io:NotFound]) sql(failure [sql:*]))]
+    #[doc = "Sets the name of an existing backup"]
+    async fn set_backup_name(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        backup_id: i64,
+        name: Option<String>,
+    ) -> Result<(), _>;
+
     #[route("/{backup_storage}/{backup_id}", method = DELETE)]
     #[error(storage(not_found mutex_locked failure[io:*]) backup(not_found [io:NotFound]) sql(failure [sql:*]))]
     #[doc = "Deletes an existing backup"]
@@ -94,11 +111,6 @@ pub trait BackupService {
         backup_storage: String,
         backup_id: i64,
     ) -> Result<(), _>;
-
-    #[route("", method = GET)]
-    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
-    #[doc = "Lists all backups of an existing server"]
-    async fn list_backups(&self, server_id: u32) -> Result<Vec<BackupResponseEntry>, _>;
 
     #[route("/{backup_storage}/{backup_id}/restore", method = GET)]
     #[error(storage(not_found mutex_locked failure [io:*]) backup(not_found [io:NotFound]) sql(failure [sql:*]))]
@@ -110,14 +122,4 @@ pub trait BackupService {
         backup_id: i64,
     ) -> Result<(), _>;
 
-    #[route("/{backup_storage}/{backup_id}", method = PATCH)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup(not_found [io:NotFound]) sql(failure [sql:*]))]
-    #[doc = "Sets the name of an existing backup"]
-    async fn set_backup_name(
-        &self,
-        server_id: u32,
-        backup_storage: String,
-        backup_id: i64,
-        name: Option<String>,
-    ) -> Result<(), _>;
 }
