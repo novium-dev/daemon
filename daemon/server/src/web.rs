@@ -7,7 +7,6 @@ use utoipa_axum::router::OpenApiRouter;
 pub(crate) mod database;
 #[cfg(feature = "database")]
 pub(crate) mod payload;
-pub(crate) mod resource;
 
 mod schedule;
 #[cfg(feature = "trace_sync")]
@@ -34,9 +33,7 @@ pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
 #[deprecated]
 pub(crate) fn config() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
-    let mut router = OpenApiRouter::new()
-        .merge(resource::config())
-        .merge(schedule::config());
+    let mut router = OpenApiRouter::new().merge(schedule::config());
     #[cfg(feature = "database")]
     {
         router = router.merge(database::config());

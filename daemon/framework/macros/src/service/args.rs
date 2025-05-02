@@ -44,7 +44,7 @@ impl Parse for ServiceArgs {
         }
 
         Ok(ServiceArgs {
-            path: path.expect("Expected path"),
+            path: path.unwrap_or_default(),
             tag,
         })
     }

@@ -2,6 +2,7 @@ use crate::service::backup::{BackupService, BackupServiceClientImpl};
 use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 use crate::service::files::{FilesService, FilesServiceClientImpl};
 use crate::service::network::{NetworkService, NetworkServiceClientImpl};
+use crate::service::resource::{ResourceService, ResourceServiceClientImpl};
 use crate::service::server::{ServerService, ServerServiceClientImpl};
 pub(crate) use daemon_framework::{define_error, service};
 use daemon_framework::{define_header_variable, define_path_variable, error};
@@ -11,6 +12,7 @@ use std::io::ErrorKind;
 pub mod backup;
 pub mod files;
 pub mod network;
+pub mod resource;
 pub mod server;
 
 define_error!(auth {
@@ -76,11 +78,15 @@ define_header_variable!(auth "The authentication token");
 
 error!(MiddlewareError, auth(invalid));
 
-pub trait DaemonServices: ServerService + BackupService + FilesService + NetworkService {}
+pub trait DaemonServices:
+    ServerService + BackupService + FilesService + NetworkService + ResourceService
+{
+}
 pub trait DaemonServicesClientImpl:
     ServerServiceClientImpl
     + BackupServiceClientImpl
     + FilesServiceClientImpl
     + NetworkServiceClientImpl
+    + ResourceServiceClientImpl
 {
 }

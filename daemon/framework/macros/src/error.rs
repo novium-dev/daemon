@@ -89,7 +89,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                     });
 
                     from.extend(quote! {
-                        #error_id => #error_ident,
+                        #error_id => Ok(#error_ident),
                     });
 
                     response.extend(quote! {
@@ -122,6 +122,10 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
             Either::Right((category, error_ident)) => {
                 let error_id =
                     LitStr::new(&format!("{}/{}", category, error_ident), Span::call_site());
+
+                from.extend(quote! {
+                    #error_id => Ok([< #category:camel #error_ident:camel >]),
+                });
 
                 content.extend(quote! {
                     [< #category:camel #error_ident:camel >],
