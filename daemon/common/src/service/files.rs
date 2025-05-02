@@ -1,13 +1,13 @@
-use chrono::Utc;
-use url::Url;
-use daemon_framework::{define_query_variable, DataStream, FileResponse, FrameworkClientImpl};
-use daemon_framework::axum_extra::headers::ContentLength;
-use daemon_framework::axum_extra::TypedHeader;
 use super::*;
 use crate::payload::files::FileEntry;
 use crate::payload::server::ServerFileWrite;
 use crate::service::service;
 use crate::user::*;
+use chrono::Utc;
+use daemon_framework::axum_extra::TypedHeader;
+use daemon_framework::axum_extra::headers::ContentLength;
+use daemon_framework::{DataStream, FileResponse, FrameworkClientImpl, define_query_variable};
+use url::Url;
 
 define_error!(file {
     not_found ("This file doesn't exist" NOT_FOUND),
@@ -46,37 +46,75 @@ pub trait FilesService {
     #[route("/file", method = GET, query = [ path, limit ], raw)]
     #[error(storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory] limit_reached) sql(failure [sql:*]))]
     #[doc = "Downloads a file"]
-    async fn server_download_file(&self, server_id: u32, path: String, limit: Option<u64>) -> Result<FileResponse, _>;
+    async fn server_download_file(
+        &self,
+        server_id: u32,
+        path: String,
+        limit: Option<u64>,
+    ) -> Result<FileResponse, _>;
 
     #[route(!"/user/files/{server_id}/file", method = GET, query = [ path, limit, timestamp, verify ], user, raw)]
     #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory] limit_reached) sql(failure [sql:*]))]
     #[doc = "Downloads a file (called by the user)"]
-    async fn server_download_file_user(&self, server_id: u32, path: String, limit: Option<u64>, timestamp: i64, verify: UserSignature) -> Result<FileResponse, _>;
+    async fn server_download_file_user(
+        &self,
+        server_id: u32,
+        path: String,
+        limit: Option<u64>,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<FileResponse, _>;
 
     #[route("/file", method = PUT, query = [ path ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
     #[doc = "Uploads a file"]
-    async fn server_upload_file(&self, server_id: u32, path: String, length: Option<TypedHeader<ContentLength>>, data: DataStream) -> Result<(), _>;
+    async fn server_upload_file(
+        &self,
+        server_id: u32,
+        path: String,
+        length: Option<TypedHeader<ContentLength>>,
+        data: DataStream,
+    ) -> Result<(), _>;
 
     #[route("/url", method = GET, query = [ path, url "The url from which the file gets downloaded" ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]) http_request(failed not_success read_failed))]
     #[doc = "Writes a file using a url"]
-    async fn server_write_file_by_url(&self, server_id: u32, path: String, url: Url) -> Result<(), _>;
+    async fn server_write_file_by_url(
+        &self,
+        server_id: u32,
+        path: String,
+        url: Url,
+    ) -> Result<(), _>;
 
     #[route("/template", method = POST, query = [ path ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
     #[doc = "Writes a file using a template"]
-    async fn server_write_file_by_template(&self, server_id: u32, path: String, template: ServerFileWrite) -> Result<(), _>;
+    async fn server_write_file_by_template(
+        &self,
+        server_id: u32,
+        path: String,
+        template: ServerFileWrite,
+    ) -> Result<(), _>;
 
     #[route("/file", method = DELETE, query = [ path, recursive "If it is a directory and should be deleted recursively" ])]
     #[error(storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] not_directory [io:NotADirectory] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
     #[doc = "Deletes a file"]
-    async fn server_delete_file(&self, server_id: u32, path: String, recursive: bool) -> Result<(), _>;
+    async fn server_delete_file(
+        &self,
+        server_id: u32,
+        path: String,
+        recursive: bool,
+    ) -> Result<(), _>;
 
     #[route("/mkdir", method = GET, query = [ path, recursive "If parents should be created as well" ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound io:NotADirectory] sandbox_violated [io:PermissionDenied] already_exists [io:AlreadyExists]) sql(failure [sql:*]))]
     #[doc = "Creates a new directory"]
-    async fn server_create_directory(&self, server_id: u32, path: String, recursive: bool) -> Result<(), _>;
+    async fn server_create_directory(
+        &self,
+        server_id: u32,
+        path: String,
+        recursive: bool,
+    ) -> Result<(), _>;
 
     #[route("/symlink", method = GET, query = [ path, content "The contents of the symlink" ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] already_exists [io:AlreadyExists]) sql(failure [sql:*]))]
@@ -86,28 +124,35 @@ pub trait FilesService {
     #[route("/archive/unpack", method = GET, query = [ path "The location of the existing archive", dest "The destination directory location" ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied]) compression(unsupported) sql(failure [sql:*]))]
     #[doc = "Unpacks an existing archive"]
-    async fn server_unpack_archive(&self, server_id: u32, path: String, dest: String) -> Result<(), _>;
+    async fn server_unpack_archive(
+        &self,
+        server_id: u32,
+        path: String,
+        dest: String,
+    ) -> Result<(), _>;
 
     #[route("/archive/create", method = GET, query = [ path "The source directory for the archive contents", src "The file location where the archive should be created", compression "The compression algorithm to use for the archive" ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) compression(unsupported) sql(failure [sql:*]))]
     #[doc = "Creates an archive"]
-    async fn server_create_archive(&self, server_id: u32, src: String, path: String, compression: String) -> Result<(), _>;
-
+    async fn server_create_archive(
+        &self,
+        server_id: u32,
+        src: String,
+        path: String,
+        compression: String,
+    ) -> Result<(), _>;
 }
 
 pub trait FilesServiceUserKeyExtension {
-
     fn server_download_file_user_url_signed(
         &self,
         server_id: u32,
         path: String,
         limit: Option<u64>,
     ) -> Url;
-
 }
 
 impl<T: FilesService + FrameworkClientImpl + UserKeyProvider> FilesServiceUserKeyExtension for T {
-
     fn server_download_file_user_url_signed(
         &self,
         server_id: u32,
@@ -124,5 +169,4 @@ impl<T: FilesService + FrameworkClientImpl + UserKeyProvider> FilesServiceUserKe
         );
         self.server_download_file_user_url(server_id, path, limit, timestamp, signature)
     }
-
 }

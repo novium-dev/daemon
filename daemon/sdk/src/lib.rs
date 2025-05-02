@@ -2,29 +2,29 @@
 #![warn(clippy::string_to_string)]
 
 pub use daemon_common as common;
-use std::collections::HashMap;
 use ed25519_dalek::SigningKey;
+use std::collections::HashMap;
 
 pub mod builder;
 #[cfg(feature = "database")]
 pub mod database;
-pub mod network;
 pub mod resource;
 pub mod schedule;
 #[cfg(feature = "user")]
 pub mod user;
 
+use crate::builder::user::WithUserKey;
 use daemon_common::FrameworkClientImpl;
 use daemon_common::service::DaemonServicesClientImpl;
 use daemon_common::service::backup::BackupServiceClientImpl;
+use daemon_common::service::files::FilesServiceClientImpl;
+use daemon_common::service::network::NetworkServiceClientImpl;
 use daemon_common::service::server::ServerServiceClientImpl;
+use daemon_common::user::UserKeyProvider;
 use http::{Method, StatusCode};
 use reqwest::{Body, Client, Response, Url};
 use serde::Serialize;
 use serde_json::Value;
-use daemon_common::service::files::FilesServiceClientImpl;
-use daemon_common::user::UserKeyProvider;
-use crate::builder::user::WithUserKey;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}
@@ -110,8 +110,6 @@ pub enum DaemonSDKError {
     Limit(usize),
 }
 
-impl<T: DaemonSDKExtra> ServerServiceClientImpl for DaemonSDK<T> {}
-
 impl<T: DaemonSDKExtra> FrameworkClientImpl for DaemonSDK<T> {
     fn client(&self) -> &Client {
         &self.client
@@ -123,8 +121,10 @@ impl<T: DaemonSDKExtra> FrameworkClientImpl for DaemonSDK<T> {
 }
 
 impl<T: DaemonSDKExtra> DaemonServicesClientImpl for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra> ServerServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> BackupServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> FilesServiceClientImpl for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra> NetworkServiceClientImpl for DaemonSDK<T> {}
 
 impl UserKeyProvider for DaemonSDK<WithUserKey> {
     fn node_id(&self) -> &str {

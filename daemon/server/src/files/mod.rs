@@ -1,13 +1,13 @@
-mod list;
-mod stat;
-mod rename;
-mod copy;
-mod download;
-mod write;
-mod mkdir;
-mod symlink;
-mod delete;
 mod archive;
+mod copy;
+mod delete;
+mod download;
+mod list;
+mod mkdir;
+mod rename;
+mod stat;
+mod symlink;
+mod write;
 
 use std::io;
 use std::path::PathBuf;
@@ -20,16 +20,16 @@ use daemon_common::files::FileMode;
 use daemon_common::payload::files::FileEntry;
 use tracing::error;
 
-pub(crate) use list::list_files;
-pub(crate) use stat::stat_file;
-pub(crate) use rename::rename_file;
-pub(crate) use copy::copy_file;
-pub(crate) use download::download_file;
-pub(crate) use write::{write_file, write_file_by_url, write_file_by_template};
-pub(crate) use mkdir::mkdir_file;
-pub(crate) use symlink::symlink_file;
-pub(crate) use delete::delete_file;
 pub(crate) use archive::{create_archive, unpack_archive};
+pub(crate) use copy::copy_file;
+pub(crate) use delete::delete_file;
+pub(crate) use download::download_file;
+pub(crate) use list::list_files;
+pub(crate) use mkdir::mkdir_file;
+pub(crate) use rename::rename_file;
+pub(crate) use stat::stat_file;
+pub(crate) use symlink::symlink_file;
+pub(crate) use write::{write_file, write_file_by_template, write_file_by_url};
 
 async fn storage_path(
     id: StorageIdentifier,

@@ -104,7 +104,8 @@ pub(crate) async fn storage_read_timeout<
     let guard = tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
         .await
         .map_err(|_| <E as FromStorageMutexLocked>::from())?;
-    let path = ensure_exists(storage, &entry, value.clone(), disk).await
+    let path = ensure_exists(storage, &entry, value.clone(), disk)
+        .await
         .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
         path,
@@ -132,7 +133,8 @@ pub(crate) async fn storage_read<
         return Err(<E as FromStorageNotFound>::from());
     };
     let guard = lock.read_owned().await;
-    let path = ensure_exists(storage, &entry, value.clone(), disk).await
+    let path = ensure_exists(storage, &entry, value.clone(), disk)
+        .await
         .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
         path,
@@ -161,7 +163,8 @@ pub(crate) async fn storage_write<
         return Err(<E as FromStorageNotFound>::from());
     };
     let guard = lock.write_owned().await;
-    let path = ensure_exists(storage, &entry, value.clone(), disk).await
+    let path = ensure_exists(storage, &entry, value.clone(), disk)
+        .await
         .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
         path,
@@ -191,7 +194,8 @@ pub(crate) async fn storage_write_timeout<
     let guard = tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
         .await
         .map_err(|_| <E as FromStorageMutexLocked>::from())?;
-    let path = ensure_exists(storage, &entry, value.clone(), disk).await
+    let path = ensure_exists(storage, &entry, value.clone(), disk)
+        .await
         .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
         path,
@@ -258,7 +262,7 @@ impl FromStorageMutexLocked for StorageError {
 impl FromStorageFailure for StorageError {
     fn from() -> Self
     where
-        Self: Sized
+        Self: Sized,
     {
         Self::Failure
     }

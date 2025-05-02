@@ -3,6 +3,8 @@ use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::backup::BackupNameExtension;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::io;
@@ -11,11 +13,14 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::{debug, error};
-use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
-use daemon_common::service::error_storage_failure::FromStorageFailure;
 
 pub(crate) async fn set_backup_name<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure + FromBackupStorageLocationNotFound,
+    E: From<io::Error>
+        + From<sqlx::Error>
+        + FromStorageNotFound
+        + FromStorageMutexLocked
+        + FromStorageFailure
+        + FromBackupStorageLocationNotFound,
 >(
     state: &Daemon,
     id: StorageIdentifier,

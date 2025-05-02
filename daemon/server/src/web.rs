@@ -5,7 +5,6 @@ use utoipa_axum::router::OpenApiRouter;
 
 #[cfg(feature = "database")]
 pub(crate) mod database;
-mod network;
 #[cfg(feature = "database")]
 pub(crate) mod payload;
 pub(crate) mod resource;
@@ -37,7 +36,6 @@ pub(crate) fn config() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::new()
         .merge(resource::config())
-        .merge(network::config())
         .merge(schedule::config());
     #[cfg(feature = "database")]
     {

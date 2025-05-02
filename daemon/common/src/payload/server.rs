@@ -1,3 +1,4 @@
+use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 use crc64::crc64;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -7,7 +8,6 @@ use std::io;
 use std::io::{ErrorKind, Seek, SeekFrom};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tracing::{debug, error, warn};
-use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ServerPayload {
@@ -129,20 +129,34 @@ pub enum ServerFileWrite {
 }
 
 impl ServerFileWrite {
-    pub async fn apply<E: From<io::Error> + FromStorageQuotaReached + Send + 'static>(&self, mut file: tokio::fs::File) -> Result<(), E> {
+    pub async fn apply<E: From<io::Error> + FromStorageQuotaReached + Send + 'static>(
+        &self,
+        mut file: tokio::fs::File,
+    ) -> Result<(), E> {
         match self {
             ServerFileWrite::WRITE { data } => {
-                file.set_len(0).await
+                file.set_len(0)
+                    .await
                     .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
-                file.seek(SeekFrom::Start(0)).await
+                file.seek(SeekFrom::Start(0))
+                    .await
                     .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
-                file.write_all(data).await
-                    .inspect_err(|err| if err.kind() == ErrorKind::QuotaExceeded {
-                        debug!("Failed to write data: {:?}", err)
-                    } else { error!("Failed to write data: {:?}", err) })
-                    .map_err(|err| if err.kind() == ErrorKind::QuotaExceeded {
-                        <E as FromStorageQuotaReached>::from()
-                    } else { <E as From<io::Error>>::from(err) })?;
+                file.write_all(data)
+                    .await
+                    .inspect_err(|err| {
+                        if err.kind() == ErrorKind::QuotaExceeded {
+                            debug!("Failed to write data: {:?}", err)
+                        } else {
+                            error!("Failed to write data: {:?}", err)
+                        }
+                    })
+                    .map_err(|err| {
+                        if err.kind() == ErrorKind::QuotaExceeded {
+                            <E as FromStorageQuotaReached>::from()
+                        } else {
+                            <E as From<io::Error>>::from(err)
+                        }
+                    })?;
             }
             ServerFileWrite::PROPERTIES { content } => {
                 let content = content.clone();
@@ -155,15 +169,17 @@ impl ServerFileWrite {
                         current.insert(key, val);
                     }
 
-                    file.set_len(0).inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
-                    file.seek(SeekFrom::Start(0)).inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
+                    file.set_len(0)
+                        .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
+                    file.seek(SeekFrom::Start(0))
+                        .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
                     java_properties::write(&mut file, &current)
-                        .inspect_err(|err| warn!("Failed to write properties: {:?}", err))  // only warning, Potential QUOTA_EXCEEDED
+                        .inspect_err(|err| warn!("Failed to write properties: {:?}", err)) // only warning, Potential QUOTA_EXCEEDED
                         .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
                     Ok::<_, E>(())
                 })
                 .await
-                    .inspect_err(|err| error!("Failed to write properties (task): {:?}", err))
+                .inspect_err(|err| error!("Failed to write properties (task): {:?}", err))
                 .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
             }
             ServerFileWrite::JSON { content } => {
@@ -179,13 +195,16 @@ impl ServerFileWrite {
                                 Err(<E as FromStorageQuotaReached>::from())
                             } else {
                                 error!("Failed to read json file: {:?}", err);
-                                Err(<E as From<io::Error>>::from(io::Error::new(err.io_error_kind().unwrap(), err)))
+                                Err(<E as From<io::Error>>::from(io::Error::new(
+                                    err.io_error_kind().unwrap(),
+                                    err,
+                                )))
                             }
                         }
                         Err(_err) => Ok((Value::Object(Map::new()), file)),
                     })
                     .await
-                        .inspect_err(|err| error!("Failed to read json (task): {:?}", err))
+                    .inspect_err(|err| error!("Failed to read json (task): {:?}", err))
                     .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
 
                 for (key, val) in content {
@@ -240,14 +259,16 @@ impl ServerFileWrite {
                     *current = val;
                 }
                 tokio::task::spawn_blocking(move || {
-                    file.set_len(0).inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
-                    file.seek(SeekFrom::Start(0)).inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
+                    file.set_len(0)
+                        .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
+                    file.seek(SeekFrom::Start(0))
+                        .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
                     serde_json::to_writer_pretty(&mut file, &value)
                         .inspect_err(|err| warn!("Failed to write json: {:?}", err))
                         .map_err(|err| io::Error::new(ErrorKind::Other, err))
                 })
                 .await
-                    .inspect_err(|err| error!("Failed to write json (task): {:?}", err))
+                .inspect_err(|err| error!("Failed to write json (task): {:?}", err))
                 .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
             }
             ServerFileWrite::YAML { content } => {
@@ -256,12 +277,14 @@ impl ServerFileWrite {
                 let (mut value, mut file) = tokio::task::spawn_blocking(move || {
                     serde_yaml::from_reader(&mut file)
                         .inspect_err(|err| debug!("Failed to read yaml: {:?}", err))
-                        .map_err(|err| <E as From<io::Error>>::from(io::Error::new(ErrorKind::Other, err)))
+                        .map_err(|err| {
+                            <E as From<io::Error>>::from(io::Error::new(ErrorKind::Other, err))
+                        })
                         .map(|val: serde_yaml::Value| (val, file))
                 })
                 .await
-                    .inspect_err(|err| error!("Failed to read yaml (task): {:?}", err))
-                    .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+                .inspect_err(|err| error!("Failed to read yaml (task): {:?}", err))
+                .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
 
                 for (key, val) in content {
                     let components: Vec<String> = key.split(".").map(String::from).collect();
@@ -269,9 +292,12 @@ impl ServerFileWrite {
                     for comp in components {
                         match &current {
                             serde_yaml::Value::Sequence(array) => {
-                                let index = comp
-                                    .parse::<usize>()
-                                    .map_err(|err| <E as From<io::Error>>::from(io::Error::new(ErrorKind::Other, err)))?;
+                                let index = comp.parse::<usize>().map_err(|err| {
+                                    <E as From<io::Error>>::from(io::Error::new(
+                                        ErrorKind::Other,
+                                        err,
+                                    ))
+                                })?;
                                 if index < array.len() {
                                     current = &mut current.as_sequence_mut().unwrap()[index];
                                 } else {
@@ -315,8 +341,10 @@ impl ServerFileWrite {
                     *current = val;
                 }
                 tokio::task::spawn_blocking(move || {
-                    file.set_len(0).inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
-                    file.seek(SeekFrom::Start(0)).inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
+                    file.set_len(0)
+                        .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
+                    file.seek(SeekFrom::Start(0))
+                        .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
                     serde_yaml::to_writer(&mut file, &value)
                         .inspect_err(|err| warn!("Failed to write yaml: {:?}", err))
                         .map_err(|err| io::Error::new(ErrorKind::Other, err))

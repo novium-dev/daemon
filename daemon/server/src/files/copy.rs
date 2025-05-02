@@ -1,29 +1,30 @@
+use crate::Daemon;
+use crate::files::storage_path;
+use crate::storage::StorageIdentifier;
+use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::utils::path_relative;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
+use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
+use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::io;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use tracing::{debug, error};
-use daemon_common::service::error_storage_failure::FromStorageFailure;
-use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
-use daemon_common::service::error_storage_not_found::FromStorageNotFound;
-use crate::Daemon;
-use crate::files::storage_path;
-use crate::storage::StorageIdentifier;
-use crate::storage::sync::{storage_read_timeout, StorageLockData};
-use crate::utils::path_relative;
 
-pub(crate) async fn copy_file<E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure>(
+pub(crate) async fn copy_file<
+    E: From<io::Error>
+        + From<sqlx::Error>
+        + FromStorageNotFound
+        + FromStorageMutexLocked
+        + FromStorageFailure,
+>(
     state: &Daemon,
     id: StorageIdentifier,
     from: String,
     to: String,
 ) -> Result<(), E> {
-    let StorageLockData { lock, storage, .. } = storage_read_timeout::<E>(
-        &state.config,
-        state.conn.deref(),
-        &state.storages,
-        id,
-    )
-    .await?;
+    let StorageLockData { lock, storage, .. } =
+        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
     let from = path_relative(from);
     let to = path_relative(to);
     let (storage, _) = storage_path(id, &storage).await?;
@@ -40,4 +41,3 @@ pub(crate) async fn copy_file<E: From<io::Error> + From<sqlx::Error> + FromStora
     drop(lock);
     Ok(())
 }
-

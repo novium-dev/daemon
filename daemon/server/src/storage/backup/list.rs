@@ -4,6 +4,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::backup::BackupNameExtension;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use daemon_common::payload::backup::BackupResponseEntry;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::collections::HashMap;
@@ -13,10 +14,13 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::error;
-use daemon_common::service::error_storage_failure::FromStorageFailure;
 
 pub(crate) async fn list_backups<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure,
+    E: From<io::Error>
+        + From<sqlx::Error>
+        + FromStorageNotFound
+        + FromStorageMutexLocked
+        + FromStorageFailure,
 >(
     state: &Daemon,
     id: StorageIdentifier,

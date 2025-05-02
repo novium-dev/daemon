@@ -1,12 +1,12 @@
-use chrono::Utc;
-use url::Url;
 use super::*;
 use crate::payload::server::{
     ServerBuildPayload, ServerNetworkPayload, ServerPortEntryPayload, ServerResourcePayload,
 };
 use crate::server::PublicServerState;
 use crate::user::*;
-use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable, FrameworkClientImpl};
+use chrono::Utc;
+use daemon_framework::{FrameworkClientImpl, JsonVec, WebsocketResponse, define_query_variable};
+use url::Url;
 
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),
@@ -130,21 +130,10 @@ pub trait ServerService {
     ) -> Result<WebsocketResponse, _>;
 }
 
-
 pub trait ServiceServiceUserKeyExtension {
+    fn server_terminal_url_signed(&self, server_id: u32, cols: u32, rows: u32, write: bool) -> Url;
 
-    fn server_terminal_url_signed(
-        &self,
-        server_id: u32,
-        cols: u32,
-        rows: u32,
-        write: bool,
-    ) -> Url;
-
-    fn server_stats_url_signed(
-        &self,
-        server_id: u32,
-    ) -> Url;
+    fn server_stats_url_signed(&self, server_id: u32) -> Url;
 
     fn exec_server_interactive_url_signed(
         &self,
@@ -153,42 +142,34 @@ pub trait ServiceServiceUserKeyExtension {
         rows: u32,
         command: JsonVec<String>,
     ) -> Url;
-
 }
 
-impl<T: ServerService + FrameworkClientImpl + UserKeyProvider> ServiceServiceUserKeyExtension for T {
+impl<T: ServerService + FrameworkClientImpl + UserKeyProvider> ServiceServiceUserKeyExtension
+    for T
+{
     fn server_terminal_url_signed(&self, server_id: u32, cols: u32, rows: u32, write: bool) -> Url {
         let timestamp = Utc::now().timestamp();
-        let signature = UserSignature::new_terminal(
-            self.key(),
-            timestamp,
-            self.node_id(),
-            server_id,
-            write,
-        );
+        let signature =
+            UserSignature::new_terminal(self.key(), timestamp, self.node_id(), server_id, write);
         self.server_terminal_url(server_id, cols, rows, write, timestamp, signature)
     }
 
     fn server_stats_url_signed(&self, server_id: u32) -> Url {
         let timestamp = Utc::now().timestamp();
-        let signature = UserSignature::new_stats(
-            self.key(),
-            timestamp,
-            self.node_id(),
-            server_id,
-        );
+        let signature = UserSignature::new_stats(self.key(), timestamp, self.node_id(), server_id);
         self.server_stats_url(server_id, timestamp, signature)
     }
 
-    fn exec_server_interactive_url_signed(&self, server_id: u32, cols: u32, rows: u32, command: JsonVec<String>) -> Url {
+    fn exec_server_interactive_url_signed(
+        &self,
+        server_id: u32,
+        cols: u32,
+        rows: u32,
+        command: JsonVec<String>,
+    ) -> Url {
         let timestamp = Utc::now().timestamp();
-        let signature = UserSignature::new_exec(
-            self.key(),
-            timestamp,
-            self.node_id(),
-            server_id,
-            &command,
-        );
+        let signature =
+            UserSignature::new_exec(self.key(), timestamp, self.node_id(), server_id, &command);
         self.exec_server_interactive_url(server_id, cols, rows, command, timestamp, signature)
     }
 }

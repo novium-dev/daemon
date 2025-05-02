@@ -43,13 +43,15 @@ pub(crate) fn process(
         TokenStream::new()
     };
 
-    let stream = fn_args_payload.iter().map(|(_, t)| t.to_string()).any(|s| s.eq("DataStream"));
+    let stream = fn_args_payload
+        .iter()
+        .map(|(_, t)| t.to_string())
+        .any(|s| s.eq("DataStream"));
 
     if fn_args_payload.len() == 1 {
         let (arg_name, arg_type) = fn_args_payload[0].clone();
 
         if stream {
-
             http_args.extend(quote! {
                 #arg_name:
                 #arg_type,
@@ -70,9 +72,7 @@ pub(crate) fn process(
             client_impl_body.extend(quote! {
                 request = request.body(#arg_name.into_reqwest());
             });
-
         } else {
-
             http_args.extend(quote! {
                 #crate_prefix axum::extract::Json(
                     #arg_name
@@ -110,7 +110,6 @@ pub(crate) fn process(
                 request = request.json(&#arg_name);
             });
         }
-
     } else if !fn_args_payload.is_empty() {
         if stream {
             panic!("You can't mix a DataStream with multiple payload fields");

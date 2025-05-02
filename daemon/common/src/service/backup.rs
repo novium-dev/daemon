@@ -1,10 +1,10 @@
-use chrono::Utc;
-use url::Url;
 use super::*;
 use crate::payload::backup::BackupResponseEntry;
 use crate::service::service;
 use crate::user::*;
-use daemon_framework::{FileResponse, define_query_variable, FrameworkClientImpl};
+use chrono::Utc;
+use daemon_framework::{FileResponse, FrameworkClientImpl, define_query_variable};
+use url::Url;
 
 define_path_variable!(
     backup_storage "The storage where the backup will be/is stored"
@@ -124,7 +124,6 @@ pub trait BackupService {
 }
 
 pub trait BackupServiceUserKeyExtension {
-
     fn server_download_backup_user_url_signed(
         &self,
         server_id: u32,
@@ -132,16 +131,10 @@ pub trait BackupServiceUserKeyExtension {
         backup_id: i64,
     ) -> Url;
 
-    fn server_download_realtime_user_url_signed(
-        &self,
-        server_id: u32,
-        compression: String,
-    ) -> Url;
-
+    fn server_download_realtime_user_url_signed(&self, server_id: u32, compression: String) -> Url;
 }
 
 impl<T: BackupService + FrameworkClientImpl + UserKeyProvider> BackupServiceUserKeyExtension for T {
-
     fn server_download_backup_user_url_signed(
         &self,
         server_id: u32,
@@ -157,14 +150,16 @@ impl<T: BackupService + FrameworkClientImpl + UserKeyProvider> BackupServiceUser
             &backup_storage,
             backup_id,
         );
-        self.server_download_backup_user_url(server_id, backup_storage, backup_id, timestamp, signature)
+        self.server_download_backup_user_url(
+            server_id,
+            backup_storage,
+            backup_id,
+            timestamp,
+            signature,
+        )
     }
 
-    fn server_download_realtime_user_url_signed(
-        &self,
-        server_id: u32,
-        compression: String,
-    ) -> Url {
+    fn server_download_realtime_user_url_signed(&self, server_id: u32, compression: String) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature = UserSignature::new_server_realtime_download(
             self.key(),
@@ -175,5 +170,4 @@ impl<T: BackupService + FrameworkClientImpl + UserKeyProvider> BackupServiceUser
         );
         self.server_download_realtime_user_url(server_id, timestamp, signature, compression)
     }
-
 }

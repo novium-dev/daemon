@@ -115,7 +115,10 @@ impl FetchedServer {
                 .map_err(ServerStartError::IO)?;
             let fd: OwnedFd = file.into();
             let file = tokio::fs::File::from_std(std::fs::File::from(fd));
-            file_write.apply::<io::Error>(file).await.map_err(ServerStartError::IO)?;
+            file_write
+                .apply::<io::Error>(file)
+                .await
+                .map_err(ServerStartError::IO)?;
         }
 
         let mut binds = Vec::with_capacity(1);

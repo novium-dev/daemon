@@ -135,9 +135,7 @@ impl<'de> Deserialize<'de> for UserSignature {
 }
 
 pub trait UserKeyProvider {
-    
     fn node_id(&self) -> &str;
-    
+
     fn key(&self) -> &SigningKey;
-    
 }

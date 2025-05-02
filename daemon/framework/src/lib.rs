@@ -1,11 +1,16 @@
 pub use async_trait::async_trait;
 pub use axum;
+use axum::body::BodyDataStream;
+use axum::extract::{FromRequest, Request};
 use axum::response::IntoResponse;
 pub use axum_extra;
+use bytes::Bytes;
 pub use daemon_framework_macros::define_error;
 pub use daemon_framework_macros::error;
 pub use daemon_framework_macros::service;
+use futures_util::Stream;
 pub use http;
+use http::HeaderMap;
 pub use paste;
 pub use reqwest;
 use reqwest::Url;
@@ -18,15 +23,10 @@ pub use serde_urlencoded;
 pub use sqlx;
 use std::any::TypeId;
 use std::collections::HashMap;
-use std::{io, mem};
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
-use axum::body::BodyDataStream;
-use axum::extract::{FromRequest, Request};
-use bytes::Bytes;
-use futures_util::Stream;
-use http::HeaderMap;
+use std::{io, mem};
 use tokio::io::AsyncRead;
 use tokio_util::io::{ReaderStream, StreamReader};
 pub use urlencoding;
@@ -430,7 +430,7 @@ impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static> FrameworkD
         mem::swap(responses, &mut responses_owned);
         if TypeId::of::<V>() == TypeId::of::<()>() {
             responses_owned = responses_owned.response(
-                "204", //  
+                "204", //
                 Response::builder().description(SUCCESS_DESCRIPTION).build(),
             );
         } else {
@@ -524,13 +524,14 @@ impl<'de, T: for<'a> Deserialize<'a> + Clone> Deserialize<'de> for JsonVec<T> {
 pub enum DataStream {
     Axum(BodyDataStream),
     Stream(Pin<BoxedStream>),
-    Read(Pin<Box<dyn AsyncRead + Send + 'static>>)
+    Read(Pin<Box<dyn AsyncRead + Send + 'static>>),
 }
 
-type BoxedStream = Box<dyn Stream<Item=Result<Bytes, io::Error>> + Send>;
+type BoxedStream = Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>;
 impl DataStream {
-
-    pub fn by_stream<T: Stream<Item=Result<Bytes, io::Error>> + Send + 'static>(stream: T) -> Self {
+    pub fn by_stream<T: Stream<Item = Result<Bytes, io::Error>> + Send + 'static>(
+        stream: T,
+    ) -> Self {
         Self::Stream(Box::pin(stream))
     }
 
@@ -557,12 +558,13 @@ impl DataStream {
     pub fn reader(self) -> StreamReader<Pin<BoxedStream>, Bytes> {
         use futures_util::TryStreamExt;
         StreamReader::new(match self {
-            DataStream::Axum(stream) => Box::pin(stream.map_err(|err| io::Error::new(io::ErrorKind::Other, err))),
+            DataStream::Axum(stream) => {
+                Box::pin(stream.map_err(|err| io::Error::new(io::ErrorKind::Other, err)))
+            }
             DataStream::Stream(stream) => stream,
             DataStream::Read(read) => Box::pin(ReaderStream::new(read)),
         })
     }
-
 }
 
 impl<S: Send + Sync> FromRequest<S> for DataStream {

@@ -1,15 +1,17 @@
-use std::io;
-use std::io::ErrorKind;
 use crate::service::backup::{BackupService, BackupServiceClientImpl};
+use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
+use crate::service::files::{FilesService, FilesServiceClientImpl};
+use crate::service::network::{NetworkService, NetworkServiceClientImpl};
 use crate::service::server::{ServerService, ServerServiceClientImpl};
 pub(crate) use daemon_framework::{define_error, service};
 use daemon_framework::{define_header_variable, define_path_variable, error};
-use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
-use crate::service::files::{FilesService, FilesServiceClientImpl};
+use std::io;
+use std::io::ErrorKind;
 
 pub mod backup;
-pub mod server;
 pub mod files;
+pub mod network;
+pub mod server;
 
 define_error!(auth {
     invalid (
@@ -44,7 +46,7 @@ define_error!(storage {
 impl FromStorageQuotaReached for io::Error {
     fn from() -> Self
     where
-        Self: Sized
+        Self: Sized,
     {
         io::Error::new(ErrorKind::QuotaExceeded, "Quota reached")
     }
@@ -74,5 +76,11 @@ define_header_variable!(auth "The authentication token");
 
 error!(MiddlewareError, auth(invalid));
 
-pub trait DaemonServices: ServerService + BackupService + FilesService {}
-pub trait DaemonServicesClientImpl: ServerServiceClientImpl + BackupServiceClientImpl + FilesServiceClientImpl {}
+pub trait DaemonServices: ServerService + BackupService + FilesService + NetworkService {}
+pub trait DaemonServicesClientImpl:
+    ServerServiceClientImpl
+    + BackupServiceClientImpl
+    + FilesServiceClientImpl
+    + NetworkServiceClientImpl
+{
+}

@@ -1,31 +1,9 @@
-use crate::web::sql_error_to_http;
-use axum::http::StatusCode;
 use bollard::Docker;
 use bollard::models::{Ipam, IpamConfig};
 use bollard::network::{CreateNetworkOptions, DisconnectNetworkOptions};
+use daemon_common::service::error_docker_failure::FromDockerFailure;
 use sqlx::{Error, Executor, MySql, Transaction, query, query_as};
-
-#[derive(Debug)]
-pub(crate) enum NetworkError {
-    Sql(sqlx::Error),
-    #[allow(dead_code)]
-    Docker(bollard::errors::Error),
-}
-
-impl From<sqlx::Error> for NetworkError {
-    fn from(value: Error) -> Self {
-        NetworkError::Sql(value)
-    }
-}
-
-impl NetworkError {
-    pub(crate) fn into_http(self) -> StatusCode {
-        match self {
-            NetworkError::Sql(err) => sql_error_to_http(err),
-            NetworkError::Docker(_) => StatusCode::INTERNAL_SERVER_ERROR,
-        }
-    }
-}
+use tracing::error;
 
 #[derive(Debug, Clone, Eq, PartialEq, sqlx::FromRow)]
 pub(crate) struct Network {
@@ -35,12 +13,12 @@ pub(crate) struct Network {
 }
 
 impl Network {
-    pub(crate) async fn create(
+    pub(crate) async fn create<E: From<sqlx::Error> + FromDockerFailure>(
         docker: &Docker,
         tx: &mut Transaction<'_, MySql>,
         ipv4: u16,
         ipv6: u16,
-    ) -> Result<Network, NetworkError> {
+    ) -> Result<Network, E> {
         let id = query!(
             "INSERT INTO `networks` (`ipv4`, `ipv6`) VALUES (?, ?)",
             ipv4,
@@ -48,7 +26,14 @@ impl Network {
         )
         .execute(&mut **tx)
         .await
-        .map_err(NetworkError::Sql)?
+        .inspect_err(|err| {
+            if let Error::Database(db) = &err {
+                if db.is_unique_violation() || db.is_check_violation() {
+                    return;
+                }
+            }
+            error!("Failed to insert network: {:?}", err);
+        })?
         .last_insert_id() as u32;
 
         let ipv4_split = [(ipv4 >> 8) as u8, ipv4 as u8];
@@ -86,15 +71,16 @@ impl Network {
                 ..CreateNetworkOptions::default()
             })
             .await
-            .map_err(NetworkError::Docker)?;
+            .inspect_err(|err| error!("Failed to create network: {:?}", err))
+            .map_err(|_| <E as FromDockerFailure>::from())?;
 
         Ok(Network { id, ipv4, ipv6 })
     }
 
-    pub(crate) async fn resolve(
+    pub(crate) async fn resolve<E: From<sqlx::Error>>(
         conn: impl Executor<'_, Database = MySql>,
         id: u32,
-    ) -> Result<Option<Network>, NetworkError> {
+    ) -> Result<Option<Network>, E> {
         query_as!(
             Network,
             "SELECT * FROM `networks` WHERE `id` = ? LIMIT 1",
@@ -102,18 +88,19 @@ impl Network {
         )
         .fetch_optional(conn)
         .await
-        .map_err(NetworkError::Sql)
+        .inspect_err(|err| error!("Failed to resolve network: {:?}", err))
+        .map_err(<E as From<sqlx::Error>>::from)
     }
 
-    pub(crate) async fn delete(
+    pub(crate) async fn delete<E: From<sqlx::Error> + FromDockerFailure>(
         &self,
         docker: &Docker,
         tx: &mut Transaction<'_, MySql>,
-    ) -> Result<(), NetworkError> {
+    ) -> Result<(), E> {
         query!("DELETE FROM `networks` WHERE `id` = ?", self.id)
             .execute(&mut **tx)
             .await
-            .map_err(NetworkError::Sql)?;
+            .inspect_err(|err| error!("Failed to delete network: {:?}", err))?;
 
         match docker
             .inspect_network::<String>(
@@ -140,7 +127,10 @@ impl Network {
             Err(bollard::errors::Error::DockerResponseServerError {
                 status_code: 404, ..
             }) => {}
-            Err(err) => return Err(NetworkError::Docker(err)),
+            Err(err) => {
+                error!("Failed to inspect network (delete): {:?}", err);
+                return Err(<E as FromDockerFailure>::from());
+            }
         }
 
         match docker
@@ -151,7 +141,10 @@ impl Network {
             Err(bollard::errors::Error::DockerResponseServerError {
                 status_code: 404, ..
             }) => {}
-            Err(err) => return Err(NetworkError::Docker(err)),
+            Err(err) => {
+                error!("Failed to delete network: {:?}", err);
+                return Err(<E as FromDockerFailure>::from());
+            }
         }
 
         Ok(())

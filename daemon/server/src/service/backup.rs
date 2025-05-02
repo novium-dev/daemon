@@ -5,9 +5,10 @@ use daemon_common::FileResponse;
 use daemon_common::payload::backup::BackupResponseEntry;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::backup::error::{
-    ServerCreateBackupError, ServerCreateBackupOrderError, ServerDeleteBackupError, ServerDownloadBackupError,
-    ServerDownloadBackupUserError, ServerDownloadRealtimeError, ServerDownloadRealtimeUserError,
-    ServerListBackupsError, ServerRestoreBackupError, ServerSetBackupNameError,
+    ServerCreateBackupError, ServerCreateBackupOrderError, ServerDeleteBackupError,
+    ServerDownloadBackupError, ServerDownloadBackupUserError, ServerDownloadRealtimeError,
+    ServerDownloadRealtimeUserError, ServerListBackupsError, ServerRestoreBackupError,
+    ServerSetBackupNameError,
 };
 use daemon_common::user::UserSignature;
 
@@ -21,7 +22,10 @@ impl BackupService for Daemon {
         storage::backup::list_backups(self, storage).await
     }
 
-    async fn server_create_backup_order(&self, server_id: u32) -> Result<i64, ServerCreateBackupOrderError> {
+    async fn server_create_backup_order(
+        &self,
+        server_id: u32,
+    ) -> Result<i64, ServerCreateBackupOrderError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::create_backup_order(self, storage).await
     }

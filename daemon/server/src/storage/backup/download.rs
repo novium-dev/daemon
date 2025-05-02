@@ -7,10 +7,12 @@ use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use axum::http;
 use axum::http::HeaderMap;
 use chrono::{TimeZone, Utc};
-use daemon_common::{DataStream, FileResponse};
+use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_compression_unsupported::FromCompressionUnsupported;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::{DataStream, FileResponse};
 use serde_json::json;
 use std::collections::HashSet;
 use std::io;
@@ -21,11 +23,14 @@ use tar::Builder;
 use tokio::fs::File;
 use tokio_util::io::SyncIoBridge;
 use tracing::{debug, error};
-use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
-use daemon_common::service::error_storage_failure::FromStorageFailure;
 
 pub(crate) async fn backup_to_stream<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure + FromBackupStorageLocationNotFound,
+    E: From<io::Error>
+        + From<sqlx::Error>
+        + FromStorageNotFound
+        + FromStorageMutexLocked
+        + FromStorageFailure
+        + FromBackupStorageLocationNotFound,
 >(
     state: &Daemon,
     id: StorageIdentifier,
@@ -73,15 +78,13 @@ async fn backup_to_stream0<E: From<io::Error>>(
             )]);
             Ok((
                 headers,
-                DataStream::by_read(File::open(target).await.inspect_err(
-                    |err| {
-                        if err.kind() == ErrorKind::NotFound {
-                            debug!("Failed to create a backup stream (open): {:?}", err)
-                        } else {
-                            error!("Failed to create a backup stream (open): {:?}", err)
-                        }
-                    },
-                )?),
+                DataStream::by_read(File::open(target).await.inspect_err(|err| {
+                    if err.kind() == ErrorKind::NotFound {
+                        debug!("Failed to create a backup stream (open): {:?}", err)
+                    } else {
+                        error!("Failed to create a backup stream (open): {:?}", err)
+                    }
+                })?),
             ))
         }
         #[cfg(feature = "btrfs")]

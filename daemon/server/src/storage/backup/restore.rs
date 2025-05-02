@@ -4,6 +4,8 @@ use crate::storage::archive::TarSandboxedUnpackExtension;
 use crate::storage::btrfs::{new_snapshot, remove_subvolume};
 use crate::storage::sync::{StorageLockData, storage_write_timeout};
 use crate::{Daemon, storage};
+use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::io;
@@ -15,11 +17,14 @@ use std::sync::atomic::{AtomicI64, Ordering};
 use tar::Archive;
 use tokio::fs::File;
 use tracing::{debug, error};
-use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
-use daemon_common::service::error_storage_failure::FromStorageFailure;
 
 pub(crate) async fn restore_backup<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure + FromBackupStorageLocationNotFound,
+    E: From<io::Error>
+        + From<sqlx::Error>
+        + FromStorageNotFound
+        + FromStorageMutexLocked
+        + FromStorageFailure
+        + FromBackupStorageLocationNotFound,
 >(
     state: &Daemon,
     id: StorageIdentifier,

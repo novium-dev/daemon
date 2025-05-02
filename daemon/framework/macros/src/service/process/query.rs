@@ -1,6 +1,6 @@
 use crate::service::parse::FunctionArgument;
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::{quote, ToTokens};
+use quote::{ToTokens, quote};
 use syn::LitStr;
 
 #[allow(clippy::too_many_arguments)]
@@ -54,7 +54,8 @@ pub(crate) fn process(
             let variable_literal = LitStr::new(&arg_name.to_string(), arg_name.span());
             let required = Ident::new(if required { "True" } else { "False" }, Span::call_site());
 
-            let desc = desc.map(|d| d.into_token_stream())
+            let desc = desc
+                .map(|d| d.into_token_stream())
                 .unwrap_or(quote! { [< variable_query_ #arg_name:snake >]::DESCRIPTION });
             operations.extend(quote! {
                 .parameter(
