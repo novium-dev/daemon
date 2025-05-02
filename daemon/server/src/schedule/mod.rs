@@ -30,7 +30,6 @@ pub(crate) async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
             _ => continue,
         };
         let server = schedule.server;
-        let (send, recv) = tokio::sync::oneshot::channel();
         let cron = match Schedule::from_str(&schedule.schedule) {
             Ok(schedule) => schedule,
             Err(err) => {
@@ -72,22 +71,14 @@ pub(crate) async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
             steps.push(step);
         }
 
-        drop(tokio::task::spawn(task(
-            server,
-            state.clone(),
-            policy,
-            steps,
-            recv,
-            cron,
-            timezone,
-        )));
+        let handle = tokio::task::spawn(task(server, state.clone(), policy, steps, cron, timezone));
         schedules
             .entry(server)
             .or_default()
             .lock()
             .await
             .schedules
-            .insert(schedule.id, send);
+            .insert(schedule.id, handle);
     }
     Ok(())
 }

@@ -1,9 +1,6 @@
 use crate::Daemon;
-use axum::http::StatusCode;
-use tracing::{debug, warn};
 use utoipa_axum::router::OpenApiRouter;
 
-mod schedule;
 #[cfg(feature = "trace_sync")]
 pub(crate) mod trace;
 
@@ -11,24 +8,9 @@ pub(crate) mod trace;
 pub(crate) mod user;
 
 #[deprecated]
-pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
-    if let sqlx::Error::Database(database) = &err {
-        if database.is_unique_violation()
-            || database.is_check_violation()
-            || database.is_foreign_key_violation()
-        {
-            debug!("Database query failed (violation): {:?}", err);
-            return StatusCode::BAD_REQUEST;
-        }
-    }
-    warn!("Database query failed: {:?}", err);
-    StatusCode::INTERNAL_SERVER_ERROR
-}
-
-#[deprecated]
 pub(crate) fn config() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
-    let mut router = OpenApiRouter::new().merge(schedule::config());
+    let mut router = OpenApiRouter::new();
     router
 }
 

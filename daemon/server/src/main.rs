@@ -31,7 +31,7 @@ use std::time::Duration;
 use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::runtime::Handle;
-use tokio::task::JoinSet;
+use tokio::task::{JoinHandle, JoinSet};
 use tower_http::trace::TraceLayer;
 use tracing::{error, info, warn};
 use tracing_subscriber::layer::SubscriberExt;
@@ -57,7 +57,6 @@ use daemon_common::service::server::ServerService;
 use daemon_common::{framework_router, framework_router_user};
 
 mod config;
-#[cfg(feature = "database")]
 mod database;
 mod server;
 
@@ -662,7 +661,7 @@ pub(crate) struct ServerData {
 
 #[derive(Default)]
 pub(crate) struct ServerScheduleData {
-    pub(crate) schedules: HashMap<u32, tokio::sync::oneshot::Sender<()>>,
+    pub(crate) schedules: HashMap<u32, JoinHandle<()>>,
 }
 
 impl Default for ServerData {

@@ -1,9 +1,10 @@
 use chrono_tz::Tz;
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use utoipa::PartialSchema;
+use utoipa::openapi::{Object, RefOr, Schema};
 
-#[derive(Clone, Serialize, Deserialize, Debug)]
+#[derive(Clone, Serialize, Deserialize, Debug, utoipa::ToSchema)]
 #[serde(tag = "type")]
 pub enum ScheduleStep {
     #[serde(rename = "start")]
@@ -15,14 +16,14 @@ pub enum ScheduleStep {
     #[serde(rename = "kill")]
     Kill,
     #[serde(rename = "sleep")]
-    Sleep { time: Duration },
+    Sleep { time: u64 },
     #[serde(rename = "terminal")]
     TerminalCommand { command: String },
     #[serde(rename = "container")]
     ContainerCommand { command: Vec<String> },
 }
 
-#[derive(Clone, Copy, Hash, Debug, Serialize, Deserialize)]
+#[derive(Clone, Copy, Hash, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub enum ScheduleRunPolicy {
     #[serde(rename = "always")]
     Always,
@@ -39,3 +40,22 @@ pub struct SchedulePayload {
     pub timezone: Tz,
     pub steps: Vec<ScheduleStep>,
 }
+
+impl PartialSchema for SchedulePayload {
+    fn schema() -> RefOr<Schema> {
+        RefOr::T(Schema::Object(
+            Object::builder()
+                .property("policy", ScheduleRunPolicy::schema())
+                .property("schedule", String::schema())
+                .property("timezone", String::schema())
+                .property("steps", <Vec<ScheduleStep>>::schema())
+                .required("policy")
+                .required("schedule")
+                .required("timezone")
+                .required("steps")
+                .build(),
+        ))
+    }
+}
+
+impl utoipa::ToSchema for SchedulePayload {}

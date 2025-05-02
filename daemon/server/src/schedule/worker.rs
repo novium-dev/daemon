@@ -15,7 +15,6 @@ use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
-use tokio::sync::oneshot::Receiver;
 use tokio::time::Instant;
 use tracing::error;
 
@@ -24,21 +23,15 @@ pub(crate) async fn task(
     state: Daemon,
     policy: ScheduleRunPolicy,
     steps: Vec<ScheduleStep>,
-    recv: Receiver<()>,
     schedule: Schedule,
     timezone: impl TimeZone + Copy + Send + 'static,
 ) {
     drop(tokio::task::spawn(async move {
-        tokio::select! {
-            _ = recv => {}
-            _ = async move {
-                loop {
-                    if let Some(next) = determine_next_run(&schedule, &timezone) {
-                        tokio::time::sleep_until(next).await;
-                        run(server_id, state.clone(), policy, &steps).await;
-                    }
-                }
-            } => {},
+        loop {
+            if let Some(next) = determine_next_run(&schedule, &timezone) {
+                tokio::time::sleep_until(next).await;
+                run(server_id, state.clone(), policy, &steps).await;
+            }
         }
     }));
 }
@@ -87,7 +80,7 @@ async fn run(server_id: u32, state: Daemon, policy: ScheduleRunPolicy, steps: &V
             ScheduleStep::Restart => restart(server_id, state.clone()).await,
             ScheduleStep::Kill => kill(server_id, state.clone()).await,
             ScheduleStep::Sleep { time } => {
-                tokio::time::sleep(*time).await;
+                tokio::time::sleep(Duration::from_secs(*time)).await;
                 ScheduleStepResult::Continue
             }
             ScheduleStep::TerminalCommand { command } => {

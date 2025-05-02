@@ -123,8 +123,8 @@ impl ServerService for Daemon {
                 self.servers.lock().await.remove(&server_id);
 
                 if let Some(schedules) = self.schedules.lock().await.remove(&server_id) {
-                    for (_, sender) in schedules.lock().await.schedules.drain() {
-                        let _ = sender.send(());
+                    for (_, handle) in schedules.lock().await.schedules.drain() {
+                        handle.abort();
                     }
                 }
 

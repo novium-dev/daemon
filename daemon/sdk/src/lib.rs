@@ -17,6 +17,7 @@ use daemon_common::service::database::DatabaseServiceClientImpl;
 use daemon_common::service::files::FilesServiceClientImpl;
 use daemon_common::service::network::NetworkServiceClientImpl;
 use daemon_common::service::resource::ResourceServiceClientImpl;
+use daemon_common::service::schedule::ScheduleServiceClientImpl;
 use daemon_common::service::server::ServerServiceClientImpl;
 use daemon_common::user::UserKeyProvider;
 use http::{Method, StatusCode};
@@ -124,6 +125,7 @@ impl<T: DaemonSDKExtra> FilesServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> NetworkServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> ResourceServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> DatabaseServiceClientImpl for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra> ScheduleServiceClientImpl for DaemonSDK<T> {}
 
 impl UserKeyProvider for DaemonSDK<WithUserKey> {
     fn node_id(&self) -> &str {

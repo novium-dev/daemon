@@ -1,0 +1,10 @@
+{
+  "policy": "running",
+  "schedule": "*/5 * * * *",
+  "timezone": "Etc/Utc",
+  "steps": [
+    {
+      "type": "restart"
+    }
+  ]
+}

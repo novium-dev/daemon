@@ -1,0 +1,166 @@
+use crate::Daemon;
+use crate::schedule::worker::task;
+use crate::utils::server_required;
+use async_trait::async_trait;
+use daemon_common::payload::schedule::{SchedulePayload, ScheduleRunPolicy};
+use daemon_common::service::schedule::ScheduleService;
+use daemon_common::service::schedule::error::{
+    CreateScheduleError, DeleteScheduleError, UpdateScheduleError,
+};
+use sqlx::{Connection, query, query_scalar};
+use std::ops::Deref;
+use tracing::error;
+
+#[async_trait]
+impl ScheduleService for Daemon {
+    async fn create_schedule(
+        &self,
+        server_id: u32,
+        payload: SchedulePayload,
+    ) -> Result<u32, CreateScheduleError> {
+        let _ = server_required::<CreateScheduleError>(self.conn.deref(), &self.servers, server_id)
+            .await?;
+        let mut conn = self.conn.acquire().await?;
+
+        let policy = payload.policy;
+        let steps = payload.steps.clone();
+        let timezone = payload.timezone;
+        let cron = payload.schedule.clone();
+
+        let id = conn.transaction(move |tx| Box::pin(async move {
+            let id = query!("INSERT INTO `schedules` (`server`, `policy`, `schedule`, `timezone`) VALUES (?, ?, ?, ?)", server_id, match policy {
+                ScheduleRunPolicy::Always => "always",
+                ScheduleRunPolicy::Running => "running",
+                ScheduleRunPolicy::Stopped => "stopped",
+            }, cron.to_string(), timezone.to_string())
+                .execute(&mut **tx)
+                .await
+                .inspect_err(|err| error!("Failed to insert schedule: {:?}", err))?
+                .last_insert_id() as u32;
+
+            for (index, step) in steps.into_iter().enumerate() {
+                let value = serde_json::to_value(step).unwrap();
+                query!("INSERT INTO `schedule_steps` (`schedule`, `index`, `value`) VALUES (?, ?, ?)", id, index as u32, value)
+                    .execute(&mut **tx)
+                    .await
+                    .inspect_err(|err| error!("Failed to insert schedule step: {:?}", err))?;
+            }
+
+            Ok::<_, CreateScheduleError>(id)
+        })).await?;
+
+        let handle = tokio::task::spawn(task(
+            server_id,
+            self.clone(),
+            payload.policy,
+            payload.steps,
+            payload.schedule,
+            payload.timezone,
+        ));
+        self.schedules
+            .lock()
+            .await
+            .entry(server_id)
+            .or_default()
+            .lock()
+            .await
+            .schedules
+            .insert(id, handle);
+        Ok(id)
+    }
+
+    async fn update_schedule(
+        &self,
+        server_id: u32,
+        schedule_id: u32,
+        payload: SchedulePayload,
+    ) -> Result<(), UpdateScheduleError> {
+        let _ = server_required::<UpdateScheduleError>(self.conn.deref(), &self.servers, server_id)
+            .await?;
+        let mut conn = self.conn.acquire().await?;
+
+        let policy = payload.policy;
+        let steps = payload.steps.clone();
+        let timezone = payload.timezone;
+        let cron = payload.schedule.clone();
+
+        conn.transaction(move |tx| Box::pin(async move {
+            let Some(_) = query_scalar!("SELECT `id` FROM `schedules` WHERE `id` = ? AND `server` = ?", schedule_id, server_id)
+                .fetch_optional(&mut **tx)
+                .await
+                .inspect_err(|err| error!("Failed to select schedule: {:?}", err))? else {
+                return Err(UpdateScheduleError::ScheduleNotFound);
+            };
+
+            query!("UPDATE `schedules` SET `policy` = ?, `schedule` = ?, `timezone` = ? WHERE `id` = ? AND `server` = ?", match policy {
+                ScheduleRunPolicy::Always => "always",
+                ScheduleRunPolicy::Running => "running",
+                ScheduleRunPolicy::Stopped => "stopped",
+            }, cron.to_string(), timezone.to_string(), schedule_id, server_id)
+                .execute(&mut **tx)
+                .await
+                .inspect_err(|err| error!("Failed to update schedule: {:?}", err))?;
+
+            query!("DELETE FROM `schedule_steps` WHERE `schedule` = ?", schedule_id)
+                .execute(&mut **tx)
+                .await
+                .inspect_err(|err| error!("Failed to delete schedule steps: {:?}", err))?;
+
+            for (index, step) in steps.into_iter().enumerate() {
+                let value = serde_json::to_value(step).unwrap();
+                query!("INSERT INTO `schedule_steps` (`schedule`, `index`, `value`) VALUES (?, ?, ?)", schedule_id, index as u32, value)
+                    .execute(&mut **tx)
+                    .await
+                    .inspect_err(|err| error!("Failed to insert schedule step (update): {:?}", err))?;
+            }
+
+            Ok::<_, UpdateScheduleError>(())
+        })).await?;
+
+        let mut schedules = self.schedules.lock().await;
+        let mut schedules = schedules.entry(server_id).or_default().lock().await;
+
+        if let Some(handle) = schedules.schedules.remove(&schedule_id) {
+            handle.abort();
+        }
+
+        let handle = tokio::task::spawn(task(
+            server_id,
+            self.clone(),
+            payload.policy,
+            payload.steps,
+            payload.schedule,
+            payload.timezone,
+        ));
+
+        schedules.schedules.insert(schedule_id, handle);
+
+        Ok(())
+    }
+
+    async fn delete_schedule(
+        &self,
+        server_id: u32,
+        schedule_id: u32,
+    ) -> Result<(), DeleteScheduleError> {
+        let _ = server_required::<DeleteScheduleError>(self.conn.deref(), &self.servers, server_id)
+            .await?;
+        let mut conn = self.conn.acquire().await?;
+        query!(
+            "DELETE FROM `schedules` WHERE `id` = ? AND `server` = ?",
+            schedule_id,
+            server_id
+        )
+        .execute(&mut *conn)
+        .await
+        .inspect_err(|err| error!("Failed to delete schedule: {:?}", err))?;
+
+        if let Some(schedules) = self.schedules.lock().await.get_mut(&server_id) {
+            if let Some(sender) = schedules.lock().await.schedules.remove(&schedule_id) {
+                sender.abort();
+            }
+        }
+
+        Ok(())
+    }
+}
