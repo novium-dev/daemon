@@ -6,16 +6,14 @@ use ed25519_dalek::SigningKey;
 use std::collections::HashMap;
 
 pub mod builder;
-#[cfg(feature = "database")]
-pub mod database;
 pub mod schedule;
-#[cfg(feature = "user")]
 pub mod user;
 
 use crate::builder::user::WithUserKey;
 use daemon_common::FrameworkClientImpl;
 use daemon_common::service::DaemonServicesClientImpl;
 use daemon_common::service::backup::BackupServiceClientImpl;
+use daemon_common::service::database::DatabaseServiceClientImpl;
 use daemon_common::service::files::FilesServiceClientImpl;
 use daemon_common::service::network::NetworkServiceClientImpl;
 use daemon_common::service::resource::ResourceServiceClientImpl;
@@ -37,7 +35,6 @@ pub struct DaemonSDK<T: DaemonSDKExtra> {
     client: Client,
     identifier: String,
     base_url: Url,
-    #[allow(unused)]
     extra: T,
 }
 
@@ -126,6 +123,7 @@ impl<T: DaemonSDKExtra> BackupServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> FilesServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> NetworkServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> ResourceServiceClientImpl for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra> DatabaseServiceClientImpl for DaemonSDK<T> {}
 
 impl UserKeyProvider for DaemonSDK<WithUserKey> {
     fn node_id(&self) -> &str {

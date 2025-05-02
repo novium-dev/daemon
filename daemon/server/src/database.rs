@@ -1,11 +1,12 @@
-use crate::common::payload::database::DatabaseModifyPayload;
 use crate::sql;
 use crate::sql::MultiTransactionApply;
-use daemon_common::payload::database::DatabaseUserPermissions;
+use daemon_common::payload::database::{DatabaseUserPayload, DatabaseUserPermissions};
+use daemon_common::service::database::error_database_invalid_hash::FromDatabaseInvalidHash;
+use daemon_common::service::database::error_database_invalid_identifier::FromDatabaseInvalidIdentifier;
+use daemon_common::service::database::error_database_permissionless_entry::FromDatabasePermissionlessEntry;
 use regex::Regex;
 use sqlx::{Error, Executor, MySql, query, query_as};
 use std::collections::{HashMap, HashSet};
-use tokio::task::JoinError;
 
 #[derive(Clone, Eq, PartialEq, sqlx::FromRow)]
 pub(crate) struct Database {
@@ -60,80 +61,92 @@ impl Database {
             users,
         })
     }
-}
 
-#[allow(unused)]
-#[derive(Debug)]
-pub(crate) enum DatabaseUpdateError {
-    Sql(sqlx::Error),
-    Invalid,
-    Blocking(JoinError),
-}
-
-impl From<sqlx::Error> for DatabaseUpdateError {
-    fn from(value: sqlx::Error) -> Self {
-        DatabaseUpdateError::Sql(value)
+    pub(crate) fn validate_hash<E: FromDatabaseInvalidHash>(str: &str) -> Result<(), E> {
+        if !str.len() == 41 {
+            return Err(E::from());
+        }
+        if !str.starts_with('*') {
+            return Err(E::from());
+        }
+        for c in str[1..].chars() {
+            if !"0123456789ABCDEF".contains(c) {
+                return Err(E::from());
+            }
+        }
+        Ok(())
     }
-}
 
-impl From<JoinError> for DatabaseUpdateError {
-    fn from(value: JoinError) -> Self {
-        DatabaseUpdateError::Blocking(value)
+    pub(crate) fn validate_sql_string<E: FromDatabaseInvalidIdentifier>(
+        str: &str,
+    ) -> Result<(), E> {
+        if Regex::new("[a-zA-Z0-9_]+").unwrap().is_match(str) && str.len() <= 32 {
+            Ok(())
+        } else {
+            Err(E::from())
+        }
     }
 }
 
 pub(crate) trait DatabasePayloadFunctionExtension {
-    fn update_validated(
+    fn update_validated<
+        E: From<sqlx::Error>
+            + FromDatabaseInvalidIdentifier
+            + FromDatabaseInvalidHash
+            + FromDatabasePermissionlessEntry,
+    >(
         &mut self,
         id: u32,
         name_suffix: String,
         to: Self,
-    ) -> Result<MultiTransactionApply, DatabaseUpdateError>;
+    ) -> Result<MultiTransactionApply, E>;
 
     fn update_unvalidated(
         &mut self,
         id: u32,
         name_suffix: String,
         to: Self,
-    ) -> Result<MultiTransactionApply, DatabaseUpdateError>;
-
-    fn validate_hash(str: &str) -> Result<(), DatabaseUpdateError>
-    where
-        Self: Sized;
-
-    fn validate_sql_string(str: &str) -> Result<(), DatabaseUpdateError>
-    where
-        Self: Sized;
+    ) -> MultiTransactionApply;
 }
 
-impl DatabasePayloadFunctionExtension for DatabaseModifyPayload {
-    fn update_validated(
+pub(crate) struct DatabaseState {
+    pub(crate) users: HashMap<String, DatabaseUserPayload>,
+    pub(crate) passwordless: HashMap<u32, DatabaseUserPermissions>,
+}
+
+impl DatabasePayloadFunctionExtension for DatabaseState {
+    fn update_validated<
+        E: From<sqlx::Error>
+            + FromDatabaseInvalidIdentifier
+            + FromDatabaseInvalidHash
+            + FromDatabasePermissionlessEntry,
+    >(
         &mut self,
         id: u32,
         name_suffix: String,
-        to: DatabaseModifyPayload,
-    ) -> Result<MultiTransactionApply, DatabaseUpdateError> {
+        to: DatabaseState,
+    ) -> Result<MultiTransactionApply, E> {
         for (user, data) in &to.users {
-            Self::validate_sql_string(user)?;
-            Self::validate_hash(&data.password_hash)?;
+            Database::validate_sql_string::<E>(user)?;
+            Database::validate_hash::<E>(&data.password_hash)?;
             if data.permissions.is_empty() {
-                return Err(DatabaseUpdateError::Invalid);
+                return Err(<E as FromDatabasePermissionlessEntry>::from());
             }
         }
         for perms in to.passwordless.values() {
             if perms.is_empty() {
-                return Err(DatabaseUpdateError::Invalid);
+                return Err(<E as FromDatabasePermissionlessEntry>::from());
             }
         }
-        self.update_unvalidated(id, name_suffix, to)
+        Ok(self.update_unvalidated(id, name_suffix, to))
     }
 
     fn update_unvalidated(
         &mut self,
         id: u32,
         name: String,
-        to: DatabaseModifyPayload,
-    ) -> Result<MultiTransactionApply, DatabaseUpdateError> {
+        to: DatabaseState,
+    ) -> MultiTransactionApply {
         let mut transaction = MultiTransactionApply::default();
 
         let mut remove_server = HashSet::new();
@@ -180,7 +193,7 @@ impl DatabasePayloadFunctionExtension for DatabaseModifyPayload {
             && add_users.is_empty()
             && remove_users.is_empty()
         {
-            return Ok(transaction);
+            return transaction;
         }
 
         for user in remove_users {
@@ -260,29 +273,6 @@ impl DatabasePayloadFunctionExtension for DatabaseModifyPayload {
             );
         }
         transaction.add(sql::flush_privileges(), Vec::new());
-        Ok(transaction)
-    }
-
-    fn validate_hash(str: &str) -> Result<(), DatabaseUpdateError> {
-        if !str.len() == 41 {
-            return Err(DatabaseUpdateError::Invalid);
-        }
-        if !str.starts_with('*') {
-            return Err(DatabaseUpdateError::Invalid);
-        }
-        for c in str[1..].chars() {
-            if !"0123456789ABCDEF".contains(c) {
-                return Err(DatabaseUpdateError::Invalid);
-            }
-        }
-        Ok(())
-    }
-
-    fn validate_sql_string(str: &str) -> Result<(), DatabaseUpdateError> {
-        if Regex::new("[a-zA-Z0-9_]+").unwrap().is_match(str) && str.len() <= 32 {
-            Ok(())
-        } else {
-            Err(DatabaseUpdateError::Invalid)
-        }
+        transaction
     }
 }

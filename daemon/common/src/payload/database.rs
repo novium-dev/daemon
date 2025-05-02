@@ -2,22 +2,10 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use serde::{Deserializer, Serializer};
 use std::borrow::Cow;
-use std::collections::HashMap;
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
 
-#[derive(Serialize, Deserialize, Eq, PartialEq, utoipa::ToSchema)]
-pub struct DatabaseCreatePayload {
-    pub name_suffix: String,
-}
-
-#[derive(Serialize, Deserialize, Eq, PartialEq, utoipa::ToSchema)]
-pub struct DatabaseModifyPayload {
-    pub passwordless: HashMap<u32, DatabaseUserPermissions>,
-    pub users: HashMap<String, DatabaseUserPayload>,
-}
-
-#[derive(Serialize, Deserialize, Eq, PartialEq, Hash, utoipa::ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, utoipa::ToSchema)]
 pub struct DatabaseUserPayload {
     pub password_hash: String,
     pub permissions: DatabaseUserPermissions,

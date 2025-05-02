@@ -184,7 +184,10 @@ pub(crate) fn process(
             panic!("Expected : after function argument");
         };
         if punct.as_char() != ':' {
-            panic!("Expected : after function argument");
+            panic!(
+                "Expected : after function argument, got {}",
+                punct.as_char()
+            );
         }
         let fn_arg_type: TokenStream = fn_arg.collect();
         let (fn_arg_type_opt, fn_arg_type_opt_used) = type_option(fn_arg_type.clone());

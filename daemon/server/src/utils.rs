@@ -14,6 +14,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::{io, mem};
 use tokio_util::io::SyncIoBridge;
+use tracing::error;
 
 pub(crate) trait ResourceData {
     fn into_u64(self) -> u64;
@@ -35,23 +36,25 @@ pub(crate) fn from_mib(mib: impl ResourceData) -> u64 {
     mib.into_u64() * 1024 * 1024
 }
 
-#[cfg(feature = "database")]
-pub(crate) async fn database(
+pub(crate) async fn database<E: From<sqlx::Error>>(
     conn: impl Executor<'_, Database = MySql> + Copy,
     database_id: u32,
-) -> Result<Option<crate::database::FetchedDatabase>, sqlx::Error> {
+) -> Result<Option<crate::database::FetchedDatabase>, E> {
     let Some(database) = query_as!(
         crate::database::Database,
         "SELECT * FROM `databases` WHERE `id` = ? LIMIT 1",
         database_id
     )
     .fetch_optional(conn)
-    .await?
+    .await
+    .inspect_err(|err| error!("Unable to resolve database: {:?}", err))?
     else {
         return Ok(None);
     };
 
-    Ok(Some(database.fetched(conn).await?))
+    Ok(Some(database.fetched(conn).await.inspect_err(|err| {
+        error!("Unable to fetch database: {:?}", err)
+    })?))
 }
 
 pub(crate) async fn server(

@@ -52,9 +52,9 @@ use daemon_common::service::DaemonServices;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::network::NetworkService;
+use daemon_common::service::resource::ResourceService;
 use daemon_common::service::server::ServerService;
 use daemon_common::{framework_router, framework_router_user};
-use daemon_common::service::resource::ResourceService;
 
 mod config;
 #[cfg(feature = "database")]

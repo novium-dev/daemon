@@ -16,9 +16,16 @@ impl Parse for TokenStreamArray {
 
 fn parse_tokenstream_array(stream: ParseStream) -> Result<TokenStream, syn::Error> {
     let mut result = TokenStream::new();
+    let mut level = 0;
     while !stream.is_empty() {
-        if stream.peek(Token![,]) {
+        if stream.peek(Token![,]) && level == 0 {
             break;
+        }
+        if stream.peek(Token![<]) {
+            level += 1;
+        }
+        if stream.peek(Token![>]) {
+            level -= 1;
         }
         result.append(stream.parse::<TokenTree>()?);
     }

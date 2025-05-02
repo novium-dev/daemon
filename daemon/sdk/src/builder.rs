@@ -1,4 +1,3 @@
-#[cfg(feature = "user")]
 pub mod user;
 
 use crate::{DaemonSDK, DaemonSDKExtra, DaemonSdkSealed};

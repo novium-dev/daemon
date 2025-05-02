@@ -3,11 +3,6 @@ use axum::http::StatusCode;
 use tracing::{debug, warn};
 use utoipa_axum::router::OpenApiRouter;
 
-#[cfg(feature = "database")]
-pub(crate) mod database;
-#[cfg(feature = "database")]
-pub(crate) mod payload;
-
 mod schedule;
 #[cfg(feature = "trace_sync")]
 pub(crate) mod trace;
@@ -34,10 +29,6 @@ pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
 pub(crate) fn config() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::new().merge(schedule::config());
-    #[cfg(feature = "database")]
-    {
-        router = router.merge(database::config());
-    }
     router
 }
 

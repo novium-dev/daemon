@@ -89,32 +89,6 @@ impl MultiTransactionApply {
     }
 }
 
-pub(crate) trait MultiTransactionApplyExt<E> {
-    async fn execute(
-        self,
-        transaction_conn: &mut PoolConnection<MySql>,
-        raw_conn: PoolConnection<MySql>,
-    ) -> Result<(), E>;
-}
-
-impl<E: From<sqlx::Error> + Debug> MultiTransactionApplyExt<E>
-    for Result<MultiTransactionApply, E>
-{
-    async fn execute(
-        self,
-        transaction_conn: &mut PoolConnection<MySql>,
-        raw_conn: PoolConnection<MySql>,
-    ) -> Result<(), E> {
-        match self {
-            Ok(transaction) => transaction
-                .execute(transaction_conn, raw_conn)
-                .await
-                .map_err(E::from),
-            Err(err) => Err(err),
-        }
-    }
-}
-
 pub(crate) async fn init(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
     #[allow(unused_mut)]
     let mut current: Vec<_> = MIGRATOR.iter().cloned().collect();
