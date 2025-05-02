@@ -61,7 +61,7 @@ pub(crate) fn process(
                                 #crate_prefix utoipa::openapi::path::ParameterBuilder::from(
                                     #crate_prefix utoipa::openapi::path::Parameter::new(#crate_prefix internal::header_name::<#variable_type, _>().as_str())
                                 )
-                                .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Query)
+                                .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Header)
                                 .description(Some([< variable_header_ #variable_name:snake >]::DESCRIPTION))
                                 .required(#crate_prefix utoipa::openapi::Required::#required),
                             )

@@ -1,0 +1,93 @@
+mod list;
+mod stat;
+mod rename;
+mod copy;
+mod download;
+mod write;
+mod mkdir;
+mod symlink;
+mod delete;
+mod archive;
+
+use std::io;
+use std::path::PathBuf;
+
+use crate::config::StorageEntry;
+use crate::storage::StorageIdentifier;
+use cap_async_std::ambient_authority;
+use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt};
+use daemon_common::files::FileMode;
+use daemon_common::payload::files::FileEntry;
+use tracing::error;
+
+pub(crate) use list::list_files;
+pub(crate) use stat::stat_file;
+pub(crate) use rename::rename_file;
+pub(crate) use copy::copy_file;
+pub(crate) use download::download_file;
+pub(crate) use write::{write_file, write_file_by_url, write_file_by_template};
+pub(crate) use mkdir::mkdir_file;
+pub(crate) use symlink::symlink_file;
+pub(crate) use delete::delete_file;
+pub(crate) use archive::{create_archive, unpack_archive};
+
+async fn storage_path(
+    id: StorageIdentifier,
+    storage: &StorageEntry,
+) -> Result<(Dir, PathBuf), io::Error> {
+    let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
+    Ok((
+        Dir::open_ambient_dir(&base, ambient_authority())
+            .await
+            .inspect_err(|err| error!("Failed to open storage {:?}: {:?}", id, err))?,
+        base,
+    ))
+}
+
+pub trait IntoFileEntry {
+    fn into_fileentry(
+        self,
+        filename: String,
+        relative_path: String,
+        path: Option<String>,
+        archive: bool,
+    ) -> FileEntry;
+}
+
+impl IntoFileEntry for Metadata {
+    fn into_fileentry(
+        self,
+        filename: String,
+        relative_path: String,
+        path: Option<String>,
+        archive: bool,
+    ) -> FileEntry {
+        let mut r#type = 0;
+        let file_type = self.file_type();
+        if file_type.is_dir() {
+            r#type |= FileMode::DIR.bits();
+        } else if file_type.is_symlink() {
+            r#type |= FileMode::LNK.bits();
+        } else if file_type.is_socket() {
+            r#type |= FileMode::SOCK.bits();
+        } else if file_type.is_block_device() {
+            r#type |= FileMode::BLK.bits();
+        } else if file_type.is_char_device() {
+            r#type |= FileMode::CHR.bits();
+        } else if file_type.is_fifo() {
+            r#type |= FileMode::FIFO.bits();
+        } else {
+            r#type |= FileMode::REG.bits();
+        }
+        FileEntry {
+            name: filename,
+            path,
+            mode: self.mode() | r#type,
+            relative_path,
+            size: self.size(),
+            uid: self.uid(),
+            gid: self.gid(),
+            archive,
+        }
+    }
+}

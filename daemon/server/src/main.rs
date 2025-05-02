@@ -52,6 +52,7 @@ use daemon_common::service::DaemonServices;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::server::ServerService;
 use daemon_common::{framework_router, framework_router_user};
+use daemon_common::service::files::FilesService;
 
 mod config;
 #[cfg(feature = "database")]
@@ -389,7 +390,7 @@ async fn main0() {
 
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .merge(framework_router!(Daemon state { ServerService, BackupService }))
+        .merge(framework_router!(Daemon state { ServerService, BackupService, FilesService }))
         .merge(web::config().with_state(state.clone()))
         .layer(axum::middleware::from_fn(service::middleware::middleware))
         .merge(web::config_unauthorized().with_state(state.clone()))
@@ -406,7 +407,7 @@ async fn main0() {
         router = router.merge(
             web::user_config()
                 .with_state(state.clone())
-                .merge(framework_router_user!(Daemon state { ServerService, BackupService }))
+                .merge(framework_router_user!(Daemon state { ServerService, BackupService, FilesService }))
                 .layer(cors),
         );
     }

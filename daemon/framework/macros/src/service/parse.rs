@@ -1,4 +1,5 @@
 use proc_macro2::{Group, Ident, TokenStream};
+use syn::LitStr;
 
 #[derive(Debug)]
 pub(crate) enum ParseExpectation {
@@ -39,6 +40,7 @@ pub(crate) enum FunctionArgument {
         variable_type: TokenStream,
         variable_type_wopt: TokenStream,
         required: bool,
+        desc: Option<LitStr>,
     },
     Header {
         variable_name: Ident,

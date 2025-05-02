@@ -5,55 +5,55 @@ use daemon_common::FileResponse;
 use daemon_common::payload::backup::BackupResponseEntry;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::backup::error::{
-    CreateBackupError, CreateBackupOrderError, DeleteBackupError, DownloadBackupError,
-    DownloadBackupUserError, DownloadRealtimeBackupError, DownloadRealtimeBackupUserError,
-    ListBackupsError, RestoreBackupError, SetBackupNameError,
+    ServerCreateBackupError, ServerCreateBackupOrderError, ServerDeleteBackupError, ServerDownloadBackupError,
+    ServerDownloadBackupUserError, ServerDownloadRealtimeError, ServerDownloadRealtimeUserError,
+    ServerListBackupsError, ServerRestoreBackupError, ServerSetBackupNameError,
 };
 use daemon_common::user::UserSignature;
 
 #[async_trait]
 impl BackupService for Daemon {
-    async fn list_backups(
+    async fn server_list_backups(
         &self,
         server_id: u32,
-    ) -> Result<Vec<BackupResponseEntry>, ListBackupsError> {
+    ) -> Result<Vec<BackupResponseEntry>, ServerListBackupsError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::list_backups(self, storage).await
     }
 
-    async fn create_backup_order(&self, server_id: u32) -> Result<i64, CreateBackupOrderError> {
+    async fn server_create_backup_order(&self, server_id: u32) -> Result<i64, ServerCreateBackupOrderError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::create_backup_order(self, storage).await
     }
 
-    async fn create_backup(
+    async fn server_create_backup(
         &self,
         server_id: u32,
         backup_storage: String,
-    ) -> Result<i64, CreateBackupError> {
+    ) -> Result<i64, ServerCreateBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::create_backup(self, storage, &backup_storage).await
     }
 
-    async fn download_backup(
+    async fn server_download_backup(
         &self,
         server_id: u32,
         backup_storage: String,
         backup_id: i64,
-    ) -> Result<FileResponse, DownloadBackupError> {
+    ) -> Result<FileResponse, ServerDownloadBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::backup_to_stream(self, storage, backup_id, &backup_storage).await
     }
 
-    async fn download_backup_user(
+    async fn server_download_backup_user(
         &self,
         server_id: u32,
         backup_storage: String,
         backup_id: i64,
         timestamp: i64,
         verify: UserSignature,
-    ) -> Result<FileResponse, DownloadBackupUserError> {
-        verify.verify_backup_download::<DownloadBackupUserError>(
+    ) -> Result<FileResponse, ServerDownloadBackupUserError> {
+        verify.verify_server_backup_download::<ServerDownloadBackupUserError>(
             &self.config.user_key,
             timestamp,
             &self.config.identifier,
@@ -65,23 +65,23 @@ impl BackupService for Daemon {
         storage::backup::backup_to_stream(self, storage, backup_id, &backup_storage).await
     }
 
-    async fn download_realtime_backup(
+    async fn server_download_realtime(
         &self,
         server_id: u32,
         compression: String,
-    ) -> Result<FileResponse, DownloadRealtimeBackupError> {
+    ) -> Result<FileResponse, ServerDownloadRealtimeError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::stream_realtime(self, storage, compression).await
     }
 
-    async fn download_realtime_backup_user(
+    async fn server_download_realtime_user(
         &self,
         server_id: u32,
         timestamp: i64,
         verify: UserSignature,
         compression: String,
-    ) -> Result<FileResponse, DownloadRealtimeBackupUserError> {
-        verify.verify_backup_realtime_download::<DownloadRealtimeBackupUserError>(
+    ) -> Result<FileResponse, ServerDownloadRealtimeUserError> {
+        verify.verify_server_realtime_download::<ServerDownloadRealtimeUserError>(
             &self.config.user_key,
             timestamp,
             &self.config.identifier,
@@ -92,33 +92,33 @@ impl BackupService for Daemon {
         storage::backup::stream_realtime(self, storage, compression).await
     }
 
-    async fn set_backup_name(
+    async fn server_set_backup_name(
         &self,
         server_id: u32,
         backup_storage: String,
         backup_id: i64,
         name: Option<String>,
-    ) -> Result<(), SetBackupNameError> {
+    ) -> Result<(), ServerSetBackupNameError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::set_backup_name(self, storage, backup_id, &backup_storage, name).await
     }
 
-    async fn delete_backup(
+    async fn server_delete_backup(
         &self,
         server_id: u32,
         backup_storage: String,
         backup_id: i64,
-    ) -> Result<(), DeleteBackupError> {
+    ) -> Result<(), ServerDeleteBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::delete_backup(self, storage, backup_id, &backup_storage).await
     }
 
-    async fn restore_backup(
+    async fn server_restore_backup(
         &self,
         server_id: u32,
         backup_storage: String,
         backup_id: i64,
-    ) -> Result<(), RestoreBackupError> {
+    ) -> Result<(), ServerRestoreBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::restore_backup(self, storage, backup_id, &backup_storage).await
     }

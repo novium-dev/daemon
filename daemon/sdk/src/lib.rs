@@ -8,7 +8,6 @@ use ed25519_dalek::SigningKey;
 pub mod builder;
 #[cfg(feature = "database")]
 pub mod database;
-pub mod files;
 pub mod network;
 pub mod resource;
 pub mod schedule;
@@ -23,6 +22,7 @@ use http::{Method, StatusCode};
 use reqwest::{Body, Client, Response, Url};
 use serde::Serialize;
 use serde_json::Value;
+use daemon_common::service::files::FilesServiceClientImpl;
 use daemon_common::user::UserKeyProvider;
 use crate::builder::user::WithUserKey;
 
@@ -50,6 +50,7 @@ where
     Json(T),
     #[allow(dead_code)]
     Raw(Vec<u8>),
+    #[allow(dead_code)]
     Body(Body, Option<u64>),
 }
 
@@ -121,9 +122,9 @@ impl<T: DaemonSDKExtra> FrameworkClientImpl for DaemonSDK<T> {
     }
 }
 
-impl<T: DaemonSDKExtra> BackupServiceClientImpl for DaemonSDK<T> {}
-
 impl<T: DaemonSDKExtra> DaemonServicesClientImpl for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra> BackupServiceClientImpl for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra> FilesServiceClientImpl for DaemonSDK<T> {}
 
 impl UserKeyProvider for DaemonSDK<WithUserKey> {
     fn node_id(&self) -> &str {

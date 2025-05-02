@@ -4,13 +4,11 @@ use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedAppendExtension;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
-use axum::body::Body;
 use axum::http;
 use axum::http::HeaderMap;
-use axum::response::IntoResponse;
 use chrono::{TimeZone, Utc};
-use daemon_common::FileResponse;
-use daemon_common::service::backup::error_compression_unsupported::FromCompressionUnsupported;
+use daemon_common::{DataStream, FileResponse};
+use daemon_common::service::error_compression_unsupported::FromCompressionUnsupported;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use serde_json::json;
@@ -21,12 +19,13 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use tar::Builder;
 use tokio::fs::File;
-use tokio_util::io::{ReaderStream, SyncIoBridge};
+use tokio_util::io::SyncIoBridge;
 use tracing::{debug, error};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
 
 pub(crate) async fn backup_to_stream<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromBackupStorageLocationNotFound,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure + FromBackupStorageLocationNotFound,
 >(
     state: &Daemon,
     id: StorageIdentifier,
@@ -45,10 +44,10 @@ pub(crate) async fn backup_to_stream<
         .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
-    let body = backup_to_stream0::<E>(id, backup_id, backup, backup_exclude).await?;
+    let (header, data) = backup_to_stream0::<E>(id, backup_id, backup, backup_exclude).await?;
     drop(lock);
 
-    Ok(FileResponse(body.into_response()))
+    Ok(FileResponse(Some(header), data))
 }
 
 #[inline(always)]
@@ -57,7 +56,7 @@ async fn backup_to_stream0<E: From<io::Error>>(
     backup_id: i64,
     backup: &BackupEntry,
     #[allow(unused)] exclude: HashSet<String>,
-) -> Result<(HeaderMap, Body), E> {
+) -> Result<(HeaderMap, DataStream), E> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
         BackupEntry::Archive { compression, .. } => {
@@ -74,7 +73,7 @@ async fn backup_to_stream0<E: From<io::Error>>(
             )]);
             Ok((
                 headers,
-                Body::from_stream(ReaderStream::new(File::open(target).await.inspect_err(
+                DataStream::by_read(File::open(target).await.inspect_err(
                     |err| {
                         if err.kind() == ErrorKind::NotFound {
                             debug!("Failed to create a backup stream (open): {:?}", err)
@@ -82,7 +81,7 @@ async fn backup_to_stream0<E: From<io::Error>>(
                             error!("Failed to create a backup stream (open): {:?}", err)
                         }
                     },
-                )?)),
+                )?),
             ))
         }
         #[cfg(feature = "btrfs")]
@@ -114,6 +113,7 @@ pub(crate) async fn stream_realtime<
         + From<sqlx::Error>
         + FromStorageNotFound
         + FromStorageMutexLocked
+        + FromStorageFailure
         + FromCompressionUnsupported,
 >(
     state: &Daemon,
@@ -131,7 +131,7 @@ pub(crate) async fn stream_realtime<
     }))
     .map_err(|_err| <E as FromCompressionUnsupported>::from())?;
 
-    let body = stream_realtime0(path, backup_exclude, compression).await;
+    let data = stream_realtime0(path, backup_exclude, compression).await;
     drop(lock);
 
     let headers = HeaderMap::from_iter([(
@@ -141,7 +141,7 @@ pub(crate) async fn stream_realtime<
             .unwrap(),
     )]);
 
-    Ok(FileResponse((headers, body).into_response()))
+    Ok(FileResponse(Some(headers), data))
 }
 
 #[inline(always)]
@@ -149,7 +149,7 @@ async fn stream_realtime0(
     path: String,
     #[allow(unused)] exclude: HashSet<String>,
     compression: ArchiveCompression,
-) -> Body {
+) -> DataStream {
     stream_realtime1(compression, PathBuf::from(path), exclude).await
 }
 
@@ -157,7 +157,7 @@ async fn stream_realtime1(
     compression: ArchiveCompression,
     target: PathBuf,
     exclude: HashSet<String>,
-) -> Body {
+) -> DataStream {
     let (sender, recv) = tokio::io::duplex(1024 * 1024);
     tokio::task::spawn_blocking(move || {
         let encoder = compression.create_encoder(SyncIoBridge::new(sender))?;
@@ -168,6 +168,5 @@ async fn stream_realtime1(
         archive.into_inner().unwrap().finish()?.flush()?;
         Ok::<(), io::Error>(())
     });
-    let stream = ReaderStream::new(recv);
-    Body::from_stream(stream)
+    DataStream::by_read(recv)
 }

@@ -5,12 +5,10 @@ use utoipa_axum::router::OpenApiRouter;
 
 #[cfg(feature = "database")]
 pub(crate) mod database;
-pub(crate) mod files;
 mod network;
 #[cfg(feature = "database")]
 pub(crate) mod payload;
 pub(crate) mod resource;
-pub(crate) mod websocket;
 
 mod schedule;
 #[cfg(feature = "trace_sync")]
@@ -34,11 +32,11 @@ pub(crate) fn sql_error_to_http(err: sqlx::Error) -> StatusCode {
     StatusCode::INTERNAL_SERVER_ERROR
 }
 
+#[deprecated]
 pub(crate) fn config() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::new()
         .merge(resource::config())
-        .merge(files::config())
         .merge(network::config())
         .merge(schedule::config());
     #[cfg(feature = "database")]
@@ -48,8 +46,9 @@ pub(crate) fn config() -> OpenApiRouter<Daemon> {
     router
 }
 
+#[deprecated]
 pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
-    OpenApiRouter::new().merge(files::user_config())
+    OpenApiRouter::new()
 }
 
 pub(crate) fn config_unauthorized() -> OpenApiRouter<Daemon> {

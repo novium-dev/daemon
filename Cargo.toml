@@ -71,6 +71,7 @@ features = [
     "json",
     "rustls-tls",
     "rustls-tls-webpki-roots",
+    "stream"
 ]
 
 [workspace.dependencies.sentry]
@@ -144,6 +145,9 @@ features = ["json", "macros", "http2", "ws"]
 [workspace.dependencies.axum-extra]
 version = "0.10.1"
 features = ["cookie", "typed-header"]
+
+[workspace.dependencies.headers]
+version = "0.4.0"
 
 [workspace.dependencies.axum-auth]
 version = "0.8.1"

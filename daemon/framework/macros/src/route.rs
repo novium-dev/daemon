@@ -1,7 +1,6 @@
 use crate::service::process::HttpMethod;
-use crate::utils::TokenArray;
 use proc_macro2::{Delimiter, Group, Ident, Punct};
-use std::collections::HashSet;
+use std::collections::HashMap;
 use std::str::FromStr;
 use syn::parse::{Parse, ParseStream};
 use syn::{LitStr, Token};
@@ -10,7 +9,7 @@ pub(crate) struct RouteArgs {
     pub(crate) absolute: bool,
     pub(crate) path: String,
     pub(crate) method: HttpMethod,
-    pub(crate) query: HashSet<String>,
+    pub(crate) query: HashMap<String, Option<LitStr>>,
     pub(crate) user: bool,
     pub(crate) raw: bool,
 }
@@ -21,7 +20,7 @@ fn parse_route_args_option(
 ) -> Result<
     (
         Option<HttpMethod>,
-        HashSet<String>,
+        HashMap<String, Option<LitStr>>,
         Option<bool>,
         Option<bool>,
     ),
@@ -29,10 +28,10 @@ fn parse_route_args_option(
 > {
     let opt: Ident = stream.parse()?;
     if opt.to_string().eq("user") {
-        return Ok((None, HashSet::new(), Some(true), None));
+        return Ok((None, HashMap::new(), Some(true), None));
     }
     if opt.to_string().eq("raw") {
-        return Ok((None, HashSet::new(), None, Some(true)));
+        return Ok((None, HashMap::new(), None, Some(true)));
     }
     if stream.peek(Token![=]) {
         let _: Punct = stream.parse()?;
@@ -40,7 +39,7 @@ fn parse_route_args_option(
             "method" => {
                 let method_ident: Ident = stream.parse()?;
                 match HttpMethod::from_str(&method_ident.to_string()) {
-                    Ok(val) => Ok((Some(val), HashSet::new(), None, None)),
+                    Ok(val) => Ok((Some(val), HashMap::new(), None, None)),
                     Err(_) => Err(stream.error("Unknown method")),
                 }
             }
@@ -51,10 +50,10 @@ fn parse_route_args_option(
                 }
                 Ok((
                     None,
-                    syn::parse2::<TokenArray<Ident>>(query_group.stream())?
+                    syn::parse2::<QueryArgs>(query_group.stream())?
                         .0
                         .into_iter()
-                        .map(|i| i.to_string())
+                        .map(|(arg, desc)| (arg.to_string(), desc))
                         .collect(),
                     None,
                     None,
@@ -75,7 +74,7 @@ impl Parse for RouteArgs {
         }
         let path: LitStr = input.parse()?;
         let mut method = HttpMethod::GET;
-        let mut query = HashSet::new();
+        let mut query = HashMap::new();
         let mut user = false;
         let mut raw = false;
 
@@ -106,4 +105,24 @@ impl Parse for RouteArgs {
             raw,
         })
     }
+}
+
+struct QueryArgs(Vec<(Ident, Option<LitStr>)>);
+
+impl Parse for QueryArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        input
+            .parse_terminated(parse_query_arg, Token![,])
+            .map(|f| QueryArgs(f.into_iter().collect()))
+    }
+}
+
+fn parse_query_arg(stream: ParseStream) -> Result<(Ident, Option<LitStr>), syn::Error> {
+    let arg: Ident = stream.parse()?;
+    let desc = if stream.peek(syn::LitStr) {
+        Some(stream.parse()?)
+    } else {
+        None
+    };
+    Ok((arg, desc))
 }

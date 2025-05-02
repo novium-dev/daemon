@@ -1,0 +1,42 @@
+use std::io;
+use std::io::ErrorKind;
+use std::ops::Deref;
+use tracing::{debug, error};
+use daemon_common::service::error_storage_failure::FromStorageFailure;
+use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
+use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use crate::Daemon;
+use crate::files::storage_path;
+use crate::storage::StorageIdentifier;
+use crate::storage::sync::{storage_read_timeout, StorageLockData};
+use crate::utils::path_relative;
+
+pub(crate) async fn rename_file<E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure>(
+    state: &Daemon,
+    id: StorageIdentifier,
+    from: String,
+    to: String,
+) -> Result<(), E> {
+    let StorageLockData { lock, storage, .. } = storage_read_timeout::<E>(
+        &state.config,
+        state.conn.deref(),
+        &state.storages,
+        id,
+    )
+    .await?;
+    let from = path_relative(from);
+    let to = path_relative(to);
+    let (storage, _) = storage_path(id, &storage).await?;
+    storage
+        .rename(from, &storage, to)
+        .await
+        .inspect_err(|err| match err.kind() {
+            ErrorKind::NotFound
+            | ErrorKind::PermissionDenied
+            | ErrorKind::AlreadyExists
+            | ErrorKind::QuotaExceeded => debug!("Failed to rename file: {:?}", err),
+            _ => error!("Failed to rename file: {:?}", err),
+        })?;
+    drop(lock);
+    Ok(())
+}

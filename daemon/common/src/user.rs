@@ -101,11 +101,12 @@ impl UserSignature {
         Ok(())
     }
 
-    signature_impl!(backup_download, "backup", (backup_storage: impl Into<String>, backup_id: i64), Some(format!("-{}-{}", backup_storage.into(), backup_id)));
-    signature_impl!(backup_realtime_download, "backup_rt", (compression: impl Into<String>), Some(format!("-{}", compression.into())));
+    signature_impl!(server_backup_download, "backup", (backup_storage: impl Into<String>, backup_id: i64), Some(format!("-{}-{}", backup_storage.into(), backup_id)));
+    signature_impl!(server_realtime_download, "backup_rt", (compression: impl Into<String>), Some(format!("-{}", compression.into())));
     signature_impl!(terminal, "terminal", (write: bool), Some(format!("-{}", write)));
     signature_impl!(stats, "stats", (), None);
     signature_impl!(exec, "exec", (command: &[String]), Some(format!("-{}", command.join(";"))));
+    signature_impl!(server_file_download, "file", (path: impl Into<String>), Some(format!("-{}", path.into())));
 }
 
 impl Serialize for UserSignature {

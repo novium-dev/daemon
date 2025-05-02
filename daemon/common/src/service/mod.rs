@@ -1,10 +1,15 @@
+use std::io;
+use std::io::ErrorKind;
 use crate::service::backup::{BackupService, BackupServiceClientImpl};
 use crate::service::server::{ServerService, ServerServiceClientImpl};
 pub(crate) use daemon_framework::{define_error, service};
 use daemon_framework::{define_header_variable, define_path_variable, error};
+use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
+use crate::service::files::{FilesService, FilesServiceClientImpl};
 
 pub mod backup;
 pub mod server;
+pub mod files;
 
 define_error!(auth {
     invalid (
@@ -33,7 +38,17 @@ define_error!(storage {
         "The server storage failed" INTERNAL_SERVER_ERROR
     ),
     mutex_locked ("The server storage is locked (currently in use)" SERVICE_UNAVAILABLE),
+    quota_reached ("The server storage disk limit has been reached" FORBIDDEN),
 });
+
+impl FromStorageQuotaReached for io::Error {
+    fn from() -> Self
+    where
+        Self: Sized
+    {
+        io::Error::new(ErrorKind::QuotaExceeded, "Quota reached")
+    }
+}
 
 define_error!(sql {
     failure (
@@ -41,10 +56,23 @@ define_error!(sql {
     )
 });
 
+define_error!(compression {
+    unsupported ( "The specified compression is not supported" BAD_REQUEST )
+});
+define_error!(archive {
+    corrupted ( "The archive is corrupted" FORBIDDEN )
+});
+
+define_error!(http_request {
+    failed ( "Unable to send http request" FORBIDDEN ),
+    not_success ( "Http request returned non-success response" FORBIDDEN ),
+    read_failed ( "Reading from http request failed" FORBIDDEN ),
+});
+
 define_path_variable!(server_id "The server id");
 define_header_variable!(auth "The authentication token");
 
 error!(MiddlewareError, auth(invalid));
 
-pub trait DaemonServices: ServerService + BackupService {}
-pub trait DaemonServicesClientImpl: ServerServiceClientImpl + BackupServiceClientImpl {}
+pub trait DaemonServices: ServerService + BackupService + FilesService {}
+pub trait DaemonServicesClientImpl: ServerServiceClientImpl + BackupServiceClientImpl + FilesServiceClientImpl {}

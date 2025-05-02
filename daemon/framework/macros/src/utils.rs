@@ -4,20 +4,6 @@ use syn::Token;
 use syn::ext::IdentExt;
 use syn::parse::{Parse, ParseStream};
 
-pub(crate) struct TokenArray<T: Parse>(pub(crate) Vec<T>);
-
-impl<T: Parse> Parse for TokenArray<T> {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        input
-            .parse_terminated(parse_token_array, Token![,])
-            .map(|f| TokenArray(f.into_iter().collect()))
-    }
-}
-
-fn parse_token_array<T: Parse>(stream: ParseStream) -> Result<T, syn::Error> {
-    stream.parse()
-}
-
 pub(crate) struct TokenStreamArray(pub(crate) Vec<TokenStream>);
 
 impl Parse for TokenStreamArray {
@@ -73,10 +59,10 @@ impl Parse for OptionTypeParseResult {
                     layer -= 1;
                 }
             }
-            stream.extend([token]);
             if layer == 0 {
                 break;
             }
+            stream.extend([token]);
         }
 
         if layer != 0 || !input.is_empty() {

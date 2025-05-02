@@ -4,8 +4,6 @@ use crate::storage::{StorageIdentifier, ensure_exists};
 use crate::sync::Mutex;
 use crate::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use crate::utils::generic_server_select;
-use crate::web::sql_error_to_http;
-use axum::http::StatusCode;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
@@ -17,7 +15,6 @@ use std::io;
 use std::sync::Arc;
 use std::sync::atomic::AtomicI64;
 use std::time::Duration;
-use tracing::{debug, warn};
 
 pub(crate) struct StorageLockData<T> {
     pub(crate) path: String,
@@ -92,7 +89,7 @@ async fn storage_lock(
 
 pub(crate) async fn storage_read_timeout<
     'a,
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked,
+    E: From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure,
 >(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
@@ -107,7 +104,8 @@ pub(crate) async fn storage_read_timeout<
     let guard = tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
         .await
         .map_err(|_| <E as FromStorageMutexLocked>::from())?;
-    let path = ensure_exists(storage, &entry, value.clone(), disk).await?;
+    let path = ensure_exists(storage, &entry, value.clone(), disk).await
+        .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
         path,
         lock: guard,
@@ -121,7 +119,7 @@ pub(crate) async fn storage_read_timeout<
 
 pub(crate) async fn storage_read<
     'a,
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound,
+    E: From<sqlx::Error> + FromStorageNotFound + FromStorageFailure,
 >(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
@@ -134,7 +132,8 @@ pub(crate) async fn storage_read<
         return Err(<E as FromStorageNotFound>::from());
     };
     let guard = lock.read_owned().await;
-    let path = ensure_exists(storage, &entry, value.clone(), disk).await?;
+    let path = ensure_exists(storage, &entry, value.clone(), disk).await
+        .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
         path,
         lock: guard,
@@ -149,7 +148,7 @@ pub(crate) async fn storage_read<
 #[allow(dead_code)]
 pub(crate) async fn storage_write<
     'a,
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound,
+    E: From<sqlx::Error> + FromStorageNotFound + FromStorageFailure,
 >(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
@@ -162,7 +161,8 @@ pub(crate) async fn storage_write<
         return Err(<E as FromStorageNotFound>::from());
     };
     let guard = lock.write_owned().await;
-    let path = ensure_exists(storage, &entry, value.clone(), disk).await?;
+    let path = ensure_exists(storage, &entry, value.clone(), disk).await
+        .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
         path,
         lock: guard,
@@ -176,7 +176,7 @@ pub(crate) async fn storage_write<
 
 pub(crate) async fn storage_write_timeout<
     'a,
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked,
+    E: From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure,
 >(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
@@ -191,7 +191,8 @@ pub(crate) async fn storage_write_timeout<
     let guard = tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
         .await
         .map_err(|_| <E as FromStorageMutexLocked>::from())?;
-    let path = ensure_exists(storage, &entry, value.clone(), disk).await?;
+    let path = ensure_exists(storage, &entry, value.clone(), disk).await
+        .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
         path,
         lock: guard,
@@ -206,6 +207,7 @@ pub(crate) async fn storage_write_timeout<
 #[derive(Debug)]
 pub(crate) enum StorageError {
     Sqlx(sqlx::Error),
+    Failure,
     IO(io::Error),
     Timeout,
     NotFound,
@@ -218,6 +220,7 @@ impl Error for StorageError {
             StorageError::IO(err) => Some(err),
             StorageError::Timeout => None,
             StorageError::NotFound => None,
+            StorageError::Failure => None,
         }
     }
 }
@@ -252,27 +255,18 @@ impl FromStorageMutexLocked for StorageError {
     }
 }
 
-impl Display for StorageError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        <Self as Debug>::fmt(self, f)
+impl FromStorageFailure for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized
+    {
+        Self::Failure
     }
 }
 
-impl StorageError {
-    #[deprecated]
-    pub(crate) fn into_http(self) -> StatusCode {
-        match self {
-            StorageError::Sqlx(err) => sql_error_to_http(err),
-            StorageError::IO(err) => {
-                warn!("Storage error: {:?}", err);
-                StatusCode::INTERNAL_SERVER_ERROR
-            }
-            StorageError::Timeout => {
-                debug!("Storage lock timeout");
-                StatusCode::SERVICE_UNAVAILABLE
-            }
-            StorageError::NotFound => StatusCode::NOT_FOUND,
-        }
+impl Display for StorageError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        <Self as Debug>::fmt(self, f)
     }
 }
 

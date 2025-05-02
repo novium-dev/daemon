@@ -1,6 +1,6 @@
 use crate::service::parse::FunctionArgument;
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::quote;
+use quote::{quote, ToTokens};
 use syn::LitStr;
 
 #[allow(clippy::too_many_arguments)]
@@ -25,24 +25,25 @@ pub(crate) fn process(
                 variable_name,
                 variable_type_wopt,
                 required,
+                desc,
                 ..
             } = arg
             else {
                 unreachable!()
             };
-            (variable_name, variable_type_wopt, required)
+            (variable_name, variable_type_wopt, required, desc)
         })
         .collect();
     if !fn_args_query.is_empty() {
         let mut client_def_body_pre = TokenStream::new();
         let mut client_def_body_post = quote! {
-            url.query_pairs_mut()
+            daemon_result_url.query_pairs_mut()
         };
 
         let mut query_fields = TokenStream::new();
         let mut query_names = TokenStream::new();
 
-        for (arg_name, arg_type, required) in fn_args_query {
+        for (arg_name, arg_type, required, desc) in fn_args_query {
             query_fields.extend(quote! {
                 #arg_name: #arg_type,
             });
@@ -53,13 +54,15 @@ pub(crate) fn process(
             let variable_literal = LitStr::new(&arg_name.to_string(), arg_name.span());
             let required = Ident::new(if required { "True" } else { "False" }, Span::call_site());
 
+            let desc = desc.map(|d| d.into_token_stream())
+                .unwrap_or(quote! { [< variable_query_ #arg_name:snake >]::DESCRIPTION });
             operations.extend(quote! {
                 .parameter(
                     #crate_prefix utoipa::openapi::path::ParameterBuilder::from(
                         #crate_prefix utoipa::openapi::path::Parameter::new(#variable_literal)
                     )
                     .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Query)
-                    .description(Some([< variable_query_ #arg_name:snake >]::DESCRIPTION))
+                    .description(Some(#desc))
                     .required(#crate_prefix utoipa::openapi::Required::#required),
                 )
             });

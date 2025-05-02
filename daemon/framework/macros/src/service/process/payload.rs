@@ -43,46 +43,78 @@ pub(crate) fn process(
         TokenStream::new()
     };
 
+    let stream = fn_args_payload.iter().map(|(_, t)| t.to_string()).any(|s| s.eq("DataStream"));
+
     if fn_args_payload.len() == 1 {
         let (arg_name, arg_type) = fn_args_payload[0].clone();
 
-        http_args.extend(quote! {
+        if stream {
+
+            http_args.extend(quote! {
+                #arg_name:
+                #arg_type,
+            });
+            func_args.push(quote! { #arg_type });
+
+            operations.extend(quote! {
+                .request_body(Some(
+                    #crate_prefix utoipa::openapi::request_body::RequestBodyBuilder::new()
+                        .content("application/octet-stream", #crate_prefix utoipa::openapi::content::Content::builder()
+                            .build()
+                        )
+                        .required(Some(#crate_prefix utoipa::openapi::Required::True))
+                        .build()
+                ))
+            });
+
+            client_impl_body.extend(quote! {
+                request = request.body(#arg_name.into_reqwest());
+            });
+
+        } else {
+
+            http_args.extend(quote! {
                 #crate_prefix axum::extract::Json(
                     #arg_name
                 ):
                 #crate_prefix axum::extract::Json<
                     #arg_type
                 >,
-        });
-        func_args.push(quote! { #crate_prefix axum::extract::Json< #arg_type > });
+            });
+            func_args.push(quote! { #crate_prefix axum::extract::Json< #arg_type > });
 
-        operations.extend(quote! {
-            .request_body(Some(
-                #crate_prefix utoipa::openapi::request_body::RequestBodyBuilder::new()
-                    .content("application/json", #crate_prefix utoipa::openapi::content::Content::builder()
-                        .schema(Some(
-                            #crate_prefix utoipa::openapi::schema::RefBuilder::new()
-                                .ref_location_from_schema_name(< #arg_type as #crate_prefix utoipa::ToSchema >::name())
-                                .build()
-                        ))
-                        #content_extra
+            operations.extend(quote! {
+                .request_body(Some(
+                    #crate_prefix utoipa::openapi::request_body::RequestBodyBuilder::new()
+                        .content("application/json", #crate_prefix utoipa::openapi::content::Content::builder()
+                            .schema(Some(
+                                #crate_prefix utoipa::openapi::schema::RefBuilder::new()
+                                    .ref_location_from_schema_name(< #arg_type as #crate_prefix utoipa::ToSchema >::name())
+                                    .build()
+                            ))
+                            #content_extra
+                            .build()
+                        )
+                        .required(Some(#crate_prefix utoipa::openapi::Required::True))
                         .build()
-                    )
-                    .required(Some(#crate_prefix utoipa::openapi::Required::True))
-                    .build()
-            ))
-        });
-        schema_extra.extend(quote! {
-            schemas.insert(< #arg_type as #crate_prefix utoipa::ToSchema >::name().to_string(), < #arg_type as #crate_prefix utoipa::PartialSchema >::schema());
-            let mut schemas_vec = Vec::new();
-            < #arg_type as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
-            schemas.extend(schemas_vec);
-        });
+                ))
+            });
+            schema_extra.extend(quote! {
+                schemas.insert(< #arg_type as #crate_prefix utoipa::ToSchema >::name().to_string(), < #arg_type as #crate_prefix utoipa::PartialSchema >::schema());
+                let mut schemas_vec = Vec::new();
+                < #arg_type as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
+                schemas.extend(schemas_vec);
+            });
 
-        client_impl_body.extend(quote! {
-            request = request.json(&#arg_name);
-        });
+            client_impl_body.extend(quote! {
+                request = request.json(&#arg_name);
+            });
+        }
+
     } else if !fn_args_payload.is_empty() {
+        if stream {
+            panic!("You can't mix a DataStream with multiple payload fields");
+        }
         let mut payload_fields = TokenStream::new();
         let mut payload_names = TokenStream::new();
 

@@ -71,7 +71,7 @@ pub(crate) fn process(
     client_def_body.extend(quote! {
         use #crate_prefix serde::Serialize;
         #urlencode
-        let url: String = format!(#path);
-        let mut url = <Self as #crate_prefix FrameworkClientImpl>::base_url(self).join(&url).expect("Expected url");
+        let daemon_result_url: String = format!(#path);
+        let mut daemon_result_url = <Self as #crate_prefix FrameworkClientImpl>::base_url(self).join(&daemon_result_url).expect("Expected url");
     });
 }

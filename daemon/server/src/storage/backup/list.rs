@@ -13,9 +13,10 @@ use std::os::unix::fs::MetadataExt;
 use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::error;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
 
 pub(crate) async fn list_backups<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure,
 >(
     state: &Daemon,
     id: StorageIdentifier,

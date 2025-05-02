@@ -194,12 +194,13 @@ pub(crate) fn process(
                 variable_name: fn_arg_name,
                 variable_type: fn_arg_type,
             });
-        } else if query.contains(&fn_arg_name.to_string()) {
+        } else if let Some(desc) = query.get(&fn_arg_name.to_string()) {
             fn_args_identified.push(FunctionArgument::Query {
                 variable_name: fn_arg_name,
                 variable_type: fn_arg_type_opt,
                 variable_type_wopt: fn_arg_type,
                 required: !fn_arg_type_opt_used,
+                desc: desc.clone(),
             });
         } else if fn_arg_type_opt
             .clone()
@@ -334,8 +335,7 @@ pub(crate) fn process(
         client_impl_body = quote! { panic!("Raw data responses are not implemented (and very likely will never be)"); };
     } else {
         client_impl_body = quote! {
-            let url = self.[< #fn_ident _url >] #fn_def_call;
-            let mut request = self.client().request(#crate_prefix http::Method::#method_http, url)
+            let mut request = self.client().request(#crate_prefix http::Method::#method_http, self.[< #fn_ident _url >] #fn_def_call)
                 .header(#crate_prefix http::header::ACCEPT, "application/json");
             #client_impl_body
             let response = request
@@ -359,9 +359,9 @@ pub(crate) fn process(
 
     let client_def = quote! {
 
-        #fn_keyword [< #fn_ident _url >] #fn_def_args -> #crate_prefix reqwest::Url {
+        #fn_keyword [< #fn_ident _url >] #fn_def_args -> #crate_prefix reqwest::Url where Self: #crate_prefix FrameworkClientImpl {
             #client_def_body
-            url
+            daemon_result_url
         }
 
     };
@@ -468,6 +468,8 @@ pub(crate) fn finish(
                     #routes_user
             }
 
+            #client_definition
+
         }
 
     });
@@ -477,11 +479,11 @@ pub(crate) fn finish(
         #crate_prefix paste::paste! {
 
             pub trait [< #trait_ident ClientImpl >]: #crate_prefix FrameworkClientImpl {
-                #client_definition
             }
 
             #[#crate_prefix async_trait]
             #[allow(unused_variables)] // TODO: Remove when implementation is done
+            #[diagnostic::do_not_recommend]
             impl<T: [< #trait_ident ClientImpl >] + Send + Sync> #trait_ident for T {
                 #client_impl
             }

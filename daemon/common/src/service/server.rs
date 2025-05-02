@@ -6,7 +6,7 @@ use crate::payload::server::{
 };
 use crate::server::PublicServerState;
 use crate::user::*;
-use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable};
+use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable, FrameworkClientImpl};
 
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),
@@ -156,7 +156,7 @@ pub trait ServiceServiceUserKeyExtension {
 
 }
 
-impl<T: ServerServiceClientImpl + UserKeyProvider> ServiceServiceUserKeyExtension for T {
+impl<T: ServerService + FrameworkClientImpl + UserKeyProvider> ServiceServiceUserKeyExtension for T {
     fn server_terminal_url_signed(&self, server_id: u32, cols: u32, rows: u32, write: bool) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature = UserSignature::new_terminal(

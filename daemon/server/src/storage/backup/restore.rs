@@ -16,9 +16,10 @@ use tar::Archive;
 use tokio::fs::File;
 use tracing::{debug, error};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
 
 pub(crate) async fn restore_backup<
-    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromBackupStorageLocationNotFound,
+    E: From<io::Error> + From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure + FromBackupStorageLocationNotFound,
 >(
     state: &Daemon,
     id: StorageIdentifier,

@@ -16,12 +16,14 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use tracing::debug;
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
+use daemon_common::service::error_storage_failure::FromStorageFailure;
 
 pub(crate) async fn create_backup_order<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
         + FromStorageMutexLocked
+        + FromStorageFailure
         + FromBackupStorageNoSuitableFound,
 >(
     state: &Daemon,
@@ -79,6 +81,7 @@ pub(crate) async fn create_backup<
         + From<sqlx::Error>
         + FromStorageNotFound
         + FromStorageMutexLocked
+        + FromStorageFailure
         + FromBackupStorageIncompatible
         + FromBackupStorageLocationNotFound,
 >(

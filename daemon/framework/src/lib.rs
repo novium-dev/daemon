@@ -18,9 +18,17 @@ pub use serde_urlencoded;
 pub use sqlx;
 use std::any::TypeId;
 use std::collections::HashMap;
-use std::mem;
+use std::{io, mem};
 use std::mem::MaybeUninit;
 use std::ops::{Deref, DerefMut};
+use std::pin::Pin;
+use axum::body::BodyDataStream;
+use axum::extract::{FromRequest, Request};
+use bytes::Bytes;
+use futures_util::Stream;
+use http::HeaderMap;
+use tokio::io::AsyncRead;
+use tokio_util::io::{ReaderStream, StreamReader};
 pub use urlencoding;
 pub use utoipa;
 use utoipa::ToSchema;
@@ -51,7 +59,7 @@ pub mod internal {
     use axum::routing::MethodRouter;
     use axum_extra::TypedHeader;
     use axum_extra::headers::{Header, HeaderMapExt};
-    use http::{HeaderMap, HeaderName};
+    use http::{HeaderMap, HeaderName, StatusCode};
     use serde::de::{DeserializeOwned, Error};
     use serde::ser::Impossible;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -110,7 +118,7 @@ pub mod internal {
     impl<T: Serialize + MaybeUnit + 'static> IntoResponse for FrameworkJsonResponse<T> {
         fn into_response(self) -> Response {
             if T::unit().is_some() {
-                ().into_response()
+                StatusCode::NO_CONTENT.into_response()
             } else {
                 Json(self.0).into_response()
             }
@@ -422,7 +430,7 @@ impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static> FrameworkD
         mem::swap(responses, &mut responses_owned);
         if TypeId::of::<V>() == TypeId::of::<()>() {
             responses_owned = responses_owned.response(
-                "200",
+                "204", //  
                 Response::builder().description(SUCCESS_DESCRIPTION).build(),
             );
         } else {
@@ -449,11 +457,11 @@ impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static> FrameworkD
     }
 }
 
-pub struct FileResponse(pub axum::response::Response); // TODO: Add content type as parameter, when https://github.com/rust-lang/rust/issues/95174 is stable
+pub struct FileResponse(pub Option<HeaderMap>, pub DataStream); // TODO: Add content type as parameter, when https://github.com/rust-lang/rust/issues/95174 is stable
 
 impl IntoResponse for FileResponse {
     fn into_response(self) -> axum::response::Response {
-        self.0.into_response()
+        (self.0, self.1.into_axum()).into_response()
     }
 }
 
@@ -510,6 +518,58 @@ impl<'de, T: for<'a> Deserialize<'a> + Clone> Deserialize<'de> for JsonVec<T> {
         D: Deserializer<'de>,
     {
         serde_json::from_str(<&str>::deserialize(deserializer)?).map_err(D::Error::custom)
+    }
+}
+
+pub enum DataStream {
+    Axum(BodyDataStream),
+    Stream(Pin<BoxedStream>),
+    Read(Pin<Box<dyn AsyncRead + Send + 'static>>)
+}
+
+type BoxedStream = Box<dyn Stream<Item=Result<Bytes, io::Error>> + Send>;
+impl DataStream {
+
+    pub fn by_stream<T: Stream<Item=Result<Bytes, io::Error>> + Send + 'static>(stream: T) -> Self {
+        Self::Stream(Box::pin(stream))
+    }
+
+    pub fn by_read<T: AsyncRead + Send + 'static>(read: T) -> Self {
+        Self::Read(Box::pin(read))
+    }
+
+    pub fn into_axum(self) -> axum::body::Body {
+        match self {
+            DataStream::Axum(stream) => axum::body::Body::from_stream(stream),
+            DataStream::Stream(stream) => axum::body::Body::from_stream(stream),
+            DataStream::Read(read) => axum::body::Body::from_stream(ReaderStream::new(read)),
+        }
+    }
+
+    pub fn into_reqwest(self) -> reqwest::Body {
+        match self {
+            DataStream::Axum(stream) => reqwest::Body::wrap_stream(stream),
+            DataStream::Stream(stream) => reqwest::Body::wrap_stream(stream),
+            DataStream::Read(read) => reqwest::Body::wrap_stream(ReaderStream::new(read)),
+        }
+    }
+
+    pub fn reader(self) -> StreamReader<Pin<BoxedStream>, Bytes> {
+        use futures_util::TryStreamExt;
+        StreamReader::new(match self {
+            DataStream::Axum(stream) => Box::pin(stream.map_err(|err| io::Error::new(io::ErrorKind::Other, err))),
+            DataStream::Stream(stream) => stream,
+            DataStream::Read(read) => Box::pin(ReaderStream::new(read)),
+        })
+    }
+
+}
+
+impl<S: Send + Sync> FromRequest<S> for DataStream {
+    type Rejection = ();
+
+    async fn from_request(req: Request, _state: &S) -> Result<Self, Self::Rejection> {
+        Ok(DataStream::Axum(req.into_body().into_data_stream()))
     }
 }
 
