@@ -127,6 +127,8 @@ impl<T: DaemonSDKExtra> ResourceServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> DatabaseServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra> ScheduleServiceClientImpl for DaemonSDK<T> {}
 
+// TODO: impl<T: DaemonSDKExtra> DaemonServices for DaemonSDK<T> {}
+
 impl UserKeyProvider for DaemonSDK<WithUserKey> {
     fn node_id(&self) -> &str {
         &self.identifier

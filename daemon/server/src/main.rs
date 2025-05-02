@@ -50,9 +50,11 @@ use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
 use daemon_common::service::DaemonServices;
 use daemon_common::service::backup::BackupService;
+use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::network::NetworkService;
 use daemon_common::service::resource::ResourceService;
+use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
 use daemon_common::{framework_router, framework_router_user};
 
@@ -391,7 +393,7 @@ async fn main0() {
 
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
-        .merge(framework_router!(Daemon state { ServerService, BackupService, FilesService, NetworkService, ResourceService }))
+        .merge(framework_router!(Daemon state { ServerService, BackupService, FilesService, NetworkService, ResourceService, DatabaseService, ScheduleService }))
         .merge(web::config().with_state(state.clone()))
         .layer(axum::middleware::from_fn(service::middleware::middleware))
         .merge(web::config_unauthorized().with_state(state.clone()))
@@ -408,7 +410,7 @@ async fn main0() {
         router = router.merge(
             web::user_config()
                 .with_state(state.clone())
-                .merge(framework_router_user!(Daemon state { ServerService, BackupService, FilesService, NetworkService, ResourceService }))
+                .merge(framework_router_user!(Daemon state { ServerService, BackupService, FilesService, NetworkService, ResourceService, DatabaseService, ScheduleService }))
                 .layer(cors),
         );
     }
