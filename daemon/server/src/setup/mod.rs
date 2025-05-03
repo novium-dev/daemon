@@ -1,9 +1,14 @@
 use crate::config::{BackupEntry, DaemonConfig, MountPoint, NetworkConfig, StorageEntry};
+use crate::service::middleware;
 use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
+use async_trait::async_trait;
 use axum::Extension;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
+use daemon_common::framework_router;
 use daemon_common::payload::node::{BackupStorage, NodeRegistrationRequest, ServerStorage};
+use daemon_common::service::setup::SetupService;
+use daemon_common::service::setup::error::ConnectionTestError;
 use ed25519_dalek::VerifyingKey;
 use inquire::autocompletion::Replacement;
 use inquire::validator::{ErrorMessage, StringValidator, Validation};
@@ -24,15 +29,10 @@ use std::process::{Stdio, exit};
 use std::str::FromStr;
 use std::time::Duration;
 use std::{io, thread};
-use async_trait::async_trait;
 use tokio::runtime::Handle;
 use tracing::info;
 use url::Host;
 use utoipa_axum::router::OpenApiRouter;
-use daemon_common::framework_router;
-use daemon_common::service::setup::error::ConnectionTestError;
-use daemon_common::service::setup::SetupService;
-use crate::service::middleware;
 
 #[derive(Copy, Clone)]
 struct MySQLValidator;
@@ -147,7 +147,8 @@ fn test_host(config: &DaemonConfig) {
     });
 
     for listener in config.listeners.clone() {
-        let (routes, _) = framework_router!(ConnectionTestWrapper ConnectionTestWrapper { SetupService });
+        let (routes, _) =
+            framework_router!(ConnectionTestWrapper ConnectionTestWrapper { SetupService });
         let router = OpenApiRouter::new()
             .merge(routes)
             .layer(axum::middleware::from_fn(middleware::middleware))

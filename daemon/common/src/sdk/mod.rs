@@ -10,13 +10,13 @@ use crate::service::network::NetworkServiceClientImpl;
 use crate::service::resource::ResourceServiceClientImpl;
 use crate::service::schedule::ScheduleServiceClientImpl;
 use crate::service::server::ServerServiceClientImpl;
+use crate::service::setup::SetupServiceClientImpl;
 use crate::service::{
     DaemonServices, DaemonServicesClientImpl, DaemonServicesURL, DaemonServicesURLWithUserKey,
 };
 use crate::user::UserKeyProvider;
 use daemon_framework::FrameworkClientImpl;
 use reqwest::{Client, Url};
-use crate::service::setup::SetupServiceClientImpl;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}

@@ -11,7 +11,7 @@ use tracing::error;
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
 #[serde(tag = "type")]
-pub(crate) enum ArchiveCompression {
+pub enum ArchiveCompression {
     #[serde(rename = "none")]
     None,
     #[serde(rename = "zstd")]

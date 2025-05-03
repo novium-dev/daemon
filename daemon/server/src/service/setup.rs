@@ -1,7 +1,7 @@
-use async_trait::async_trait;
-use daemon_common::service::setup::error::ConnectionTestError;
-use daemon_common::service::setup::SetupService;
 use crate::Daemon;
+use async_trait::async_trait;
+use daemon_common::service::setup::SetupService;
+use daemon_common::service::setup::error::ConnectionTestError;
 
 #[async_trait]
 impl SetupService for Daemon {

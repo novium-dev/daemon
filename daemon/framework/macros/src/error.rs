@@ -309,6 +309,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
                 fn into_response(self) -> #crate_prefix http::response::Response<#crate_prefix axum::body::Body> {
                     use #ident::*;
+                    #[allow(unreachable_code)]
                     match self {
                         #response
                     }.into_response()

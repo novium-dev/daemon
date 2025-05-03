@@ -11,44 +11,43 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct DaemonConfig {
-    #[allow(unused)]
-    pub(crate) identifier: String,
-    pub(crate) token: String,
-    pub(crate) backend_url: Url,
+pub struct DaemonConfig {
+    pub identifier: String,
+    pub token: String,
+    pub backend_url: Url,
     #[serde(deserialize_with = "deserialize_user_key")]
     #[serde(serialize_with = "serialize_user_key")]
-    pub(crate) user_key: VerifyingKey,
-    pub(crate) listeners: HashSet<SocketAddr>,
-    pub(crate) origin: String,
-    pub(crate) storage: HashMap<String, StorageEntry>,
-    pub(crate) backup: HashMap<String, BackupEntry>,
-    pub(crate) database: String,
-    pub(crate) ssl: Option<SSLConfig>,
-    pub(crate) ssh: Option<SSHConfig>,
+    pub user_key: VerifyingKey,
+    pub listeners: HashSet<SocketAddr>,
+    pub origin: String,
+    pub storage: HashMap<String, StorageEntry>,
+    pub backup: HashMap<String, BackupEntry>,
+    pub database: String,
+    pub ssl: Option<SSLConfig>,
+    pub ssh: Option<SSHConfig>,
     #[serde(default)]
-    pub(crate) network: NetworkConfig,
-    pub(crate) mounts: Vec<MountPoint>,
+    pub network: NetworkConfig,
+    pub mounts: Vec<MountPoint>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub(crate) struct MountPoint {
-    pub(crate) src: String,
-    pub(crate) dest: String,
-    pub(crate) mode: String,
+pub struct MountPoint {
+    pub src: String,
+    pub dest: String,
+    pub mode: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct SSHConfig {
-    pub(crate) listeners: HashSet<SocketAddr>,
-    pub(crate) host_key: Vec<SSHHostKey>,
-    pub(crate) auth_cache_duration: u64,
-    pub(crate) auth_url: reqwest::Url,
+pub struct SSHConfig {
+    pub listeners: HashSet<SocketAddr>,
+    pub host_key: Vec<SSHHostKey>,
+    pub auth_cache_duration: u64,
+    pub auth_url: reqwest::Url,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
-pub(crate) enum StorageEntry {
+pub enum StorageEntry {
     #[serde(rename = "directory")]
     Directory { path: String },
     #[cfg(feature = "btrfs")]
@@ -61,7 +60,7 @@ pub(crate) enum StorageEntry {
 }
 
 impl StorageEntry {
-    pub(crate) fn path(&self) -> &String {
+    pub fn path(&self) -> &String {
         match self {
             StorageEntry::Directory { path } => path,
             #[cfg(feature = "btrfs")]
@@ -72,7 +71,7 @@ impl StorageEntry {
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(tag = "method")]
-pub(crate) enum BackupEntry {
+pub enum BackupEntry {
     #[serde(rename = "archive")]
     Archive {
         compression: ArchiveCompression,
@@ -91,7 +90,7 @@ pub(crate) enum BackupEntry {
 }
 
 impl BackupEntry {
-    pub(crate) fn path(&self) -> &String {
+    pub fn path(&self) -> &String {
         match self {
             BackupEntry::Archive { path, .. } => path,
             #[cfg(feature = "btrfs")]
@@ -99,7 +98,7 @@ impl BackupEntry {
         }
     }
 
-    pub(crate) fn order(&self) -> Option<i8> {
+    pub fn order(&self) -> Option<i8> {
         match self {
             BackupEntry::Archive { order, .. } => *order,
             #[cfg(feature = "btrfs")]
@@ -130,25 +129,25 @@ fn serialize_user_key<S: Serializer>(key: &VerifyingKey, serializer: S) -> Resul
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-pub(crate) struct SSLConfig {
-    pub(crate) private_key: PathBuf,
-    pub(crate) certificate: PathBuf,
+pub struct SSLConfig {
+    pub private_key: PathBuf,
+    pub certificate: PathBuf,
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
-pub(crate) struct NetworkConfig {
+pub struct NetworkConfig {
     // TODO: Assign dedicated ipv6 address to container, see #312
 }
 
 impl SSLConfig {
-    pub(crate) async fn as_rustls(&self) -> Result<RustlsConfig, std::io::Error> {
+    pub async fn as_rustls(&self) -> Result<RustlsConfig, std::io::Error> {
         RustlsConfig::from_pem_file(&self.certificate, &self.private_key).await
     }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub(crate) enum SSHHostKey {
+pub enum SSHHostKey {
     #[serde(rename = "ed25519")]
     ED25519 { path: String },
     #[serde(rename = "rsa")]
@@ -157,7 +156,7 @@ pub(crate) enum SSHHostKey {
 }
 
 impl SSHHostKey {
-    pub(crate) async fn as_russh_key(&self) -> Result<PrivateKey, anyhow::Error> {
+    pub async fn as_russh_key(&self) -> Result<PrivateKey, anyhow::Error> {
         use ed25519_dalek::ed25519::signature::rand_core::OsRng;
         use pkcs8::LineEnding;
         use russh::keys::ssh_encoding::{DecodePem, EncodePem};

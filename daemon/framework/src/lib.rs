@@ -36,6 +36,7 @@ use utoipa::ToSchema;
 use utoipa::openapi::schema::RefBuilder;
 use utoipa::openapi::{Content, RefOr, Response, ResponsesBuilder, Schema};
 pub use utoipa_axum;
+use utoipa_axum::router::OpenApiRouter;
 
 pub const SUCCESS_DESCRIPTION: &str = "Success";
 
@@ -617,7 +618,7 @@ macro_rules! define_header_variable {
 
 #[macro_export]
 macro_rules! framework_router {
-    ($base:ident $var:ident { $($tr:ident),* }) => {
+    ($base:ident $var:ident { $($tr:path),* }) => {
         ($crate::utoipa_axum::router::OpenApiRouter::new()
             $(
                 .merge(<$base as $tr>::routes(&$var))
@@ -628,4 +629,14 @@ macro_rules! framework_router {
             )*
         )
     };
+}
+
+pub trait MultiRouterExtension {
+    fn merge(self, other: Self) -> Self;
+}
+
+impl MultiRouterExtension for (OpenApiRouter, OpenApiRouter) {
+    fn merge(self, other: Self) -> Self {
+        (self.0.merge(other.0), self.1.merge(other.1))
+    }
 }

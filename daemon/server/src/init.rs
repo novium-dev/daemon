@@ -196,6 +196,12 @@ impl Daemon {
         Ok(daemon)
     }
 
+    pub async fn serve_all(&self) -> Result<(), anyhow::Error> {
+        self.serve_http().await?;
+        self.serve_ssh().await?;
+        Ok(())
+    }
+
     pub async fn shutdown(&self) {
         let _ = self.shutdown_channel.send(());
         self.server_task.lock().await.shutdown().await;

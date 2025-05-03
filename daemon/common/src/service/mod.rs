@@ -12,15 +12,16 @@ use crate::service::schedule::{ScheduleService, ScheduleServiceClientImpl, Sched
 use crate::service::server::{
     ServerService, ServerServiceClientImpl, ServerServiceURL, ServiceServiceUserKeyExtension,
 };
+use crate::service::setup::{SetupService, SetupServiceClientImpl, SetupServiceURL};
 use crate::user::UserKeyProvider;
 pub(crate) use daemon_framework::{define_error, service};
 use daemon_framework::{define_header_variable, define_path_variable, error};
 use std::io;
 use std::io::ErrorKind;
-use crate::service::setup::{SetupService, SetupServiceClientImpl, SetupServiceURL};
 
 pub mod backup;
 pub mod database;
+pub mod debug;
 pub mod files;
 pub mod network;
 pub mod resource;
@@ -89,7 +90,7 @@ define_error!(http_request {
 define_path_variable!(server_id "The server id");
 define_header_variable!(auth "The authentication token");
 
-error!(MiddlewareError, auth(invalid));
+error!(BlankError, auth(invalid));
 
 pub trait DaemonServices:
     ServerService

@@ -1,3 +1,4 @@
+use crate::config::DaemonConfig;
 use axum::Extension;
 use axum::extract::Request;
 use axum::middleware::Next;
@@ -5,8 +6,7 @@ use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
 use axum_extra::headers::Authorization;
 use axum_extra::headers::authorization::Bearer;
-use daemon_common::service::MiddlewareError;
-use crate::config::DaemonConfig;
+use daemon_common::service::BlankError;
 
 pub(crate) async fn middleware(
     Extension(config): Extension<DaemonConfig>,
@@ -15,10 +15,10 @@ pub(crate) async fn middleware(
     next: Next,
 ) -> Response {
     let Some(TypedHeader(Authorization(header))) = header else {
-        return MiddlewareError::AuthInvalid.into_response();
+        return BlankError::AuthInvalid.into_response();
     };
     if !header.token().eq(&config.token) {
-        return MiddlewareError::AuthInvalid.into_response();
+        return BlankError::AuthInvalid.into_response();
     }
     next.run(request).await
 }

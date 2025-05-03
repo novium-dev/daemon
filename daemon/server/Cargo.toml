@@ -29,6 +29,9 @@ full = ["default"]
 full_bypass = ["full", "ssh_debug_auth_bypass"]
 trace_sync = []
 
+[lints.clippy]
+disallowed_methods = { level = "allow", check-cfg = ['cfg(not(feature = "trace_sync"))'] }
+
 [dependencies]
 libc.workspace = true
 bollard.workspace = true

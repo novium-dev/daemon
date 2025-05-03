@@ -1,7 +1,7 @@
-use crate::{Daemon, web};
+use crate::Daemon;
 use axum::extract::Request;
 use axum::{Extension, Router};
-use daemon_common::framework_router;
+use daemon_common::{framework_router, MultiRouterExtension};
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
@@ -9,7 +9,6 @@ use daemon_common::service::network::NetworkService;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
-use std::io;
 use tower_http::trace::TraceLayer;
 use tracing::error;
 use utoipa::OpenApi;
@@ -17,6 +16,8 @@ use utoipa_axum::router::OpenApiRouter;
 
 mod backup;
 mod database;
+#[cfg(feature = "trace_sync")]
+mod debug;
 mod files;
 pub(crate) mod middleware;
 mod network;
@@ -31,10 +32,18 @@ impl Daemon {
         #[openapi()]
         struct ApiDoc;
 
-        let (routes, routes_user) = framework_router!(Self self {
+        #[allow(unused_mut)]
+        let mut routes = framework_router!(Self self {
             ServerService, BackupService, FilesService, NetworkService,
             ResourceService, DatabaseService, ScheduleService
         });
+
+        #[cfg(feature = "trace_sync")]
+        {
+            routes = routes.merge(framework_router!(Self self { daemon_common::service::debug::DebugService }));
+        }
+
+        let (routes, routes_user) = routes;
 
         let cors = tower_http::cors::CorsLayer::new()
             .allow_origin(tower_http::cors::AllowOrigin::exact(
@@ -43,15 +52,14 @@ impl Daemon {
             .allow_methods([axum::http::Method::GET])
             .allow_headers(tower_http::cors::AllowHeaders::any());
 
-        let mut router = OpenApiRouter::with_openapi(ApiDoc::openapi())
-            .merge(routes)
-            .layer(axum::middleware::from_fn(middleware::middleware))
-            .merge(web::config_unauthorized().with_state(self.clone()))
-            .layer(Extension(self.config.clone()));
-
-        router = router.merge(routes_user.layer(cors));
-
-        let (mut router, api) = router.split_for_parts();
+        let (mut router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
+            .merge(
+                routes
+                    .layer(axum::middleware::from_fn(middleware::middleware))
+                    .layer(Extension(self.config.clone())),
+            )
+            .merge(routes_user.layer(cors))
+            .split_for_parts();
 
         #[cfg(debug_assertions)]
         {
@@ -71,7 +79,7 @@ impl Daemon {
         router
     }
 
-    pub async fn serve_http(&self) -> Result<(), io::Error> {
+    pub async fn serve_http(&self) -> Result<(), anyhow::Error> {
         let rustls = if let Some(ssl) = &self.config.ssl {
             Some(
                 ssl.as_rustls()
