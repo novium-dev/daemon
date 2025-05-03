@@ -1,11 +1,18 @@
-use crate::service::backup::{BackupService, BackupServiceClientImpl};
-use crate::service::database::{DatabaseService, DatabaseServiceClientImpl};
+use crate::service::backup::{
+    BackupService, BackupServiceClientImpl, BackupServiceURL, BackupServiceUserKeyExtension,
+};
+use crate::service::database::{DatabaseService, DatabaseServiceClientImpl, DatabaseServiceURL};
 use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
-use crate::service::files::{FilesService, FilesServiceClientImpl};
-use crate::service::network::{NetworkService, NetworkServiceClientImpl};
-use crate::service::resource::{ResourceService, ResourceServiceClientImpl};
-use crate::service::schedule::{ScheduleService, ScheduleServiceClientImpl};
-use crate::service::server::{ServerService, ServerServiceClientImpl};
+use crate::service::files::{
+    FilesService, FilesServiceClientImpl, FilesServiceURL, FilesServiceUserKeyExtension,
+};
+use crate::service::network::{NetworkService, NetworkServiceClientImpl, NetworkServiceURL};
+use crate::service::resource::{ResourceService, ResourceServiceClientImpl, ResourceServiceURL};
+use crate::service::schedule::{ScheduleService, ScheduleServiceClientImpl, ScheduleServiceURL};
+use crate::service::server::{
+    ServerService, ServerServiceClientImpl, ServerServiceURL, ServiceServiceUserKeyExtension,
+};
+use crate::user::UserKeyProvider;
 pub(crate) use daemon_framework::{define_error, service};
 use daemon_framework::{define_header_variable, define_path_variable, error};
 use std::io;
@@ -100,5 +107,26 @@ pub trait DaemonServicesClientImpl:
     + ResourceServiceClientImpl
     + DatabaseServiceClientImpl
     + ScheduleServiceClientImpl
+{
+}
+
+pub trait DaemonServicesURL:
+    DaemonServices
+    + ServerServiceURL
+    + BackupServiceURL
+    + FilesServiceURL
+    + NetworkServiceURL
+    + ResourceServiceURL
+    + DatabaseServiceURL
+    + ScheduleServiceURL
+{
+}
+
+pub trait DaemonServicesURLWithUserKey:
+    DaemonServicesURL
+    + ServiceServiceUserKeyExtension
+    + BackupServiceUserKeyExtension
+    + FilesServiceUserKeyExtension
+    + UserKeyProvider
 {
 }

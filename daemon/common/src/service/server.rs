@@ -5,7 +5,7 @@ use crate::payload::server::{
 use crate::server::PublicServerState;
 use crate::user::*;
 use chrono::Utc;
-use daemon_framework::{FrameworkClientImpl, JsonVec, WebsocketResponse, define_query_variable};
+use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable};
 use url::Url;
 
 define_error!(server {
@@ -145,9 +145,7 @@ pub trait ServiceServiceUserKeyExtension {
     ) -> Url;
 }
 
-impl<T: ServerService + FrameworkClientImpl + UserKeyProvider> ServiceServiceUserKeyExtension
-    for T
-{
+impl<T: ServerServiceURL + UserKeyProvider> ServiceServiceUserKeyExtension for T {
     fn server_terminal_url_signed(&self, server_id: u32, cols: u32, rows: u32, write: bool) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature =

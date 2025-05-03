@@ -362,7 +362,7 @@ pub(crate) fn process(
 
     let client_def = quote! {
 
-        #fn_keyword [< #fn_ident _url >] #fn_def_args -> #crate_prefix reqwest::Url where Self: #crate_prefix FrameworkClientImpl {
+        #fn_keyword [< #fn_ident _url >] #fn_def_args -> #crate_prefix url::Url {
             #client_def_body
             daemon_result_url
         }
@@ -471,8 +471,6 @@ pub(crate) fn finish(
                     #routes_user
             }
 
-            #client_definition
-
         }
 
     });
@@ -481,12 +479,21 @@ pub(crate) fn finish(
 
         #crate_prefix paste::paste! {
 
+            pub trait [< #trait_ident URL >]: #crate_prefix FrameworkClientImpl {
+                #client_definition
+            }
+
             pub trait [< #trait_ident ClientImpl >]: #crate_prefix FrameworkClientImpl {
+
+            }
+
+            impl<T: #trait_ident + #crate_prefix FrameworkClientImpl> [< #trait_ident URL >] for T {
+
             }
 
             #[#crate_prefix async_trait]
-            #[allow(unused_variables)] // TODO: Remove when implementation is done
-            #[diagnostic::do_not_recommend]
+            // #[diagnostic::do_not_recommend]
+            #[allow(unused_variables)] // TODO: Why is this needed?
             impl<T: [< #trait_ident ClientImpl >] + Send + Sync> #trait_ident for T {
                 #client_impl
             }

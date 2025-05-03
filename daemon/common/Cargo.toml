@@ -32,6 +32,8 @@ base64.workspace = true
 paste.workspace = true
 url.workspace = true
 chrono.workspace = true
+reqwest.workspace = true
+http.workspace = true
 
 crc64 = "2.0.0"
 

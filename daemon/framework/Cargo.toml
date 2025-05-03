@@ -21,6 +21,7 @@ tokio-util.workspace = true
 futures-util.workspace = true
 bytes.workspace = true
 tokio.workspace = true
+url.workspace = true
 serde_urlencoded = "0.7.1"
 thiserror = "2.0.12"
 urlencoding = "2.1.3"

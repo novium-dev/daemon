@@ -29,6 +29,7 @@ use std::pin::Pin;
 use std::{io, mem};
 use tokio::io::AsyncRead;
 use tokio_util::io::{ReaderStream, StreamReader};
+pub use url;
 pub use urlencoding;
 pub use utoipa;
 use utoipa::ToSchema;

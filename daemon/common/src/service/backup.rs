@@ -3,7 +3,7 @@ use crate::payload::backup::BackupResponseEntry;
 use crate::service::service;
 use crate::user::*;
 use chrono::Utc;
-use daemon_framework::{FileResponse, FrameworkClientImpl, define_query_variable};
+use daemon_framework::{FileResponse, define_query_variable};
 use url::Url;
 
 define_path_variable!(
@@ -134,7 +134,7 @@ pub trait BackupServiceUserKeyExtension {
     fn server_download_realtime_user_url_signed(&self, server_id: u32, compression: String) -> Url;
 }
 
-impl<T: BackupService + FrameworkClientImpl + UserKeyProvider> BackupServiceUserKeyExtension for T {
+impl<T: BackupServiceURL + UserKeyProvider> BackupServiceUserKeyExtension for T {
     fn server_download_backup_user_url_signed(
         &self,
         server_id: u32,

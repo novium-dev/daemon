@@ -7,6 +7,7 @@ pub use daemon_framework::JsonVec;
 pub mod payload;
 
 pub mod files;
+pub mod sdk;
 pub mod server;
 pub mod service;
 pub mod ssh;

@@ -6,7 +6,7 @@ use crate::user::*;
 use chrono::Utc;
 use daemon_framework::axum_extra::TypedHeader;
 use daemon_framework::axum_extra::headers::ContentLength;
-use daemon_framework::{DataStream, FileResponse, FrameworkClientImpl, define_query_variable};
+use daemon_framework::{DataStream, FileResponse, define_query_variable};
 use url::Url;
 
 define_error!(file {
@@ -152,7 +152,7 @@ pub trait FilesServiceUserKeyExtension {
     ) -> Url;
 }
 
-impl<T: FilesService + FrameworkClientImpl + UserKeyProvider> FilesServiceUserKeyExtension for T {
+impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
     fn server_download_file_user_url_signed(
         &self,
         server_id: u32,
