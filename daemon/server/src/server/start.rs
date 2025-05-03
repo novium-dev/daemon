@@ -28,14 +28,12 @@ use tracing::warn;
 
 #[allow(unused)]
 #[derive(Debug)]
-#[deprecated]
 pub(crate) enum ServerStartError {
     Docker(bollard::errors::Error),
     Storage(StorageError),
     IO(io::Error),
     AlreadyRunning,
-    #[allow(clippy::upper_case_acronyms)]
-    SQL(sqlx::Error), // only if queued
+    Sql(sqlx::Error), // only if queued
     NotFound,
 }
 
@@ -339,7 +337,7 @@ impl FetchedServer {
     ) -> Result<(), ServerStartError> {
         let Some((server, server_data)) = utils::server(&state.conn, &state.servers, server_id)
             .await
-            .map_err(ServerStartError::SQL)?
+            .map_err(ServerStartError::Sql)?
         else {
             return Err(ServerStartError::NotFound);
         };

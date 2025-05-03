@@ -48,6 +48,7 @@ ignore = true
 [advisories]
 unmaintained = "workspace"
 ignore = [
-    "RUSTSEC-2023-0071" # Marvin side-channel attack on rsa@0.9.8
+    "RUSTSEC-2023-0071", # Marvin side-channel attack on rsa@0.9.8
+    "RUSTSEC-2024-0436"
 ]
 

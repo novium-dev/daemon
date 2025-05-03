@@ -14,8 +14,8 @@ use daemon_common::service::files::error::{
     ServerCopyFileError, ServerCreateArchiveError, ServerCreateDirectoryError,
     ServerDeleteFileError, ServerDownloadFileError, ServerDownloadFileUserError,
     ServerListFilesError, ServerRenameFileError, ServerStatFileError, ServerSymlinkError,
-    ServerUnpackArchiveError, ServerUploadFileError, ServerWriteFileByTemplateError,
-    ServerWriteFileByUrlError,
+    ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
+    ServerWriteFileByTemplateError, ServerWriteFileByUrlError,
 };
 use daemon_common::user::UserSignature;
 use daemon_common::{DataStream, FileResponse};
@@ -97,6 +97,26 @@ impl FilesService for Daemon {
         length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), ServerUploadFileError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        write_file(self, storage, path, length, data).await
+    }
+
+    async fn server_upload_file_user(
+        &self,
+        server_id: u32,
+        path: String,
+        timestamp: i64,
+        verify: UserSignature,
+        length: Option<TypedHeader<ContentLength>>,
+        data: DataStream,
+    ) -> Result<(), ServerUploadFileUserError> {
+        verify.verify_server_file_upload::<ServerUploadFileUserError>(
+            &self.config.user_key,
+            timestamp,
+            &self.config.identifier,
+            server_id,
+            &path,
+        )?;
         let storage = StorageIdentifier::Primary(server_id);
         write_file(self, storage, path, length, data).await
     }

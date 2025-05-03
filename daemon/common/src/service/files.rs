@@ -76,6 +76,19 @@ pub trait FilesService {
         data: DataStream,
     ) -> Result<(), _>;
 
+    #[route(!"/user/files/{server_id}/file", method = PUT, query = [ path, timestamp, verify ], user)]
+    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
+    #[doc = "Uploads a file (called by the user)"]
+    async fn server_upload_file_user(
+        &self,
+        server_id: u32,
+        path: String,
+        timestamp: i64,
+        verify: UserSignature,
+        length: Option<TypedHeader<ContentLength>>,
+        data: DataStream,
+    ) -> Result<(), _>;
+
     #[route("/url", method = GET, query = [ path, url "The url from which the file gets downloaded" ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]) http_request(failed not_success read_failed))]
     #[doc = "Writes a file using a url"]
@@ -150,6 +163,8 @@ pub trait FilesServiceUserKeyExtension {
         path: String,
         limit: Option<u64>,
     ) -> Url;
+
+    fn server_upload_file_user_url_signed(&self, server_id: u32, path: String) -> Url;
 }
 
 impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
@@ -168,5 +183,17 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
             &path,
         );
         self.server_download_file_user_url(server_id, path, limit, timestamp, signature)
+    }
+
+    fn server_upload_file_user_url_signed(&self, server_id: u32, path: String) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature = UserSignature::new_server_file_upload(
+            self.key(),
+            timestamp,
+            self.node_id(),
+            server_id,
+            &path,
+        );
+        self.server_upload_file_user_url(server_id, path, timestamp, signature)
     }
 }
