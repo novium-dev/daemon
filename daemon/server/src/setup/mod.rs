@@ -1,7 +1,6 @@
 use crate::config::{BackupEntry, DaemonConfig, MountPoint, NetworkConfig, StorageEntry};
 use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
-use axum::Router;
-use axum::routing::get;
+use axum::Extension;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use daemon_common::payload::node::{BackupStorage, NodeRegistrationRequest, ServerStorage};
@@ -25,9 +24,15 @@ use std::process::{Stdio, exit};
 use std::str::FromStr;
 use std::time::Duration;
 use std::{io, thread};
+use async_trait::async_trait;
 use tokio::runtime::Handle;
 use tracing::info;
 use url::Host;
+use utoipa_axum::router::OpenApiRouter;
+use daemon_common::framework_router;
+use daemon_common::service::setup::error::ConnectionTestError;
+use daemon_common::service::setup::SetupService;
+use crate::service::middleware;
 
 #[derive(Copy, Clone)]
 struct MySQLValidator;
@@ -125,6 +130,16 @@ pub(crate) fn update(
 }
 
 fn test_host(config: &DaemonConfig) {
+    #[derive(Clone)]
+    struct ConnectionTestWrapper;
+
+    #[async_trait]
+    impl SetupService for ConnectionTestWrapper {
+        async fn connection_test(&self) -> Result<(), ConnectionTestError> {
+            Err(ConnectionTestError::AwaitingSetup)
+        }
+    }
+
     let rustls = config.ssl.as_ref().map(|ssl| {
         tokio::runtime::Handle::current()
             .block_on(ssl.as_rustls())
@@ -132,14 +147,19 @@ fn test_host(config: &DaemonConfig) {
     });
 
     for listener in config.listeners.clone() {
-        let app: Router<()> = Router::new().fallback(get(dummy)); // TODO: SetupService
+        let (routes, _) = framework_router!(ConnectionTestWrapper ConnectionTestWrapper { SetupService });
+        let router = OpenApiRouter::new()
+            .merge(routes)
+            .layer(axum::middleware::from_fn(middleware::middleware))
+            .layer(Extension(config.clone()));
+        let (router, _) = router.split_for_parts();
 
         if let Some(rustls) = rustls.clone() {
             tokio::task::spawn(
-                axum_server::bind_rustls(listener, rustls).serve(app.into_make_service()),
+                axum_server::bind_rustls(listener, rustls).serve(router.into_make_service()),
             );
         } else {
-            tokio::task::spawn(axum_server::bind(listener).serve(app.into_make_service()));
+            tokio::task::spawn(axum_server::bind(listener).serve(router.into_make_service()));
         }
     }
 
@@ -291,10 +311,6 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
     println!("Done");
 
     exit(0);
-}
-
-async fn dummy() {
-    println!("Connection test received");
 }
 
 #[inline(always)]

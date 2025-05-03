@@ -23,6 +23,7 @@ mod network;
 mod resource;
 mod schedule;
 mod server;
+mod setup;
 
 impl Daemon {
     pub fn router(&self) -> Router {
@@ -46,7 +47,7 @@ impl Daemon {
             .merge(routes)
             .layer(axum::middleware::from_fn(middleware::middleware))
             .merge(web::config_unauthorized().with_state(self.clone()))
-            .layer(Extension(self.clone()));
+            .layer(Extension(self.config.clone()));
 
         router = router.merge(routes_user.layer(cors));
 

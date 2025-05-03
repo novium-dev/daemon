@@ -16,6 +16,7 @@ use crate::service::{
 use crate::user::UserKeyProvider;
 use daemon_framework::FrameworkClientImpl;
 use reqwest::{Client, Url};
+use crate::service::setup::SetupServiceClientImpl;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}
@@ -49,6 +50,7 @@ impl<T: DaemonSDKExtra + Send + Sync> NetworkServiceClientImpl for DaemonSDK<T> 
 impl<T: DaemonSDKExtra + Send + Sync> ResourceServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> DatabaseServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> ScheduleServiceClientImpl for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra + Send + Sync> SetupServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> DaemonServices for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> DaemonServicesURL for DaemonSDK<T> {}
 impl DaemonServicesURLWithUserKey for DaemonSDK<WithUserKey> {}

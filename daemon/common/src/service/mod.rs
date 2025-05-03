@@ -17,6 +17,7 @@ pub(crate) use daemon_framework::{define_error, service};
 use daemon_framework::{define_header_variable, define_path_variable, error};
 use std::io;
 use std::io::ErrorKind;
+use crate::service::setup::{SetupService, SetupServiceClientImpl, SetupServiceURL};
 
 pub mod backup;
 pub mod database;
@@ -25,6 +26,7 @@ pub mod network;
 pub mod resource;
 pub mod schedule;
 pub mod server;
+pub mod setup;
 
 define_error!(auth {
     invalid (
@@ -97,6 +99,7 @@ pub trait DaemonServices:
     + ResourceService
     + DatabaseService
     + ScheduleService
+    + SetupService
 {
 }
 pub trait DaemonServicesClientImpl:
@@ -107,6 +110,7 @@ pub trait DaemonServicesClientImpl:
     + ResourceServiceClientImpl
     + DatabaseServiceClientImpl
     + ScheduleServiceClientImpl
+    + SetupServiceClientImpl
 {
 }
 
@@ -119,6 +123,7 @@ pub trait DaemonServicesURL:
     + ResourceServiceURL
     + DatabaseServiceURL
     + ScheduleServiceURL
+    + SetupServiceURL
 {
 }
 
