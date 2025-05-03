@@ -618,19 +618,14 @@ macro_rules! define_header_variable {
 #[macro_export]
 macro_rules! framework_router {
     ($base:ident $var:ident { $($tr:ident),* }) => {
-        $crate::utoipa_axum::router::OpenApiRouter::new()
+        ($crate::utoipa_axum::router::OpenApiRouter::new()
             $(
                 .merge(<$base as $tr>::routes(&$var))
-            )*
-    };
-}
-
-#[macro_export]
-macro_rules! framework_router_user {
-    ($base:ident $var:ident { $($tr:ident),* }) => {
-        $crate::utoipa_axum::router::OpenApiRouter::new()
+            )*,
+            $crate::utoipa_axum::router::OpenApiRouter::new()
             $(
                 .merge(<$base as $tr>::routes_user(&$var))
             )*
+        )
     };
 }

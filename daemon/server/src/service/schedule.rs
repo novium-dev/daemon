@@ -49,7 +49,7 @@ impl ScheduleService for Daemon {
             Ok::<_, CreateScheduleError>(id)
         })).await?;
 
-        let handle = tokio::task::spawn(task(
+        let handle = self.schedule_task.lock().await.spawn(task(
             server_id,
             self.clone(),
             payload.policy,
@@ -124,7 +124,7 @@ impl ScheduleService for Daemon {
             handle.abort();
         }
 
-        let handle = tokio::task::spawn(task(
+        let handle = self.schedule_task.lock().await.spawn(task(
             server_id,
             self.clone(),
             payload.policy,

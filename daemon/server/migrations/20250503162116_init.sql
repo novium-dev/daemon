@@ -139,3 +139,42 @@ CREATE TABLE IF NOT EXISTS `server_networks`
   FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE,
   CONSTRAINT IP_RANGE CHECK (`ipv4` > 1 AND (`ipv4` | 0b11000000) != 255 AND (`ipv4` & 0b11000000) = 0 AND (`ipv6` & 0xffff) > 1)
 ) ENGINE=INNODB;
+
+CREATE TABLE IF NOT EXISTS `schedules` (
+    `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `server` INT(255) UNSIGNED NOT NULL,
+    `policy` ENUM('always', 'running', 'stopped') NOT NULL,
+    `schedule` VARCHAR(255) NOT NULL,
+    `timezone` VARCHAR(255) NOT NULL,
+    FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `schedule_steps` (
+    `schedule` INT(255) UNSIGNED NOT NULL,
+    `index` INT UNSIGNED NOT NULL,
+    `value` JSON NOT NULL, -- I do not like json in sql, but its the best way here I guess
+    FOREIGN KEY (`schedule`) REFERENCES `schedules`(`id`) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS `databases`
+(
+  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `name_suffix` VARCHAR(255) NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS `database_passwordless`
+(
+  `database` INT(255) UNSIGNED NOT NULL,
+  `server` INT(255) UNSIGNED NOT NULL,
+  `permissions` TINYINT NOT NULL,
+  PRIMARY KEY (`database`, `server`)
+);
+
+CREATE TABLE IF NOT EXISTS `database_user`
+(
+  `database` INT(255) UNSIGNED NOT NULL,
+  `name_suffix` VARCHAR(255) NOT NULL,
+  `password_hash` VARCHAR(255) NOT NULL,
+  `permissions` TINYINT NOT NULL,
+  PRIMARY KEY (`database`, `name_suffix`)
+);

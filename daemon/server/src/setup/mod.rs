@@ -18,13 +18,16 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::ops::RangeInclusive;
 use std::path::PathBuf;
 use std::process::{Stdio, exit};
+use std::str::FromStr;
 use std::time::Duration;
-use std::{env, io, thread};
+use std::{io, thread};
 use tokio::runtime::Handle;
+use tracing::info;
+use url::Host;
 
 #[derive(Copy, Clone)]
 struct MySQLValidator;
@@ -32,47 +35,17 @@ struct MySQLValidator;
 #[derive(Copy, Clone)]
 struct URLValidator;
 
+#[derive(Copy, Clone)]
+struct HostPortValidator;
+
 #[derive(Clone)]
 struct RegexValidator(Regex);
 
 #[derive(Clone)]
 struct LengthValidator(RangeInclusive<usize>);
 
-pub(crate) fn setup() {
-    println!("Daemon Setup");
-
-    #[cfg(not(debug_assertions))]
-    {
-        use std::os::unix::fs;
-        if !std::fs::exists("/var/lib/novium_daemon").unwrap() {
-            std::fs::create_dir_all("/var/lib/novium_daemon").unwrap();
-        }
-        fs::chown(
-            "/var/lib/novium_daemon",
-            Some(crate::common::CONTAINER_DEFAULT_UID as u32),
-            Some(crate::common::CONTAINER_DEFAULT_GID as u32),
-        )
-        .unwrap();
-        env::set_current_dir(PathBuf::from("/var/lib/novium_daemon")).unwrap();
-
-        capctl::prctl::set_keepcaps(true).unwrap();
-        let mut capstate = capctl::CapState::get_current().unwrap();
-        capstate.permitted.add(capctl::Cap::NET_BIND_SERVICE);
-        capstate.permitted.add(capctl::Cap::DAC_OVERRIDE);
-        capstate.set_current().unwrap();
-
-        capctl::cap_set_ids(
-            Some(crate::common::CONTAINER_DEFAULT_UID as u32),
-            Some(crate::common::CONTAINER_DEFAULT_GID as u32),
-            None,
-        )
-        .unwrap();
-
-        let mut capstate = capctl::CapState::get_current().unwrap();
-        capstate.effective.add(capctl::Cap::NET_BIND_SERVICE);
-        capstate.effective.add(capctl::Cap::DAC_OVERRIDE);
-        capstate.set_current().unwrap();
-    }
+pub(crate) fn setup(backend_url: Option<Url>, code: Option<String>, skip_mariadb_plugin: bool) {
+    info!("Starting Setup Wizard...");
 
     match File::open("config.toml") {
         Ok(file) => {
@@ -86,37 +59,43 @@ pub(crate) fn setup() {
                 .unwrap()
                 .eq("New")
             {
-                new()
+                new(backend_url, code, skip_mariadb_plugin)
             } else {
-                update(file)
+                update(file, backend_url, code, skip_mariadb_plugin)
             }
         }
-        Err(_) => new(),
+        Err(_) => new(backend_url, code, skip_mariadb_plugin),
     }
 }
 
-fn default() -> (Url, String) {
-    let mut args = env::args().skip(2); // Skip <current_binary_path> setup
-
-    let backend = args.next().unwrap_or_else(|| {
+fn default(backend_url: Option<Url>, code: Option<String>) -> (Url, String) {
+    let backend = backend_url.unwrap_or_else(|| {
         println!(
             "\nPlease enter the url to the backend.\nThe API should be reachable using the url."
         );
-        Text::new("URL: ")
-            .with_validator(URLValidator)
-            .prompt()
-            .unwrap()
+        Url::parse(
+            &Text::new("URL: ")
+                .with_validator(URLValidator)
+                .prompt()
+                .unwrap(),
+        )
+        .unwrap()
     });
-    let code = args.next().unwrap_or_else(|| {
+    let code = code.unwrap_or_else(|| {
         println!("\nPlease enter your registration code");
         Text::new("Code: ").prompt().unwrap()
     });
 
-    (backend.parse().unwrap(), code)
+    (backend, code)
 }
 
-pub(crate) fn update(mut file: File) {
-    let (backend, code) = default();
+pub(crate) fn update(
+    mut file: File,
+    backend_url: Option<Url>,
+    code: Option<String>,
+    skip_mariadb_plugin: bool,
+) {
+    let (backend, code) = default(backend_url, code);
     let config: DaemonConfig = {
         let mut str = String::new();
         file.read_to_string(&mut str).unwrap();
@@ -124,11 +103,11 @@ pub(crate) fn update(mut file: File) {
         toml::from_str(&str).unwrap()
     };
 
-    let host = ask_host();
+    let url = ask_daemon_url();
 
     test_host(&config);
 
-    let request = config_to_request(host, config);
+    let request = config_to_request(url, config, skip_mariadb_plugin);
     let response = Handle::current()
         .block_on(
             Client::default()
@@ -146,28 +125,29 @@ pub(crate) fn update(mut file: File) {
 }
 
 fn test_host(config: &DaemonConfig) {
-    let app: Router<()> = Router::new().fallback(get(dummy));
+    let rustls = config.ssl.as_ref().map(|ssl| {
+        tokio::runtime::Handle::current()
+            .block_on(ssl.as_rustls())
+            .unwrap()
+    });
 
-    let bind = config.bind.parse().unwrap();
-    'ssl: {
-        #[cfg(feature = "ssl")]
-        if config.ssl.enabled {
+    for listener in config.listeners.clone() {
+        let app: Router<()> = Router::new().fallback(get(dummy)); // TODO: SetupService
+
+        if let Some(rustls) = rustls.clone() {
             tokio::task::spawn(
-                axum_server::bind_rustls(
-                    bind,
-                    Handle::current().block_on(config.ssl.as_rustls()).unwrap(),
-                )
-                .serve(app.into_make_service()),
+                axum_server::bind_rustls(listener, rustls).serve(app.into_make_service()),
             );
-            break 'ssl;
+        } else {
+            tokio::task::spawn(axum_server::bind(listener).serve(app.into_make_service()));
         }
-        tokio::task::spawn(axum_server::bind(bind).serve(app.into_make_service()));
     }
+
     thread::sleep(Duration::from_secs(5));
 }
 
-pub(crate) fn new() {
-    let (backend, code) = default();
+pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_plugin: bool) {
+    let (backend, code) = default(backend_url, code);
 
     println!("Retrieving public user key...");
     let user_key = Handle::current()
@@ -217,21 +197,21 @@ pub(crate) fn new() {
 
     let config = DaemonConfig {
         database: mysql,
-        bind: "[::]:3000".to_string(),
+        listeners: HashSet::from([
+            SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 3000),
+            SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 3000),
+        ]),
         token,
         identifier,
         backend_url: backend.join("/").unwrap(),
         user_key,
         origin: backend.join("/").unwrap().to_string(),
-        #[cfg(feature = "ssl")]
-        ssl: crate::config::SSLConfig {
-            enabled: false,
-            private_key: None,
-            certificate: None,
-        },
-        #[cfg(feature = "ssh")]
-        ssh: crate::config::SSHConfig {
-            bind: "[::]:22".to_string(),
+        ssl: None,
+        ssh: Some(crate::config::SSHConfig {
+            listeners: HashSet::from([
+                SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 22),
+                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 22),
+            ]),
             host_key: vec![
                 crate::config::SSHHostKey::ED25519 {
                     path: "ed25519.pem".to_string(),
@@ -242,7 +222,7 @@ pub(crate) fn new() {
             ],
             auth_url: backend.join("/").unwrap(),
             auth_cache_duration: 30 * 1000,
-        },
+        }),
         storage: HashMap::from_iter([(
             "local".to_string(),
             StorageEntry::Directory {
@@ -263,7 +243,7 @@ pub(crate) fn new() {
         mounts,
     };
 
-    let host = ask_host();
+    let host = ask_daemon_url();
 
     {
         let mut file = OpenOptions::new()
@@ -296,7 +276,7 @@ pub(crate) fn new() {
 
     test_host(&config);
 
-    let request = config_to_request(host, config);
+    let request = config_to_request(host, config, skip_mariadb_plugin);
     let response = Handle::current()
         .block_on(
             Client::default()
@@ -317,31 +297,38 @@ async fn dummy() {
     println!("Connection test received");
 }
 
-fn ask_host() -> String {
-    println!("\nOn what host is the daemon reachable?");
-    Text::new("Host: ")
-        .with_initial_value(&hostname())
-        .prompt()
-        .unwrap()
+#[inline(always)]
+fn ask_daemon_url() -> Url {
+    println!("\nOn what url is the daemon publicly reachable?");
+    Url::parse(
+        &Text::new("URL: ")
+            .with_initial_value(&format!("http://{}:3000", hostname()))
+            .with_validator(URLValidator)
+            .prompt()
+            .unwrap(),
+    )
+    .unwrap()
 }
 
-fn config_to_request(host: String, config: DaemonConfig) -> NodeRegistrationRequest {
-    let mut scheme = "http".to_string();
-    #[cfg(feature = "ssl")]
-    if config.ssl.enabled {
-        scheme = "https".to_string();
-    }
+fn config_to_request(url: Url, config: DaemonConfig, no_plugin: bool) -> NodeRegistrationRequest {
+    let ssh_host = if config.ssh.is_some() {
+        println!("\nOn what ssh addr is the daemon publicly reachable?");
+        Some(
+            parse_addr(
+                Text::new("Addr: ")
+                    .with_initial_value(&format!("{}:22", hostname()))
+                    .with_validator(HostPortValidator)
+                    .prompt()
+                    .unwrap(),
+            )
+            .unwrap(),
+        )
+        .map(|(host, port)| (host, port.unwrap_or(22)))
+    } else {
+        None
+    };
 
-    let bind: SocketAddr = config.bind.parse().unwrap();
-    #[cfg(feature = "ssh")]
-    let ssh_bind: SocketAddr = config.ssh.bind.parse().unwrap();
-
-    let mut url: Url = format!("{}://localhost", scheme).parse().unwrap();
-    url.set_host(Some(&host)).unwrap();
-    url.set_port(Some(bind.port())).unwrap();
-
-    #[cfg(feature = "database")]
-    {
+    if !no_plugin {
         let mysql2 = config.database.clone();
         Handle::current()
             .block_on(async {
@@ -370,11 +357,8 @@ fn config_to_request(host: String, config: DaemonConfig) -> NodeRegistrationRequ
     NodeRegistrationRequest {
         identifier: config.identifier,
         token: config.token,
-        base_url: url.to_string(),
-        #[cfg(feature = "ssh")]
-        ssh_addr: host.clone(),
-        #[cfg(feature = "ssh")]
-        ssh_port: ssh_bind.port(),
+        base_url: url.clone(),
+        ssh: ssh_host,
         storages: config
             .storage
             .into_iter()
@@ -404,7 +388,7 @@ fn config_to_request(host: String, config: DaemonConfig) -> NodeRegistrationRequ
             })
             .collect(),
         default_bind: "0.0.0.0".to_string(),
-        default_host: host,
+        default_host: url.host_str().unwrap().to_string(),
     }
 }
 
@@ -456,12 +440,39 @@ impl StringValidator for URLValidator {
     fn validate(&self, input: &str) -> Result<Validation, CustomUserError> {
         Ok(Url::parse(input)
             .map(|url| {
+                if !url.has_host() {
+                    return Validation::Invalid(ErrorMessage::Default);
+                }
                 if url.scheme() == "http" || url.scheme() == "https" {
                     Validation::Valid
                 } else {
                     Validation::Invalid(ErrorMessage::Default)
                 }
             })
+            .unwrap_or(Validation::Invalid(ErrorMessage::Default)))
+    }
+}
+
+fn parse_addr(input: impl Into<String>) -> Option<(Host, Option<u16>)> {
+    let input = input.into();
+    let (host, port): (&str, _) = match input.rsplit_once(":") {
+        None => (&input, None),
+        Some((host, port)) => (host, Some(port)),
+    };
+    let Ok(host) = Host::parse(host) else {
+        return None;
+    };
+    let port = port.map(u16::from_str);
+    if let Some(Err(_)) = port {
+        return None;
+    }
+    Some((host, port.map(Result::unwrap)))
+}
+
+impl StringValidator for HostPortValidator {
+    fn validate(&self, input: &str) -> Result<Validation, CustomUserError> {
+        Ok(parse_addr(input)
+            .map(|_| Validation::Valid)
             .unwrap_or(Validation::Invalid(ErrorMessage::Default)))
     }
 }

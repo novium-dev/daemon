@@ -1,16 +1,14 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use url::{Host, Url};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeRegistrationRequest {
     pub identifier: String,
-    pub base_url: String,
+    pub base_url: Url,
     pub token: String,
 
-    #[cfg(feature = "ssh")]
-    pub ssh_addr: String,
-    #[cfg(feature = "ssh")]
-    pub ssh_port: u16,
+    pub ssh: Option<(Host, u16)>,
 
     pub default_bind: String,
     pub default_host: String,

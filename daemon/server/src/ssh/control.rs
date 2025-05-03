@@ -142,7 +142,7 @@ impl DaemonSSHHandler {
 fn new_control_session(
     server_id: u32,
     name: String,
-    state: Arc<Daemon>,
+    state: Daemon,
     power: bool,
     mut stream: ChannelStream<Msg>,
     arc: Arc<Mutex<ServerData>>,
@@ -773,7 +773,7 @@ impl<T: AsyncWrite + Unpin> SyncIOBridgeExt<T>
 
 #[allow(clippy::too_many_arguments)]
 async fn read(
-    state: Arc<Daemon>,
+    daemon: Daemon,
     server_id: u32,
     server_state: InternalServerState,
     stream: &mut ChannelStream<Msg>,
@@ -818,7 +818,7 @@ async fn read(
                 Event::ArrowRight if (*selected + 1) < size => *selected += 1,
                 Event::Enter if *selected < size => {
                     launch_selected(
-                        state.clone(),
+                        daemon.clone(),
                         server_id,
                         *selected,
                         (start, stop, restart, kill),
@@ -836,7 +836,7 @@ async fn read(
                     {
                         if area.contains(Position::new(x, y)) && enabled {
                             launch_selected(
-                                state.clone(),
+                                daemon.clone(),
                                 server_id,
                                 index,
                                 (start, stop, restart, kill),
@@ -857,7 +857,7 @@ async fn read(
 }
 
 async fn launch_selected(
-    state: Arc<Daemon>,
+    state: Daemon,
     server_id: u32,
     selected: u8,
     (start, stop, restart, kill): (bool, bool, bool, bool),

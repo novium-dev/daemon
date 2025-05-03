@@ -17,15 +17,16 @@ use std::thread;
 use std::time::{Duration, SystemTime};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
+use tokio::sync::broadcast::error::TryRecvError;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 use tracing::{error, warn};
 
 pub(crate) async fn run(state: Daemon) {
-    let state2 = state.clone();
     for (storage_id, storage_entry) in state.config.storage.clone() {
-        let state = state2.clone();
-        tokio::task::spawn_blocking(move || watch(state, storage_id, storage_entry));
+        let mut server_task = state.server_task.lock().await;
+        let state = state.clone();
+        server_task.spawn_blocking(move || watch(state, storage_id, storage_entry));
     }
 }
 
@@ -104,7 +105,8 @@ async fn resolve(
 
 pub(crate) fn watch(state: Daemon, storage_id: String, storage_entry: StorageEntry) {
     let mut last = SystemTime::UNIX_EPOCH;
-    loop {
+    let mut recv = state.shutdown_channel.subscribe();
+    while let Err(TryRecvError::Empty) = recv.try_recv() {
         let Some(storages) =
             Handle::current().block_on(resolve(&state, storage_id.clone(), &storage_entry))
         else {

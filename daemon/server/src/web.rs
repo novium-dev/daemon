@@ -8,17 +8,6 @@ pub(crate) mod trace;
 pub(crate) mod user;
 
 #[deprecated]
-pub(crate) fn config() -> OpenApiRouter<Daemon> {
-    #[allow(unused_mut)]
-    let mut router = OpenApiRouter::new();
-    router
-}
-
-#[deprecated]
-pub(crate) fn user_config() -> OpenApiRouter<Daemon> {
-    OpenApiRouter::new()
-}
-
 pub(crate) fn config_unauthorized() -> OpenApiRouter<Daemon> {
     #[allow(unused_mut)]
     let mut router = OpenApiRouter::new();

@@ -51,6 +51,8 @@ pub(crate) async fn password_auth(
     let mut url = state
         .config
         .ssh
+        .as_ref()
+        .unwrap()
         .auth_url
         .join("/api/internal/auth/password")
         .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
@@ -83,6 +85,8 @@ pub(crate) async fn publickey_auth(
     let mut url = state
         .config
         .ssh
+        .as_ref()
+        .unwrap()
         .auth_url
         .join("/api/internal/auth/publickey")
         .map_err(|err| io::Error::new(ErrorKind::Other, err))?;

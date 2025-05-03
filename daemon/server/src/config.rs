@@ -1,16 +1,13 @@
 use crate::storage::archive::compression::ArchiveCompression;
-#[cfg(feature = "ssl")]
 use axum_server::tls_rustls::RustlsConfig;
 use base64::prelude::*;
 use ed25519_dalek::VerifyingKey;
 use reqwest::Url;
-#[cfg(feature = "ssh")]
 use russh::keys::PrivateKey;
-#[cfg(feature = "ssh")]
 use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
 use serde::{Deserialize, Serialize, Serializer};
-use std::collections::HashMap;
-#[cfg(feature = "ssl")]
+use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -22,15 +19,13 @@ pub(crate) struct DaemonConfig {
     #[serde(deserialize_with = "deserialize_user_key")]
     #[serde(serialize_with = "serialize_user_key")]
     pub(crate) user_key: VerifyingKey,
+    pub(crate) listeners: HashSet<SocketAddr>,
     pub(crate) origin: String,
     pub(crate) storage: HashMap<String, StorageEntry>,
     pub(crate) backup: HashMap<String, BackupEntry>,
-    pub(crate) bind: String,
     pub(crate) database: String,
-    #[cfg(feature = "ssl")]
-    pub(crate) ssl: SSLConfig,
-    #[cfg(feature = "ssh")]
-    pub(crate) ssh: SSHConfig,
+    pub(crate) ssl: Option<SSLConfig>,
+    pub(crate) ssh: Option<SSHConfig>,
     #[serde(default)]
     pub(crate) network: NetworkConfig,
     pub(crate) mounts: Vec<MountPoint>,
@@ -43,10 +38,9 @@ pub(crate) struct MountPoint {
     pub(crate) mode: String,
 }
 
-#[cfg(feature = "ssh")]
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct SSHConfig {
-    pub(crate) bind: String,
+    pub(crate) listeners: HashSet<SocketAddr>,
     pub(crate) host_key: Vec<SSHHostKey>,
     pub(crate) auth_cache_duration: u64,
     pub(crate) auth_url: reqwest::Url,
@@ -135,12 +129,10 @@ fn serialize_user_key<S: Serializer>(key: &VerifyingKey, serializer: S) -> Resul
     serializer.serialize_str(&BASE64_STANDARD.encode(key.as_bytes()))
 }
 
-#[cfg(feature = "ssl")]
 #[derive(Clone, Serialize, Deserialize)]
 pub(crate) struct SSLConfig {
-    pub(crate) enabled: bool,
-    pub(crate) private_key: Option<String>,
-    pub(crate) certificate: Option<String>,
+    pub(crate) private_key: PathBuf,
+    pub(crate) certificate: PathBuf,
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -148,18 +140,12 @@ pub(crate) struct NetworkConfig {
     // TODO: Assign dedicated ipv6 address to container, see #312
 }
 
-#[cfg(feature = "ssl")]
 impl SSLConfig {
     pub(crate) async fn as_rustls(&self) -> Result<RustlsConfig, std::io::Error> {
-        RustlsConfig::from_pem_file(
-            PathBuf::from(self.certificate.as_ref().unwrap()),
-            PathBuf::from(self.private_key.as_ref().unwrap()),
-        )
-        .await
+        RustlsConfig::from_pem_file(&self.certificate, &self.private_key).await
     }
 }
 
-#[cfg(feature = "ssh")]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub(crate) enum SSHHostKey {
@@ -170,7 +156,6 @@ pub(crate) enum SSHHostKey {
     RSA { path: String },
 }
 
-#[cfg(feature = "ssh")]
 impl SSHHostKey {
     pub(crate) async fn as_russh_key(&self) -> Result<PrivateKey, anyhow::Error> {
         use ed25519_dalek::ed25519::signature::rand_core::OsRng;

@@ -5,13 +5,12 @@ use russh::server::{Handler, Server};
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::net::SocketAddr;
-use std::sync::Arc;
 use std::time::Duration;
 use tracing::debug;
 
 #[derive(Clone)]
 pub struct DaemonSSHServer {
-    pub(crate) state: Arc<Daemon>,
+    pub(crate) state: Daemon,
     pub(crate) cache_invalidation: Duration,
 }
 

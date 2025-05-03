@@ -28,7 +28,7 @@ pub(crate) type DaemonChannel = (
 );
 
 pub struct DaemonSSHHandler {
-    pub(crate) state: Arc<Daemon>,
+    pub(crate) state: Daemon,
     pub(crate) channels: HashMap<ChannelId, DaemonChannel>,
     pub(crate) publickey_cache: InvalidationCacheMap<
         (String, [u8; HashAlg::Sha512.digest_size()]),
@@ -226,7 +226,6 @@ impl Handler for DaemonSSHHandler {
             .map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
         debug!("Exec {}", server_id);
 
-        #[cfg(feature = "ssh_control")]
         if let Some(server_id) = server_id.strip_prefix("control ") {
             return self
                 .ssh_control(channel_id, session, server_id.to_string())
@@ -291,8 +290,7 @@ impl Handler for DaemonSSHHandler {
         }
         debug!("Subsystem Request {}", name);
 
-        if name == "sftp" && cfg!(feature = "sftp") {
-            #[cfg(feature = "sftp")]
+        if name == "sftp" {
             match self.channels.get_mut(&channel_id) {
                 None => {
                     debug!("Channel invalid on subsystem request");

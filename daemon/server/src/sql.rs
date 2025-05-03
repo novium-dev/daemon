@@ -1,25 +1,10 @@
-use futures_util::FutureExt;
-use futures_util::future::BoxFuture;
-use sqlx::error::BoxDynError;
-use sqlx::migrate::{Migration, MigrationSource, Migrator};
+use sqlx::migrate::Migrator;
 use sqlx::mysql::MySqlArguments;
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
 use sqlx::{Connection, Executor, MySql, Pool, query, raw_sql};
-use std::fmt::Debug;
 
 static MIGRATOR: Migrator = sqlx::migrate!();
-#[cfg(feature = "database")]
-static DATABASE_MIGRATOR: Migrator = sqlx::migrate!("./migrations_db");
-
-#[derive(Debug)]
-struct MergedMigrationSource(Vec<Migration>);
-
-impl<'s> MigrationSource<'s> for MergedMigrationSource {
-    fn resolve(self) -> BoxFuture<'s, Result<Vec<Migration>, BoxDynError>> {
-        async move { Ok(self.0) }.boxed()
-    }
-}
 
 pub(crate) struct PreparedQuery(Query<'static, MySql, MySqlArguments>);
 
@@ -90,18 +75,7 @@ impl MultiTransactionApply {
 }
 
 pub(crate) async fn init(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
-    #[allow(unused_mut)]
-    let mut current: Vec<_> = MIGRATOR.iter().cloned().collect();
-
-    #[cfg(feature = "database")]
-    {
-        current.extend(DATABASE_MIGRATOR.iter().cloned());
-    }
-
-    Migrator::new(MergedMigrationSource(current))
-        .await?
-        .run(pool)
-        .await?;
+    MIGRATOR.run(pool).await?;
 
     Ok(())
 }
@@ -148,6 +122,13 @@ pub(crate) fn create_user(
             plugin.into()
         )
     })
+}
+
+pub(crate) fn proxy_user() -> PreparedQuery {
+    PreparedQuery(query!(
+        "SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ''server''@''%'' IDENTIFIED WITH ', QUOTE(?))",
+        crate::common::MARIADB_PLUGIN_NAME
+    ))
 }
 
 #[allow(unused)]

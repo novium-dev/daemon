@@ -196,6 +196,10 @@ impl DatabasePayloadFunctionExtension for DatabaseState {
             return transaction;
         }
 
+        if !add_server.is_empty() {
+            transaction.add(sql::proxy_user(), vec![]);
+        }
+
         for user in remove_users {
             transaction.add(
                 sql::drop_user(

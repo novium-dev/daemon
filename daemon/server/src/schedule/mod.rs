@@ -18,6 +18,8 @@ pub(crate) enum ScheduleStepResult {
 
 pub(crate) async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
     let mut conn = state.conn.acquire().await?;
+
+    let mut set = state.schedule_task.lock().await;
     let mut schedules = state.schedules.lock().await;
     'sched: for schedule in query!("SELECT * FROM `schedules`")
         .fetch_all(&mut *conn)
@@ -71,7 +73,7 @@ pub(crate) async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
             steps.push(step);
         }
 
-        let handle = tokio::task::spawn(task(server, state.clone(), policy, steps, cron, timezone));
+        let handle = set.spawn(task(server, state.clone(), policy, steps, cron, timezone));
         schedules
             .entry(server)
             .or_default()
