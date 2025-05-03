@@ -8,7 +8,7 @@ use axum_extra::headers::Authorization;
 use axum_extra::headers::authorization::Bearer;
 use daemon_common::service::BlankError;
 
-pub(crate) async fn middleware(
+pub async fn middleware(
     Extension(config): Extension<DaemonConfig>,
     header: Option<TypedHeader<Authorization<Bearer>>>,
     request: Request,

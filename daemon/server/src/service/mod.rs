@@ -1,6 +1,7 @@
 use crate::Daemon;
 use axum::extract::Request;
 use axum::{Extension, Router};
+use daemon_common::framework_router;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
@@ -8,7 +9,6 @@ use daemon_common::service::network::NetworkService;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
-use daemon_common::{MultiRouterExtension, framework_router};
 use tower_http::trace::TraceLayer;
 use tracing::error;
 use utoipa::OpenApi;
@@ -40,6 +40,7 @@ impl Daemon {
 
         #[cfg(feature = "trace_sync")]
         {
+            use crate::common::MultiRouterExtension;
             routes = routes.merge(
                 framework_router!(Self self { daemon_common::service::debug::DebugService }),
             );

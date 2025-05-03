@@ -1,3 +1,5 @@
+#![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
+
 pub mod config;
 mod database;
 mod server;
@@ -44,7 +46,7 @@ use daemon_common::service::{DaemonServices, DaemonServicesURL, DaemonServicesUR
 use daemon_common::user::UserKeyProvider;
 use std::sync::Arc;
 
-const GIT_HASH: &str = env!("GIT_HASH");
+pub const GIT_HASH: &str = env!("GIT_HASH");
 #[derive(Clone)]
 pub struct Daemon {
     pub(crate) config: Arc<DaemonConfig>,
@@ -138,3 +140,8 @@ compile_error!("This daemon only runs on Unix.");
 
 #[cfg(all(not(debug_assertions), feature = "ssh_debug_auth_bypass"))]
 compile_error!("SSH Auth Bypass was enabled in production!");
+
+#[doc(hidden)]
+pub mod internal {
+    pub use crate::service::middleware::middleware;
+}

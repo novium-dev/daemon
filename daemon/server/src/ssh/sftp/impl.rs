@@ -143,12 +143,11 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         id: u32,
         handle: String,
         attrs: FileAttributes,
-    ) -> Result<Attrs, Self::Error> {
+    ) -> Result<Status, Self::Error> {
         debug!("Fsetstat {} {}", id, handle);
         let handle = self.handle(handle, BackendAuthServerPermissions::FILES_WRITE)?;
-        super::files::fsetstat(handle, attrs.permissions, attrs.size)
-            .await
-            .map(|attrs| Attrs { id, attrs })
+        super::files::fsetstat(handle, attrs.permissions, attrs.size).await?;
+        Self::success(id)
     }
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {

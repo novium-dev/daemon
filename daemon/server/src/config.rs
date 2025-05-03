@@ -1,4 +1,4 @@
-use crate::storage::archive::compression::ArchiveCompression;
+pub use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use axum_server::tls_rustls::RustlsConfig;
 use base64::prelude::*;
 use ed25519_dalek::VerifyingKey;

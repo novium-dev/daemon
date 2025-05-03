@@ -1,10 +1,10 @@
+use crate::config::{ArchiveCompression, CompressionLevel};
 use crate::config::{BackupEntry, DaemonConfig, MountPoint, NetworkConfig, StorageEntry};
-use crate::service::middleware;
-use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use async_trait::async_trait;
 use axum::Extension;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
+use daemon::internal::middleware;
 use daemon_common::framework_router;
 use daemon_common::payload::node::{BackupStorage, NodeRegistrationRequest, ServerStorage};
 use daemon_common::service::setup::SetupService;
@@ -151,7 +151,7 @@ fn test_host(config: &DaemonConfig) {
             framework_router!(ConnectionTestWrapper ConnectionTestWrapper { SetupService });
         let router = OpenApiRouter::new()
             .merge(routes)
-            .layer(axum::middleware::from_fn(middleware::middleware))
+            .layer(axum::middleware::from_fn(middleware))
             .layer(Extension(config.clone()));
         let (router, _) = router.split_for_parts();
 

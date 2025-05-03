@@ -1,8 +1,10 @@
-include!("lib.rs");
+#![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
 pub(crate) mod setup;
 
+use crate::config::DaemonConfig;
 use clap::*;
+use daemon::*;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tracing::{error, info};
