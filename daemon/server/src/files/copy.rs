@@ -11,6 +11,7 @@ use std::io::ErrorKind;
 use std::ops::Deref;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn copy_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -29,6 +30,7 @@ pub(crate) async fn copy_file<
     let to = path_relative(to);
     let (storage, _) = storage_path(id, &storage).await?;
     storage
+        // Only cancel safe because this isn't real async and works in a blocking thread
         .copy(from, &storage, to)
         .await
         .inspect_err(|err| match err.kind() {

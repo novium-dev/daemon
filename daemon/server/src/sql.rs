@@ -21,6 +21,7 @@ impl PreparedQuery {
 pub(crate) struct ExecuteQuery;
 
 impl ExecuteQuery {
+    /// Definitely not cancel safe
     pub(crate) async fn execute<'a, E: Executor<'a, Database = MySql>>(
         self,
         executor: E,

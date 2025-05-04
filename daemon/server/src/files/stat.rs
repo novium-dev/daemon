@@ -4,7 +4,6 @@ use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
-use cap_async_std::fs::Dir;
 use daemon_common::payload::files::FileEntry;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -14,9 +13,9 @@ use std::io;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use std::os::fd::OwnedFd;
-use std::path::PathBuf;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn stat_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -33,16 +32,6 @@ pub(crate) async fn stat_file<
         storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
-    let file = stat_file0::<E>(storage, path).await?;
-    drop(lock);
-    Ok(file)
-}
-
-#[inline(always)]
-async fn stat_file0<E: From<io::Error> + FromFileNotFound>(
-    storage: Dir,
-    path: PathBuf,
-) -> Result<FileEntry, E> {
     let metadata = storage
         .symlink_metadata(&path)
         .await
@@ -91,6 +80,7 @@ async fn stat_file0<E: From<io::Error> + FromFileNotFound>(
     }
 
     let relative_path = path.join(filename.clone());
+    drop(lock);
     Ok(metadata.into_fileentry(
         filename,
         relative_path.to_string_lossy().to_string(),

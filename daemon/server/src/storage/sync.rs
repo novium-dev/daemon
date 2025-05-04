@@ -1,6 +1,6 @@
 use crate::StorageData;
 use crate::config::{DaemonConfig, StorageEntry};
-use crate::storage::{StorageIdentifier, ensure_exists};
+use crate::storage::{StorageIdentifier, prepare};
 use crate::sync::Mutex;
 use crate::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use crate::utils::generic_server_select;
@@ -26,6 +26,7 @@ pub(crate) struct StorageLockData<T> {
     pub(crate) disk: Option<u64>,
 }
 
+/// Cancel safe
 async fn storage_lock(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
@@ -87,6 +88,7 @@ async fn storage_lock(
     )))
 }
 
+/// Cancel safe
 pub(crate) async fn storage_read_timeout<
     'a,
     E: From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure,
@@ -104,7 +106,7 @@ pub(crate) async fn storage_read_timeout<
     let guard = tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
         .await
         .map_err(|_| <E as FromStorageMutexLocked>::from())?;
-    let path = ensure_exists(storage, &entry, value.clone(), disk)
+    let path = prepare(storage, &entry, value.clone(), disk)
         .await
         .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
@@ -118,6 +120,7 @@ pub(crate) async fn storage_read_timeout<
     })
 }
 
+/// Cancel safe
 pub(crate) async fn storage_read<
     'a,
     E: From<sqlx::Error> + FromStorageNotFound + FromStorageFailure,
@@ -133,7 +136,7 @@ pub(crate) async fn storage_read<
         return Err(<E as FromStorageNotFound>::from());
     };
     let guard = lock.read_owned().await;
-    let path = ensure_exists(storage, &entry, value.clone(), disk)
+    let path = prepare(storage, &entry, value.clone(), disk)
         .await
         .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
@@ -147,6 +150,7 @@ pub(crate) async fn storage_read<
     })
 }
 
+/// Cancel safe
 #[allow(dead_code)]
 pub(crate) async fn storage_write<
     'a,
@@ -163,7 +167,7 @@ pub(crate) async fn storage_write<
         return Err(<E as FromStorageNotFound>::from());
     };
     let guard = lock.write_owned().await;
-    let path = ensure_exists(storage, &entry, value.clone(), disk)
+    let path = prepare(storage, &entry, value.clone(), disk)
         .await
         .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {
@@ -177,6 +181,7 @@ pub(crate) async fn storage_write<
     })
 }
 
+/// Cancel safe
 pub(crate) async fn storage_write_timeout<
     'a,
     E: From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure,
@@ -194,7 +199,7 @@ pub(crate) async fn storage_write_timeout<
     let guard = tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
         .await
         .map_err(|_| <E as FromStorageMutexLocked>::from())?;
-    let path = ensure_exists(storage, &entry, value.clone(), disk)
+    let path = prepare(storage, &entry, value.clone(), disk)
         .await
         .map_err(|_| <E as FromStorageFailure>::from())?;
     Ok(StorageLockData {

@@ -20,38 +20,42 @@ impl DatabaseService for Daemon {
 
         let mut conn1 = self.conn.deref().acquire().await?;
         let mut conn2 = self.conn.deref().acquire().await?;
-        conn1
-            .transaction(move |tx| {
-                Box::pin(async move {
-                    let database_id = query!(
-                        "INSERT INTO `databases` (`name_suffix`) VALUES (?)",
-                        name_suffix
-                    )
-                    .execute(&mut **tx)
-                    .await?
-                    .last_insert_id() as u32;
+        tokio::task::spawn(async move {
+            conn1
+                .transaction(move |tx| {
+                    Box::pin(async move {
+                        let database_id = query!(
+                            "INSERT INTO `databases` (`name_suffix`) VALUES (?)",
+                            name_suffix
+                        )
+                        .execute(&mut **tx)
+                        .await?
+                        .last_insert_id() as u32;
 
-                    sql::create_database(format!(
-                        "{}{}_{}",
-                        crate::common::MARIADB_DATABASE_PREFIX,
-                        database_id,
-                        name_suffix
-                    ))
-                    .prepare(&mut *conn2)
-                    .await
-                    .inspect_err(|err| {
-                        error!("Unable to prepare database creation statement: {:?}", err)
-                    })?
-                    .execute(&mut *conn2)
-                    .await
-                    .inspect_err(|err| {
-                        error!("Unable to execute database creation statement: {:?}", err)
-                    })?;
+                        sql::create_database(format!(
+                            "{}{}_{}",
+                            crate::common::MARIADB_DATABASE_PREFIX,
+                            database_id,
+                            name_suffix
+                        ))
+                        .prepare(&mut *conn2)
+                        .await
+                        .inspect_err(|err| {
+                            error!("Unable to prepare database creation statement: {:?}", err)
+                        })?
+                        .execute(&mut *conn2)
+                        .await
+                        .inspect_err(|err| {
+                            error!("Unable to execute database creation statement: {:?}", err)
+                        })?;
 
-                    Ok(database_id)
+                        Ok::<_, CreateDatabaseError>(database_id)
+                    })
                 })
-            })
-            .await
+                .await
+        })
+        .await
+        .unwrap()
     }
 
     async fn update_database(
@@ -73,11 +77,16 @@ impl DatabaseService for Daemon {
 
         let mut conn1 = self.conn.acquire().await?;
         let conn2 = self.conn.acquire().await?;
-        database
-            .update_validated::<UpdateDatabaseError>(database_id, name_suffix, payload)?
-            .execute(&mut conn1, conn2)
-            .await
-            .inspect_err(|err| error!("Unable to execute database update: {:?}", err))?;
+        tokio::task::spawn(async move {
+            database
+                .update_validated::<UpdateDatabaseError>(database_id, name_suffix, payload)?
+                .execute(&mut conn1, conn2)
+                .await
+                .inspect_err(|err| error!("Unable to execute database update: {:?}", err))?;
+            Ok::<_, UpdateDatabaseError>(())
+        })
+        .await
+        .unwrap()?;
         Ok(())
     }
 
@@ -91,30 +100,37 @@ impl DatabaseService for Daemon {
 
         let mut conn1 = self.conn.acquire().await?;
         let conn2 = self.conn.acquire().await?;
-        let mut transaction = database.update_unvalidated(
-            database_id,
-            name_suffix.clone(),
-            DatabaseState {
-                passwordless: HashMap::new(),
-                users: HashMap::new(),
-            },
-        );
-        transaction.add(
-            sql::drop_database(format!(
-                "{}{}_{}",
-                crate::common::MARIADB_DATABASE_PREFIX,
+        tokio::task::spawn(async move {
+            let mut transaction = database.update_unvalidated(
                 database_id,
-                name_suffix
-            )),
-            vec![query!(
-                "DELETE FROM `databases` WHERE `id` = ?",
-                database_id
-            )],
-        );
-        transaction
-            .execute(&mut conn1, conn2)
-            .await
-            .inspect_err(|err| error!("Unable to execute database delete statement: {:?}", err))?;
+                name_suffix.clone(),
+                DatabaseState {
+                    passwordless: HashMap::new(),
+                    users: HashMap::new(),
+                },
+            );
+            transaction.add(
+                sql::drop_database(format!(
+                    "{}{}_{}",
+                    crate::common::MARIADB_DATABASE_PREFIX,
+                    database_id,
+                    name_suffix
+                )),
+                vec![query!(
+                    "DELETE FROM `databases` WHERE `id` = ?",
+                    database_id
+                )],
+            );
+            transaction
+                .execute(&mut conn1, conn2)
+                .await
+                .inspect_err(|err| {
+                    error!("Unable to execute database delete statement: {:?}", err)
+                })?;
+            Ok::<_, DeleteDatabaseError>(())
+        })
+        .await
+        .unwrap()?;
         Ok(())
     }
 }

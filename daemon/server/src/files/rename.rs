@@ -11,6 +11,7 @@ use std::io::ErrorKind;
 use std::ops::Deref;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn rename_file<
     E: From<io::Error>
         + From<sqlx::Error>

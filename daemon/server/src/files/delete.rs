@@ -11,6 +11,7 @@ use std::io::ErrorKind;
 use std::ops::Deref;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn delete_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -28,7 +29,9 @@ pub(crate) async fn delete_file<
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     if recursive {
-        storage.remove_dir_all(&path).await
+        tokio::task::spawn(async move { storage.remove_dir_all(&path).await })
+            .await
+            .map_err(io::Error::from)?
     } else {
         storage.remove_file(&path).await
     }

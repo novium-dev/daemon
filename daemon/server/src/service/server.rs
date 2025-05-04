@@ -99,16 +99,17 @@ impl ServerService for Daemon {
             server_required::<DeleteServerError>(self.conn.deref(), &self.servers, server_id)
                 .await?;
 
+        let daemon = self.clone();
         match timeout(Duration::from_secs(10), server_data.lock_owned()).await {
-            Ok(server_data_locked) => {
-                match server.kill(&self.docker, server_data_locked).await {
+            Ok(server_data_locked) => tokio::task::spawn(async move {
+                match server.kill(&daemon.docker, server_data_locked).await {
                     Ok(_) | Err(ServerStopError::NotRunning) => {}
                     Err(ServerStopError::Docker(docker)) => {
                         warn!("Failed to kill server for deletion: {:?}", docker);
                         return Err(DeleteServerError::DockerFailure);
                     }
                 }
-                let mut conn = self.conn.acquire().await?;
+                let mut conn = daemon.conn.acquire().await?;
 
                 sql::drop_user(format!("server_{}", server_id), "%")
                     .prepare(&mut *conn)
@@ -120,21 +121,20 @@ impl ServerService for Daemon {
                     .execute(&mut *conn)
                     .await?;
 
-                self.servers.lock().await.remove(&server_id);
+                daemon.servers.lock().await.remove(&server_id);
 
-                if let Some(schedules) = self.schedules.lock().await.remove(&server_id) {
+                if let Some(schedules) = daemon.schedules.lock().await.remove(&server_id) {
                     for (_, handle) in schedules.lock().await.schedules.drain() {
                         handle.abort();
                     }
                 }
 
-                let state = self.clone();
                 tokio::task::spawn(async move {
-                    if let Some(storage) = state.config.storage.get(&server.storage) {
+                    if let Some(storage) = daemon.config.storage.get(&server.storage) {
                         let _ =
                             storage::delete(storage, StorageIdentifier::Primary(server_id)).await;
                     }
-                    state
+                    daemon
                         .storages
                         .lock()
                         .await
@@ -142,7 +142,9 @@ impl ServerService for Daemon {
                 });
 
                 Ok(())
-            }
+            })
+            .await
+            .unwrap(),
             Err(_) => {
                 debug!("Timeout using Server data lock");
                 Err(DeleteServerError::ServerMutexLocked)

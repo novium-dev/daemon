@@ -117,6 +117,7 @@ pub(crate) fn search_quotas(
     Ok(())
 }
 
+/// Cancel safe
 pub(crate) async fn apply_qgroup_limit(dir: &PathBuf, disk: Option<u64>) -> Result<(), io::Error> {
     use std::io::ErrorKind;
 
@@ -155,6 +156,7 @@ fn key_in_range(key: &btrfs_key, sk: &btrfs_ioctl_search_key) -> bool {
         || key.offset > sk.max_offset)
 }
 
+/// Cancel safe
 pub async fn new_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
     let fd = tokio::fs::File::open(dir).await?;
 
@@ -182,6 +184,7 @@ pub async fn new_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
     .await?
 }
 
+/// Cancel safe
 pub async fn remove_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
     let fd = tokio::fs::File::open(dir).await?;
 

@@ -24,6 +24,7 @@ use tokio::fs::File;
 use tokio_util::io::SyncIoBridge;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn backup_to_stream<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -55,6 +56,7 @@ pub(crate) async fn backup_to_stream<
     Ok(FileResponse(Some(header), data))
 }
 
+/// Cancel safe
 #[inline(always)]
 async fn backup_to_stream0<E: From<io::Error>>(
     id: StorageIdentifier,
@@ -69,7 +71,8 @@ async fn backup_to_stream0<E: From<io::Error>>(
             let headers = HeaderMap::from_iter([(
                 http::header::CONTENT_DISPOSITION,
                 format!(
-                    "attachment; filename=\"{}.tar{}\"",
+                    "attachment; filename=\"{}_{}.tar{}\"",
+                    filename(id),
                     Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
                     compression.ext()
                 )
@@ -95,7 +98,8 @@ async fn backup_to_stream0<E: From<io::Error>>(
             let headers = HeaderMap::from_iter([(
                 http::header::CONTENT_DISPOSITION,
                 format!(
-                    "attachment; filename=\"{}.tar{}\"",
+                    "attachment; filename=\"{}_{}.tar{}\"",
+                    filename(id),
                     Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
                     compression.ext()
                 )
@@ -111,6 +115,7 @@ async fn backup_to_stream0<E: From<io::Error>>(
     }
 }
 
+/// Cancel safe
 pub(crate) async fn stream_realtime<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -139,23 +144,35 @@ pub(crate) async fn stream_realtime<
 
     let headers = HeaderMap::from_iter([(
         http::header::CONTENT_DISPOSITION,
-        format!("attachment; filename=\"realtime.tar{}\"", compression.ext())
-            .parse()
-            .unwrap(),
+        format!(
+            "attachment; filename=\"{}.tar{}\"",
+            filename(id),
+            compression.ext()
+        )
+        .parse()
+        .unwrap(),
     )]);
 
     Ok(FileResponse(Some(headers), data))
 }
 
+fn filename(id: StorageIdentifier) -> String {
+    match id {
+        StorageIdentifier::Primary(id) => format!("server_{}", id),
+    }
+}
+
+/// Cancel safe
 #[inline(always)]
-async fn stream_realtime0(
+fn stream_realtime0(
     path: String,
     #[allow(unused)] exclude: HashSet<String>,
     compression: ArchiveCompression,
-) -> DataStream {
-    stream_realtime1(compression, PathBuf::from(path), exclude).await
+) -> impl Future<Output = DataStream> + Send {
+    stream_realtime1(compression, PathBuf::from(path), exclude)
 }
 
+/// Cancel safe
 async fn stream_realtime1(
     compression: ArchiveCompression,
     target: PathBuf,

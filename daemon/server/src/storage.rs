@@ -33,7 +33,8 @@ impl StorageIdentifier {
     }
 }
 
-pub(crate) async fn ensure_exists(
+/// Cancel safe (possible subvolume without quota, should correct itself after next storage access)
+pub(crate) async fn prepare(
     id: StorageIdentifier,
     storage: &StorageEntry,
     value: Arc<(AtomicI64, AtomicI64)>,
@@ -87,6 +88,7 @@ pub(crate) async fn ensure_exists(
         .to_string())
 }
 
+/// Cancel safe
 pub(crate) async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(), io::Error> {
     let base = PathBuf::from(storage.path());
     let dir = base.join(id.as_pathbuf());
@@ -113,8 +115,10 @@ pub(crate) async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Res
         .try_exists()
         .inspect_err(|err| error!("Unable to check if storage directory exists: {:?}", err))?
     {
-        fs::remove_dir_all(&dir)
+        tokio::task::spawn(fs::remove_dir_all(dir))
             .await
+            .inspect_err(|err| error!("Unable to remove storage directory: {:?}", err))
+            .map_err(io::Error::from)?
             .inspect_err(|err| error!("Unable to remove storage directory: {:?}", err))?;
     }
     Ok(())

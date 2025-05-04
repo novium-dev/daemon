@@ -11,6 +11,7 @@ use std::io::ErrorKind;
 use std::ops::Deref;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn symlink_file<
     E: From<io::Error>
         + From<sqlx::Error>

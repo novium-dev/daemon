@@ -18,13 +18,16 @@ use tar::Archive;
 use tokio::fs::File;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn restore_backup<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
         + FromStorageMutexLocked
         + FromStorageFailure
-        + FromBackupStorageLocationNotFound,
+        + FromBackupStorageLocationNotFound
+        + Send
+        + 'static,
 >(
     state: &Daemon,
     id: StorageIdentifier,
@@ -45,18 +48,20 @@ pub(crate) async fn restore_backup<
         .backup
         .get(backup_storage)
         .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
-        .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
+        .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?
+        .clone();
 
-    restore_backup0::<E>(
+    tokio::task::spawn(restore_backup0::<E>(
         id,
-        &storage,
+        storage,
         path,
         backup_id,
         backup,
         disk,
         storage_value.clone(),
-    )
-    .await?;
+    ))
+    .await
+    .map_err(io::Error::from)??;
     storage_value.0.store(-1, Ordering::Relaxed);
     drop(lock);
     Ok(())
@@ -65,10 +70,10 @@ pub(crate) async fn restore_backup<
 #[inline(always)]
 async fn restore_backup0<E: From<io::Error>>(
     id: StorageIdentifier,
-    storage: &StorageEntry,
+    storage: StorageEntry,
     path: String,
     backup_id: i64,
-    backup: &BackupEntry,
+    backup: BackupEntry,
     disk: Option<u64>,
     value: Arc<(AtomicI64, AtomicI64)>,
 ) -> Result<(), E> {
@@ -90,10 +95,10 @@ async fn restore_backup0<E: From<io::Error>>(
                     error!("Failed to restore backup (create_decoder): {:?}", err)
                 })?;
             let archive = Archive::new(decoder);
-            storage::delete(storage, id).await.inspect_err(|err| {
+            storage::delete(&storage, id).await.inspect_err(|err| {
                 error!("Failed to restore backup (storage_delete): {:?}", err)
             })?;
-            storage::ensure_exists(id, storage, value, disk)
+            storage::prepare(id, &storage, value, disk)
                 .await
                 .inspect_err(|err| {
                     error!("Failed to restore backup (storage_prepare): {:?}", err)

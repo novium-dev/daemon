@@ -16,6 +16,7 @@ use std::ops::Deref;
 use std::os::fd::OwnedFd;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn download_file<
     E: From<io::Error>
         + From<sqlx::Error>

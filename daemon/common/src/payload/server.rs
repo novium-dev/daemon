@@ -129,6 +129,7 @@ pub enum ServerFileWrite {
 }
 
 impl ServerFileWrite {
+    /// Not Cancel Safe
     pub async fn apply<E: From<io::Error> + FromStorageQuotaReached + Send + 'static>(
         &self,
         mut file: tokio::fs::File,

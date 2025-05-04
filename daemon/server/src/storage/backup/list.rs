@@ -15,6 +15,7 @@ use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::error;
 
+/// Cancel safe
 pub(crate) async fn list_backups<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -27,16 +28,6 @@ pub(crate) async fn list_backups<
 ) -> Result<Vec<BackupResponseEntry>, E> {
     let StorageLockData { lock, .. } =
         storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
-    let vec = list_backups0::<E>(state, id).await?;
-    drop(lock);
-    Ok(vec)
-}
-
-#[inline(always)]
-async fn list_backups0<E: From<io::Error>>(
-    state: &Daemon,
-    id: StorageIdentifier,
-) -> Result<Vec<BackupResponseEntry>, E> {
     let mut entries = Vec::new();
     for (storage, backup_storage) in &state.config.backup {
         let target_dir = PathBuf::from(backup_storage.path()).join(id.as_pathbuf());
@@ -163,5 +154,6 @@ async fn list_backups0<E: From<io::Error>>(
             }
         }
     }
+    drop(lock);
     Ok(entries)
 }

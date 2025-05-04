@@ -12,15 +12,19 @@ impl NetworkService for Daemon {
     async fn create_network(&self, ipv4: u16, ipv6: u16) -> Result<u32, CreateNetworkError> {
         let mut conn = self.conn.acquire().await?;
         let docker = self.docker.clone();
-        let network = conn
-            .transaction(move |tx| {
-                Box::pin(async move {
-                    Network::create::<CreateNetworkError>(&docker, tx, ipv4, ipv6).await
+        tokio::task::spawn(async move {
+            let network = conn
+                .transaction(move |tx| {
+                    Box::pin(async move {
+                        Network::create::<CreateNetworkError>(&docker, tx, ipv4, ipv6).await
+                    })
                 })
-            })
-            .await
-            .inspect_err(|err| error!("Failed to create network: {:?}", err))?;
-        Ok(network.id)
+                .await
+                .inspect_err(|err| error!("Failed to create network: {:?}", err))?;
+            Ok(network.id)
+        })
+        .await
+        .unwrap()
     }
 
     async fn delete_network(&self, network_id: u32) -> Result<(), DeleteNetworkError> {
@@ -31,10 +35,15 @@ impl NetworkService for Daemon {
         };
         let mut conn = self.conn.acquire().await?;
         let docker = self.docker.clone();
-        conn.transaction(move |tx| {
-            Box::pin(async move { network.delete::<DeleteNetworkError>(&docker, tx).await })
+        tokio::task::spawn(async move {
+            conn.transaction(move |tx| {
+                Box::pin(async move { network.delete::<DeleteNetworkError>(&docker, tx).await })
+            })
+            .await?;
+            Ok::<_, DeleteNetworkError>(())
         })
-        .await?;
+        .await
+        .unwrap()?;
 
         Ok(())
     }

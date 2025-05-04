@@ -13,6 +13,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn delete_backup<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -35,17 +36,6 @@ pub(crate) async fn delete_backup<
         .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
-    delete_backup0::<E>(id, backup_id, backup).await?;
-    drop(lock);
-    Ok(())
-}
-
-#[inline(always)]
-async fn delete_backup0<E: From<io::Error>>(
-    id: StorageIdentifier,
-    backup_id: i64,
-    backup: &BackupEntry,
-) -> Result<(), E> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
         BackupEntry::Archive { compression, .. } => {
@@ -71,5 +61,6 @@ async fn delete_backup0<E: From<io::Error>>(
                 })?;
         }
     }
+    drop(lock); // Ensure it gets dropped here and not earlier
     Ok(())
 }

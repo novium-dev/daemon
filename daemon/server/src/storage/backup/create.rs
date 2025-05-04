@@ -1,5 +1,5 @@
 use crate::Daemon;
-use crate::config::{BackupEntry, StorageEntry};
+use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedAppendExtension;
 use crate::storage::btrfs::new_snapshot;
@@ -18,6 +18,7 @@ use std::ops::Deref;
 use std::path::PathBuf;
 use tracing::debug;
 
+/// Cancel safe
 pub(crate) async fn create_backup_order<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -76,6 +77,7 @@ fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
     }
 }
 
+/// Cancel safe
 pub(crate) async fn create_backup<
     E: From<std::io::Error>
         + From<sqlx::Error>
@@ -113,7 +115,7 @@ pub(crate) async fn create_backup<
     Ok(id)
 }
 
-#[inline(always)]
+/// Cancel safe
 async fn create_backup0<E: From<std::io::Error>>(
     path: String,
     id: StorageIdentifier,
@@ -136,27 +138,15 @@ async fn create_backup0<E: From<std::io::Error>>(
     let timestamp = Utc::now().timestamp_millis();
     match backup {
         BackupEntry::Archive { compression, .. } => {
-            let file = tokio::fs::OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(target_dir.join(format!("{}.tar{}", timestamp, compression.ext())))
-                .await
-                .inspect_err(|err| debug!("Backup creation failed (open): {:?}", err))?;
-            let encoder = compression
-                .create_encoder(file.into_std().await)
-                .inspect_err(|err| debug!("Backup creation failed (create_encoder): {:?}", err))?;
-            let mut archive = tar::Builder::new(encoder);
-            archive.follow_symlinks(false);
-            let (archive, _) = archive
-                .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true)
-                .await
-                .inspect_err(|err| debug!("Backup creation failed (append_dir_all): {:?}", err))?;
-            tokio::task::spawn_blocking(move || archive.into_inner().unwrap().finish()?.flush())
-                .await
-                .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {:?}", err))
-                .map_err(io::Error::from)?
-                .inspect_err(|err| debug!("Backup creation failed (flush): {:?}", err))?;
+            tokio::task::spawn(create_archive_backup(
+                dir,
+                target_dir,
+                timestamp,
+                exclude,
+                *compression,
+            ))
+            .await
+            .map_err(io::Error::from)??;
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
@@ -170,4 +160,36 @@ async fn create_backup0<E: From<std::io::Error>>(
         }
     }
     Ok(timestamp)
+}
+
+#[inline(always)]
+async fn create_archive_backup(
+    dir: PathBuf,
+    target_dir: PathBuf,
+    timestamp: i64,
+    exclude: HashSet<String>,
+    compression: ArchiveCompression,
+) -> Result<(), io::Error> {
+    let file = tokio::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(target_dir.join(format!("{}.tar{}", timestamp, compression.ext())))
+        .await
+        .inspect_err(|err| debug!("Backup creation failed (open): {:?}", err))?;
+    let encoder = compression
+        .create_encoder(file.into_std().await)
+        .inspect_err(|err| debug!("Backup creation failed (create_encoder): {:?}", err))?;
+    let mut archive = tar::Builder::new(encoder);
+    archive.follow_symlinks(false);
+    let (archive, _) = archive
+        .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true)
+        .await
+        .inspect_err(|err| debug!("Backup creation failed (append_dir_all): {:?}", err))?;
+    tokio::task::spawn_blocking(move || archive.into_inner().unwrap().finish()?.flush())
+        .await
+        .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {:?}", err))
+        .map_err(io::Error::from)?
+        .inspect_err(|err| debug!("Backup creation failed (flush): {:?}", err))?;
+    Ok(())
 }

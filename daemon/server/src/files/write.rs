@@ -5,7 +5,7 @@ use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
 use axum_extra::TypedHeader;
 use axum_extra::headers::ContentLength;
-use cap_async_std::fs::OpenOptions;
+use cap_async_std::fs::{Dir, OpenOptions};
 use daemon_common::DataStream;
 use daemon_common::payload::server::ServerFileWrite;
 use daemon_common::service::error_http_request_failed::FromHttpRequestFailed;
@@ -19,10 +19,13 @@ use std::io;
 use std::io::ErrorKind;
 use std::ops::Deref;
 use std::os::fd::OwnedFd;
+use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 use url::Url;
 
+/// Cancel safe
 pub(crate) async fn write_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -69,6 +72,7 @@ pub(crate) async fn write_file<
     Ok(())
 }
 
+/// Cancel safe
 pub(crate) async fn write_file_by_template<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -104,12 +108,15 @@ pub(crate) async fn write_file_by_template<
         .into_std()
         .into();
     let file = tokio::fs::File::from_std(std::fs::File::from(fd));
-    template.apply::<E>(file).await?;
+    tokio::task::spawn(async move { template.apply::<E>(file).await })
+        .await
+        .map_err(<io::Error as From<JoinError>>::from)??;
 
     drop(lock);
     Ok(())
 }
 
+/// Cancel safe
 pub(crate) async fn write_file_by_url<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -118,7 +125,9 @@ pub(crate) async fn write_file_by_url<
         + FromStorageFailure
         + FromHttpRequestFailed
         + FromHttpRequestNotSuccess
-        + FromHttpRequestReadFailed,
+        + FromHttpRequestReadFailed
+        + Send
+        + 'static,
 >(
     state: &Daemon,
     id: StorageIdentifier,
@@ -129,6 +138,21 @@ pub(crate) async fn write_file_by_url<
         storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
+    tokio::task::spawn(write_file_by_url0::<E>(state.clone(), storage, path, url))
+        .await
+        .map_err(<io::Error as From<JoinError>>::from)??;
+    drop(lock);
+    Ok(())
+}
+
+async fn write_file_by_url0<
+    E: From<io::Error> + FromHttpRequestFailed + FromHttpRequestNotSuccess + FromHttpRequestReadFailed,
+>(
+    state: Daemon,
+    storage: Dir,
+    path: PathBuf,
+    url: Url,
+) -> Result<(), E> {
     let mut response = state
         .client
         .get(url.clone())
@@ -171,7 +195,5 @@ pub(crate) async fn write_file_by_url<
             })?;
     }
     writer.flush().await?;
-
-    drop(lock);
     Ok(())
 }

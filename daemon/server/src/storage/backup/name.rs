@@ -14,6 +14,7 @@ use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn set_backup_name<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -37,20 +38,6 @@ pub(crate) async fn set_backup_name<
         .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
-    set_backup_name0::<E>(id, backup_id, backup, name).await?;
-
-    drop(lock);
-
-    Ok(())
-}
-
-#[inline(always)]
-async fn set_backup_name0<E: From<io::Error>>(
-    id: StorageIdentifier,
-    backup_id: i64,
-    backup: &BackupEntry,
-    name: Option<String>,
-) -> Result<(), E> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     let target = match backup {
         BackupEntry::Archive { compression, .. } => {
@@ -69,5 +56,8 @@ async fn set_backup_name0<E: From<io::Error>>(
     file.set_backup_name(name)
         .await
         .inspect_err(|err| error!("Failed to set backup name (set): {:?}", err))?;
+
+    drop(lock);
+
     Ok(())
 }

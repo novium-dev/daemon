@@ -20,6 +20,7 @@ use std::path::PathBuf;
 use tar::{Archive, Builder};
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn unpack_archive<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -37,18 +38,6 @@ pub(crate) async fn unpack_archive<
         storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
     let path = path_relative(path);
     let (storage, storage_path) = storage_path(id, &storage).await?;
-    unpack_archive0::<E>(storage, storage_path, path, dest).await?;
-    drop(lock);
-    Ok(())
-}
-
-#[inline(always)]
-async fn unpack_archive0<E: From<io::Error> + FromCompressionUnsupported>(
-    storage: Dir,
-    storage_path: PathBuf,
-    path: PathBuf,
-    dest: String,
-) -> Result<(), E> {
     let file = storage
         .open(path)
         .await
@@ -80,12 +69,10 @@ async fn unpack_archive0<E: From<io::Error> + FromCompressionUnsupported>(
                     }
                     _ => error!("Failed to unpack archive (unpack): {:?}", err),
                 })?;
-
-            Ok(())
         }
-        Ok(_) => Err(<E as FromCompressionUnsupported>::from()),
+        Ok(_) => return Err(<E as FromCompressionUnsupported>::from()),
         Err(err) if err.kind() == ErrorKind::UnexpectedEof => {
-            Err(<E as FromCompressionUnsupported>::from())
+            return Err(<E as FromCompressionUnsupported>::from());
         }
         Err(err) => {
             match err.kind() {
@@ -94,18 +81,23 @@ async fn unpack_archive0<E: From<io::Error> + FromCompressionUnsupported>(
                 }
                 _ => error!("Failed to unpack archive (detect): {:?}", err),
             }
-            Err(<E as From<io::Error>>::from(err))
+            return Err(<E as From<io::Error>>::from(err));
         }
     }
+    drop(lock);
+    Ok(())
 }
 
+/// Cancel safe
 pub(crate) async fn create_archive<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
         + FromStorageMutexLocked
         + FromStorageFailure
-        + FromCompressionUnsupported,
+        + FromCompressionUnsupported
+        + Send
+        + 'static,
 >(
     state: &Daemon,
     id: StorageIdentifier,
@@ -123,7 +115,15 @@ pub(crate) async fn create_archive<
     .map_err(|_err| <E as FromCompressionUnsupported>::from())?;
 
     let (storage, storage_path) = storage_path(id, &storage).await?;
-    create_archive0::<E>(storage, storage_path, path, src, compression).await?;
+    tokio::task::spawn(create_archive0::<E>(
+        storage,
+        storage_path,
+        path,
+        src,
+        compression,
+    ))
+    .await
+    .map_err(io::Error::from)??;
     drop(lock);
     Ok(())
 }

@@ -4,7 +4,6 @@ use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
-use cap_async_std::fs::Dir;
 use daemon_common::payload::files::FileEntry;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -16,6 +15,7 @@ use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use tracing::{debug, error};
 
+/// Cancel safe
 pub(crate) async fn list_files<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -31,13 +31,6 @@ pub(crate) async fn list_files<
         storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
-    let files = list_files0::<E>(storage, path).await?;
-    drop(lock);
-    Ok(files)
-}
-
-#[inline(always)]
-async fn list_files0<E: From<io::Error>>(storage: Dir, path: PathBuf) -> Result<Vec<FileEntry>, E> {
     let read_dir = storage
         .read_dir(&path)
         .await
@@ -47,7 +40,7 @@ async fn list_files0<E: From<io::Error>>(storage: Dir, path: PathBuf) -> Result<
             }
             _ => error!("Failed to list files (read_dir): {:?}", err),
         })?;
-    let mut vec = Vec::new();
+    let mut files = Vec::new();
     for entry in read_dir {
         let entry = entry.inspect_err(|err| error!("Failed to list files (entry): {:?}", err))?;
         let metadata = entry
@@ -84,13 +77,13 @@ async fn list_files0<E: From<io::Error>>(storage: Dir, path: PathBuf) -> Result<
             .inspect_err(|err| error!("Failed to list files (detect): {:?}", err))?;
         }
 
-        vec.push(metadata.into_fileentry(
+        files.push(metadata.into_fileentry(
             file_name,
             relative_path.to_string_lossy().to_string(),
             link_path,
             archive,
         ));
     }
-
-    Ok(vec)
+    drop(lock);
+    Ok(files)
 }

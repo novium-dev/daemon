@@ -29,8 +29,10 @@ impl AsRawFd for RawFdContainer {
 impl FileExt for RawFdContainer {}
 
 pub(crate) trait BackupNameExtension {
+    /// Cancel safe
     async fn get_backup_name(&self) -> Result<Option<String>, io::Error>;
 
+    /// Cancel safe
     async fn set_backup_name(&self, name: Option<String>) -> Result<(), io::Error>;
 }
 
