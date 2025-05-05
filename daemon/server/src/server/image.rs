@@ -10,6 +10,7 @@ use sqlx::{Executor, MySql, query, query_scalar};
 use std::collections::{HashMap, HashSet};
 use tar::{Builder, Header};
 use termion::clear;
+use tracing::debug;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct BuildImage {
@@ -129,6 +130,7 @@ impl FetchedServer {
             Self::log(&server_data.sender, buffer, "Building Image...");
 
             for (tag, image) in missing {
+                debug!("Building image {} for server {}...", tag, self.id);
                 let dockerfile = {
                     let dockerfile = image.dockerfile.as_bytes();
                     let mut header = Header::new_gnu();

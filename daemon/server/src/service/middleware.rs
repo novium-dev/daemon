@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use crate::config::DaemonConfig;
 use axum::Extension;
 use axum::extract::Request;
@@ -9,7 +10,7 @@ use axum_extra::headers::authorization::Bearer;
 use daemon_common::service::BlankError;
 
 pub async fn middleware(
-    Extension(config): Extension<DaemonConfig>,
+    Extension(config): Extension<Arc<DaemonConfig>>,
     header: Option<TypedHeader<Authorization<Bearer>>>,
     request: Request,
     next: Next,

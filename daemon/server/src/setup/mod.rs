@@ -6,7 +6,7 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use daemon::internal::middleware;
 use daemon_common::framework_router;
-use daemon_common::payload::node::{BackupStorage, NodeRegistrationRequest, ServerStorage};
+use daemon_common::payload::node::{BackupStorage, HostAndPort, NodeRegistrationRequest, ServerStorage};
 use daemon_common::service::setup::SetupService;
 use daemon_common::service::setup::error::ConnectionTestError;
 use ed25519_dalek::VerifyingKey;
@@ -29,6 +29,7 @@ use std::process::{Stdio, exit};
 use std::str::FromStr;
 use std::time::Duration;
 use std::{io, thread};
+use std::sync::Arc;
 use tokio::runtime::Handle;
 use tracing::info;
 use url::Host;
@@ -152,7 +153,7 @@ fn test_host(config: &DaemonConfig) {
         let router = OpenApiRouter::new()
             .merge(routes)
             .layer(axum::middleware::from_fn(middleware))
-            .layer(Extension(config.clone()));
+            .layer(Extension(Arc::new(config.clone())));
         let (router, _) = router.split_for_parts();
 
         if let Some(rustls) = rustls.clone() {
@@ -340,7 +341,10 @@ fn config_to_request(url: Url, config: DaemonConfig, no_plugin: bool) -> NodeReg
             )
             .unwrap(),
         )
-        .map(|(host, port)| (host, port.unwrap_or(22)))
+        .map(|(host, port)| HostAndPort {
+            host,
+            port: port.unwrap_or(22),
+        })
     } else {
         None
     };

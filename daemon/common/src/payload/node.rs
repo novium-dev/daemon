@@ -3,12 +3,18 @@ use std::collections::HashMap;
 use url::{Host, Url};
 
 #[derive(Debug, Serialize, Deserialize)]
+pub struct HostAndPort {
+    pub host: Host,
+    pub port: u16,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NodeRegistrationRequest {
     pub identifier: String,
     pub base_url: Url,
     pub token: String,
 
-    pub ssh: Option<(Host, u16)>,
+    pub ssh: Option<HostAndPort>,
 
     pub default_bind: String,
     pub default_host: String,

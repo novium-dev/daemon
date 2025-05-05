@@ -203,11 +203,11 @@ impl Daemon {
     }
 
     pub async fn shutdown(&self) {
+        debug!("Shutting daemon down...");
         let _ = self.shutdown_channel.send(());
         self.server_task.lock().await.shutdown().await;
         let servers = self.servers.lock().await;
         let mut set = JoinSet::new();
-        info!("Shutting daemon down...");
         for (id, server) in servers.deref() {
             let server = server.clone();
             let docker = self.docker.clone();
@@ -224,6 +224,7 @@ impl Daemon {
         self.schedule_task.lock().await.shutdown().await;
         set.join_all().await;
         debug!("Daemon shutdown complete");
+        tokio::time::sleep(Duration::from_millis(250)).await;
     }
 
     pub fn hook_signals(&self) {
