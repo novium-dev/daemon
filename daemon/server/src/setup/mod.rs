@@ -6,7 +6,9 @@ use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
 use daemon::internal::middleware;
 use daemon_common::framework_router;
-use daemon_common::payload::node::{BackupStorage, HostAndPort, NodeRegistrationRequest, ServerStorage};
+use daemon_common::payload::node::{
+    BackupStorage, HostAndPort, NodeRegistrationRequest, ServerStorage,
+};
 use daemon_common::service::setup::SetupService;
 use daemon_common::service::setup::error::ConnectionTestError;
 use ed25519_dalek::VerifyingKey;
@@ -27,9 +29,9 @@ use std::ops::RangeInclusive;
 use std::path::PathBuf;
 use std::process::{Stdio, exit};
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::Duration;
 use std::{io, thread};
-use std::sync::Arc;
 use tokio::runtime::Handle;
 use tracing::info;
 use url::Host;
