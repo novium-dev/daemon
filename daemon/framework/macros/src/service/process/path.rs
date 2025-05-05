@@ -67,6 +67,9 @@ pub(crate) fn process(
         func_args.push(quote! { #crate_prefix axum::extract::Path<(#path_types)> });
     }
 
+    let Some(path) = path.strip_prefix("/") else {
+        panic!("Path must start with /");
+    };
     let path = LitStr::new(path, Span::call_site());
     client_def_body.extend(quote! {
         use #crate_prefix serde::Serialize;

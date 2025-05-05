@@ -1,5 +1,6 @@
 use lazy_static::lazy_static;
 use regex::Regex;
+use url::Url;
 
 lazy_static! {
     static ref CGROUP_REGEX: Regex = Regex::new("docker-([a-z0-9]{64}).scope").unwrap();
@@ -49,5 +50,11 @@ pub async fn identify_container_by_pid(
                 }
             }
         }
+    }
+}
+
+pub fn base_url(url: &mut Url) {
+    if !url.path().ends_with("/") {
+        url.set_path(&format!("{}/", url.path()));
     }
 }

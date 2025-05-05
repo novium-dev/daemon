@@ -33,7 +33,7 @@ impl Daemon {
     pub async fn init(config: DaemonConfig) -> Result<Self, DaemonInitError> {
         Self::init_embedded(
             config,
-            Url::parse("http://localhost:3000").unwrap(),
+            Url::parse("http://localhost:3000/").unwrap(),
             SigningKey::from_bytes(&[0; 32]),
         )
         .await
@@ -41,9 +41,11 @@ impl Daemon {
 
     pub async fn init_embedded(
         config: DaemonConfig,
-        base_url: Url,
+        mut base_url: Url,
         user_key: SigningKey,
     ) -> Result<Self, DaemonInitError> {
+        crate::common::utils::base_url(&mut base_url);
+
         let servers = HashMap::new();
 
         info!("Connecting to Docker...");

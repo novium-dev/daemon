@@ -1,7 +1,8 @@
 use crate::sdk::{DaemonSDK, DaemonSDKExtra, DaemonSdkSealed};
+use crate::utils::base_url;
 use ed25519_dalek::SigningKey;
 use http::{HeaderMap, HeaderValue};
-use reqwest::{Client, IntoUrl, Url};
+use reqwest::{Client, Url};
 
 #[allow(private_bounds)]
 pub trait DaemonSDKBuilderState: DaemonSdkSealed {
@@ -54,8 +55,9 @@ impl DaemonSDKBuilder<RequiresToken> {
 }
 
 impl DaemonSDKBuilder<RequiresBaseURL> {
-    pub fn with_url(self, base_url: impl IntoUrl) -> Result<DaemonSDKBuilder<()>, reqwest::Error> {
-        Ok(DaemonSDKBuilder((self.0.0, self.0.1, base_url.into_url()?)))
+    pub fn with_url(self, mut url: Url) -> DaemonSDKBuilder<()> {
+        base_url(&mut url);
+        DaemonSDKBuilder((self.0.0, self.0.1, url))
     }
 }
 
