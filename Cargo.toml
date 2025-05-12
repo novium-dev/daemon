@@ -122,6 +122,7 @@ features = [
     "tls-rustls",
     "tls-rustls-webpki-roots",
     "tokio-rustls-comp",
+    "connection-manager",
 ]
 
 [workspace.dependencies.tokio]
