@@ -13,7 +13,7 @@ regex = "1.11.1"
 toml = "0.8.22"
 base64 = "0.22.1"
 rand = "0.9.1"
-signal-hook = "0.3.17"
+signal-hook = "0.3.18"
 termion = "4.0.5"
 http = "1.3.1"
 async-trait = "0.1"
@@ -50,7 +50,7 @@ path = "daemon/framework/macros"
 path = "backend/core"
 
 [workspace.dependencies.rustls]
-version = "0.23.26"
+version = "0.23.27"
 default-features = false
 features = [
   "ring",
@@ -73,7 +73,7 @@ features = [
 ]
 
 [workspace.dependencies.sentry]
-version = "0.37.0"
+version = "0.38.0"
 default-features = false
 features = [
     "backtrace",
@@ -114,7 +114,7 @@ version = "0.8.7"
 features = ["speedy-derive", "indexmap_v2"]
 
 [workspace.dependencies.redis]
-version = "0.30.0"
+version = "0.31.0"
 default-features = false
 features = [
     "uuid",
@@ -125,7 +125,7 @@ features = [
 ]
 
 [workspace.dependencies.tokio]
-version = "1.44.2"
+version = "1.45.0"
 features = ["full"]
 
 [workspace.dependencies.tokio-util]
@@ -148,7 +148,7 @@ features = ["cookie", "typed-header"]
 version = "0.8.1"
 
 [workspace.dependencies.clap]
-version = "4.5.37"
+version = "4.5.38"
 features = ["color", "env", "cargo"]
 
 [workspace.dependencies.utoipa]
@@ -167,7 +167,7 @@ version = "1.6.0"
 features = ["full"]
 
 [workspace.dependencies.tower-http]
-version = "0.6.2"
+version = "0.6.4"
 features = ["cors", "auth", "trace"]
 
 [workspace.dependencies.sqlx]
