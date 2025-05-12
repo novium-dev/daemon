@@ -77,7 +77,7 @@ impl Daemon {
             use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
             router = router
                 .layer(NewSentryLayer::<Request>::new_from_top())
-                .layer(SentryHttpLayer::with_transaction());
+                .layer(SentryHttpLayer::new().enable_transaction());
         }
         router
     }

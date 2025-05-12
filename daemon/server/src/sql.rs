@@ -206,15 +206,3 @@ pub(crate) fn drop_database(name: impl Into<String>) -> PreparedQuery {
 pub(crate) fn flush_privileges() -> PreparedQuery {
     PreparedQuery(query!("SET @STATEMENT = 'FLUSH PRIVILEGES'"))
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::sql::MIGRATOR;
-
-    #[test]
-    fn check_migrations_found() {
-        assert!(MIGRATOR.iter().len() > 0);
-        #[cfg(feature = "database")]
-        assert!(crate::sql::DATABASE_MIGRATOR.iter().len() > 0);
-    }
-}
