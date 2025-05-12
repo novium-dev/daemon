@@ -46,7 +46,7 @@ path = "daemon/framework"
 [workspace.dependencies.daemon_framework_macros]
 path = "daemon/framework/macros"
 
-[workspace.dependencies.backend_core]
+[workspace.dependencies.backend]
 path = "backend/core"
 
 [workspace.dependencies.rustls]
