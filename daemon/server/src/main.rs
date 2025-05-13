@@ -5,7 +5,7 @@ pub(crate) mod setup;
 use crate::config::DaemonConfig;
 use clap::*;
 use daemon::*;
-use tokio::fs::File;
+use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
 use tracing::{error, info};
 use tracing_subscriber::layer::SubscriberExt;
@@ -120,8 +120,9 @@ fn main() {
 
 #[tokio::main]
 async fn main0(matches: ArgMatches) {
-    match matches.subcommand() {
-        Some(("setup", _)) => {
+    let config_exists = fs::try_exists("config.toml").await.unwrap_or(true);
+    match (matches.subcommand(), config_exists) {
+        (Some(("setup", _)), _) | (_, false) => {
             tokio::task::spawn_blocking(move || {
                 let setup_matches = matches.subcommand_matches("setup").unwrap();
                 let backend = setup_matches.get_one("backend");
@@ -132,10 +133,9 @@ async fn main0(matches: ArgMatches) {
             .await
             .expect("Setup wizard failed");
         }
-        None => {
+        _ => {
             run().await;
         }
-        _ => unreachable!(),
     }
 }
 
