@@ -1,5 +1,5 @@
 
 include:
-  - component: https://gitlab.com/rust-ci/rust-ci/full@1.4.0
+  - component: gitlab.com/rust-ci/rust-ci/full@1.4.0
 
 
