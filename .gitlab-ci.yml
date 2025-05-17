@@ -21,8 +21,8 @@ stages:
     - rustc --version && cargo --version
     - echo "Cargo home $CARGO_HOME Work $(pwd)" && mkdir .apt .cargo_home -p
     - echo "dir::cache::archives \"$(pwd)/.apt\";" >> /etc/apt/apt.conf && echo "Binary::apt::APT::Keep-Downloaded-Packages \"true\";" >> /etc/apt/apt.conf
-    - apt update && apt install -y protobuf-compiler libclang-dev
-    - cargo install sqlx-cli cargo-deny
+    - apt update && apt install -y protobuf-compiler libclang-dev openjdk-21-jdk
+    - cargo install --color --verbose sqlx-cli cargo-deny
     - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
     - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/server/migrations"
