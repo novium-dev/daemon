@@ -435,10 +435,7 @@ async fn read_user_key(url: Url, code: String) -> Result<VerifyingKey, io::Error
     if response.status() == axum::http::StatusCode::UNAUTHORIZED {
         exit(0);
     }
-    let str: String = response
-        .json()
-        .await
-        .map_err(io::Error::other)?;
+    let str: String = response.json().await.map_err(io::Error::other)?;
     VerifyingKey::try_from(
         BASE64_STANDARD
             .decode(str)

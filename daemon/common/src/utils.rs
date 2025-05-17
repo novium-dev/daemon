@@ -28,22 +28,20 @@ pub async fn identify_container_by_pid(
                 Err(err) => return Err(io::Error::other(err)),
             };
             match container.name {
-                None => Err(io::Error::other(
-                    "Container unknown (name missing)",
-                )),
+                None => Err(io::Error::other("Container unknown (name missing)")),
                 Some(name) => {
                     let mut name: &str = &name;
                     if name.starts_with("/") {
                         name = &name[1..];
                     }
                     if !name.starts_with(crate::CONTAINER_PREFIX) {
-                        return Err(io::Error::other(
-                            format!("Container unknown (not starting with prefix: {:?})", name),
-                        ));
+                        return Err(io::Error::other(format!(
+                            "Container unknown (not starting with prefix: {:?})",
+                            name
+                        )));
                     }
                     let str = &name[crate::CONTAINER_PREFIX.len()..];
-                    str.parse()
-                        .map_err(io::Error::other)
+                    str.parse().map_err(io::Error::other)
                 }
             }
         }

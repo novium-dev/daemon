@@ -215,9 +215,7 @@ impl ServerFileWrite {
                     for comp in components {
                         match &current {
                             Value::Array(array) => {
-                                let index = comp
-                                    .parse::<usize>()
-                                    .map_err(io::Error::other)?;
+                                let index = comp.parse::<usize>().map_err(io::Error::other)?;
                                 if index < array.len() {
                                     current = &mut current.as_array_mut().unwrap()[index];
                                 } else {
@@ -279,9 +277,7 @@ impl ServerFileWrite {
                 let (mut value, mut file) = tokio::task::spawn_blocking(move || {
                     serde_yaml::from_reader(&mut file)
                         .inspect_err(|err| debug!("Failed to read yaml: {:?}", err))
-                        .map_err(|err| {
-                            <E as From<io::Error>>::from(io::Error::other(err))
-                        })
+                        .map_err(|err| <E as From<io::Error>>::from(io::Error::other(err)))
                         .map(|val: serde_yaml::Value| (val, file))
                 })
                 .await
@@ -295,9 +291,7 @@ impl ServerFileWrite {
                         match &current {
                             serde_yaml::Value::Sequence(array) => {
                                 let index = comp.parse::<usize>().map_err(|err| {
-                                    <E as From<io::Error>>::from(io::Error::other(
-                                        err,
-                                    ))
+                                    <E as From<io::Error>>::from(io::Error::other(err))
                                 })?;
                                 if index < array.len() {
                                     current = &mut current.as_sequence_mut().unwrap()[index];

@@ -174,9 +174,7 @@ impl ArchiveCompression {
     ) -> Result<Box<dyn CompressionEncoder<W> + Send + 'static>, io::Error> {
         if !self.valid_level() {
             error!("Invalid level in compression tried to use: {:?}", self);
-            return Err(io::Error::other(
-                "Invalid compression level",
-            ));
+            return Err(io::Error::other("Invalid compression level"));
         }
         Ok(match self {
             ArchiveCompression::None => Box::new(PassthroughEncoder(write)),

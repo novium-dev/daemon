@@ -215,9 +215,8 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
                 .into());
             }
             let str = &name[crate::CONTAINER_PREFIX.len()..];
-            str.parse().map_err(|_err| {
-                io::Error::other("Unable to parse server id").into()
-            })
+            str.parse()
+                .map_err(|_err| io::Error::other("Unable to parse server id").into())
         }
     }
 }

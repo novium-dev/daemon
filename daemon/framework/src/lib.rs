@@ -560,9 +560,7 @@ impl DataStream {
     pub fn reader(self) -> StreamReader<Pin<BoxedStream>, Bytes> {
         use futures_util::TryStreamExt;
         StreamReader::new(match self {
-            DataStream::Axum(stream) => {
-                Box::pin(stream.map_err(io::Error::other))
-            }
+            DataStream::Axum(stream) => Box::pin(stream.map_err(io::Error::other)),
             DataStream::Stream(stream) => stream,
             DataStream::Read(read) => Box::pin(ReaderStream::new(read)),
         })
