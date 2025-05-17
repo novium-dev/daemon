@@ -44,7 +44,6 @@ clippy:
       when: always
       reports:
         codequality: gl-code-quality-report.json
-    needs: ["toolchain"]
 
 fmt:
   extends: .rust-default
@@ -60,6 +59,5 @@ deny:
   script:
     - cargo binstall cargo-deny
     - cargo deny check
-  needs: ["toolchain"]
 
 
