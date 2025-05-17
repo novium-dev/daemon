@@ -37,16 +37,17 @@ clippy:
     script:
       - rustup component add clippy
       - cargo binstall gitlab-report
-      - 'cargo clippy
-          --color always
-          --verbose
-          --message-format=json
-          -- -D warnings
-          | gitlab-report -p clippy > gl-code-quality-report.json'
-    artifacts:
-      when: always
-      reports:
-        codequality: gl-code-quality-report.json
+      - cargo clippy --color always --verbose -- -Dwarnings
+    #  - 'cargo clippy
+    #      --color always
+    #      --verbose
+    #      --message-format=json
+    #      -- -D warnings
+    #      | gitlab-report -p clippy > gl-code-quality-report.json'
+    #artifacts:
+    #  when: always
+    #  reports:
+    #    codequality: gl-code-quality-report.json
 
 fmt:
   extends: .rust-default
