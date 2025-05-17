@@ -17,11 +17,12 @@ stages:
     DAEMON_DATABASE_URL: 'mysql://root@db/daemon'
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
+    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
   before_script:
     - rustc --version && cargo --version
-    - echo "Cargo home $CARGO_HOME Work $(pwd)" && mkdir .apt .cargo_home -p
+    - mkdir .apt .cargo_home .gradle_user -p
     - echo "dir::cache::archives \"$(pwd)/.apt\";" >> /etc/apt/apt.conf && echo "Binary::apt::APT::Keep-Downloaded-Packages \"true\";" >> /etc/apt/apt.conf
-    - apt update && apt install -y protobuf-compiler libclang-dev openjdk-17-jdk
+    - apt update && apt install -y protobuf-compiler libclang-dev openjdk-17-jdk git libbtrfs-dev
     - RUSTFLAGS="-C opt-level=0" cargo install --color always --verbose sqlx-cli cargo-deny
     - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
@@ -42,7 +43,10 @@ clippy:
         - rust-cache-default
       paths:
         - .cargo_home/
+        - .gradle_user/
         - target/
+        - backend/minecraft/agent/.gradle/
+        - backend/minecraft/agent/build/
       policy: pull-push
     - key: apt-cache-default
       paths:
@@ -93,7 +97,10 @@ test:
         - rust-cache-default
       paths:
         - .cargo_home/
+        - .gradle_user/
         - target/
+        - backend/minecraft/agent/.gradle/
+        - backend/minecraft/agent/build/
       policy: pull
     - key: apt-cache-default
       paths:
