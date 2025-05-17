@@ -34,6 +34,7 @@ clippy:
     extends: .rust-build-default
     stage: check
     script:
+      - rustup component add clippy
       - cargo binstall gitlab-report
       - 'cargo clippy
           --color always
@@ -50,6 +51,7 @@ fmt:
   stage: check
   parallel:
   script:
+    - rustup component add rustfmt
     - cargo fmt -- --check --verbose
 
 deny:
