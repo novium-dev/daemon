@@ -19,7 +19,7 @@ stages:
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
   before_script:
     - rustc --version && cargo --version
-    - echo "Cargo home: $CARGO_HOME Work: $(pwd)" && mkdir .apt .cargo_home -p
+    - echo "Cargo home $CARGO_HOME Work $(pwd)" && mkdir .apt .cargo_home -p
     - echo "dir::cache::archives \"$(pwd)/.apt\";" >> /etc/apt/apt.conf && echo "Binary::apt::APT::Keep-Downloaded-Packages \"true\";" >> /etc/apt/apt.conf
     - apt update && apt install -y protobuf-compiler libclang-dev
     - cargo install sqlx-cli cargo-deny
