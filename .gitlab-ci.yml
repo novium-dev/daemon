@@ -1,5 +1,53 @@
+stages:
+  - prepare
+  - check
 
-include:
-  - component: $CI_SERVER_FQDN/components/rust-ci/full@1.4.0
+.rust-default:
+  image: rust:slim
+  parallel:
+  before_script:
+    - rustc --version && cargo --version
+
+toolchain:
+  stage: prepare
+  image: rust:latest
+  script:
+    - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
+  artifacts:
+    paths:
+      - /usr/local/cargo/bin/cargo-binstall
+
+
+clippy:
+    extends: .rust-default
+    stage: check
+    script:
+      - cargo binstall gitlab-report
+      - 'cargo clippy
+          --color always
+          --verbose
+          --message-format=json
+          | gitlab-report -p clippy > gl-code-quality-report.json'
+    artifacts:
+      when: always
+      reports:
+        codequality: gl-code-quality-report.json
+    needs: ["toolchain"]
+
+fmt:
+  extends: .rust-default
+  stage: check
+  parallel:
+  script:
+    - cargo fmt -- --check --verbose
+
+deny:
+  extends: .rust-default
+  stage: check
+  parallel:
+  script:
+    - cargo binstall cargo-deny
+    - cargo deny check
+  needs: ["toolchain"]
 
 
