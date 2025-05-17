@@ -40,9 +40,6 @@ no-panic = "0.1.35"
 [workspace.dependencies.daemon_common]
 path = "daemon/common"
 
-[workspace.dependencies.daemon]
-path = "daemon/server"
-
 [workspace.dependencies.daemon_framework]
 path = "daemon/framework"
 
