@@ -19,7 +19,7 @@ stages:
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
   before_script:
     - rustc --version && cargo --version
-    - apt update && apt install -y protobuf-compiler
+    - apt update && apt install -y protobuf-compiler libclang-dev
     - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
     - cargo binstall sqlx-cli
 # - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
@@ -41,6 +41,7 @@ clippy:
           --color always
           --verbose
           --message-format=json
+          -- -D warnings
           | gitlab-report -p clippy > gl-code-quality-report.json'
     artifacts:
       when: always
