@@ -8,9 +8,10 @@ stages:
   parallel:
   before_script:
     - rustc --version && cargo --version
+    - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
 .rust-build-default:
-  image: rust:slim
+  image: rust:latest
   parallel:
   variables:
     BACKEND_DATABASE_URL: 'mysql://root@db/backend'
@@ -18,6 +19,7 @@ stages:
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
   before_script:
     - rustc --version && cargo --version
+    - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
     - cargo binstall sqlx-cli
     - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
@@ -27,12 +29,6 @@ stages:
   services:
     - name: mariadb:latest
       alias: db
-
-toolchain:
-  stage: prepare
-  image: rust:latest
-  script:
-    - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
 clippy:
     extends: .rust-build-default
