@@ -4,7 +4,7 @@ stages:
 
 
 .rust-default:
-  image: rust:slim
+  image: rust:latest
   parallel:
   before_script:
     - rustc --version && cargo --version
@@ -21,11 +21,11 @@ stages:
     - rustc --version && cargo --version
     - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
     - cargo binstall sqlx-cli
-    - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
+# - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
-    - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
+    - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/server/migrations"
     - cargo sqlx database create --database-url "$BACKEND_DATABASE_URL"
-    - mkdir backend_migrations && cp backend/migrations/* backend_migrations && cargo sqlx migrate run --database-url "$BACKEND_DATABASE_URL" --source "backend_migrations"
+    - mkdir backend_migrations && cp backend/*/migrations/* backend_migrations && cargo sqlx migrate run --database-url "$BACKEND_DATABASE_URL" --source "backend_migrations"
   services:
     - name: mariadb:latest
       alias: db
