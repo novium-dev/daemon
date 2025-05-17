@@ -1,6 +1,6 @@
 stages:
-  - prepare
   - check
+  - test
 
 
 .rust-default:
@@ -8,7 +8,6 @@ stages:
   parallel:
   before_script:
     - rustc --version && cargo --version
-    - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
 
 .rust-build-default:
   image: rust:latest
@@ -17,12 +16,18 @@ stages:
     BACKEND_DATABASE_URL: 'mysql://root@db/backend'
     DAEMON_DATABASE_URL: 'mysql://root@db/daemon'
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+    CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
   before_script:
     - rustc --version && cargo --version
+    - echo "Cargo home: $CARGO_HOME"
+    - echo "Work: $(pwd)"
+    - mkdir .apt .cargo_home -p
+    - echo "dir::cache::archives \"$(pwd)/.apt\";" >> /etc/apt/apt.conf
+    - echo "Binary::apt::APT::Keep-Downloaded-Packages \"true\";" >> /etc/apt/apt.conf
     - apt update && apt install -y protobuf-compiler libclang-dev
-    - curl -L --proto '=https' --tlsv1.2 -sSf https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh | bash
-    - cargo binstall sqlx-cli
-# - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
+    - cargo install sqlx-cli
+    - cargo install cargo-deny
+    - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
     - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/server/migrations"
     - cargo sqlx database create --database-url "$BACKEND_DATABASE_URL"
@@ -32,21 +37,24 @@ stages:
       alias: db
 
 clippy:
-    extends: .rust-build-default
-    stage: check
-    script:
-      - rustup component add clippy
-      - cargo clippy --color always --verbose -- -Dwarnings
-    #  - 'cargo clippy
-    #      --color always
-    #      --verbose
-    #      --message-format=json
-    #      -- -D warnings
-    #      | gitlab-report -p clippy > gl-code-quality-report.json'
-    #artifacts:
-    #  when: always
-    #  reports:
-    #    codequality: gl-code-quality-report.json
+  extends: .rust-build-default
+  stage: check
+  cache:
+    - key: rust-cache-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-$CI_DEFAULT_BRANCH
+        - rust-cache-default
+      paths:
+        - .cargo_home/
+        - target/
+      policy: pull-push
+    - key: apt-cache-default
+      paths:
+        - .apt/
+      policy: pull-push
+  script:
+    - rustup component add clippy
+    - cargo clippy --color always --verbose -- -Dwarnings
 
 fmt:
   extends: .rust-default
@@ -54,14 +62,48 @@ fmt:
   parallel:
   script:
     - rustup component add rustfmt
-    - cargo fmt -- --check --verbose
+    - cargo fmt --check --all --color=always --verbose
 
 deny:
   extends: .rust-default
   stage: check
   parallel:
+  variables:
+    CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
+  cache:
+    - key: rust-cache-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-$CI_DEFAULT_BRANCH
+        - rust-cache-default
+      paths:
+        - .cargo_home/
+      policy: pull
   script:
-    - cargo binstall cargo-deny
+    - cargo install cargo-deny
     - cargo deny check
+
+
+test:
+  extends: .rust-build-default
+  stage: test
+  parallel:
+  variables:
+    CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
+  cache:
+    - key: rust-cache-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-$CI_DEFAULT_BRANCH
+        - rust-cache-default
+      paths:
+        - .cargo_home/
+        - target/
+      policy: pull
+    - key: apt-cache-default
+      paths:
+        - .apt/
+      policy: pull-push
+  script:
+    - cargo test --color=always --no-fail-fast
+  needs: ["clippy"]
 
 
