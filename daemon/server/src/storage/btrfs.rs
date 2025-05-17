@@ -119,8 +119,6 @@ pub(crate) fn search_quotas(
 
 /// Cancel safe
 pub(crate) async fn apply_qgroup_limit(dir: &PathBuf, disk: Option<u64>) -> Result<(), io::Error> {
-    use std::io::ErrorKind;
-
     let args = btrfs_ioctl_qgroup_limit_args {
         qgroupid: 0,
         lim: btrfs_qgroup_limit {
@@ -140,7 +138,7 @@ pub(crate) async fn apply_qgroup_limit(dir: &PathBuf, disk: Option<u64>) -> Resu
         libc::ioctl(file.as_raw_fd(), BTRFS_IOC_QGROUP_LIMIT as _, &args)
     })
     .await
-    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+    .map_err(io::Error::other)?;
     if ret < 0 {
         return Err(io::Error::last_os_error());
     }

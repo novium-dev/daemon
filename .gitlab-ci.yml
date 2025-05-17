@@ -36,7 +36,6 @@ clippy:
     stage: check
     script:
       - rustup component add clippy
-      - cargo binstall gitlab-report
       - cargo clippy --color always --verbose -- -Dwarnings
     #  - 'cargo clippy
     #      --color always

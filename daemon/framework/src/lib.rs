@@ -561,7 +561,7 @@ impl DataStream {
         use futures_util::TryStreamExt;
         StreamReader::new(match self {
             DataStream::Axum(stream) => {
-                Box::pin(stream.map_err(|err| io::Error::new(io::ErrorKind::Other, err)))
+                Box::pin(stream.map_err(io::Error::other))
             }
             DataStream::Stream(stream) => stream,
             DataStream::Read(read) => Box::pin(ReaderStream::new(read)),

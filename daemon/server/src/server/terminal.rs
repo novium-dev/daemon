@@ -8,7 +8,6 @@ use bollard::exec::ResizeExecOptions;
 use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
 use std::io;
-use std::io::ErrorKind;
 use termion::color;
 use termion::color::Fg;
 use tokio::sync::broadcast::Sender;
@@ -49,7 +48,7 @@ impl FetchedServer {
     ) -> Result<(), ServerStopError> {
         if cols > u16::MAX as u32 || rows > u16::MAX as u32 {
             return Err(ServerStopError::Docker(bollard::errors::Error::IOError {
-                err: io::Error::new(ErrorKind::Other, "Integer overflow"),
+                err: io::Error::other("Integer overflow"),
             }));
         }
         docker
@@ -73,7 +72,7 @@ impl FetchedServer {
     ) -> Result<(), ServerStopError> {
         if cols > u16::MAX as u32 || rows > u16::MAX as u32 {
             return Err(ServerStopError::Docker(bollard::errors::Error::IOError {
-                err: io::Error::new(ErrorKind::Other, "Integer overflow"),
+                err: io::Error::other("Integer overflow"),
             }));
         }
         server_data.size = (cols, rows);

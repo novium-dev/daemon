@@ -5,7 +5,6 @@ use axum::extract::ws::{Message, WebSocket};
 use bytes::Bytes;
 use futures_util::SinkExt;
 use std::io;
-use std::io::ErrorKind;
 
 impl ChannelWriteData {
     pub fn into_websocket_message(self) -> Message {
@@ -43,7 +42,7 @@ impl ChannelAdapter<Option<Result<Message, Error>>, Result<(), Error>, Result<()
             Some(Ok(Message::Text(data))) => Ok(data.to_string().into_bytes()),
             Some(Ok(Message::Close(_))) => Err(ChannelError::Closed),
             Some(Ok(_)) => Ok(Vec::new()),
-            Some(Err(err)) => Err(ChannelError::IO(io::Error::new(ErrorKind::Other, err))),
+            Some(Err(err)) => Err(ChannelError::IO(io::Error::other(err))),
         }
     }
 
@@ -55,7 +54,7 @@ impl ChannelAdapter<Option<Result<Message, Error>>, Result<(), Error>, Result<()
     where
         Self: Sized,
     {
-        data.map_err(|err| ChannelError::IO(io::Error::new(ErrorKind::Other, err)))
+        data.map_err(|err| ChannelError::IO(io::Error::other(err)))
     }
 
     async fn flush(&mut self) -> Result<(), Error> {

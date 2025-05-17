@@ -8,7 +8,6 @@ use libc::{SO_PEERCRED, socklen_t, ucred};
 use std::error::Error;
 use std::ffi::{CString, c_char, c_uchar, c_void};
 use std::io;
-use std::io::ErrorKind;
 use std::mem::{MaybeUninit, size_of};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::os::fd::{FromRawFd, IntoRawFd};
@@ -79,7 +78,7 @@ pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
                     &mut cred_len,
                 ) < 0
                 {
-                    return Err(io::Error::new(ErrorKind::Other, "Unable to read pid").into());
+                    return Err(io::Error::other("Unable to read pid").into());
                 }
 
                 RUNTIME
@@ -90,7 +89,7 @@ pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
                     .block_on(identify_unix(cred.assume_init()))
             }
         }
-        _ => Err(io::Error::new(ErrorKind::Other, "Unsupported connection protocol").into()),
+        _ => Err(io::Error::other("Unsupported connection protocol").into()),
     }
 }
 
@@ -203,22 +202,21 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
         }
     }
     match matching {
-        None => Err(io::Error::new(ErrorKind::Other, "No matching container was found.").into()),
+        None => Err(io::Error::other("No matching container was found.").into()),
         Some(name) => {
             let mut name: &str = &name;
             if name.starts_with("/") {
                 name = &name[1..];
             }
             if !name.starts_with(crate::CONTAINER_PREFIX) {
-                return Err(io::Error::new(
-                    ErrorKind::Other,
+                return Err(io::Error::other(
                     "Container name does not start with hardcoded prefix.",
                 )
                 .into());
             }
             let str = &name[crate::CONTAINER_PREFIX.len()..];
             str.parse().map_err(|_err| {
-                io::Error::new(ErrorKind::Other, "Unable to parse server id").into()
+                io::Error::other("Unable to parse server id").into()
             })
         }
     }

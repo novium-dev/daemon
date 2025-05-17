@@ -55,7 +55,7 @@ pub(crate) async fn password_auth(
         .unwrap()
         .auth_url
         .join("/api/internal/auth/password")
-        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+        .map_err(io::Error::other)?;
     url.query_pairs_mut()
         .append_pair("node", &state.config.identifier);
 
@@ -70,11 +70,11 @@ pub(crate) async fn password_auth(
             err if matches!(err.status(), Some(http::StatusCode::UNAUTHORIZED)) => {
                 io::Error::new(ErrorKind::PermissionDenied, err)
             }
-            err => io::Error::new(ErrorKind::Other, err),
+            err => io::Error::other(err),
         })?
         .json()
         .await
-        .map_err(|err| io::Error::new(ErrorKind::Other, err))
+        .map_err(io::Error::other)
 }
 
 pub(crate) async fn publickey_auth(
@@ -89,7 +89,7 @@ pub(crate) async fn publickey_auth(
         .unwrap()
         .auth_url
         .join("/api/internal/auth/publickey")
-        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+        .map_err(io::Error::other)?;
     url.query_pairs_mut()
         .append_pair("node", &state.config.identifier);
 
@@ -105,18 +105,18 @@ pub(crate) async fn publickey_auth(
         .send()
         .await
         .inspect_err(|err| debug!("SSH Authentication failed (publickey): {:?}", err))
-        .map_err(|err| io::Error::new(ErrorKind::Other, err))?
+        .map_err(io::Error::other)?
         .error_for_status()
         .inspect_err(|err| debug!("SSH Authentication failed (publickey): {:?}", err))
         .map_err(|err| match err {
             err if matches!(err.status(), Some(http::StatusCode::UNAUTHORIZED)) => {
                 io::Error::new(ErrorKind::PermissionDenied, err)
             }
-            err => io::Error::new(ErrorKind::Other, err),
+            err => io::Error::other(err),
         })?
         .json()
         .await
-        .map_err(|err| io::Error::new(ErrorKind::Other, err))
+        .map_err(io::Error::other)
 }
 
 impl

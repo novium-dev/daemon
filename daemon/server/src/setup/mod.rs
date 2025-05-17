@@ -431,21 +431,21 @@ async fn read_user_key(url: Url, code: String) -> Result<VerifyingKey, io::Error
         .bearer_auth(code)
         .send()
         .await
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        .map_err(io::Error::other)?;
     if response.status() == axum::http::StatusCode::UNAUTHORIZED {
         exit(0);
     }
     let str: String = response
         .json()
         .await
-        .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?;
+        .map_err(io::Error::other)?;
     VerifyingKey::try_from(
         BASE64_STANDARD
             .decode(str)
-            .map_err(|err| io::Error::new(io::ErrorKind::Other, err))?
+            .map_err(io::Error::other)?
             .as_slice(),
     )
-    .map_err(|err| io::Error::new(io::ErrorKind::Other, err))
+    .map_err(io::Error::other)
 }
 
 impl StringValidator for MySQLValidator {

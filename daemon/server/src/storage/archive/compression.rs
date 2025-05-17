@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize, Serializer};
 use std::cmp::PartialEq;
 use std::fmt::{Arguments, Formatter};
 use std::io;
-use std::io::{ErrorKind, IoSlice, Read, Seek, SeekFrom, Write};
+use std::io::{IoSlice, Read, Seek, SeekFrom, Write};
 use tracing::error;
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
@@ -174,8 +174,7 @@ impl ArchiveCompression {
     ) -> Result<Box<dyn CompressionEncoder<W> + Send + 'static>, io::Error> {
         if !self.valid_level() {
             error!("Invalid level in compression tried to use: {:?}", self);
-            return Err(io::Error::new(
-                ErrorKind::Other,
+            return Err(io::Error::other(
                 "Invalid compression level",
             ));
         }

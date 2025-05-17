@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::io::{ErrorKind, Seek, SeekFrom};
 use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
@@ -176,12 +177,12 @@ impl ServerFileWrite {
                         .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
                     java_properties::write(&mut file, &current)
                         .inspect_err(|err| warn!("Failed to write properties: {:?}", err)) // only warning, Potential QUOTA_EXCEEDED
-                        .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                        .map_err(io::Error::other)?;
                     Ok::<_, E>(())
                 })
                 .await
                 .inspect_err(|err| error!("Failed to write properties (task): {:?}", err))
-                .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+                .map_err(<io::Error as From<JoinError>>::from)??;
             }
             ServerFileWrite::JSON { content } => {
                 let mut file = file.into_std().await;
@@ -206,7 +207,7 @@ impl ServerFileWrite {
                     })
                     .await
                     .inspect_err(|err| error!("Failed to read json (task): {:?}", err))
-                    .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+                    .map_err(<io::Error as From<JoinError>>::from)??;
 
                 for (key, val) in content {
                     let components: Vec<String> = key.split(".").map(String::from).collect();
@@ -216,7 +217,7 @@ impl ServerFileWrite {
                             Value::Array(array) => {
                                 let index = comp
                                     .parse::<usize>()
-                                    .map_err(|err| io::Error::new(ErrorKind::Other, err))?;
+                                    .map_err(io::Error::other)?;
                                 if index < array.len() {
                                     current = &mut current.as_array_mut().unwrap()[index];
                                 } else {
@@ -266,11 +267,11 @@ impl ServerFileWrite {
                         .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
                     serde_json::to_writer_pretty(&mut file, &value)
                         .inspect_err(|err| warn!("Failed to write json: {:?}", err))
-                        .map_err(|err| io::Error::new(ErrorKind::Other, err))
+                        .map_err(io::Error::other)
                 })
                 .await
                 .inspect_err(|err| error!("Failed to write json (task): {:?}", err))
-                .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+                .map_err(<io::Error as From<JoinError>>::from)??;
             }
             ServerFileWrite::YAML { content } => {
                 let mut file = file.into_std().await;
@@ -279,13 +280,13 @@ impl ServerFileWrite {
                     serde_yaml::from_reader(&mut file)
                         .inspect_err(|err| debug!("Failed to read yaml: {:?}", err))
                         .map_err(|err| {
-                            <E as From<io::Error>>::from(io::Error::new(ErrorKind::Other, err))
+                            <E as From<io::Error>>::from(io::Error::other(err))
                         })
                         .map(|val: serde_yaml::Value| (val, file))
                 })
                 .await
                 .inspect_err(|err| error!("Failed to read yaml (task): {:?}", err))
-                .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+                .map_err(<io::Error as From<JoinError>>::from)??;
 
                 for (key, val) in content {
                     let components: Vec<String> = key.split(".").map(String::from).collect();
@@ -294,8 +295,7 @@ impl ServerFileWrite {
                         match &current {
                             serde_yaml::Value::Sequence(array) => {
                                 let index = comp.parse::<usize>().map_err(|err| {
-                                    <E as From<io::Error>>::from(io::Error::new(
-                                        ErrorKind::Other,
+                                    <E as From<io::Error>>::from(io::Error::other(
                                         err,
                                     ))
                                 })?;
@@ -348,10 +348,10 @@ impl ServerFileWrite {
                         .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
                     serde_yaml::to_writer(&mut file, &value)
                         .inspect_err(|err| warn!("Failed to write yaml: {:?}", err))
-                        .map_err(|err| io::Error::new(ErrorKind::Other, err))
+                        .map_err(io::Error::other)
                 })
                 .await
-                .map_err(|err| io::Error::new(ErrorKind::Other, err))??;
+                .map_err(<io::Error as From<JoinError>>::from)??;
             }
         }
         Ok(())

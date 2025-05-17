@@ -55,11 +55,10 @@ pub(crate) async fn prepare(
             }
             #[cfg(feature = "btrfs")]
             StorageEntry::Btrfs { .. } => {
-                use std::io::ErrorKind;
                 let dir = dir.clone();
                 let Some(parent) = dir.parent() else {
                     error!("Got path without parent: {:?}", dir.to_string_lossy());
-                    return Err(io::Error::new(ErrorKind::Other, "Invalid path: No parent"));
+                    return Err(io::Error::other("Invalid path: No parent"));
                 };
                 fs::create_dir_all(parent).await.inspect_err(|err| {
                     error!("Unable to create parents of storage directory: {:?}", err)
@@ -99,10 +98,9 @@ pub(crate) async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Res
         .inspect_err(|err| error!("Unable to check if storage directory exists: {:?}", err))?
     {
         if let StorageEntry::Btrfs { .. } = storage {
-            use std::io::ErrorKind;
             let Some(parent) = dir.parent() else {
                 error!("Got path without parent: {:?}", dir.to_string_lossy());
-                return Err(io::Error::new(ErrorKind::Other, "Invalid path: No parent"));
+                return Err(io::Error::other("Invalid path: No parent"));
             };
             btrfs::remove_subvolume(parent, dir.file_name().unwrap().to_str().unwrap())
                 .await

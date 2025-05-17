@@ -9,7 +9,6 @@ use sqlx::{Database, Decode, Encode, Executor, MySql, Pool, query, query_as, que
 use std::collections::{HashMap, HashSet};
 use std::fmt::{Display, Formatter};
 use std::io;
-use std::io::ErrorKind;
 
 pub(crate) mod exec;
 pub(crate) mod image;
@@ -67,7 +66,7 @@ impl Server {
         let Some(image) = self.image else {
             return Err(sqlx::Error::ColumnDecode {
                 index: "image".to_string(),
-                source: io::Error::new(ErrorKind::Other, "image is null").into(),
+                source: io::Error::other("image is null").into(),
             });
         };
         let tags = query!(
@@ -160,8 +159,7 @@ impl Server {
                         content.insert(
                             entry
                                 .key
-                                .ok_or(sqlx::Error::Decode(Box::new(io::Error::new(
-                                    ErrorKind::Other,
+                                .ok_or(sqlx::Error::Decode(Box::new(io::Error::other(
                                     "key is null!",
                                 ))))?,
                             entry.value,
@@ -194,8 +192,7 @@ impl Server {
                         content.insert(
                             entry
                                 .key
-                                .ok_or(sqlx::Error::Decode(Box::new(io::Error::new(
-                                    ErrorKind::Other,
+                                .ok_or(sqlx::Error::Decode(Box::new(io::Error::other(
                                     "key is null!",
                                 ))))?,
                             serde_json::from_str(&entry.value)
@@ -218,8 +215,7 @@ impl Server {
                         content.insert(
                             entry
                                 .key
-                                .ok_or(sqlx::Error::Decode(Box::new(io::Error::new(
-                                    ErrorKind::Other,
+                                .ok_or(sqlx::Error::Decode(Box::new(io::Error::other(
                                     "key is null!",
                                 ))))?,
                             serde_yaml::from_str(&entry.value)
