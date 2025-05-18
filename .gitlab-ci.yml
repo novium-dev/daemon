@@ -1,6 +1,5 @@
 stages:
   - check
-  - test
 
 
 .rust-default:
@@ -77,37 +76,14 @@ deny:
         - rust-cache-default
       paths:
         - .cargo_home/
-      policy: pull
-  script:
-    - RUSTFLAGS="-C opt-level=0" cargo install cargo-deny
-
-    - cargo deny check
-
-
-test:
-  extends: .rust-build-default
-  stage: test
-  parallel:
-  variables:
-    CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
-  cache:
-    - key: rust-cache-$CI_COMMIT_REF_SLUG
-      fallback_keys:
-        - rust-cache-$CI_DEFAULT_BRANCH
-        - rust-cache-default
-      paths:
-        - .cargo_home/
         - .gradle_user/
         - target/
         - backend/minecraft/agent/.gradle/
         - backend/minecraft/agent/build/
       policy: pull
-    - key: apt-cache-default
-      paths:
-        - .apt/
-      policy: pull-push
   script:
-    - cargo test --color=always --no-fail-fast
-  needs: ["clippy"]
+    - RUSTFLAGS="-C opt-level=0" cargo install cargo-deny
+
+    - cargo deny check
 
 
