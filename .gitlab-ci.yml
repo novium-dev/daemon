@@ -22,7 +22,7 @@ stages:
     - mkdir .apt .cargo_home .gradle_user -p
     - echo "dir::cache::archives \"$(pwd)/.apt\";" >> /etc/apt/apt.conf && echo "Binary::apt::APT::Keep-Downloaded-Packages \"true\";" >> /etc/apt/apt.conf
     - apt update && apt install -y protobuf-compiler libclang-dev openjdk-17-jdk git libbtrfs-dev
-    - RUSTFLAGS="-C opt-level=0" cargo install --color always --verbose sqlx-cli cargo-deny
+    - RUSTFLAGS="-C opt-level=0" cargo install --color always --verbose sqlx-cli
     - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
     - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/server/migrations"
@@ -70,17 +70,10 @@ deny:
   variables:
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
   cache:
-    - key: rust-cache-$CI_COMMIT_REF_SLUG
-      fallback_keys:
-        - rust-cache-$CI_DEFAULT_BRANCH
-        - rust-cache-default
+    - key: rust-deny-cache
       paths:
         - .cargo_home/
-        - .gradle_user/
-        - target/
-        - backend/minecraft/agent/.gradle/
-        - backend/minecraft/agent/build/
-      policy: pull
+      policy: pull-push
   script:
     - RUSTFLAGS="-C opt-level=0" cargo install cargo-deny
 
