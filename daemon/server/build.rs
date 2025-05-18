@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
-    println!("cargo:rerun-if-changed=.git/HEAD");
     let output = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
@@ -38,8 +37,6 @@ fn main() {
 
 #[cfg(feature = "btrfs")]
 fn gen_btrfs_bindings() {
-    println!("cargo:rerun-if-changed=wrapper.h");
-
     let bindings = bindgen::Builder::default()
         .header("btrfs/wrapper.h")
         .derive_default(true)
