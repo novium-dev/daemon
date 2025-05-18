@@ -22,27 +22,31 @@ pub(super) async fn exec_websocket_handle(
     docker: Arc<Docker>,
     command: Vec<String>,
     socket: WebSocket,
-    cols: u32,
-    rows: u32,
+    #[allow(unused_variables)] cols: u32,
+    #[allow(unused_variables)] rows: u32,
 ) {
     let mut server_data = server_data_arc.lock().await;
     if let Ok(opt) = server.exec(&docker, command, &mut server_data, true).await {
         let (id, output, input) = opt.unwrap();
         drop(server_data);
 
+        #[cfg(not(feature = "no_tty_size_please"))]
         let _ = FetchedServer::update_exec_tty_size(id.clone(), &docker, cols, rows).await;
 
         let docker2 = docker.clone();
         tokio::task::spawn(new_exec_session(
             ChannelInterceptor::new(socket, move |_socket, mut message| {
+                #[allow(unused_variables)]
                 let docker2 = docker2.clone();
-
+                #[allow(unused_variables)]
                 let id = id.clone();
                 Box::pin(async move {
                     if let Some(Ok(Message::Text(data))) = &mut message {
                         let data_str = data.to_string();
+                        #[allow(unused_variables)]
                         if let Some(data2) = data_str.strip_prefix(WEBSOCKET_RESIZE_MAGIC) {
                             *data = Utf8Bytes::default();
+                            #[cfg(not(feature = "no_tty_size_please"))]
                             if let Some((new_cols, new_rows)) = data2.split_once(':') {
                                 let new_cols = new_cols.parse();
                                 let new_rows = new_rows.parse();

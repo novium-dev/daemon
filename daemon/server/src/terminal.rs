@@ -1,4 +1,6 @@
+#[cfg(not(feature = "no_tty_size_please"))]
 use crate::server::FetchedServer;
+#[cfg(not(feature = "no_tty_size_please"))]
 use crate::server::stop::ServerStopError;
 use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
@@ -7,15 +9,15 @@ use bollard::Docker;
 use ringbuffer::RingBuffer;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::atomic::AtomicU32;
 use std::time::Duration;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
-use uuid::Uuid;
 
+#[cfg(not(feature = "no_tty_size_please"))]
 pub(crate) type TerminalSession = (Instant, Arc<AtomicU32>, Arc<AtomicU32>);
 
 pub(crate) struct TerminalData {
@@ -32,27 +34,38 @@ pub(crate) async fn new_session<
     J: Send + 'static,
     Q: Send + 'static,
 >(
-    id: u32,
+    #[allow(unused_variables)] id: u32,
     mut state: A,
     TerminalData {
         sender,
         attach_write,
+        #[allow(unused_variables)]
         rows,
+        #[allow(unused_variables)]
         cols,
         write,
     }: TerminalData,
-    docker: Arc<Docker>,
+    #[allow(unused_variables)] docker: Arc<Docker>,
     server_data_arc: Arc<Mutex<ServerData>>,
 ) {
     let server_data = server_data_arc.lock().await;
     let buffer = server_data.buffer.clone();
-    let sessions_arc = server_data.sessions.clone();
-    drop(server_data);
-    let mut sessions = sessions_arc.lock().await;
-    let session_id = Uuid::new_v4();
-    sessions.insert(session_id, (Instant::now(), cols.clone(), rows.clone()));
-    drop(sessions);
-    update_size(id, &docker, server_data_arc.clone()).await;
+    #[cfg(not(feature = "no_tty_size_please"))]
+    let (sessions_arc, session_id) = {
+        let sessions_arc = server_data.sessions.clone();
+        drop(server_data);
+        let mut sessions = sessions_arc.lock().await;
+        let session_id = uuid::Uuid::new_v4();
+        sessions.insert(session_id, (Instant::now(), cols.clone(), rows.clone()));
+        drop(sessions);
+        update_size(id, &docker, server_data_arc.clone()).await;
+        (sessions_arc, session_id)
+    };
+    #[cfg(feature = "no_tty_size_please")]
+    {
+        drop(server_data);
+    }
+
     let buffer = buffer.lock().await;
     state
         .write(ChannelWriteData::Terminal(buffer.to_vec()))
@@ -68,10 +81,13 @@ pub(crate) async fn new_session<
             if ping_sent {
                 debug!("Closing connection. Terminal session timed out");
                 state.close().await;
-                let mut sessions = sessions_arc.lock().await;
-                sessions.remove(&session_id);
-                drop(sessions);
-                update_size(id, &docker, server_data_arc.clone()).await;
+                #[cfg(not(feature = "no_tty_size_please"))]
+                {
+                    let mut sessions = sessions_arc.lock().await;
+                    sessions.remove(&session_id);
+                    drop(sessions);
+                    update_size(id, &docker, server_data_arc.clone()).await;
+                }
                 return;
             } else {
                 let _ = state.write(ChannelWriteData::Ping).await;
@@ -90,10 +106,13 @@ pub(crate) async fn new_session<
                             }
                             drop(err);
                             state.close().await;
-                            let mut sessions = sessions_arc.lock().await;
-                            sessions.remove(&session_id);
-                            drop(sessions);
-                            update_size(id, &docker, server_data_arc.clone()).await;
+                            #[cfg(not(feature = "no_tty_size_please"))]
+                            {
+                                let mut sessions = sessions_arc.lock().await;
+                                sessions.remove(&session_id);
+                                drop(sessions);
+                                update_size(id, &docker, server_data_arc.clone()).await;
+                            }
                             return;
                         }
                         state.flush().await;
@@ -101,10 +120,13 @@ pub(crate) async fn new_session<
                     Err(RecvError::Lagged(_)) => {},
                     Err(RecvError::Closed) => {
                         error!("Closing connection. Internal Sender disconnected");
-                        let mut sessions = sessions_arc.lock().await;
-                        sessions.remove(&session_id);
-                        drop(sessions);
-                        update_size(id, &docker, server_data_arc.clone()).await;
+                        #[cfg(not(feature = "no_tty_size_please"))]
+                        {
+                            let mut sessions = sessions_arc.lock().await;
+                            sessions.remove(&session_id);
+                            drop(sessions);
+                            update_size(id, &docker, server_data_arc.clone()).await;
+                        }
                         state.close().await;
                         return;
                     }
@@ -132,10 +154,13 @@ pub(crate) async fn new_session<
                         }
                         drop(err);
                         state.close().await;
-                        let mut sessions = sessions_arc.lock().await;
-                        sessions.remove(&session_id);
-                        drop(sessions);
-                        update_size(id, &docker, server_data_arc.clone()).await;
+                        #[cfg(not(feature = "no_tty_size_please"))]
+                        {
+                            let mut sessions = sessions_arc.lock().await;
+                            sessions.remove(&session_id);
+                            drop(sessions);
+                            update_size(id, &docker, server_data_arc.clone()).await;
+                        }
                         return;
                     }
                 }
@@ -144,12 +169,14 @@ pub(crate) async fn new_session<
     }
 }
 
+#[cfg(not(feature = "no_tty_size_please"))]
 pub(crate) async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex<ServerData>>) {
     let mut server_data = server_data.lock().await;
     let sessions = server_data.sessions.lock().await;
     let mut sessions_vec: Vec<_> = sessions.iter().collect();
     sessions_vec.sort_by_key(|(_id, (time, _cols, _rows))| time);
     if let Some((_id, (_time, cols, rows))) = sessions_vec.into_iter().next() {
+        use std::sync::atomic::Ordering;
         let cols = cols.load(Ordering::Relaxed);
         let rows = rows.load(Ordering::Relaxed);
         drop(sessions);

@@ -1,12 +1,13 @@
-use crate::ServerData;
 use crate::server::FetchedServer;
+#[cfg(not(feature = "no_tty_size_please"))]
 use crate::server::stop::ServerStopError;
 use crate::utils::ChannelWriteData;
+#[cfg(not(feature = "no_tty_size_please"))]
 use bollard::Docker;
-use bollard::container::ResizeContainerTtyOptions;
-use bollard::exec::ResizeExecOptions;
 use ringbuffer::AllocRingBuffer;
+#[cfg(not(feature = "no_tty_size_please"))]
 use std::collections::HashSet;
+#[cfg(not(feature = "no_tty_size_please"))]
 use std::io;
 use termion::color;
 use termion::color::Fg;
@@ -40,6 +41,7 @@ impl FetchedServer {
     }
 
     #[allow(dead_code)]
+    #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) async fn update_exec_tty_size(
         id: String,
         docker: &Docker,
@@ -54,7 +56,7 @@ impl FetchedServer {
         docker
             .resize_exec(
                 &id,
-                ResizeExecOptions {
+                bollard::exec::ResizeExecOptions {
                     width: cols as u16,
                     height: rows as u16,
                 },
@@ -63,10 +65,11 @@ impl FetchedServer {
             .map_err(ServerStopError::Docker)
     }
 
+    #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) async fn update_tty_size(
         id: u32,
         docker: &Docker,
-        server_data: &mut ServerData,
+        server_data: &mut crate::ServerData,
         cols: u32,
         rows: u32,
     ) -> Result<(), ServerStopError> {
@@ -86,7 +89,7 @@ impl FetchedServer {
         docker
             .resize_container_tty(
                 &Self::container_name(id),
-                ResizeContainerTtyOptions {
+                bollard::container::ResizeContainerTtyOptions {
                     width: cols as u16,
                     height: rows as u16,
                 },

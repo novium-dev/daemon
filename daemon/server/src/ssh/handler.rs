@@ -1,10 +1,8 @@
+use crate::Daemon;
 use crate::ssh::auth::{InvalidationCacheMap, password_auth};
 use crate::ssh::sftp::DaemonSftpSession;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read_timeout};
-use crate::sync::Mutex;
-use crate::terminal::update_size;
-use crate::{Daemon, ServerData};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::Dir;
 use daemon_common::server::BackendAuthServerPermissions;
@@ -191,16 +189,26 @@ impl Handler for DaemonSSHHandler {
                 rows.store(row_height, Ordering::Relaxed);
                 match id {
                     None => Ok(()),
+                    #[allow(unused_variables)]
                     Some(id) => {
-                        let mut servers = self.state.servers.lock().await;
-                        let server_data_arc = match servers.get(id) {
-                            None => {
-                                servers.insert(*id, Arc::new(Mutex::new(ServerData::default())));
-                                servers.get(id).unwrap()
-                            }
-                            Some(server) => server,
-                        };
-                        update_size(*id, &self.state.docker, server_data_arc.clone()).await;
+                        #[cfg(not(feature = "no_tty_size_please"))]
+                        {
+                            let mut servers = self.state.servers.lock().await;
+                            let server_data_arc = match servers.get(id) {
+                                None => {
+                                    servers.insert(*id, Arc::default());
+                                    servers.get(id).unwrap()
+                                }
+                                Some(server) => server,
+                            };
+
+                            crate::terminal::update_size(
+                                *id,
+                                &self.state.docker,
+                                server_data_arc.clone(),
+                            )
+                            .await;
+                        }
                         session.channel_success(channel_id)
                     }
                 }
