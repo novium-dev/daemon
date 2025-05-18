@@ -75,7 +75,7 @@ deny:
         - .cargo_home/
       policy: pull-push
   script:
-    - RUSTFLAGS="-C opt-level=0" cargo install cargo-deny
+    - RUSTFLAGS="-C opt-level=0" cargo install --color always --verbose cargo-deny
 
     - cargo deny check
 
