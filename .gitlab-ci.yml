@@ -3,13 +3,13 @@ stages:
 
 
 .rust-default:
-  image: rust:latest
+  image: rust:alpine
   parallel:
   before_script:
     - rustc --version && cargo --version
 
 .rust-build-default:
-  image: rust:latest
+  image: rust:alpine
   parallel:
   variables:
     BACKEND_DATABASE_URL: 'mysql://root@db/backend'
@@ -19,11 +19,11 @@ stages:
     GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
   before_script:
     - rustc --version && cargo --version
-    - mkdir .apt .cargo_home .gradle_user -p
-    - echo "dir::cache::archives \"$(pwd)/.apt\";" >> /etc/apt/apt.conf && echo "Binary::apt::APT::Keep-Downloaded-Packages \"true\";" >> /etc/apt/apt.conf
-    - apt update && apt install -y protobuf-compiler libclang-dev openjdk-17-jdk git libbtrfs-dev
+    - mkdir .apk .cargo_home .gradle_user -p
+    - ln -s "$(pwd)/.apk" /etc/apk/cache
+    - apk add musl-dev llvm19 clang19 lld git openjdk21-jdk protoc mariadb-client btrfs-progs-dev
     - RUSTFLAGS="-C opt-level=0" cargo install --color always --verbose sqlx-cli
-    - until echo 1 > /dev/tcp/db/3306; do sleep 1; done
+    - until mariadb-admin ping --host db --user root; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
     - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/server/migrations"
     - cargo sqlx database create --database-url "$BACKEND_DATABASE_URL"
@@ -36,20 +36,17 @@ clippy:
   extends: .rust-build-default
   stage: check
   cache:
-    - key: rust-cache-$CI_COMMIT_REF_SLUG
+    - key: rust-clippy-cache-$CI_COMMIT_REF_SLUG
       fallback_keys:
-        - rust-cache-$CI_DEFAULT_BRANCH
-        - rust-cache-default
+        - rust-clippy-cache-$CI_DEFAULT_BRANCH
+        - rust-clippy-cache-default
       paths:
         - .cargo_home/
         - .gradle_user/
         - target/
         - backend/minecraft/agent/.gradle/
         - backend/minecraft/agent/build/
-      policy: pull-push
-    - key: apt-cache-default
-      paths:
-        - .apt/
+        - .apk/
       policy: pull-push
   script:
     - rustup component add clippy
