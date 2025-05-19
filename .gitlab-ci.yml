@@ -7,6 +7,7 @@ stages:
   parallel:
   before_script:
     - rustc --version && cargo --version
+    - apk add --no-cache musl-dev llvm20 clang20 lld20
 
 .rust-build-default:
   image: rust:alpine
@@ -19,10 +20,9 @@ stages:
     GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
   before_script:
     - rustc --version && cargo --version
-    - mkdir .apk .cargo_home .gradle_user -p
-    - ln -s "$(pwd)/.apk" /etc/apk/cache
-    - apk add musl-dev llvm19 clang19 lld git openjdk21-jdk protoc mariadb-client btrfs-progs-dev
-    - RUSTFLAGS="-C opt-level=0" cargo install --color always --verbose sqlx-cli
+    - mkdir .cargo_home .gradle_user -p
+    - apk add --no-cache musl-dev llvm20 clang20 lld20 git openjdk21-jdk protoc mariadb-client btrfs-progs-dev
+    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli
     - until mariadb-admin ping --host db --user root; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
     - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/server/migrations"
@@ -46,11 +46,10 @@ clippy:
         - target/
         - backend/minecraft/agent/.gradle/
         - backend/minecraft/agent/build/
-        - .apk/
       policy: pull-push
   script:
     - rustup component add clippy
-    - cargo clippy --color always --verbose -- -Dwarnings
+    - RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld" cargo clippy --color always --verbose -- -Dwarnings
 
 fmt:
   extends: .rust-default
@@ -72,7 +71,7 @@ deny:
         - .cargo_home/
       policy: pull-push
   script:
-    - RUSTFLAGS="-C opt-level=0" cargo install --color always --verbose cargo-deny
+    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny
 
     - cargo deny check
 
