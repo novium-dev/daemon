@@ -7,7 +7,7 @@ stages:
   parallel:
   before_script:
     - rustc --version && cargo --version
-    - apk add --no-cache musl-dev llvm20 clang20 lld20
+    - apk add --no-cache musl-dev llvm20 clang20 lld20 --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 .rust-build-default:
   image: rust:alpine
@@ -21,7 +21,7 @@ stages:
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home .gradle_user -p
-    - apk add --no-cache musl-dev llvm20 clang20 lld20 git openjdk21-jdk protoc mariadb-client btrfs-progs-dev
+    - apk add --no-cache musl-dev llvm20 clang20 lld20 git openjdk21-jdk protoc mariadb-client btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
     - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli
     - until mariadb-admin ping --host db --user root; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
