@@ -21,9 +21,6 @@ section = "database"
 [lib]
 crate-type = ["cdylib"]
 
-[features]
-ci = []
-
 [dependencies]
 libc.workspace = true
 bollard.workspace = true
@@ -31,7 +28,6 @@ constcat = "0.6.0"
 
 [dependencies.tokio]
 workspace = true
-features = ["fs", "io-std", "rt", "rt-multi-thread"]
 
 [dependencies.daemon_common]
 workspace = true

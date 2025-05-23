@@ -25,10 +25,11 @@ btrfs = ["daemon_common/btrfs"]
 sentry = ["dep:sentry"]
 no_tty_size_please = []
 
-default = ["sentry", "btrfs"]
+default = ["sentry", "btrfs", "bindgen/runtime"]
 full = ["default"]
 full_bypass = ["full", "ssh_debug_auth_bypass"]
 trace_sync = []
+ci = ["sentry", "btrfs", "bindgen/static"]
 
 [dependencies]
 libc.workspace = true
@@ -148,7 +149,10 @@ features = []
 [dependencies.lz4]
 version = "1.28.1"
 
-[build-dependencies]
-bindgen = "0.71.1"
+[build-dependencies.bindgen]
+version = "0.71.1"
+default-features = false
+features = ["logging", "prettyplease"]
+
 
 
