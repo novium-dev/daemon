@@ -88,7 +88,7 @@ workspace = true
 optional = true
 
 [dependencies.utoipa-swagger-ui]
-version = "9.0.1"
+version = "9.0.2"
 features = ["axum"]
 
 [dependencies.cap-async-std]
