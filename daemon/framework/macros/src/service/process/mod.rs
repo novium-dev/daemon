@@ -492,7 +492,7 @@ pub(crate) fn process(
             .intersperse(", ")
             .collect();
         let ts_func_body = format!(
-            r#"const requestOptions: RequestInit = {{
+            r#"const requestOptions: DaemonSDKRequestInit = {{
   method: '{}',
   headers: Object.assign({{}}, this.headers),
 }};

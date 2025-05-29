@@ -73,6 +73,8 @@ fn export_ts() {
     out += "\n";
     out += &format!(
         r#"
+type DaemonSDKRequestInit = {{ method: string, headers: Record<string, string>, body?: BodyInit }};
+
 export class DaemonSDK {{
   private readonly baseUrl: string;
   protected readonly identifier: string;
