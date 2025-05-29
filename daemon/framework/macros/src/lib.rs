@@ -1,6 +1,7 @@
 mod error;
 mod route;
 mod service;
+mod ts;
 mod utils;
 
 use crate::service::args::ServiceArgs;
@@ -34,6 +35,18 @@ pub fn define_error(attr: proc_macro::TokenStream) -> proc_macro::TokenStream {
     proc_macro::TokenStream::from(crate::error::define::define_error0(
         crate_prefix(),
         proc_macro2::TokenStream::from(attr),
+    ))
+}
+
+#[proc_macro_attribute]
+pub fn ts(
+    attr: proc_macro::TokenStream,
+    input: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    proc_macro::TokenStream::from(crate::ts::ts(
+        crate_prefix(),
+        proc_macro2::TokenStream::from(attr),
+        proc_macro2::TokenStream::from(input),
     ))
 }
 

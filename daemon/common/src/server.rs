@@ -2,10 +2,12 @@ use axum::extract::ws::Message;
 use bitflags::bitflags;
 #[cfg(feature = "docker")]
 use bollard::container::Stats;
+use daemon_framework::ts;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({"label": "Running", "healthcheck": null, "start": false, "stop": true, "kill": false, "time": 0}))]
+#[ts]
 pub struct PublicServerState {
     pub label: String,
     pub healthcheck: Option<String>,

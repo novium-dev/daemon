@@ -1,4 +1,5 @@
 use bitflags::bitflags;
+use daemon_framework::ts;
 use serde::{Deserialize, Serialize};
 use serde::{Deserializer, Serializer};
 use std::borrow::Cow;
@@ -6,13 +7,16 @@ use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq, Hash, utoipa::ToSchema)]
+#[ts]
 pub struct DatabaseUserPayload {
     pub password_hash: String,
+    #[ts(as = "i8")]
     pub permissions: DatabaseUserPermissions,
 }
 
 bitflags! {
     #[derive(Debug, Eq, PartialEq, Hash, Clone, Copy)]
+    #[ts(as = "i8")]
     pub struct DatabaseUserPermissions: i8 {
         const SELECT = 1 << 0;
         const INSERT = 1 << 1;
@@ -21,6 +25,27 @@ bitflags! {
         const CREATE = 1 << 4;
         const DROP = 1 << 5;
         const INDEX = 1 << 6;
+    }
+}
+#[cfg(feature = "ts")]
+impl DatabaseUserPermissions {
+    pub fn visit_types(visitor: &mut daemon_framework::ts::TSTypeVisitor) {
+        visitor
+            .out
+            .push_str("namespace DatabaseUserPermissions {\n");
+        for (name, value) in DatabaseUserPermissions::all().iter_names() {
+            visitor.out.push_str("  const ");
+            visitor.out.push_str(name);
+            visitor.out.push_str(": ");
+            visitor
+                .out
+                .push_str(&<Self as daemon_framework::ts_rs::TS>::inline());
+            visitor.out.push_str(" = ");
+            visitor.out.push_str(&value.bits().to_string());
+            visitor.out.push(';');
+            visitor.out.push('\n');
+        }
+        visitor.out.push_str("}\n");
     }
 }
 

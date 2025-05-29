@@ -165,6 +165,9 @@ pub trait FilesServiceUserKeyExtension {
     ) -> Url;
 
     fn server_upload_file_user_url_signed(&self, server_id: u32, path: String) -> Url;
+
+    #[cfg(feature = "ts")]
+    fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor);
 }
 
 impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
@@ -195,5 +198,23 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
             &path,
         );
         self.server_upload_file_user_url(server_id, path, timestamp, signature)
+    }
+
+    #[cfg(feature = "ts")]
+    fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor) {
+        visitor.visit_start(true, "serverDownloadFileUserUrlSigned");
+        visitor.visit_argument::<u32>("serverId");
+        visitor.visit_argument::<String>("path");
+        visitor.visit_argument::<Option<u64>>("limit");
+        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+const signature = await UserSignature.newServerFileDownloadAsync(this.userKey, timestamp, this.identifier, serverId, path);
+return this.serverDownloadFileUserUrl(serverId, path, limit, timestamp, signature);"#, "URL");
+
+        visitor.visit_start(true, "serverUploadFileUserUrlSigned");
+        visitor.visit_argument::<u32>("serverId");
+        visitor.visit_argument::<String>("path");
+        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+const signature = await UserSignature.newServerFileUploadAsync(this.userKey, timestamp, this.identifier, serverId, path);
+return this.serverUploadFileUserUrl(serverId, path, timestamp, signature);"#, "URL");
     }
 }

@@ -1,5 +1,6 @@
 use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 use crc64::crc64;
+use daemon_framework::ts;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use serde_yaml::Mapping;
@@ -10,16 +11,8 @@ use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
-pub struct ServerPayload {
-    pub storage: Option<String>,
-    pub resource: Option<ServerResourcePayload>,
-    pub build: Option<ServerBuildPayload>,
-    pub ports: Option<Vec<ServerPortEntryPayload>>,
-    pub network: Option<ServerNetworkPayload>,
-}
-
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
 pub struct ServerResourcePayload {
     pub cpu: Option<f32>,
     pub ram: Option<u32>,
@@ -28,6 +21,7 @@ pub struct ServerResourcePayload {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
 pub struct ServerBuildPayload {
     pub image: ServerBuildImage,
 
@@ -48,6 +42,7 @@ pub struct ServerBuildPayload {
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(no_recursion)]
+#[ts]
 pub struct ServerBuildImage {
     pub dockerfile: String,
     pub default_tag: Option<String>,
@@ -100,12 +95,14 @@ impl ServerBuildImage {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
 pub struct ServerNetworkPayload {
     pub internet_access: bool,
     pub networks: Vec<NetworkAttachment>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
 pub struct NetworkAttachment {
     pub network: u32,
     pub ipv4: u8,
@@ -113,6 +110,7 @@ pub struct NetworkAttachment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
 #[serde(tag = "filetype")]
 pub enum ServerFileWrite {
     #[serde(rename = "write")]
@@ -125,7 +123,7 @@ pub enum ServerFileWrite {
     },
     #[serde(rename = "yaml")]
     YAML {
-        content: HashMap<String, serde_yaml::Value>,
+        content: HashMap<String, serde_json::Value>,
     },
 }
 
@@ -274,15 +272,16 @@ impl ServerFileWrite {
             ServerFileWrite::YAML { content } => {
                 let mut file = file.into_std().await;
                 let content = content.clone();
-                let (mut value, mut file) = tokio::task::spawn_blocking(move || {
-                    serde_yaml::from_reader(&mut file)
-                        .inspect_err(|err| debug!("Failed to read yaml: {:?}", err))
-                        .map_err(|err| <E as From<io::Error>>::from(io::Error::other(err)))
-                        .map(|val: serde_yaml::Value| (val, file))
-                })
-                .await
-                .inspect_err(|err| error!("Failed to read yaml (task): {:?}", err))
-                .map_err(<io::Error as From<JoinError>>::from)??;
+                let (mut value, mut file): (serde_yaml::Value, _) =
+                    tokio::task::spawn_blocking(move || {
+                        serde_yaml::from_reader(&mut file)
+                            .inspect_err(|err| debug!("Failed to read yaml: {:?}", err))
+                            .map_err(|err| <E as From<io::Error>>::from(io::Error::other(err)))
+                            .map(|val: serde_yaml::Value| (val, file))
+                    })
+                    .await
+                    .inspect_err(|err| error!("Failed to read yaml (task): {:?}", err))
+                    .map_err(<io::Error as From<JoinError>>::from)??;
 
                 for (key, val) in content {
                     let components: Vec<String> = key.split(".").map(String::from).collect();
@@ -333,7 +332,9 @@ impl ServerFileWrite {
                             }
                         }
                     }
-                    *current = val;
+                    *current = serde_json::from_value(val)
+                        .inspect_err(|err| warn!("Failed to convert json to yaml: {:?}", err))
+                        .map_err(|err| <E as From<io::Error>>::from(io::Error::other(err)))?;
                 }
                 tokio::task::spawn_blocking(move || {
                     file.set_len(0)
@@ -353,6 +354,7 @@ impl ServerFileWrite {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
 pub struct ServerPortEntryPayload {
     pub internal_port: u16,
     pub external_port: u16,

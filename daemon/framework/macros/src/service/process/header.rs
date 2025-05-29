@@ -2,14 +2,18 @@ use crate::service::parse::FunctionArgument;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn process(
     crate_prefix: &TokenStream,
+    #[allow(unused_variables)] fn_ident: &Ident,
     fn_args_identified: &[FunctionArgument],
     http_args: &mut TokenStream,
     func_args: &mut Vec<TokenStream>,
     operations: &mut TokenStream,
     user: bool,
     client_impl_body: &mut TokenStream,
+    #[cfg(feature = "ts")] ts_options_body: &mut String,
+    #[cfg(feature = "ts")] ts_replace: &mut std::collections::HashMap<String, TokenStream>,
 ) {
     if !user {
         operations.extend(quote! {
@@ -53,6 +57,31 @@ pub(crate) fn process(
                     }
                 }
             });
+
+            #[cfg(feature = "ts")]
+            {
+                use convert_case::{Case, Casing};
+                let key = format!("daemon_header_{}_{}", fn_ident, variable_name);
+
+                if *required {
+                    ts_options_body.push_str("requestOptions.headers[");
+                    ts_options_body.push_str(&key);
+                    ts_options_body.push_str("] = ");
+                    ts_options_body.push_str(&variable_name.to_string().to_case(Case::Camel));
+                    ts_options_body.push_str(";\n");
+                } else {
+                    ts_options_body.push_str("if (");
+                    ts_options_body.push_str(&variable_name.to_string().to_case(Case::Camel));
+                    ts_options_body.push_str(" != null) { requestOptions.headers[");
+                    ts_options_body.push_str(&key);
+                    ts_options_body.push_str("] = ");
+                    ts_options_body.push_str(&variable_name.to_string().to_case(Case::Camel));
+                    ts_options_body.push_str("; }\n");
+                }
+                ts_replace.insert(key, quote! {
+                    &#crate_prefix serde_json::to_string(#crate_prefix internal::header_name::<#variable_type, _>().as_str()).unwrap()
+                });
+            }
 
             let required = Ident::new(if *required { "True" } else { "False" }, Span::call_site());
 

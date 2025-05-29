@@ -6,6 +6,7 @@ use syn::LitStr;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn process(
     crate_prefix: &TokenStream,
+    #[allow(unused_variables)] trait_ident: &Ident,
     fn_ident: &Ident,
     fn_args_identified: &[FunctionArgument],
     routes: &mut TokenStream,
@@ -15,6 +16,8 @@ pub(crate) fn process(
     schema_extra: &mut TokenStream,
     example: Option<LitStr>,
     client_impl_body: &mut TokenStream,
+    #[cfg(feature = "ts")] types_impl: &mut TokenStream,
+    #[cfg(feature = "ts")] ts_options_body: &mut String,
 ) {
     let fn_args_payload: Vec<_> = fn_args_identified
         .iter()
@@ -72,7 +75,49 @@ pub(crate) fn process(
             client_impl_body.extend(quote! {
                 request = request.body(#arg_name.into_reqwest());
             });
+
+            #[cfg(feature = "ts")]
+            {
+                use convert_case::{Case, Casing};
+                ts_options_body.push_str("requestOptions.body = ");
+                ts_options_body.push_str(&arg_name.to_string().to_case(Case::Camel));
+                ts_options_body.push_str(";\n");
+                ts_options_body.push_str(
+                    "requestOptions.headers['content-type'] = 'application/octet-stream';\n",
+                );
+            }
         } else {
+            #[cfg(feature = "ts")]
+            {
+                use convert_case::{Case, Casing};
+                let ts_crate_literal =
+                    LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+                let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
+                let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
+
+                types_impl.extend(quote! {
+                    {
+                        println!("{}::{} Payload", #trait_name, #fn_name);
+
+                        #[derive(#crate_prefix ts_rs::TS)]
+                        #[ts(crate = #ts_crate_literal)]
+                        #[allow(dead_code)]
+                        struct TypescriptPayloadStruct {
+                            payload: #arg_type,
+                        }
+
+                        visitor.allowed.extend(<TypescriptPayloadStruct as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
+                        <TypescriptPayloadStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
+                    }
+                });
+
+                ts_options_body.push_str("requestOptions.body = JSON.stringify(");
+                ts_options_body.push_str(&arg_name.to_string().to_case(Case::Camel));
+                ts_options_body.push_str(");\n");
+                ts_options_body
+                    .push_str("requestOptions.headers['content-type'] = 'application/json';\n");
+            }
+
             http_args.extend(quote! {
                 #crate_prefix axum::extract::Json(
                     #arg_name
@@ -126,9 +171,23 @@ pub(crate) fn process(
             });
         }
 
+        #[cfg(not(feature = "ts"))]
+        let (ts_extra, ts_attr_extra) = { (TokenStream::new(), TokenStream::new()) };
+        #[cfg(feature = "ts")]
+        let (ts_extra, ts_attr_extra) = {
+            let ts_crate_literal =
+                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+
+            let ts_extra = quote! { #crate_prefix ts_rs::TS };
+            #[cfg(feature = "ts")]
+            let ts_attr_extra = quote! { #[ts(crate = #ts_crate_literal )]};
+            (ts_extra, ts_attr_extra)
+        };
+
         routes.extend(quote! {
             #crate_prefix paste::paste! {
-                #[derive(Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize, Debug, #crate_prefix utoipa::ToSchema)]
+                #[derive(Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize, Debug, #crate_prefix utoipa::ToSchema, #ts_extra)]
+                #ts_attr_extra
                 pub(crate) struct [< #fn_ident:camel Payload >] {
                     #payload_fields
                 }
@@ -171,5 +230,33 @@ pub(crate) fn process(
         client_impl_body.extend(quote! {
             request = request.json(&__daemon_framework_routes::[< #fn_ident:camel Payload >] { #payload_names });
         });
+
+        #[cfg(feature = "ts")]
+        {
+            use convert_case::{Case, Casing};
+            use itertools::Itertools;
+            let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
+            let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
+            types_impl.extend(quote! {
+                {
+                    println!("{}::{} Payload", #trait_name, #fn_name);
+
+                    visitor.allowed.extend(<__daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
+                    <__daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
+                }
+            });
+
+            ts_options_body.push_str("requestOptions.body = JSON.stringify({ ");
+            #[allow(unstable_name_collisions)]
+            let arg_names: String = fn_args_payload
+                .iter()
+                .map(|(ident, _)| format!("{}: {}", ident, ident.to_string().to_case(Case::Camel)))
+                .intersperse(", ".to_string())
+                .collect();
+            ts_options_body.push_str(&arg_names);
+            ts_options_body.push_str(" });\n");
+            ts_options_body
+                .push_str("requestOptions.headers['content-type'] = 'application/json';\n");
+        }
     }
 }

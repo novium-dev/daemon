@@ -36,6 +36,7 @@ either = "1.15.0"
 tower-layer = "0.3.3"
 paste = "1.0.15"
 no-panic = "0.1.35"
+itertools = "0.14.0"
 
 [workspace.dependencies.daemon_common]
 path = "daemon/common"

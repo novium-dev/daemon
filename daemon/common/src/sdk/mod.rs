@@ -24,6 +24,9 @@ pub(crate) trait DaemonSdkSealed {}
 impl DaemonSDKExtra for () {}
 impl DaemonSdkSealed for () {}
 
+pub type DefaultDaemonSDK = DaemonSDK<()>;
+pub type DaemonSDKWithUserKey = DaemonSDK<WithUserKey>;
+
 #[derive(Debug, Clone)]
 pub struct DaemonSDK<T: DaemonSDKExtra + Send + Sync> {
     client: Client,

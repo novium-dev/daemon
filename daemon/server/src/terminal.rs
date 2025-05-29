@@ -175,10 +175,14 @@ pub(crate) async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex
     let sessions = server_data.sessions.lock().await;
     let mut sessions_vec: Vec<_> = sessions.iter().collect();
     sessions_vec.sort_by_key(|(_id, (time, _cols, _rows))| time);
-    if let Some((_id, (_time, cols, rows))) = sessions_vec.into_iter().next() {
+    for (_id, (_time, cols, rows)) in sessions_vec {
         use std::sync::atomic::Ordering;
         let cols = cols.load(Ordering::Relaxed);
         let rows = rows.load(Ordering::Relaxed);
+        if cols == 0 || rows == 0 {
+            continue;
+        }
+
         drop(sessions);
         if server_data.size.0 != cols || server_data.size.1 != rows {
             if let Err(err) =
@@ -190,5 +194,6 @@ pub(crate) async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex
                 warn!("Failed to resize tty to {},{}: {:?}", cols, rows, err);
             }
         }
+        break;
     }
 }

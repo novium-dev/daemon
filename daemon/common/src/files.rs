@@ -12,3 +12,23 @@ bitflags! {
         const SOCK = 0xC000;
     }
 }
+
+#[cfg(feature = "ts")]
+impl FileMode {
+    pub fn visit_types(visitor: &mut daemon_framework::ts::TSTypeVisitor) {
+        visitor.out.push_str("namespace FileMode {\n");
+        for (name, value) in FileMode::all().iter_names() {
+            visitor.out.push_str("  const ");
+            visitor.out.push_str(name);
+            visitor.out.push_str(": ");
+            visitor
+                .out
+                .push_str(&<u32 as daemon_framework::ts_rs::TS>::inline());
+            visitor.out.push_str(" = ");
+            visitor.out.push_str(&value.bits().to_string());
+            visitor.out.push(';');
+            visitor.out.push('\n');
+        }
+        visitor.out.push_str("}\n");
+    }
+}

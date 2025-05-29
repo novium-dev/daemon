@@ -12,6 +12,7 @@ use crate::utils::{TokenStreamArray, type_option};
 use proc_macro2::{Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::VecDeque;
+use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 use syn::LitStr;
 
@@ -27,6 +28,21 @@ pub(crate) enum HttpMethod {
     PATCH,
     TRACE,
     WS,
+}
+
+impl Display for HttpMethod {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            HttpMethod::GET | HttpMethod::WS => "GET",
+            HttpMethod::POST => "POST",
+            HttpMethod::PUT => "PUT",
+            HttpMethod::DELETE => "DELETE",
+            HttpMethod::OPTIONS => "OPTIONS",
+            HttpMethod::HEAD => "HEAD",
+            HttpMethod::PATCH => "PATCH",
+            HttpMethod::TRACE => "TRACE",
+        })
+    }
 }
 
 impl FromStr for HttpMethod {
@@ -66,19 +82,7 @@ impl HttpMethod {
     }
 
     pub(crate) fn to_http(self) -> Ident {
-        Ident::new(
-            match self {
-                HttpMethod::GET | HttpMethod::WS => "GET",
-                HttpMethod::POST => "POST",
-                HttpMethod::PUT => "PUT",
-                HttpMethod::DELETE => "DELETE",
-                HttpMethod::OPTIONS => "OPTIONS",
-                HttpMethod::HEAD => "HEAD",
-                HttpMethod::PATCH => "PATCH",
-                HttpMethod::TRACE => "TRACE",
-            },
-            Span::call_site(),
-        )
+        Ident::new(&self.to_string(), Span::call_site())
     }
 }
 
@@ -110,6 +114,8 @@ pub(crate) fn process(
         TokenStream,
         TokenStream,
         TokenStream,
+        TokenStream,
+        TokenStream,
     )>,
 ) -> Vec<TokenTree> {
     let mut operations = TokenStream::new();
@@ -118,6 +124,7 @@ pub(crate) fn process(
         operations.extend(quote! { .tag(#tag) });
     }
 
+    #[allow(unused_variables)]
     let (
         pre_fn_result,
         RouteArgs {
@@ -129,6 +136,7 @@ pub(crate) fn process(
             raw,
         },
         example,
+        doc,
     ) = macros::process(
         crate_prefix,
         &fn_ident,
@@ -255,9 +263,26 @@ pub(crate) fn process(
     let mut client_def_body = TokenStream::new();
     let mut fn_def_args = quote! { &self, };
     let mut fn_def_call = TokenStream::new();
+    #[allow(unused_mut)]
+    let mut ts_types_impl = TokenStream::new();
+    #[allow(unused_mut)]
+    let mut ts_funcs_impl = TokenStream::new();
+
+    #[cfg(feature = "ts")]
+    let mut ts_replace: std::collections::HashMap<String, TokenStream> =
+        std::collections::HashMap::new();
+    #[cfg(feature = "ts")]
+    let mut ts_options_body = String::new();
+
+    #[cfg(feature = "ts")]
+    let mut ts_func_body_url = String::new();
+    #[cfg(feature = "ts")]
+    let mut ts_func_args_url: indexmap::IndexMap<String, TokenStream> = indexmap::IndexMap::new();
 
     path::process(
         crate_prefix,
+        trait_ident,
+        &fn_ident,
         &path,
         &fn_args_identified,
         &mut http_args,
@@ -266,10 +291,17 @@ pub(crate) fn process(
         &mut client_def_body,
         &mut fn_def_args,
         &mut fn_def_call,
+        #[cfg(feature = "ts")]
+        &mut ts_types_impl,
+        #[cfg(feature = "ts")]
+        &mut ts_func_body_url,
+        #[cfg(feature = "ts")]
+        &mut ts_func_args_url,
     );
 
     query::process(
         crate_prefix,
+        trait_ident,
         &fn_ident,
         &fn_args_identified,
         routes,
@@ -279,20 +311,32 @@ pub(crate) fn process(
         &mut client_def_body,
         &mut fn_def_args,
         &mut fn_def_call,
+        #[cfg(feature = "ts")]
+        &mut ts_types_impl,
+        #[cfg(feature = "ts")]
+        &mut ts_func_body_url,
+        #[cfg(feature = "ts")]
+        &mut ts_func_args_url,
     );
 
     header::process(
         crate_prefix,
+        &fn_ident,
         &fn_args_identified,
         &mut http_args,
         &mut func_args,
         &mut operations,
         user,
         &mut client_impl_body,
+        #[cfg(feature = "ts")]
+        &mut ts_options_body,
+        #[cfg(feature = "ts")]
+        &mut ts_replace,
     );
 
     payload::process(
         crate_prefix,
+        trait_ident,
         &fn_ident,
         &fn_args_identified,
         routes,
@@ -302,6 +346,10 @@ pub(crate) fn process(
         &mut schema_extra,
         example,
         &mut client_impl_body,
+        #[cfg(feature = "ts")]
+        &mut ts_types_impl,
+        #[cfg(feature = "ts")]
+        &mut ts_options_body,
     );
 
     route::process(
@@ -335,8 +383,70 @@ pub(crate) fn process(
     if method == HttpMethod::WS {
         client_impl_body = quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
     } else if raw {
-        client_impl_body = quote! { panic!("Raw data responses are not implemented (and very likely will never be)"); };
+        #[cfg(feature = "ts")]
+        {
+            let ts_crate_literal =
+                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+            let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
+            let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
+
+            ts_types_impl.extend(quote! {
+
+                {
+                    println!("{}::{} Result (raw)", #trait_name, #fn_name);
+                    #[derive(#crate_prefix ts_rs::TS)]
+                    #[ts(crate = #ts_crate_literal)]
+                    #[allow(dead_code)]
+                    struct TypescriptResultStruct {
+                        result: #crate_prefix ts::TSResponse<#result>,
+                    }
+
+                    visitor.allowed.extend(<TypescriptResultStruct as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
+                    <TypescriptResultStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
+                }
+            });
+        }
+
+        client_impl_body = quote! {
+            let mut request = self.client().request(#crate_prefix http::Method::#method_http, self.[< #fn_ident _url >] #fn_def_call);
+            #client_impl_body
+            let response = request
+                .send()
+                .await?;
+            match response.error_for_status_ref() {
+                Ok(_) => {
+                    Ok(#crate_prefix internal::from_raw(response))
+                },
+                Err(_err) => {
+                    Err(#crate_prefix internal::error_by_response(response).await)
+                }
+            }
+        };
     } else {
+        #[cfg(feature = "ts")]
+        {
+            let ts_crate_literal =
+                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+            let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
+            let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
+
+            ts_types_impl.extend(quote! {
+
+                {
+                    println!("{}::{} Result", #trait_name, #fn_name);
+                    #[derive(#crate_prefix ts_rs::TS)]
+                    #[ts(crate = #ts_crate_literal)]
+                    #[allow(dead_code)]
+                    struct TypescriptResultStruct {
+                        result: #result,
+                    }
+
+                    visitor.allowed.extend(<TypescriptResultStruct as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
+                    <TypescriptResultStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
+                }
+            });
+        }
+
         client_impl_body = quote! {
             let mut request = self.client().request(#crate_prefix http::Method::#method_http, self.[< #fn_ident _url >] #fn_def_call)
                 .header(#crate_prefix http::header::ACCEPT, "application/json");
@@ -354,7 +464,7 @@ pub(crate) fn process(
                 }
             }
         };
-    }
+    };
 
     let client_impl = quote! { async #fn_keyword #fn_ident #fn_args #post_fn #result {
         #client_impl_body
@@ -369,6 +479,167 @@ pub(crate) fn process(
 
     };
 
+    #[cfg(feature = "ts")]
+    {
+        use convert_case::{Case, Casing};
+        use itertools::Itertools;
+        ts_func_body_url.push_str("return daemonResultUrl;\n");
+
+        #[allow(unstable_name_collisions)]
+        let ts_func_url_args: String = ts_func_args_url
+            .keys()
+            .map(String::as_str)
+            .intersperse(", ")
+            .collect();
+        let ts_func_body = format!(
+            r#"const requestOptions: RequestInit = {{
+  method: '{}',
+  headers: Object.assign({{}}, this.headers),
+}};
+{}
+try {{
+  const response = await fetch(this.{}({}), requestOptions);
+  if (response.ok) {{
+    daemon_return_response
+  }} else {{
+    const errorResponse: {{ error: {{ id: string, msg: string }} }} = await response.json();
+    const errorId = errorResponse.error.id;
+    switch (errorId) {{
+daemon_return_error_response
+      default:
+        throw new TypeError(`Unknown error: ${{errorId}}`);
+    }}
+  }}
+}} catch (err) {{
+    return {{ Err: {{ "Communication": err }} }};
+}}
+            "#,
+            method,
+            ts_options_body,
+            format!("{}_url", fn_ident).to_case(Case::Camel),
+            ts_func_url_args
+        );
+
+        ts_replace.insert("daemon_return_error_response".to_string(), quote! {
+            &{
+                <#result as #crate_prefix FrameworkDocumentedResponse>::error_values()
+                    .iter()
+                    .map(|str| format!("      case {}:\n        return {{ Err: errorId }};\n", #crate_prefix serde_json::to_string(str).unwrap() ))
+                    .collect::<String>()
+            }
+        });
+        ts_replace.insert(
+            "daemon_return_response".to_string(),
+            quote! {
+               &(
+                    <#result as #crate_prefix ts::FrameworkTSResponse>::visit_ts_response()
+                )
+            },
+        );
+
+        let func_name_url = LitStr::new(&format!("{}_url", fn_ident), Span::call_site());
+        let func_name = LitStr::new(&fn_ident.to_string(), Span::call_site());
+        let func_body_url = LitStr::new(&ts_func_body_url, Span::call_site());
+        let func_body = LitStr::new(&ts_func_body, Span::call_site());
+        let mut func_args_url = TokenStream::new();
+        let mut func_args = TokenStream::new();
+
+        for (name, typ) in ts_func_args_url {
+            let name = LitStr::new(&name, Span::call_site());
+            func_args_url.extend(quote! {
+                visitor.visit_argument::<#typ>(#crate_prefix ts::to_camel(#name));
+            });
+        }
+
+        for arg in &fn_args_identified {
+            match arg {
+                FunctionArgument::Path {
+                    variable_name,
+                    variable_type,
+                }
+                | FunctionArgument::Query {
+                    variable_name,
+                    variable_type,
+                    ..
+                }
+                | FunctionArgument::Payload {
+                    variable_name,
+                    variable_type,
+                } => {
+                    let name = LitStr::new(&variable_name.to_string(), Span::call_site());
+                    func_args.extend(quote! {
+                        visitor.visit_argument::<#variable_type>(#crate_prefix ts::to_camel(#name));
+                    });
+                }
+                FunctionArgument::Header {
+                    variable_name,
+                    required,
+                    ..
+                } => {
+                    let name = LitStr::new(&variable_name.to_string(), Span::call_site());
+                    if *required {
+                        func_args.extend(quote! {
+                            visitor.visit_argument::<String>(#crate_prefix ts::to_camel(#name));
+                        });
+                    } else {
+                        func_args.extend(quote! {
+                            visitor.visit_argument::<Option<String>>(#crate_prefix ts::to_camel(#name));
+                        });
+                    }
+                }
+            }
+        }
+
+        ts_funcs_impl.extend(quote! {
+
+            visitor.visit_start(false, #crate_prefix ts::to_camel(#func_name_url));
+
+            #func_args_url
+
+            visitor.visit_end_result_custom(#func_body_url, "URL");
+        });
+
+        let mut replace_chain = TokenStream::new();
+        for (replace_key, replace_value) in ts_replace {
+            let replace_key = LitStr::new(&replace_key, Span::call_site());
+            replace_chain.extend(quote! {
+                .replace(#replace_key, #replace_value)
+            });
+        }
+
+        if method == HttpMethod::WS {
+            // client_impl_body = quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
+        } else if raw {
+            if let Some(doc) = doc {
+                ts_funcs_impl.extend(quote! {
+                    visitor.visit_doc(#doc);
+                });
+            }
+
+            ts_funcs_impl.extend(quote! {
+                visitor.visit_start(true, #crate_prefix ts::to_camel(#func_name));
+
+                #func_args
+
+                visitor.visit_end_result::<#crate_prefix ts::TSResponse<#result>>(#func_body #replace_chain);
+            });
+        } else {
+            if let Some(doc) = doc {
+                ts_funcs_impl.extend(quote! {
+                    visitor.visit_doc(#doc);
+                });
+            }
+
+            ts_funcs_impl.extend(quote! {
+                visitor.visit_start(true, #crate_prefix ts::to_camel(#func_name));
+
+                #func_args
+
+                visitor.visit_end_result::<#result>(#func_body #replace_chain);
+            });
+        }
+    }
+
     functions.push((
         fn_ident,
         path,
@@ -379,6 +650,8 @@ pub(crate) fn process(
         schema_extra,
         client_impl,
         client_def,
+        ts_types_impl,
+        ts_funcs_impl,
     ));
 
     func
@@ -400,6 +673,8 @@ pub(crate) fn finish(
         TokenStream,
         TokenStream,
         TokenStream,
+        TokenStream,
+        TokenStream,
     )>,
 ) {
     let mut routes = TokenStream::new();
@@ -408,11 +683,29 @@ pub(crate) fn finish(
     let mut client_impl = TokenStream::new();
     let mut client_definition = TokenStream::new();
 
-    for (ident, path, method, user, result, operations, schema, client, client_def) in functions {
+    let mut types_impl = TokenStream::new();
+    let mut funcs_impl = TokenStream::new();
+
+    for (
+        ident,
+        path,
+        method,
+        user,
+        result,
+        operations,
+        schema,
+        client,
+        client_def,
+        types_func_impl,
+        funcs_func_impl,
+    ) in functions
+    {
         let token = if user { &mut routes_user } else { &mut routes };
 
         client_impl.extend(client);
         client_definition.extend(client_def);
+        types_impl.extend(types_func_impl);
+        funcs_impl.extend(funcs_func_impl);
 
         let method = method.to_utoipa();
 
@@ -474,6 +767,25 @@ pub(crate) fn finish(
         }
 
     });
+
+    #[cfg(feature = "ts")]
+    {
+        trait_body_output.extend(quote! {
+
+            #crate_prefix paste::paste! {
+
+                fn visit_types(visitor: &mut #crate_prefix ts::TSTypeVisitor) where Self: Sized {
+                    #types_impl
+                }
+
+                fn visit_funcs(visitor: &mut #crate_prefix ts::TSClassFunctionVisitor) where Self: Sized {
+                    #funcs_impl
+                }
+
+            }
+
+        });
+    }
 
     output_extra.extend(quote! {
 

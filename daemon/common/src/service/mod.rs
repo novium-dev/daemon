@@ -10,7 +10,7 @@ use crate::service::network::{NetworkService, NetworkServiceClientImpl, NetworkS
 use crate::service::resource::{ResourceService, ResourceServiceClientImpl, ResourceServiceURL};
 use crate::service::schedule::{ScheduleService, ScheduleServiceClientImpl, ScheduleServiceURL};
 use crate::service::server::{
-    ServerService, ServerServiceClientImpl, ServerServiceURL, ServiceServiceUserKeyExtension,
+    ServerService, ServerServiceClientImpl, ServerServiceURL, ServerServiceUserKeyExtension,
 };
 use crate::service::setup::{SetupService, SetupServiceClientImpl, SetupServiceURL};
 use crate::user::UserKeyProvider;
@@ -130,7 +130,7 @@ pub trait DaemonServicesURL:
 
 pub trait DaemonServicesURLWithUserKey:
     DaemonServicesURL
-    + ServiceServiceUserKeyExtension
+    + ServerServiceUserKeyExtension
     + BackupServiceUserKeyExtension
     + FilesServiceUserKeyExtension
     + UserKeyProvider

@@ -5,6 +5,9 @@ edition = "2024"
 authors = ["Markus Probst <markustieger@gmail.com>"]
 license = "AGPL-3.0-only"
 
+[features]
+ts = ["serde_json", "convert_case"]
+
 [lib]
 proc-macro = true
 
@@ -12,4 +15,15 @@ proc-macro = true
 proc-macro2 = "1.0.95"
 quote = "1.0.40"
 syn = "2.0.101"
-either = "1.15.0"
+either.workspace = true
+itertools.workspace = true
+indexmap.workspace = true
+
+[dependencies.serde_json]
+workspace = true
+optional = true
+
+[dependencies.convert_case]
+version = "0.8.0"
+optional = true
+

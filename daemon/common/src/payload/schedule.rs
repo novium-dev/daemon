@@ -1,10 +1,12 @@
 use chrono_tz::Tz;
 use cron::Schedule;
+use daemon_framework::ts;
 use serde::{Deserialize, Serialize};
 use utoipa::PartialSchema;
 use utoipa::openapi::{Object, RefOr, Schema};
 
 #[derive(Clone, Serialize, Deserialize, Debug, utoipa::ToSchema)]
+#[ts]
 #[serde(tag = "type")]
 pub enum ScheduleStep {
     #[serde(rename = "start")]
@@ -24,6 +26,7 @@ pub enum ScheduleStep {
 }
 
 #[derive(Clone, Copy, Hash, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
 pub enum ScheduleRunPolicy {
     #[serde(rename = "always")]
     Always,
@@ -34,9 +37,12 @@ pub enum ScheduleRunPolicy {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+#[ts]
 pub struct SchedulePayload {
     pub policy: ScheduleRunPolicy,
+    #[ts(type = "string")]
     pub schedule: Schedule,
+    #[ts(type = "string")]
     pub timezone: Tz,
     pub steps: Vec<ScheduleStep>,
 }

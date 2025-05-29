@@ -1,3 +1,4 @@
+use daemon_framework::ts;
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
@@ -90,6 +91,7 @@ use serde::{Deserialize, Serialize};
     }
   ]
 }))]
+#[ts]
 pub struct ResourceResponse {
     pub mem_total: u64,
     pub mem_used: u64,
@@ -103,6 +105,7 @@ pub struct ResourceResponse {
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash, utoipa::ToSchema)]
+#[ts]
 pub struct ResourceDisk {
     pub available: u64,
     pub total: u64,

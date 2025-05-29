@@ -38,5 +38,15 @@
       "external_ip": "0.0.0.0",
       "protocol": "tcp"
     }
-  ]
+  ],
+  "network": {
+    "internet_access": true,
+    "networks": [
+      {
+        "network": 1,
+        "ipv4": 2,
+        "ipv6": 2
+      }
+    ]
+  }
 }

@@ -1,6 +1,6 @@
 use crate::route::RouteArgs;
 use crate::service::process::HttpMethod;
-use proc_macro2::{Delimiter, Ident, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Ident, Literal, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::VecDeque;
 use syn::LitStr;
@@ -13,7 +13,7 @@ pub(crate) fn process(
     post_fn: &mut Vec<TokenTree>,
     result: &mut Vec<TokenTree>,
     operations: &mut TokenStream,
-) -> (Vec<TokenTree>, RouteArgs, Option<LitStr>) {
+) -> (Vec<TokenTree>, RouteArgs, Option<LitStr>, Option<Literal>) {
     let mut route_args = None;
     let mut pre_fn_result0 = VecDeque::new();
     let mut pre_fn_result1 = Vec::new();
@@ -188,9 +188,9 @@ pub(crate) fn process(
         }
     }
 
-    if let Some(desc) = description {
+    if let Some(desc) = &description {
         operations.extend(quote! { .description(Some(#desc)) });
     }
 
-    (pre_fn_result1, route_args, example)
+    (pre_fn_result1, route_args, example, description)
 }

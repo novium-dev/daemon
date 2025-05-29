@@ -48,6 +48,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
     let ErrorContent { ident, mut errors } = syn::parse2(input).expect("Expected error content");
 
     let mut content = TokenStream::new();
+    let mut values_impl = TokenStream::new();
     let mut response = TokenStream::new();
     let mut from = TokenStream::new();
     let mut openapi = TokenStream::new();
@@ -77,6 +78,8 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
                 if error_ident.to_string().eq("Communication") {
                     content.extend(quote! {
+                        #[ts(rename = #error_id)]
+                        #[ts(type = "any")]
                         #error_ident (#crate_prefix reqwest::Error),
                     });
 
@@ -85,6 +88,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                     });
                 } else {
                     content.extend(quote! {
+                        #[ts(rename = #error_id)]
                         #error_ident,
                     });
 
@@ -116,6 +120,9 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                         );
 
                     });
+                    values_impl.extend(quote! {
+                        #error_id,
+                    });
                 }
                 quote! { [< #error_ident >] }
             }
@@ -128,6 +135,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                 });
 
                 content.extend(quote! {
+                    #[ts(rename = #error_id)]
                     [< #category:camel #error_ident:camel >],
                 });
 
@@ -163,6 +171,9 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                         }
 
                     }
+                });
+                values_impl.extend(quote! {
+                    #error_id,
                 });
                 quote! { [< #category:camel #error_ident:camel >] }
             }
@@ -285,9 +296,13 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
         }
     }
 
+    let ts_crate_literal = LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+
     quote! {
         #crate_prefix paste::paste! {
             #[derive(Debug)]
+            #[#crate_prefix ts]
+            #[ts(crate = #ts_crate_literal)]
             pub enum #ident {
                 #content
             }
@@ -324,6 +339,10 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                     std::mem::swap(responses, &mut responses_owned);
                     #openapi
                     *responses = responses_owned;
+                }
+
+                fn error_values() -> &'static [&'static str] {
+                    &[ #values_impl ]
                 }
 
             }

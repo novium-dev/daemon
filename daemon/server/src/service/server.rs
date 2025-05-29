@@ -333,8 +333,8 @@ impl ServerService for Daemon {
         &self,
         ws: WebSocketUpgrade,
         server_id: u32,
-        cols: u32,
-        rows: u32,
+        cols: Option<u32>,
+        rows: Option<u32>,
         write: bool,
         timestamp: i64,
         verify: UserSignature,
@@ -357,8 +357,8 @@ impl ServerService for Daemon {
                 docker,
                 server_data,
                 socket,
-                Arc::new(AtomicU32::new(cols)),
-                Arc::new(AtomicU32::new(rows)),
+                Arc::new(AtomicU32::new(cols.unwrap_or_default())),
+                Arc::new(AtomicU32::new(rows.unwrap_or_default())),
                 write,
             )
         })))
@@ -391,8 +391,8 @@ impl ServerService for Daemon {
         &self,
         ws: WebSocketUpgrade,
         server_id: u32,
-        cols: u32,
-        rows: u32,
+        cols: Option<u32>,
+        rows: Option<u32>,
         command: JsonVec<String>,
         timestamp: i64,
         verify: UserSignature,
@@ -414,7 +414,15 @@ impl ServerService for Daemon {
 
         let docker = self.docker.clone();
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
-            exec_websocket_handle(server, server_data, docker, command.0, socket, cols, rows)
+            exec_websocket_handle(
+                server,
+                server_data,
+                docker,
+                command.0,
+                socket,
+                cols.unwrap_or_default(),
+                rows.unwrap_or_default(),
+            )
         })))
     }
 }

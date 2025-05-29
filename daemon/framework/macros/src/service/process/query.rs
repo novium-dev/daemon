@@ -6,6 +6,7 @@ use syn::LitStr;
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn process(
     crate_prefix: &TokenStream,
+    #[allow(unused_variables)] trait_ident: &Ident,
     fn_ident: &Ident,
     fn_args_identified: &[FunctionArgument],
     routes: &mut TokenStream,
@@ -15,6 +16,9 @@ pub(crate) fn process(
     client_def_body: &mut TokenStream,
     fn_def_args: &mut TokenStream,
     fn_def_call: &mut TokenStream,
+    #[cfg(feature = "ts")] types_impl: &mut TokenStream,
+    #[cfg(feature = "ts")] ts_func_body_url: &mut String,
+    #[cfg(feature = "ts")] ts_func_args_url: &mut indexmap::IndexMap<String, TokenStream>,
 ) {
     let fn_args_query: Vec<_> = fn_args_identified
         .iter()
@@ -52,7 +56,8 @@ pub(crate) fn process(
             });
 
             let variable_literal = LitStr::new(&arg_name.to_string(), arg_name.span());
-            let required = Ident::new(if required { "True" } else { "False" }, Span::call_site());
+            let required_indent =
+                Ident::new(if required { "True" } else { "False" }, Span::call_site());
 
             let desc = desc
                 .map(|d| d.into_token_stream())
@@ -64,9 +69,33 @@ pub(crate) fn process(
                     )
                     .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Query)
                     .description(Some(#desc))
-                    .required(#crate_prefix utoipa::openapi::Required::#required),
+                    .required(#crate_prefix utoipa::openapi::Required::#required_indent),
                 )
             });
+
+            #[cfg(feature = "ts")]
+            {
+                use convert_case::{Case, Casing};
+                ts_func_args_url
+                    .insert(arg_name.to_string().to_case(Case::Camel), arg_type.clone());
+
+                if !required {
+                    ts_func_body_url.push_str("if (");
+                    ts_func_body_url.push_str(&arg_name.to_string().to_case(Case::Camel));
+                    ts_func_body_url.push_str(" != null) { ");
+                }
+                ts_func_body_url.push_str("daemonResultUrl.searchParams.append('");
+                ts_func_body_url.push_str(&arg_name.to_string());
+                ts_func_body_url.push_str("', String(");
+                ts_func_body_url.push_str(&arg_name.to_string().to_case(Case::Camel));
+                ts_func_body_url.push_str("));");
+
+                if !required {
+                    ts_func_body_url.push_str(" }");
+                }
+
+                ts_func_body_url.push('\n');
+            }
 
             fn_def_args.extend(quote! { #arg_name: #arg_type, });
             fn_def_call.extend(quote! { #arg_name, });
@@ -84,9 +113,23 @@ pub(crate) fn process(
         client_def_body.extend(client_def_body_pre);
         client_def_body.extend(client_def_body_post);
 
+        #[cfg(not(feature = "ts"))]
+        let (ts_extra, ts_attr_extra) = { (TokenStream::new(), TokenStream::new()) };
+        #[cfg(feature = "ts")]
+        let (ts_extra, ts_attr_extra) = {
+            let ts_crate_literal =
+                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+
+            let ts_extra = quote! { #crate_prefix ts_rs::TS };
+            #[cfg(feature = "ts")]
+            let ts_attr_extra = quote! { #[ts(crate = #ts_crate_literal )]};
+            (ts_extra, ts_attr_extra)
+        };
+
         routes.extend(quote! {
             #crate_prefix paste::paste! {
-                #[derive(Debug, Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize)]
+                #[derive(Debug, Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize, #ts_extra)]
+                #ts_attr_extra
                 pub(crate) struct [< #fn_ident:camel Query >] {
                     #query_fields
                 }
@@ -102,5 +145,20 @@ pub(crate) fn process(
         });
         func_args
             .push(quote! { #crate_prefix axum::extract::Query< [< #fn_ident:camel Query >] > });
+
+        #[cfg(feature = "ts")]
+        {
+            let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
+            let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
+
+            types_impl.extend(quote! {
+                {
+                    println!("{}::{} Query", #trait_name, #fn_name);
+                    use __daemon_framework_routes::*;
+                    visitor.allowed.extend(<[< #fn_ident:camel Query >] as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
+                    <[< #fn_ident:camel Query >] as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
+                }
+            });
+        }
     }
 }

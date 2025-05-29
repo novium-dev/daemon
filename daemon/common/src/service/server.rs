@@ -100,8 +100,8 @@ pub trait ServerService {
     async fn server_terminal(
         &self,
         server_id: u32,
-        cols: u32,
-        rows: u32,
+        cols: Option<u32>,
+        rows: Option<u32>,
         write: bool,
         timestamp: i64,
         verify: UserSignature,
@@ -123,30 +123,45 @@ pub trait ServerService {
     async fn exec_server_interactive(
         &self,
         server_id: u32,
-        cols: u32,
-        rows: u32,
+        cols: Option<u32>,
+        rows: Option<u32>,
         command: JsonVec<String>,
         timestamp: i64,
         verify: UserSignature,
     ) -> Result<WebsocketResponse, _>;
 }
 
-pub trait ServiceServiceUserKeyExtension {
-    fn server_terminal_url_signed(&self, server_id: u32, cols: u32, rows: u32, write: bool) -> Url;
+pub trait ServerServiceUserKeyExtension {
+    fn server_terminal_url_signed(
+        &self,
+        server_id: u32,
+        cols: Option<u32>,
+        rows: Option<u32>,
+        write: bool,
+    ) -> Url;
 
     fn server_stats_url_signed(&self, server_id: u32) -> Url;
 
     fn exec_server_interactive_url_signed(
         &self,
         server_id: u32,
-        cols: u32,
-        rows: u32,
+        cols: Option<u32>,
+        rows: Option<u32>,
         command: JsonVec<String>,
     ) -> Url;
+
+    #[cfg(feature = "ts")]
+    fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor);
 }
 
-impl<T: ServerServiceURL + UserKeyProvider> ServiceServiceUserKeyExtension for T {
-    fn server_terminal_url_signed(&self, server_id: u32, cols: u32, rows: u32, write: bool) -> Url {
+impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T {
+    fn server_terminal_url_signed(
+        &self,
+        server_id: u32,
+        cols: Option<u32>,
+        rows: Option<u32>,
+        write: bool,
+    ) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature =
             UserSignature::new_terminal(self.key(), timestamp, self.node_id(), server_id, write);
@@ -162,13 +177,40 @@ impl<T: ServerServiceURL + UserKeyProvider> ServiceServiceUserKeyExtension for T
     fn exec_server_interactive_url_signed(
         &self,
         server_id: u32,
-        cols: u32,
-        rows: u32,
+        cols: Option<u32>,
+        rows: Option<u32>,
         command: JsonVec<String>,
     ) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature =
             UserSignature::new_exec(self.key(), timestamp, self.node_id(), server_id, &command);
         self.exec_server_interactive_url(server_id, cols, rows, command, timestamp, signature)
+    }
+
+    #[cfg(feature = "ts")]
+    fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor) {
+        visitor.visit_start(true, "serverTerminalUrlSigned");
+        visitor.visit_argument::<u32>("serverId");
+        visitor.visit_argument::<Option<u32>>("cols");
+        visitor.visit_argument::<Option<u32>>("rows");
+        visitor.visit_argument::<bool>("write");
+        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+const signature = await UserSignature.newTerminalAsync(this.userKey, timestamp, this.identifier, serverId, write);
+return this.serverTerminalUrl(serverId, cols, rows, write, timestamp, signature);"#, "URL");
+
+        visitor.visit_start(true, "serverStatsUrlSigned");
+        visitor.visit_argument::<u32>("serverId");
+        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+const signature = await UserSignature.newStatsAsync(this.userKey, timestamp, this.identifier, serverId);
+return this.serverStatsUrl(serverId, timestamp, signature);"#, "URL");
+
+        visitor.visit_start(true, "execServerInteractiveUrlSigned");
+        visitor.visit_argument::<u32>("serverId");
+        visitor.visit_argument::<Option<u32>>("cols");
+        visitor.visit_argument::<Option<u32>>("rows");
+        visitor.visit_argument::<JsonVec<String>>("command");
+        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+const signature = await UserSignature.newExecAsync(this.userKey, timestamp, this.identifier, serverId, command);
+return this.execServerInteractiveUrl(serverId, cols, rows, command, timestamp, signature);"#, "URL");
     }
 }

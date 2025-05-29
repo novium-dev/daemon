@@ -12,6 +12,7 @@ crate-type = ["rlib", "staticlib"]
 btrfs = []
 ssh = []
 docker = ["bollard"]
+ts = ["daemon_framework/ts"]
 
 [dependencies]
 serde.workspace = true

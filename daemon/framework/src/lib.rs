@@ -1,3 +1,6 @@
+#[cfg(feature = "ts")]
+pub mod ts;
+
 pub use async_trait::async_trait;
 pub use axum;
 use axum::body::BodyDataStream;
@@ -8,7 +11,8 @@ use bytes::Bytes;
 pub use daemon_framework_macros::define_error;
 pub use daemon_framework_macros::error;
 pub use daemon_framework_macros::service;
-use futures_util::Stream;
+pub use daemon_framework_macros::ts;
+use futures_util::{Stream, TryStreamExt};
 pub use http;
 use http::HeaderMap;
 pub use paste;
@@ -29,6 +33,8 @@ use std::pin::Pin;
 use std::{io, mem};
 use tokio::io::AsyncRead;
 use tokio_util::io::{ReaderStream, StreamReader};
+#[cfg(feature = "ts")]
+pub use ts_rs;
 pub use url;
 pub use urlencoding;
 pub use utoipa;
@@ -45,6 +51,8 @@ pub trait FrameworkDocumentedResponse {
         responses: &mut utoipa::openapi::ResponsesBuilder,
         schemas: &mut HashMap<String, RefOr<Schema>>,
     );
+
+    fn error_values() -> &'static [&'static str];
 }
 
 pub trait FrameworkClientImpl {
@@ -387,6 +395,10 @@ pub mod internal {
             Err(err) => T::from(err),
         }
     }
+
+    pub fn from_raw<T: From<reqwest::Response>>(response: reqwest::Response) -> T {
+        T::from(response)
+    }
 }
 
 pub trait MaybeUnit {
@@ -422,15 +434,19 @@ impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
     fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
         <Result<(), E>>::openapi(responses, schemas)
     }
+
+    fn error_values() -> &'static [&'static str] {
+        E::error_values()
+    }
 }
 
-impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
-    for Result<V, E>
+impl<V: ToSchema + MaybeUnit + 'static, E: FrameworkDocumentedResponse + 'static>
+    FrameworkDocumentedResponse for Result<V, E>
 {
     fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
         let mut responses_owned = ResponsesBuilder::new();
         mem::swap(responses, &mut responses_owned);
-        if TypeId::of::<V>() == TypeId::of::<()>() {
+        if V::unit().is_none() {
             responses_owned = responses_owned.response(
                 "204", //
                 Response::builder().description(SUCCESS_DESCRIPTION).build(),
@@ -457,9 +473,22 @@ impl<V: ToSchema + 'static, E: FrameworkDocumentedResponse + 'static> FrameworkD
 
         E::openapi(responses, schemas)
     }
+
+    fn error_values() -> &'static [&'static str] {
+        E::error_values()
+    }
 }
 
 pub struct FileResponse(pub Option<HeaderMap>, pub DataStream); // TODO: Add content type as parameter, when https://github.com/rust-lang/rust/issues/95174 is stable
+
+impl From<reqwest::Response> for FileResponse {
+    fn from(value: reqwest::Response) -> Self {
+        Self(
+            Some(value.headers().clone()),
+            DataStream::by_stream(value.bytes_stream().map_err(io::Error::other)),
+        )
+    }
+}
 
 impl IntoResponse for FileResponse {
     fn into_response(self) -> axum::response::Response {
@@ -484,10 +513,44 @@ impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
 
         E::openapi(responses, schemas)
     }
+
+    fn error_values() -> &'static [&'static str] {
+        E::error_values()
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct JsonVec<T: Clone>(pub Vec<T>);
+
+#[cfg(feature = "ts")]
+impl<T: Clone + ts_rs::TS> ts_rs::TS for JsonVec<T> {
+    type WithoutGenerics = <Vec<T> as ts_rs::TS>::WithoutGenerics;
+    const DOCS: Option<&'static str> = <Vec<T>>::DOCS;
+
+    fn ident() -> String {
+        <Vec<T>>::ident()
+    }
+
+    fn decl() -> String {
+        <Vec<T>>::decl()
+    }
+
+    fn decl_concrete() -> String {
+        <Vec<T>>::decl_concrete()
+    }
+
+    fn name() -> String {
+        <Vec<T>>::name()
+    }
+
+    fn inline() -> String {
+        <Vec<T>>::inline()
+    }
+
+    fn inline_flattened() -> String {
+        <Vec<T>>::inline_flattened()
+    }
+}
 
 impl<T: Clone> Deref for JsonVec<T> {
     type Target = Vec<T>;
@@ -575,6 +638,31 @@ impl<S: Send + Sync> FromRequest<S> for DataStream {
     }
 }
 
+#[cfg(feature = "ts")]
+impl ts_rs::TS for DataStream {
+    type WithoutGenerics = Self;
+
+    fn decl() -> String {
+        "type DataStream = Blob;".to_string()
+    }
+
+    fn decl_concrete() -> String {
+        Self::decl()
+    }
+
+    fn name() -> String {
+        "Blob".to_string()
+    }
+
+    fn inline() -> String {
+        Self::name()
+    }
+
+    fn inline_flattened() -> String {
+        Self::name()
+    }
+}
+
 #[macro_export]
 macro_rules! define_path_variable {
     ($name:ident $description:literal) => {
@@ -616,7 +704,7 @@ macro_rules! define_header_variable {
 
 #[macro_export]
 macro_rules! framework_router {
-    ($base:ident $var:ident { $($tr:path),* }) => {
+    ($base:tt $var:ident { $($tr:path),* }) => {
         ($crate::utoipa_axum::router::OpenApiRouter::new()
             $(
                 .merge(<$base as $tr>::routes(&$var))
@@ -626,6 +714,32 @@ macro_rules! framework_router {
                 .merge(<$base as $tr>::routes_user(&$var))
             )*
         )
+    };
+}
+
+#[cfg(feature = "ts")]
+#[macro_export]
+macro_rules! framework_ts_type_export {
+    ($base:ident $visitor:ident { $($tr:path),* }) => {
+        {
+
+            $(
+                <$base as $tr>::visit_types(&mut $visitor);
+            )*
+        }
+    };
+}
+
+#[cfg(feature = "ts")]
+#[macro_export]
+macro_rules! framework_ts_func_export {
+    ($base:ident $visitor:ident { $($tr:path),* }) => {
+        {
+
+            $(
+                <$base as $tr>::visit_funcs(&mut $visitor);
+            )*
+        }
     };
 }
 
