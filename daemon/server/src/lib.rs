@@ -50,6 +50,7 @@ pub struct Daemon {
     pub(crate) config: Arc<DaemonConfig>,
     pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
     pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, StorageData>>>,
+    pub(crate) server_task_cancellable: Arc<Mutex<JoinSet<()>>>,
     pub(crate) server_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) shutdown_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) shutdown_channel: Arc<Sender<()>>,

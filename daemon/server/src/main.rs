@@ -158,9 +158,7 @@ async fn run() {
 
     info!("Starting Webserver...");
 
-    daemon.serve_http().await.unwrap();
-
-    daemon.serve_ssh().await.unwrap();
+    daemon.serve_all().await.unwrap();
 
     daemon.hook_signals();
 

@@ -24,7 +24,7 @@ use tracing::{error, warn};
 
 pub(crate) async fn run(state: Daemon) {
     for (storage_id, storage_entry) in state.config.storage.clone() {
-        let mut server_task = state.server_task.lock().await;
+        let mut server_task = state.server_task_cancellable.lock().await;
         let state = state.clone();
         server_task.spawn_blocking(move || watch(state, storage_id, storage_entry));
     }

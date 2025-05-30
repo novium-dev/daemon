@@ -1,6 +1,7 @@
 use crate::Daemon;
 use axum::extract::Request;
 use axum::{Extension, Router};
+use axum_server::Handle;
 use daemon_common::framework_router;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::database::DatabaseService;
@@ -9,8 +10,10 @@ use daemon_common::service::network::NetworkService;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
+use std::time::Duration;
+use tokio::sync::broadcast::error::RecvError;
 use tower_http::trace::TraceLayer;
-use tracing::error;
+use tracing::{error, info};
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
@@ -92,24 +95,48 @@ impl Daemon {
         } else {
             None
         };
+        let handle = Handle::new();
         let mut server_task = self.server_task.lock().await;
         for listener in self.config.listeners.clone() {
+            let handle = handle.clone();
             let router = self.router();
             let rustls = rustls.clone();
             server_task.spawn(async move {
                 let _ = if let Some(rustls) = rustls {
                     axum_server::bind_rustls(listener, rustls)
+                        .handle(handle)
                         .serve(router.into_make_service())
                         .await
                         .inspect_err(|_err| error!("Failed to serve https server!"))
                 } else {
                     axum_server::bind(listener)
+                        .handle(handle)
                         .serve(router.into_make_service())
                         .await
                         .inspect_err(|_err| error!("Failed to serve http server!"))
                 };
             });
         }
+        let mut recv = self.shutdown_channel.subscribe();
+        tokio::task::spawn(async move {
+            loop {
+                match recv.recv().await {
+                    Err(RecvError::Lagged(_)) => {}
+                    Ok(_) | Err(RecvError::Closed) => {
+                        handle.graceful_shutdown(Some(Duration::from_secs(30)));
+                        loop {
+                            tokio::time::sleep(Duration::from_secs(1)).await;
+                            let count = handle.connection_count();
+                            if count == 0 {
+                                break;
+                            }
+                            info!("HTTP Connections still alive: {}", count);
+                        }
+                        break;
+                    }
+                }
+            }
+        });
         Ok(())
     }
 }
