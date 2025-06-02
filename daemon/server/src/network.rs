@@ -1,6 +1,6 @@
 use bollard::Docker;
-use bollard::models::{Ipam, IpamConfig};
-use bollard::network::{CreateNetworkOptions, DisconnectNetworkOptions};
+use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest, NetworkDisconnectRequest};
+use bollard::query_parameters::InspectNetworkOptions;
 use daemon_common::service::error_docker_failure::FromDockerFailure;
 use sqlx::{Error, Executor, MySql, Transaction, query, query_as};
 use tracing::error;
@@ -39,11 +39,11 @@ impl Network {
         let ipv4_split = [(ipv4 >> 8) as u8, ipv4 as u8];
 
         docker
-            .create_network(CreateNetworkOptions {
+            .create_network(NetworkCreateRequest {
                 name: format!("{}{}", crate::common::NETWORK_PREFIX, id),
-                enable_ipv6: true,
-                internal: true,
-                ipam: Ipam {
+                enable_ipv6: Some(true),
+                internal: Some(true),
+                ipam: Some(Ipam {
                     config: Some(vec![
                         IpamConfig {
                             subnet: Some(format!(
@@ -67,8 +67,8 @@ impl Network {
                         },
                     ]),
                     ..Ipam::default()
-                },
-                ..CreateNetworkOptions::default()
+                }),
+                ..NetworkCreateRequest::default()
             })
             .await
             .inspect_err(|err| error!("Failed to create network: {:?}", err))
@@ -103,9 +103,9 @@ impl Network {
             .inspect_err(|err| error!("Failed to delete network: {:?}", err))?;
 
         match docker
-            .inspect_network::<String>(
+            .inspect_network(
                 &format!("{}{}", crate::common::NETWORK_PREFIX, self.id),
-                None,
+                None::<InspectNetworkOptions>,
             )
             .await
         {
@@ -115,9 +115,9 @@ impl Network {
                         let _ = docker
                             .disconnect_network(
                                 &format!("{}{}", crate::common::NETWORK_PREFIX, self.id),
-                                DisconnectNetworkOptions {
-                                    container,
-                                    force: true,
+                                NetworkDisconnectRequest {
+                                    container: Some(container),
+                                    force: Some(true),
                                 },
                             )
                             .await;

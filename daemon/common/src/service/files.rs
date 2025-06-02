@@ -1,12 +1,12 @@
 use super::*;
-use crate::payload::files::FileEntry;
-use crate::payload::server::ServerFileWrite;
+use crate::service::server::ServerFileWrite;
 use crate::service::service;
 use crate::user::*;
 use chrono::Utc;
 use daemon_framework::axum_extra::TypedHeader;
 use daemon_framework::axum_extra::headers::ContentLength;
-use daemon_framework::{DataStream, FileResponse, define_query_variable};
+use daemon_framework::{DataStream, FileResponse, define_query_variable, ts};
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 define_error!(file {
@@ -217,4 +217,18 @@ return this.serverDownloadFileUserUrl(serverId, path, limit, timestamp, signatur
 const signature = await UserSignature.newServerFileUploadAsync(this.userKey, timestamp, this.identifier, serverId, path);
 return this.serverUploadFileUserUrl(serverId, path, timestamp, signature);"#, "URL");
     }
+}
+
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[schema(example = json!({"name": "eula.txt", "uid": 0, "gid": 0, "mode": 0o644, "size": 64, "path": null}))]
+#[ts]
+pub struct FileEntry {
+    pub name: String,
+    pub uid: u32,
+    pub gid: u32,
+    pub mode: u32,
+    pub size: u64,
+    pub relative_path: String, // for recursive listing like /plugins/essentials
+    pub path: Option<String>,  // for symlinks
+    pub archive: bool,
 }

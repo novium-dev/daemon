@@ -1,8 +1,8 @@
 use crate::storage::StorageIdentifier;
 use crate::{Daemon, storage};
 use async_trait::async_trait;
-use daemon_common::FileResponse;
-use daemon_common::payload::backup::BackupResponseEntry;
+use daemon_common::service::FileResponse;
+use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::backup::error::{
     ServerCreateBackupError, ServerCreateBackupOrderError, ServerDeleteBackupError,
@@ -58,9 +58,9 @@ impl BackupService for Daemon {
         verify: UserSignature,
     ) -> Result<FileResponse, ServerDownloadBackupUserError> {
         verify.verify_server_backup_download::<ServerDownloadBackupUserError>(
-            &self.config.user_key,
+            &self.root.user_key,
             timestamp,
-            &self.config.identifier,
+            &self.key.id,
             server_id,
             &backup_storage,
             backup_id,
@@ -86,9 +86,9 @@ impl BackupService for Daemon {
         compression: String,
     ) -> Result<FileResponse, ServerDownloadRealtimeUserError> {
         verify.verify_server_realtime_download::<ServerDownloadRealtimeUserError>(
-            &self.config.user_key,
+            &self.root.user_key,
             timestamp,
-            &self.config.identifier,
+            &self.key.id,
             server_id,
             &compression,
         )?;

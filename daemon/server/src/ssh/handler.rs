@@ -5,7 +5,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read_timeout};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::Dir;
-use daemon_common::server::BackendAuthServerPermissions;
+use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
 use russh::keys::{HashAlg, PublicKey};
 use russh::server::{Auth, Handler, Msg, Session};

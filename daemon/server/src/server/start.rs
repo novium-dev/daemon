@@ -6,8 +6,10 @@ use crate::sync::Mutex;
 use crate::utils::from_mib;
 use crate::{Daemon, ServerData, utils};
 use bollard::Docker;
-use bollard::container::{Config, CreateContainerOptions, NetworkingConfig};
-use bollard::models::{EndpointSettings, HostConfig, PortBinding};
+use bollard::models::{
+    ContainerCreateBody, EndpointSettings, HostConfig, NetworkingConfig, PortBinding,
+};
+use bollard::query_parameters::{CreateContainerOptions, StartContainerOptions};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, OpenOptions};
 use ringbuffer::RingBuffer;
@@ -213,10 +215,10 @@ impl FetchedServer {
         docker
             .create_container(
                 Some(CreateContainerOptions {
-                    name: Self::container_name(self.id),
-                    platform: None,
+                    name: Some(Self::container_name(self.id)),
+                    ..CreateContainerOptions::default()
                 }),
-                Config {
+                ContainerCreateBody {
                     tty: Some(true),
                     open_stdin: Some(true),
 
@@ -235,7 +237,7 @@ impl FetchedServer {
                     env: Some(env),
 
                     networking_config: Some(NetworkingConfig {
-                        endpoints_config: networks,
+                        endpoints_config: Some(networks),
                     }),
 
                     stop_timeout: Some(self.stop_timeout as i64),
@@ -284,7 +286,7 @@ impl FetchedServer {
 
                         ..HostConfig::default()
                     }),
-                    ..Config::default()
+                    ..ContainerCreateBody::default()
                 },
             )
             .await
@@ -297,7 +299,10 @@ impl FetchedServer {
         );
 
         docker
-            .start_container::<String>(&Self::container_name(self.id), None)
+            .start_container(
+                &Self::container_name(self.id),
+                None::<StartContainerOptions>,
+            )
             .await
             .map_err(ServerStartError::Docker)?;
 

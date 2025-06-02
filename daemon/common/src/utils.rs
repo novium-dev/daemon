@@ -1,19 +1,17 @@
-use lazy_static::lazy_static;
-use regex::Regex;
 use url::Url;
-
-lazy_static! {
-    static ref CGROUP_REGEX: Regex = Regex::new("docker-([a-z0-9]{64}).scope").unwrap();
-}
 
 #[cfg(feature = "docker")]
 pub async fn identify_container_by_pid(
     docker: &bollard::Docker,
     pid: i32,
 ) -> Result<u32, std::io::Error> {
+    use bollard::query_parameters::InspectContainerOptions;
     use std::io;
     use tokio::fs::File;
     use tokio::io::AsyncReadExt;
+    lazy_static::lazy_static! {
+        static ref CGROUP_REGEX: regex::Regex = regex::Regex::new("docker-([a-z0-9]{64}).scope").unwrap();
+    }
 
     let mut file = File::open(format!("/proc/{}/cgroup", pid)).await?;
     let mut buf = String::new();
@@ -23,7 +21,10 @@ pub async fn identify_container_by_pid(
         None => Err(io::Error::other("Not in a docker cgroup")),
         Some(captures) => {
             let capture = &captures[1];
-            let container = match docker.inspect_container(capture, None).await {
+            let container = match docker
+                .inspect_container(capture, None::<InspectContainerOptions>)
+                .await
+            {
                 Ok(container) => container,
                 Err(err) => return Err(io::Error::other(err)),
             };

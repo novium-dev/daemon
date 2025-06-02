@@ -4,10 +4,10 @@ use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
 use axum::extract::ws::Message;
 use bollard::Docker;
-use bollard::container::ListContainersOptions;
 use bollard::models::HealthStatusEnum;
+use bollard::query_parameters::{InspectContainerOptions, ListContainersOptions};
 use chrono::DateTime;
-use daemon_common::server::PublicServerState;
+use daemon_common::service::server::PublicServerState;
 use serde::{Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -54,7 +54,10 @@ impl FetchedServer {
         let list = docker
             .list_containers(Some(ListContainersOptions {
                 all: true,
-                filters: HashMap::from([("name".to_owned(), vec![Self::container_name(id)])]),
+                filters: Some(HashMap::from([(
+                    "name".to_owned(),
+                    vec![Self::container_name(id)],
+                )])),
                 ..ListContainersOptions::default()
             }))
             .await?;
@@ -66,7 +69,7 @@ impl FetchedServer {
             })
         } else {
             let inspect = docker
-                .inspect_container(&Self::container_name(id), None)
+                .inspect_container(&Self::container_name(id), None::<InspectContainerOptions>)
                 .await?;
             let created = inspect
                 .created

@@ -4,6 +4,7 @@ use crate::server::stop::ServerStopError;
 use crate::utils::ChannelWriteData;
 #[cfg(not(feature = "no_tty_size_please"))]
 use bollard::Docker;
+use bollard::query_parameters::ResizeContainerTTYOptions;
 use ringbuffer::AllocRingBuffer;
 #[cfg(not(feature = "no_tty_size_please"))]
 use std::collections::HashSet;
@@ -89,9 +90,9 @@ impl FetchedServer {
         docker
             .resize_container_tty(
                 &Self::container_name(id),
-                bollard::container::ResizeContainerTtyOptions {
-                    width: cols as u16,
-                    height: rows as u16,
+                ResizeContainerTTYOptions {
+                    w: cols as i32,
+                    h: rows as i32,
                 },
             )
             .await

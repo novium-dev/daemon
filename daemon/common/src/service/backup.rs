@@ -1,9 +1,9 @@
 use super::*;
-use crate::payload::backup::BackupResponseEntry;
 use crate::service::service;
 use crate::user::*;
 use chrono::Utc;
-use daemon_framework::{FileResponse, define_query_variable};
+use daemon_framework::{FileResponse, define_query_variable, ts};
+use serde::{Deserialize, Serialize};
 use url::Url;
 
 define_path_variable!(
@@ -191,4 +191,14 @@ return this.serverDownloadBackupUserUrl(serverId, backupStorage, backupId, times
 const signature = await UserSignature.newServerRealtimeDownloadAsync(this.userKey, timestamp, this.identifier, serverId, compression);
 return this.serverDownloadRealtimeUserUrl(serverId, timestamp, signature, compression);"#, "URL");
     }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[schema(example = json!({"time": 1731160477597i64, "storage": "local"}))]
+#[ts]
+pub struct BackupResponseEntry {
+    pub time: i64,
+    pub storage: String,
+    pub name: Option<String>,
+    pub size: Option<u64>,
 }

@@ -3,7 +3,7 @@ use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::backup::BackupNameExtension;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
-use daemon_common::payload::backup::BackupResponseEntry;
+use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;

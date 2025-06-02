@@ -1,3 +1,4 @@
+use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use url::{Host, Url};
@@ -10,14 +11,24 @@ pub struct HostAndPort {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NodeRegistrationRequest {
-    pub identifier: String,
     pub base_url: Url,
-    pub token: String,
 
     pub ssh: Option<HostAndPort>,
+    pub cert: Vec<u8>,
+    pub csr: Vec<u8>,
 
     pub default_bind: String,
     pub default_host: String,
+
+    pub storages: HashMap<String, ServerStorage>,
+    pub backups: HashMap<String, BackupStorage>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct NodeUpdateRequest {
+    pub base_url: Url,
+
+    pub ssh: Option<HostAndPort>,
 
     pub storages: HashMap<String, ServerStorage>,
     pub backups: HashMap<String, BackupStorage>,
@@ -52,5 +63,22 @@ impl BackupStorage {
             (BackupStorage::Btrfs(_), ServerStorage::Directory) => false,
             (BackupStorage::Archive, _) => true,
         }
+    }
+}
+
+bitflags! {
+    #[repr(transparent)]
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+    pub struct BackendAuthServerPermissions: i32 {
+        const TERMINAL_READ = 1 << 0;
+        const TERMINAL_WRITE = 1 << 1;
+
+        const FILES_READ = 1 << 2;
+        const FILES_WRITE = 1 << 3;
+
+        const CONTROL_VIEW = 1 << 6;
+        const CONTROL_POWER = 1 << 7;
+
+        const BACKUP_DOWNLOAD = 1 << 8;
     }
 }

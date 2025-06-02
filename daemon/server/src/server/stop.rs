@@ -1,6 +1,7 @@
 use crate::ServerData;
 use crate::server::FetchedServer;
 use bollard::Docker;
+use bollard::query_parameters::{KillContainerOptions, StopContainerOptions};
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::DerefMut;
@@ -36,7 +37,7 @@ impl FetchedServer {
         Self::update_status0(self.id, self.locks.clone(), docker, &server_data).await;
         drop(server_data);
         docker
-            .stop_container(&Self::container_name(self.id), None)
+            .stop_container(&Self::container_name(self.id), None::<StopContainerOptions>)
             .await
             .map_err(ServerStopError::Docker)?;
         Ok(())
@@ -56,7 +57,7 @@ impl FetchedServer {
         }
         drop(server_data);
         docker
-            .kill_container::<String>(&Self::container_name(self.id), None)
+            .kill_container(&Self::container_name(self.id), None::<KillContainerOptions>)
             .await
             .map_err(ServerStopError::Docker)?;
         Ok(())

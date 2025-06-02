@@ -4,7 +4,7 @@ use crate::sync::Mutex;
 use crate::terminal::{TerminalData, new_session};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
-use daemon_common::server::BackendAuthServerPermissions;
+use daemon_common::node::BackendAuthServerPermissions;
 use russh::server::{Msg, Session};
 use russh::{ChannelId, ChannelStream};
 use sqlx::__rt::timeout;

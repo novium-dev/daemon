@@ -1,6 +1,6 @@
 use crate::ssh::sftp::{DaemonSftpSession, FileHandle, internal_directory_attributes, sftp_err};
 use cap_async_std::fs::*;
-use daemon_common::server::BackendAuthServerPermissions;
+use daemon_common::node::BackendAuthServerPermissions;
 use indexmap::{IndexMap, IndexSet};
 use russh_sftp::protocol::*;
 use std::io::ErrorKind;

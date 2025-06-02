@@ -3,7 +3,7 @@ pub(crate) mod files;
 pub(crate) mod r#impl;
 
 use cap_async_std::fs::*;
-use daemon_common::server::BackendAuthServerPermissions;
+use daemon_common::node::BackendAuthServerPermissions;
 use indexmap::IndexMap;
 use russh_sftp::protocol::*;
 use std::collections::HashMap;

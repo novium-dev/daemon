@@ -5,8 +5,11 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::sync::Mutex;
 use crate::{Daemon, ctlsock, schedule, sql, storage};
-use bollard::models::{Ipam, IpamConfig};
-use bollard::network::CreateNetworkOptions;
+use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
+use bollard::query_parameters::{
+    InspectNetworkOptions, KillContainerOptions, ListContainersOptions,
+};
+use daemon_common::key::{DaemonKey, DaemonRootKey};
 use ed25519_dalek::SigningKey;
 use libc::{SIGINT, SIGTERM};
 use reqwest::Client;
@@ -31,9 +34,15 @@ pub enum DaemonInitError {
 }
 
 impl Daemon {
-    pub async fn init(config: DaemonConfig) -> Result<Self, DaemonInitError> {
+    pub async fn init(
+        config: DaemonConfig,
+        root: DaemonRootKey,
+        key: DaemonKey,
+    ) -> Result<Self, DaemonInitError> {
         Self::init_embedded(
             config,
+            root,
+            key,
             Url::parse("http://localhost:3000/").unwrap(),
             SigningKey::from_bytes(&[0; 32]),
         )
@@ -42,6 +51,9 @@ impl Daemon {
 
     pub async fn init_embedded(
         config: DaemonConfig,
+        root: DaemonRootKey,
+        key: DaemonKey,
+
         mut base_url: Url,
         user_key: SigningKey,
     ) -> Result<Self, DaemonInitError> {
@@ -55,7 +67,10 @@ impl Daemon {
             .unwrap();
 
         match docker
-            .inspect_network::<String>(crate::common::NETWORK_DEFAULT, None)
+            .inspect_network(
+                crate::common::NETWORK_DEFAULT,
+                None::<InspectNetworkOptions>,
+            )
             .await
         {
             Ok(_) => {}
@@ -63,9 +78,9 @@ impl Daemon {
                 status_code: 404, ..
             }) => {
                 docker
-                    .create_network(CreateNetworkOptions {
+                    .create_network(NetworkCreateRequest {
                         name: crate::common::NETWORK_DEFAULT.to_string(),
-                        options: HashMap::from([
+                        options: Some(HashMap::from([
                             (
                                 "com.docker.network.bridge.enable_icc".to_string(),
                                 false.to_string(),
@@ -74,17 +89,17 @@ impl Daemon {
                                 "com.docker.network.bridge.enable_ip_masquerade".to_string(),
                                 false.to_string(),
                             ),
-                        ]),
-                        internal: false,
-                        enable_ipv6: true,
-                        ipam: Ipam {
+                        ])),
+                        internal: Some(false),
+                        enable_ipv6: Some(true),
+                        ipam: Some(Ipam {
                             config: Some(vec![IpamConfig {
                                 subnet: Some(crate::common::BRIDGE_DEFAULT_IPV6_PREFIX.to_string()),
                                 ..IpamConfig::default()
                             }]),
                             ..Ipam::default()
-                        },
-                        ..CreateNetworkOptions::default()
+                        }),
+                        ..NetworkCreateRequest::default()
                     })
                     .await
                     .unwrap();
@@ -95,7 +110,10 @@ impl Daemon {
             }
         }
         match docker
-            .inspect_network::<String>(crate::common::NETWORK_INTERNET, None)
+            .inspect_network(
+                crate::common::NETWORK_INTERNET,
+                None::<InspectNetworkOptions>,
+            )
             .await
         {
             Ok(_) => {}
@@ -103,9 +121,9 @@ impl Daemon {
                 status_code: 404, ..
             }) => {
                 docker
-                    .create_network(CreateNetworkOptions {
+                    .create_network(NetworkCreateRequest {
                         name: crate::common::NETWORK_INTERNET.to_string(),
-                        options: HashMap::from([
+                        options: Some(HashMap::from([
                             (
                                 "com.docker.network.bridge.enable_icc".to_string(),
                                 false.to_string(),
@@ -114,10 +132,10 @@ impl Daemon {
                                 "com.docker.network.bridge.enable_ip_masquerade".to_string(),
                                 true.to_string(),
                             ),
-                        ]),
-                        internal: false,
-                        enable_ipv6: true,
-                        ipam: Ipam {
+                        ])),
+                        internal: Some(false),
+                        enable_ipv6: Some(true),
+                        ipam: Some(Ipam {
                             config: Some(vec![IpamConfig {
                                 subnet: Some(
                                     crate::common::BRIDGE_INTERNET_IPV6_PREFIX.to_string(),
@@ -125,8 +143,8 @@ impl Daemon {
                                 ..IpamConfig::default()
                             }]),
                             ..Ipam::default()
-                        },
-                        ..CreateNetworkOptions::default()
+                        }),
+                        ..NetworkCreateRequest::default()
                     })
                     .await
                     .unwrap();
@@ -172,6 +190,10 @@ impl Daemon {
             docker: Arc::new(docker),
             conn: Arc::new(conn),
             client: Arc::new(Client::default()),
+
+            root: Arc::new(root),
+            key: Arc::new(key),
+
             base_url,
             user_key,
         };
@@ -265,7 +287,7 @@ impl Daemon {
     async fn reattach_container(&self) {
         if let Ok(containers) = self
             .docker
-            .list_containers::<String>(None)
+            .list_containers(None::<ListContainersOptions>)
             .await
             .inspect_err(|err| {
                 warn!(
@@ -349,7 +371,10 @@ impl Daemon {
                             );
                             let _ = self
                                 .docker
-                                .kill_container::<String>(&FetchedServer::container_name(id), None)
+                                .kill_container(
+                                    &FetchedServer::container_name(id),
+                                    None::<KillContainerOptions>,
+                                )
                                 .await;
                         }
                     }

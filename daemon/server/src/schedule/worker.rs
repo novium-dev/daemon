@@ -9,7 +9,7 @@ use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::server;
 use chrono::{TimeDelta, TimeZone, Utc};
 use cron::Schedule;
-use daemon_common::payload::schedule::{ScheduleRunPolicy, ScheduleStep};
+use daemon_common::service::schedule::{ScheduleRunPolicy, ScheduleStep};
 use sqlx::__rt::timeout;
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};

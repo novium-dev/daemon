@@ -1,29 +1,21 @@
 pub use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
-use axum_server::tls_rustls::RustlsConfig;
-use base64::prelude::*;
-use ed25519_dalek::VerifyingKey;
 use reqwest::Url;
 use russh::keys::PrivateKey;
 use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
-    pub identifier: String,
-    pub token: String,
     pub backend_url: Url,
-    #[serde(deserialize_with = "deserialize_user_key")]
-    #[serde(serialize_with = "serialize_user_key")]
-    pub user_key: VerifyingKey,
     pub listeners: HashSet<SocketAddr>,
     pub origin: String,
     pub storage: HashMap<String, StorageEntry>,
     pub backup: HashMap<String, BackupEntry>,
     pub database: String,
-    pub ssl: Option<SSLConfig>,
+    pub tls: Option<TlsConfig>,
     pub ssh: Option<SSHConfig>,
     #[serde(default)]
     pub network: NetworkConfig,
@@ -107,29 +99,8 @@ impl BackupEntry {
     }
 }
 
-fn deserialize_user_key<'de, D>(deserializer: D) -> Result<VerifyingKey, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    use base64::Engine;
-    use base64::prelude::*;
-    use serde::de::Error;
-
-    let str = String::deserialize(deserializer)?;
-    let mut buffer = Vec::with_capacity(32);
-    BASE64_STANDARD
-        .decode_vec(str, &mut buffer)
-        .map_err(D::Error::custom)?;
-    VerifyingKey::from_bytes(buffer.as_slice().try_into().map_err(D::Error::custom)?)
-        .map_err(D::Error::custom)
-}
-
-fn serialize_user_key<S: Serializer>(key: &VerifyingKey, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(&BASE64_STANDARD.encode(key.as_bytes()))
-}
-
 #[derive(Clone, Serialize, Deserialize)]
-pub struct SSLConfig {
+pub struct TlsConfig {
     pub private_key: PathBuf,
     pub certificate: PathBuf,
 }
@@ -137,12 +108,6 @@ pub struct SSLConfig {
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct NetworkConfig {
     // TODO: Assign dedicated ipv6 address to container, see #312
-}
-
-impl SSLConfig {
-    pub async fn as_rustls(&self) -> Result<RustlsConfig, std::io::Error> {
-        RustlsConfig::from_pem_file(&self.certificate, &self.private_key).await
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -57,7 +57,7 @@ pub(crate) async fn password_auth(
         .join("/api/internal/auth/password")
         .map_err(io::Error::other)?;
     url.query_pairs_mut()
-        .append_pair("node", &state.config.identifier);
+        .append_pair("node", &state.key.id.to_string());
 
     state
         .client
@@ -91,7 +91,7 @@ pub(crate) async fn publickey_auth(
         .join("/api/internal/auth/publickey")
         .map_err(io::Error::other)?;
     url.query_pairs_mut()
-        .append_pair("node", &state.config.identifier);
+        .append_pair("node", &state.key.id.to_string());
 
     state
         .client

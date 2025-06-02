@@ -1,8 +1,8 @@
 use crate::Daemon;
 use async_trait::async_trait;
-use daemon_common::payload::resource::{ResourceDisk, ResourceResponse};
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::resource::error::ResourceInfoError;
+use daemon_common::service::resource::{ResourceDisk, ResourceResponse};
 use num_traits::ToPrimitive;
 use sqlx::query_as;
 use sqlx::types::BigDecimal;

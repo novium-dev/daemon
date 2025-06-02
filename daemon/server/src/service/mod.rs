@@ -1,15 +1,20 @@
 use crate::Daemon;
+use crate::key::{DaemonCertResolver, TlsAcceptor};
+use axum::Router;
 use axum::extract::Request;
-use axum::{Extension, Router};
-use axum_server::Handle;
-use daemon_common::framework_router;
+use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
+use axum_server::{Handle, Server};
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
+use daemon_common::service::framework_router;
 use daemon_common::service::network::NetworkService;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
+use rustls::ServerConfig;
+use rustls::server::WebPkiClientVerifier;
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 use tower_http::trace::TraceLayer;
@@ -58,12 +63,9 @@ impl Daemon {
             .allow_methods([axum::http::Method::GET])
             .allow_headers(tower_http::cors::AllowHeaders::any());
 
+        #[allow(unused_variables)]
         let (mut router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
-            .merge(
-                routes
-                    .layer(axum::middleware::from_fn(middleware::middleware))
-                    .layer(Extension(self.config.clone())),
-            )
+            .merge(routes.layer(axum::middleware::from_fn(middleware::middleware)))
             .merge(routes_user.layer(cors))
             .split_for_parts();
 
@@ -86,15 +88,21 @@ impl Daemon {
     }
 
     pub async fn serve_http(&self) -> Result<(), anyhow::Error> {
-        let rustls = if let Some(ssl) = &self.config.ssl {
-            Some(
-                ssl.as_rustls()
-                    .await
-                    .inspect_err(|_err| error!("Failed to parse ssl certs!"))?,
+        let mut rustls = ServerConfig::builder()
+            .with_client_cert_verifier(
+                WebPkiClientVerifier::builder(self.root.cert_store.clone())
+                    .allow_unauthenticated()
+                    .allow_unknown_revocation_status()
+                    .build()?,
             )
-        } else {
-            None
-        };
+            .with_cert_resolver(Arc::new(DaemonCertResolver(
+                self.key.clone(),
+                None,
+                self.key.id,
+            )));
+        rustls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
+        let rustls = RustlsConfig::from_config(Arc::new(rustls));
+
         let handle = Handle::new();
         let mut server_task = self.server_task.lock().await;
         for listener in self.config.listeners.clone() {
@@ -102,19 +110,12 @@ impl Daemon {
             let router = self.router();
             let rustls = rustls.clone();
             server_task.spawn(async move {
-                let _ = if let Some(rustls) = rustls {
-                    axum_server::bind_rustls(listener, rustls)
-                        .handle(handle)
-                        .serve(router.into_make_service())
-                        .await
-                        .inspect_err(|_err| error!("Failed to serve https server!"))
-                } else {
-                    axum_server::bind(listener)
-                        .handle(handle)
-                        .serve(router.into_make_service())
-                        .await
-                        .inspect_err(|_err| error!("Failed to serve http server!"))
-                };
+                let _ = Server::bind(listener)
+                    .acceptor(TlsAcceptor(RustlsAcceptor::new(rustls.clone())))
+                    .handle(handle)
+                    .serve(router.into_make_service())
+                    .await
+                    .inspect_err(|_err| error!("Failed to serve https server!"));
             });
         }
         let mut recv = self.shutdown_channel.subscribe();

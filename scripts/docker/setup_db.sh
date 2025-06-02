@@ -6,6 +6,4 @@ echo "USE mysql;FLUSH PRIVILEGES ;GRANT ALL ON *.* TO 'root'@'%' identified by '
 
 mariadbd --user=root --skip-name-resolve --skip-networking=0 --silent-startup &
 
-sleep 5
-
-cat mysql/db.sql | mariadb --user root
+until mariadb-admin ping --user root; do sleep 1; done

@@ -1,4 +1,4 @@
-use crate::server::BackendAuthServerPermissions;
+use crate::node::BackendAuthServerPermissions;
 use serde::{Deserialize, Serialize};
 
 pub type DaemonBackendAuthResponse = Vec<DaemonBackendAuthServer>;

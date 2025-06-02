@@ -1,7 +1,7 @@
 target/
 .idea/
-mysql/data/
-mysql/sockets/
+mariadb/data/
+mariadb/sockets/
 valkey/data/
 valkey/sockets/
 /storage/

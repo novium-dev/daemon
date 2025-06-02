@@ -7,8 +7,7 @@ use crate::storage::StorageIdentifier;
 use async_trait::async_trait;
 use axum_extra::TypedHeader;
 use axum_extra::headers::ContentLength;
-use daemon_common::payload::files::FileEntry;
-use daemon_common::payload::server::ServerFileWrite;
+use daemon_common::service::files::FileEntry;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::files::error::{
     ServerCopyFileError, ServerCreateArchiveError, ServerCreateDirectoryError,
@@ -17,8 +16,9 @@ use daemon_common::service::files::error::{
     ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
     ServerWriteFileByTemplateError, ServerWriteFileByUrlError,
 };
+use daemon_common::service::server::ServerFileWrite;
+use daemon_common::service::{DataStream, FileResponse};
 use daemon_common::user::UserSignature;
-use daemon_common::{DataStream, FileResponse};
 use url::Url;
 
 #[async_trait]
@@ -80,9 +80,9 @@ impl FilesService for Daemon {
         verify: UserSignature,
     ) -> Result<FileResponse, ServerDownloadFileUserError> {
         verify.verify_server_file_download::<ServerDownloadFileUserError>(
-            &self.config.user_key,
+            &self.root.user_key,
             timestamp,
-            &self.config.identifier,
+            &self.key.id,
             server_id,
             &path,
         )?;
@@ -111,9 +111,9 @@ impl FilesService for Daemon {
         data: DataStream,
     ) -> Result<(), ServerUploadFileUserError> {
         verify.verify_server_file_upload::<ServerUploadFileUserError>(
-            &self.config.user_key,
+            &self.root.user_key,
             timestamp,
-            &self.config.identifier,
+            &self.key.id,
             server_id,
             &path,
         )?;

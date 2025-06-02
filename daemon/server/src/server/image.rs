@@ -3,7 +3,8 @@ use crate::server::{FetchedServer, Server};
 use crate::{Daemon, ServerData};
 use async_std::stream::StreamExt;
 use bollard::Docker;
-use bollard::image::{BuildImageOptions, ListImagesOptions};
+use bollard::query_parameters::{BuildImageOptions, ListImagesOptions};
+use http_body_util::Full;
 use indexmap::IndexMap;
 use ringbuffer::AllocRingBuffer;
 use sqlx::{Executor, MySql, query, query_scalar};
@@ -102,10 +103,10 @@ impl FetchedServer {
 
         let images = docker
             .list_images(Some(ListImagesOptions {
-                filters: HashMap::from([(
+                filters: Some(HashMap::from([(
                     "reference".to_owned(),
                     required.keys().cloned().collect(),
-                )]),
+                )])),
                 ..ListImagesOptions::default()
             }))
             .await
@@ -153,13 +154,15 @@ impl FetchedServer {
 
                 let mut image = docker.build_image(
                     BuildImageOptions {
-                        buildargs: args,
-                        t: tag,
+                        buildargs: Some(args),
+                        t: Some(tag),
                         rm: true,
                         ..BuildImageOptions::default()
                     },
                     None,
-                    Some(bytes::Bytes::from(dockerfile)),
+                    Some(http_body_util::Either::Left(Full::new(bytes::Bytes::from(
+                        dockerfile,
+                    )))),
                 );
 
                 let mut last_progress = Vec::new();

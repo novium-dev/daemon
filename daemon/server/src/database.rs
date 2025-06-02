@@ -1,9 +1,9 @@
 use crate::sql;
 use crate::sql::MultiTransactionApply;
-use daemon_common::payload::database::{DatabaseUserPayload, DatabaseUserPermissions};
 use daemon_common::service::database::error_database_invalid_hash::FromDatabaseInvalidHash;
 use daemon_common::service::database::error_database_invalid_identifier::FromDatabaseInvalidIdentifier;
 use daemon_common::service::database::error_database_permissionless_entry::FromDatabasePermissionlessEntry;
+use daemon_common::service::database::{DatabaseUserPayload, DatabaseUserPermissions};
 use regex::Regex;
 use sqlx::{Error, Executor, MySql, query, query_as};
 use std::collections::{HashMap, HashSet};

@@ -18,11 +18,7 @@ use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
 use base64::Engine;
 use base64::prelude::BASE64_STANDARD;
-use daemon_common::payload::server::{
-    ServerBuildImage, ServerBuildPayload, ServerFileWrite, ServerNetworkPayload,
-    ServerPortEntryPayload, ServerResourcePayload,
-};
-use daemon_common::server::PublicServerState;
+use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::server::error::{
     CreateServerError, DeleteServerError, ExecServerError, ExecServerInteractiveError,
@@ -31,8 +27,12 @@ use daemon_common::service::server::error::{
 };
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
 use daemon_common::service::server::error_server_image_missing_tag::FromServerImageMissingTag;
+use daemon_common::service::server::{
+    ServerBuildImage, ServerBuildPayload, ServerFileWrite, ServerNetworkPayload,
+    ServerPortEntryPayload, ServerResourcePayload,
+};
+use daemon_common::service::{JsonVec, WebsocketResponse};
 use daemon_common::user::UserSignature;
-use daemon_common::{JsonVec, WebsocketResponse};
 use sqlx::{Connection, MySql, Transaction, query, query_scalar};
 use std::collections::HashSet;
 use std::ops::{Deref, DerefMut};
@@ -340,9 +340,9 @@ impl ServerService for Daemon {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, ServerTerminalError> {
         verify.verify_terminal::<ServerTerminalError>(
-            &self.config.user_key,
+            &self.root.user_key,
             timestamp,
-            &self.config.identifier,
+            &self.key.id,
             server_id,
             write,
         )?;
@@ -372,9 +372,9 @@ impl ServerService for Daemon {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, ServerStatsError> {
         verify.verify_stats::<ServerStatsError>(
-            &self.config.user_key,
+            &self.root.user_key,
             timestamp,
-            &self.config.identifier,
+            &self.key.id,
             server_id,
         )?;
 
@@ -398,9 +398,9 @@ impl ServerService for Daemon {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, ExecServerInteractiveError> {
         verify.verify_exec::<ExecServerInteractiveError>(
-            &self.config.user_key,
+            &self.root.user_key,
             timestamp,
-            &self.config.identifier,
+            &self.key.id,
             server_id,
             &command,
         )?;

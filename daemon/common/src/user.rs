@@ -8,6 +8,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::error;
+use uuid::Uuid;
 
 define_query_variable!(verify "The signature to ensure the request is authorized");
 define_query_variable!(timestamp "The timestamp the request was authorized. This is needed for verification");
@@ -30,11 +31,11 @@ macro_rules! signature_impl {
 
         paste::paste! {
 
-            pub fn [< new_ $id >](key: &SigningKey, timestamp: i64, node_identifier: &str, server_id: u32, $( $arg )*) -> Self {
+            pub fn [< new_ $id >](key: &SigningKey, timestamp: i64, node_identifier: &uuid::Uuid, server_id: u32, $( $arg )*) -> Self {
                 Self::new(key, timestamp, node_identifier, server_id, $name, $extra)
             }
 
-            pub fn [< verify_ $id >]<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(&self, key: &VerifyingKey, timestamp: i64, node_identifier: &str, server_id: u32, $( $arg )*) -> Result<(), E> {
+            pub fn [< verify_ $id >]<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(&self, key: &Option<VerifyingKey>, timestamp: i64, node_identifier: &uuid::Uuid, server_id: u32, $( $arg )*) -> Result<(), E> {
                 self.verify(key, timestamp, node_identifier, server_id, $name, $extra)
             }
 
@@ -85,7 +86,7 @@ impl UserSignature {
     fn new(
         key: &SigningKey,
         timestamp: i64,
-        node_identifier: &str,
+        node_identifier: &Uuid,
         server_id: u32,
         name: &str,
         extra: Option<String>,
@@ -107,13 +108,16 @@ impl UserSignature {
 
     fn verify<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(
         &self,
-        key: &VerifyingKey,
+        key: &Option<VerifyingKey>,
         timestamp: i64,
-        node_identifier: &str,
+        node_identifier: &Uuid,
         server_id: u32,
         name: &str,
         extra: Option<String>,
     ) -> Result<(), E> {
+        let key = key
+            .as_ref()
+            .ok_or(<E as FromAuthSignatureInvalid>::from())?;
         key.verify(
             format!(
                 "{}-{}-{}-{}{}",
@@ -283,7 +287,7 @@ impl daemon_framework::ts_rs::TS for UserSignature {
 }
 
 pub trait UserKeyProvider {
-    fn node_id(&self) -> &str;
+    fn node_id(&self) -> &Uuid;
 
     fn key(&self) -> &SigningKey;
 }

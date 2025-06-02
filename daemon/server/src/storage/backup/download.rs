@@ -12,7 +12,7 @@ use daemon_common::service::error_compression_unsupported::FromCompressionUnsupp
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
-use daemon_common::{DataStream, FileResponse};
+use daemon_common::service::{DataStream, FileResponse};
 use serde_json::json;
 use std::collections::HashSet;
 use std::io;

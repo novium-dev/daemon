@@ -19,6 +19,14 @@ use daemon_framework::{define_header_variable, define_path_variable, error};
 use std::io;
 use std::io::ErrorKind;
 
+pub use daemon_framework::DataStream;
+pub use daemon_framework::FileResponse;
+pub use daemon_framework::FrameworkClientImpl;
+pub use daemon_framework::JsonVec;
+pub use daemon_framework::MultiRouterExtension;
+pub use daemon_framework::WebsocketResponse;
+pub use daemon_framework::framework_router;
+
 pub mod backup;
 pub mod database;
 pub mod debug;

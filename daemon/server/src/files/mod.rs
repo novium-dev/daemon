@@ -17,7 +17,7 @@ use crate::storage::StorageIdentifier;
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt};
 use daemon_common::files::FileMode;
-use daemon_common::payload::files::FileEntry;
+use daemon_common::service::files::FileEntry;
 use tracing::error;
 
 pub(crate) use archive::{create_archive, unpack_archive};

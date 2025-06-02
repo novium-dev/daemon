@@ -5,6 +5,7 @@ pub(crate) mod setup;
 use crate::config::DaemonConfig;
 use clap::*;
 use daemon::*;
+use daemon_common::key::{DaemonKey, DaemonRootKey};
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt;
 use tracing::{error, info};
@@ -152,9 +153,21 @@ async fn run() {
         .inspect_err(|_err| error!("Failed to read config file"))
         .unwrap();
 
+    let mut root = Vec::new();
+    let mut key = Vec::new();
+    {
+        let mut root_file = File::open("daemon_root.pem").await.unwrap();
+        root_file.read_to_end(&mut root).await.unwrap();
+
+        let mut key_file = File::open("daemon.pem").await.unwrap();
+        key_file.read_to_end(&mut key).await.unwrap();
+    }
+    let root = DaemonRootKey::parse(&root).unwrap().0;
+    let key = DaemonKey::parse(&root, &key).unwrap();
+
     info!("Starting Daemon on version {}", GIT_HASH);
 
-    let daemon = Daemon::init(config).await.unwrap();
+    let daemon = Daemon::init(config, root, key).await.unwrap();
 
     info!("Starting Webserver...");
 

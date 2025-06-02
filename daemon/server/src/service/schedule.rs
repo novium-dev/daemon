@@ -2,11 +2,11 @@ use crate::Daemon;
 use crate::schedule::worker::task;
 use crate::utils::server_required;
 use async_trait::async_trait;
-use daemon_common::payload::schedule::{SchedulePayload, ScheduleRunPolicy};
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::schedule::error::{
     CreateScheduleError, DeleteScheduleError, UpdateScheduleError,
 };
+use daemon_common::service::schedule::{SchedulePayload, ScheduleRunPolicy};
 use sqlx::{Connection, query, query_scalar};
 use std::ops::Deref;
 use tracing::error;

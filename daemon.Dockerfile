@@ -1,22 +1,24 @@
-FROM rust:latest AS build
+FROM rust:alpine AS build
 
-RUN apt update && apt upgrade -y && apt install -y curl mariadb-server mariadb-client git clang-19 lld-19 llvm-19 libbtrfs-dev && \
-    rustup default stable
+RUN apk add --no-cache ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev git mariadb mariadb-client musl-dev llvm20 clang20 clang20-static lld20 curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 COPY . /work
 WORKDIR /work
 
+ARG FEATURES="ci"
+
 ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C linker-plugin-lto -C lto=thin -C embed-bitcode -C link-arg=-Wl,--icf=safe"
-ARG FEATURES="default"
 
 RUN RUSTFLAGS="-C opt-level=0" cargo install sqlx-cli --debug --no-default-features --features mysql,rustls
 
+ENV RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld $FLAGS"
+
 # build
-RUN FEATURES="$FEATURES" RUSTFLAGS="-C linker=clang-19 -C link-arg=-fuse-ld=lld $FLAGS" ./scripts/docker/build_daemon.sh
+RUN FEATURES="$FEATURES" ./scripts/docker/build_daemon.sh
 
-FROM debian:latest
+FROM alpine:latest
 
-RUN apt update && apt upgrade -y && apt install -y vim
+RUN ln -sf /bin/daemon /usr/bin/daemon
 
 RUN mkdir -p /var/lib/novium_daemon && chown 25335:25335 /var/lib/novium_daemon
 
@@ -24,7 +26,11 @@ WORKDIR /var/lib/novium_daemon
 
 STOPSIGNAL SIGINT
 
-# Copy the binary directly to root directory (/)
-COPY --from=build /work/target/release/daemon /daemon
+EXPOSE 443
 
-ENTRYPOINT ["/daemon"]
+RUN apk add --no-cache vim --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+
+# Copy the binary directly to bin directory (/bin)
+COPY --from=build /work/target/x86_64-unknown-linux-musl/release/daemon /bin/daemon
+
+ENTRYPOINT ["/bin/daemon"]

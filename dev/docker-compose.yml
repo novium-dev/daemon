@@ -1,19 +1,13 @@
 services:
-  mysql:
+  mariadb:
     image: mariadb:latest
-    container_name: daemon_mysql
+    container_name: daemon_mariadb
     network_mode: 'none'
     environment:
     - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1
-    - MARIA_DB_USER=daemon
     volumes:
-    - ../mysql/sockets:/var/run/mysqld
-    - ../mysql/data:/var/lib/mysql
-    - ../target/debug/libdaemon_mariadb_plugin.so:/usr/lib/mysql/plugin/libdaemon_mariadb_plugin.so
-    - ../mysql/db.sql:/docker-entrypoint-initdb.d/schema.sql:ro
-    - /var/run/docker.sock:/var/run/docker.sock
-    privileged: true
-    pid: host
+    - ../mariadb/sockets:/var/run/mysqld
+    - ../mariadb/data:/var/lib/mysql
   valkey:
     image: valkey/valkey
     container_name: daemon_valkey

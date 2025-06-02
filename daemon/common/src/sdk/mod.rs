@@ -1,4 +1,6 @@
 use ed25519_dalek::SigningKey;
+use http::Uri;
+use std::error::Error;
 
 pub mod builder;
 
@@ -16,7 +18,9 @@ use crate::service::{
 };
 use crate::user::UserKeyProvider;
 use daemon_framework::FrameworkClientImpl;
-use reqwest::{Client, Url};
+use reqwest::{Client, ResolveServerName, Url};
+use rustls::pki_types::{DnsName, ServerName};
+use uuid::Uuid;
 
 #[allow(private_bounds)]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}
@@ -30,7 +34,7 @@ pub type DaemonSDKWithUserKey = DaemonSDK<WithUserKey>;
 #[derive(Debug, Clone)]
 pub struct DaemonSDK<T: DaemonSDKExtra + Send + Sync> {
     client: Client,
-    identifier: String,
+    identifier: Uuid,
     base_url: Url,
     extra: T,
 }
@@ -59,11 +63,22 @@ impl<T: DaemonSDKExtra + Send + Sync> DaemonServicesURL for DaemonSDK<T> {}
 impl DaemonServicesURLWithUserKey for DaemonSDK<WithUserKey> {}
 
 impl UserKeyProvider for DaemonSDK<WithUserKey> {
-    fn node_id(&self) -> &str {
+    fn node_id(&self) -> &Uuid {
         &self.identifier
     }
 
     fn key(&self) -> &SigningKey {
         &self.extra.0
+    }
+}
+
+pub(crate) struct DaemonSDKServerNameResolver(pub Uuid);
+
+impl ResolveServerName for DaemonSDKServerNameResolver {
+    fn resolve(&self, _uri: &Uri) -> Result<ServerName<'static>, Box<dyn Error + Sync + Send>> {
+        Ok(ServerName::DnsName(DnsName::try_from(format!(
+            "node-{}",
+            self.0
+        ))?))
     }
 }

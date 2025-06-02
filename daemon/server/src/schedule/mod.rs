@@ -2,7 +2,7 @@ use crate::Daemon;
 use crate::schedule::worker::task;
 use chrono_tz::Tz;
 use cron::Schedule;
-use daemon_common::payload::schedule::ScheduleRunPolicy;
+use daemon_common::service::schedule::ScheduleRunPolicy;
 use sqlx::types::JsonValue;
 use sqlx::{query, query_scalar};
 use std::str::FromStr;

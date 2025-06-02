@@ -2,11 +2,11 @@ use crate::database::{Database, DatabasePayloadFunctionExtension, DatabaseState,
 use crate::utils::database;
 use crate::{Daemon, sql};
 use async_trait::async_trait;
-use daemon_common::payload::database::{DatabaseUserPayload, DatabaseUserPermissions};
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::database::error::{
     CreateDatabaseError, DeleteDatabaseError, UpdateDatabaseError,
 };
+use daemon_common::service::database::{DatabaseUserPayload, DatabaseUserPermissions};
 use sqlx::{Connection, query};
 use std::collections::HashMap;
 use std::ops::Deref;

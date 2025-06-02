@@ -5,7 +5,7 @@ use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
 use crate::utils::ChannelWriteData;
 use crate::{Daemon, StorageData};
-use daemon_common::server::ServerStats;
+use daemon_common::service::server::ServerStats;
 use sqlx::query;
 use std::collections::HashMap;
 use std::fs::File;

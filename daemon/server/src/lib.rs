@@ -11,6 +11,7 @@ mod storage;
 
 mod ctlsock;
 pub mod init;
+pub mod key;
 mod network;
 mod schedule;
 mod service;
@@ -39,10 +40,12 @@ use crate::config::DaemonConfig;
 use crate::storage::StorageIdentifier;
 use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
-use daemon_common::FrameworkClientImpl;
+use daemon_common::key::{DaemonKey, DaemonRootKey};
+use daemon_common::service::FrameworkClientImpl;
 use daemon_common::service::{DaemonServices, DaemonServicesURL, DaemonServicesURLWithUserKey};
 use daemon_common::user::UserKeyProvider;
 use std::sync::Arc;
+use uuid::Uuid;
 
 pub const GIT_HASH: &str = env!("GIT_HASH");
 #[derive(Clone)]
@@ -61,6 +64,9 @@ pub struct Daemon {
     pub(crate) client: Arc<Client>,
     pub(crate) base_url: Url,
     pub(crate) user_key: SigningKey,
+
+    pub(crate) root: Arc<DaemonRootKey>,
+    pub(crate) key: Arc<DaemonKey>,
 }
 
 impl DaemonServices for Daemon {}
@@ -76,8 +82,8 @@ impl FrameworkClientImpl for Daemon {
     }
 }
 impl UserKeyProvider for Daemon {
-    fn node_id(&self) -> &str {
-        &self.config.identifier
+    fn node_id(&self) -> &Uuid {
+        &self.key.id
     }
 
     fn key(&self) -> &SigningKey {

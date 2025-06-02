@@ -5,9 +5,11 @@ use crate::utils::ChannelWriteData;
 use crate::{Daemon, ServerData};
 use async_std::prelude::Stream;
 use async_std::stream::StreamExt;
-use bollard::container::{AttachContainerOptions, LogOutput, Stats, StatsOptions};
+use bollard::container::LogOutput;
 use bollard::errors::Error;
-use daemon_common::server::ServerStats;
+use bollard::models::ContainerStatsResponse;
+use bollard::query_parameters::{AttachContainerOptions, InspectContainerOptions, StatsOptions};
+use daemon_common::service::server::ServerStats;
 use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
 use std::ops::{Add, Deref, DerefMut};
@@ -34,14 +36,14 @@ pub(crate) async fn attach(
 ) -> Result<(), ServerStartError> {
     let result = state
         .docker
-        .attach_container::<String>(
+        .attach_container(
             &FetchedServer::container_name(server_id),
             Some(AttachContainerOptions {
-                logs: Some(true),
-                stderr: Some(true),
-                stdout: Some(true),
-                stdin: Some(true),
-                stream: Some(true),
+                logs: true,
+                stderr: true,
+                stdout: true,
+                stdin: true,
+                stream: true,
                 ..AttachContainerOptions::default()
             }),
         )
@@ -92,7 +94,11 @@ pub(crate) async fn watch(
     cpu_max: f32,
     ram_max: i64,
     swap_max: i64,
-    mut result2: impl Stream<Item = Result<Stats, Error>> + Sized + Send + Unpin + 'static,
+    mut result2: impl Stream<Item = Result<ContainerStatsResponse, Error>>
+    + Sized
+    + Send
+    + Unpin
+    + 'static,
     server_data_arc: Arc<Mutex<ServerData>>,
     storage_lock: OwnedRwLockReadGuard<(), ()>,
     storage_value: Arc<(AtomicI64, AtomicI64)>,
@@ -121,7 +127,7 @@ pub(crate) async fn watch(
             }
             stat = result2.next() => {
                 if let Some(Ok(stats)) = stat {
-                    let _ = stats_sender.send(ChannelWriteData::Stats(<Stats as Into<ServerStats>>::into(stats).with_disk(storage_value.0.load(Ordering::Relaxed)).with_max(cpu_max, ram_max, swap_max, storage_value.1.load(Ordering::Relaxed))));
+                    let _ = stats_sender.send(ChannelWriteData::Stats(<ContainerStatsResponse as Into<ServerStats>>::into(stats).with_disk(storage_value.0.load(Ordering::Relaxed)).with_max(cpu_max, ram_max, swap_max, storage_value.1.load(Ordering::Relaxed))));
                 }
             }
             _elapsed = tokio::time::sleep_until(next) => {
@@ -138,7 +144,10 @@ pub(crate) async fn watch(
     drop(storage_lock);
     let mut failure = if let Ok(inspection) = state
         .docker
-        .inspect_container(&FetchedServer::container_name(server_id), None)
+        .inspect_container(
+            &FetchedServer::container_name(server_id),
+            None::<InspectContainerOptions>,
+        )
         .await
     {
         inspection

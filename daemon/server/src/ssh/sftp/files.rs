@@ -33,7 +33,7 @@ pub(crate) use write::write;
 use crate::ssh::sftp::{DaemonSftpSession, FileHandle};
 use crate::utils::parse_path;
 use cap_async_std::fs::*;
-use daemon_common::server::BackendAuthServerPermissions;
+use daemon_common::node::BackendAuthServerPermissions;
 use russh_sftp::protocol::*;
 use std::path::PathBuf;
 use std::sync::Arc;

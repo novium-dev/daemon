@@ -17,7 +17,7 @@ fn main() {
         #[cfg(target_os = "linux")]
         {
             if let Ok(path) = PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
-                .join("../../mysql/sockets/mysqld.sock")
+                .join("../../mariadb/sockets/mysqld.sock")
                 .canonicalize()
             {
                 println!(
@@ -28,7 +28,7 @@ fn main() {
         }
 
         #[cfg(target_os = "macos")]
-        println!("cargo:rustc-env=DATABASE_URL=mysql://root@mysql.mac.orb.local/daemon");
+        println!("cargo:rustc-env=DATABASE_URL=mysql://root@mariadb.mac.orb.local/daemon");
     }
 
     #[cfg(feature = "btrfs")]

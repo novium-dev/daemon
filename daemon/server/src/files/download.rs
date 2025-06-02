@@ -9,7 +9,7 @@ use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::error_file_limit_reached::FromFileLimitReached;
-use daemon_common::{DataStream, FileResponse};
+use daemon_common::service::{DataStream, FileResponse};
 use std::io;
 use std::io::ErrorKind;
 use std::ops::Deref;

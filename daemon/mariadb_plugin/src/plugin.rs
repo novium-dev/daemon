@@ -4,6 +4,8 @@ use crate::plugin::proxy::authenticate_proxy_mode;
 use crate::types::{AuthStatus, PluginVIO, PluginVIOInfoProtocol, ServerAuthInfo};
 use bollard::Docker;
 
+use bollard::query_parameters::InspectNetworkOptions;
+use lazy_static::lazy_static;
 use libc::{SO_PEERCRED, socklen_t, ucred};
 use std::error::Error;
 use std::ffi::{CString, c_char, c_uchar, c_void};
@@ -12,26 +14,23 @@ use std::mem::{MaybeUninit, size_of};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
 use std::os::fd::{FromRawFd, IntoRawFd};
 use std::str::FromStr;
-use std::sync::RwLock;
 use tokio::runtime::Runtime;
 
-static DOCKER: tokio::sync::RwLock<Option<Docker>> = tokio::sync::RwLock::const_new(None);
-static RUNTIME: RwLock<Option<Runtime>> = RwLock::new(None);
+lazy_static! {
+    static ref DOCKER: Result<Docker, bollard::errors::Error> =
+        Docker::connect_with_unix_defaults();
+    static ref RUNTIME: Result<Runtime, io::Error> = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build();
+}
 
 pub fn init() -> Result<(), i32> {
-    *DOCKER.blocking_write() = Some(Docker::connect_with_unix_defaults().map_err(|_err| -1)?);
-    *RUNTIME.write().unwrap() = Some(
-        tokio::runtime::Builder::new_multi_thread()
-            .enable_all()
-            .build()
-            .map_err(|_err| -1)?,
-    );
+    DOCKER.as_ref().map_err(|_err| -1)?;
+    RUNTIME.as_ref().map_err(|_err| -1)?;
     Ok(())
 }
 
 pub fn deinit() -> Result<(), i32> {
-    *DOCKER.blocking_write() = None;
-    *RUNTIME.write().unwrap() = None;
     Ok(())
 }
 
@@ -56,12 +55,7 @@ pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
                 Err(err) => return Err(err.into()),
             };
             let _ = tcp.into_raw_fd();
-            RUNTIME
-                .read()
-                .unwrap()
-                .as_ref()
-                .unwrap()
-                .block_on(identify_tcp(addr))
+            RUNTIME.as_ref()?.block_on(identify_tcp(addr))
         }
         PluginVIOInfoProtocol::MYSQL_VIO_SOCKET => {
             let mut cred: MaybeUninit<ucred> = MaybeUninit::uninit();
@@ -79,10 +73,7 @@ pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
                 }
 
                 RUNTIME
-                    .read()
-                    .unwrap()
-                    .as_ref()
-                    .unwrap()
+                    .as_ref()?
                     .block_on(identify_unix(cred.assume_init()))
             }
         }
@@ -117,11 +108,8 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
     let mut matching = None;
 
     let network = DOCKER
-        .read()
-        .await
-        .as_ref()
-        .unwrap()
-        .inspect_network::<String>(crate::NETWORK_DEFAULT, None)
+        .as_ref()?
+        .inspect_network(crate::NETWORK_DEFAULT, None::<InspectNetworkOptions>)
         .await?;
     if let Some(containers) = network.containers {
         for network in containers.values() {
@@ -158,11 +146,8 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
     }
     if matching.is_none() {
         let network = DOCKER
-            .read()
-            .await
-            .as_ref()
-            .unwrap()
-            .inspect_network::<String>(crate::NETWORK_INTERNET, None)
+            .as_ref()?
+            .inspect_network(crate::NETWORK_INTERNET, None::<InspectNetworkOptions>)
             .await?;
         if let Some(containers) = network.containers {
             for network in containers.values() {
@@ -225,7 +210,7 @@ async unsafe fn identify_unix(cred: ucred) -> Result<u32, Box<dyn Error>> {
     {
         println!("Connection through pid: {}", pid);
     }
-    daemon_common::utils::identify_container_by_pid(DOCKER.read().await.as_ref().unwrap(), pid)
+    daemon_common::utils::identify_container_by_pid(DOCKER.as_ref()?, pid)
         .await
         .map_err(|err| err.into())
 }

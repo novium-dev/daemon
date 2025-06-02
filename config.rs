@@ -1,4 +1,3 @@
-
 pub const LABEL_NAME: &str = "cloud.novium.daemon.server";
 pub const IMAGE_NAME: &str = "novium-daemon-image";
 pub const CONTAINER_PREFIX: &str = "novium-daemon_";
@@ -39,3 +38,6 @@ pub const DAEMON_BACKUP_NAME_XATTR: &str = "user.novium_daemon.backup_name";
 
 pub const BRIDGE_DEFAULT_IPV6_PREFIX: &str = "fdcb:c049:22d3:a::/64";
 pub const BRIDGE_INTERNET_IPV6_PREFIX: &str = "fdcb:c049:22d3:b::/64";
+
+pub const DAEMON_ROOT_KEY_COMMON_NAME: &str = "Novium CA";
+pub const DAEMON_BACKEND_KEY_COMMON_NAME: &str = "Novium Backend";
