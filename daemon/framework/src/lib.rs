@@ -128,9 +128,9 @@ pub mod internal {
     impl<T: Serialize + MaybeUnit + 'static> IntoResponse for FrameworkJsonResponse<T> {
         fn into_response(self) -> Response {
             if T::unit().is_some() {
-                StatusCode::NO_CONTENT.into_response()
-            } else {
                 Json(self.0).into_response()
+            } else {
+                StatusCode::NO_CONTENT.into_response()
             }
         }
     }
