@@ -167,8 +167,8 @@ export class UserSignature {
     return await ed.verifyAsync(this.signature, UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), publicKey);
   }
 
-  private static content(timestamp: bigint, node_identifier: string, server_id: number, name: string, extra: string | null): string {
-    return `${name}-${node_identifier}-${server_id}-${timestamp}${extra === null ? "" : extra}`;
+  private static content(timestamp: bigint, node_identifier: string, server_id: number, name: string, extra: string | null): Buffer {
+    return Buffer.from(`${name}-${node_identifier}-${server_id}-${timestamp}${extra === null ? "" : extra}`, 'utf8');
   }
 
   toString(): string {
@@ -249,7 +249,7 @@ impl<'de> Deserialize<'de> for UserSignature {
         D: Deserializer<'de>,
     {
         let decoded = BASE64_STANDARD
-            .decode(<&str>::deserialize(deserializer)?)
+            .decode(<String>::deserialize(deserializer)?)
             .map_err(D::Error::custom)?;
         Signature::from_slice(&decoded)
             .map_err(D::Error::custom)

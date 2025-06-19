@@ -129,6 +129,10 @@ impl TSClassFunctionVisitor {
 
 pub trait FrameworkTSResponse {
     fn visit_ts_response() -> String;
+
+    fn visit_ts_response_type() -> &'static str;
+
+    fn visit_ts_response_parse() -> &'static str;
 }
 
 impl<V: MaybeUnit + ts_rs::TS, E> FrameworkTSResponse for Result<V, E> {
@@ -136,14 +140,30 @@ impl<V: MaybeUnit + ts_rs::TS, E> FrameworkTSResponse for Result<V, E> {
         if V::unit().is_some() {
             "return { Ok: null };".to_string()
         } else {
-            format!("return {{ Ok: await response.json() as {} }};", V::name())
+            format!("return {{ Ok: response.data as {} }};", V::name())
         }
+    }
+
+    fn visit_ts_response_type() -> &'static str {
+        "json"
+    }
+
+    fn visit_ts_response_parse() -> &'static str {
+        "(axiosResponse as AxiosResponse).data"
     }
 }
 
 impl<E> FrameworkTSResponse for Result<FileResponse, E> {
     fn visit_ts_response() -> String {
-        "return { Ok: await response.blob() };".to_string()
+        "return { Ok: response.data as Readable };".to_string()
+    }
+
+    fn visit_ts_response_type() -> &'static str {
+        "stream"
+    }
+
+    fn visit_ts_response_parse() -> &'static str {
+        "await new Response((axiosResponse as AxiosResponse).data as Readable).json()"
     }
 }
 
@@ -159,11 +179,11 @@ impl<E: TS> TS for TSResponse<Result<FileResponse, E>> {
     }
 
     fn name() -> String {
-        format!("{{ Ok : Blob }} | {{ Err : {} }}", E::name())
+        format!("{{ Ok : Readable }} | {{ Err : {} }}", E::name())
     }
 
     fn inline() -> String {
-        format!("{{ Ok : Blob }} | {{ Err : {} }}", E::inline())
+        format!("{{ Ok : Readable }} | {{ Err : {} }}", E::inline())
     }
 
     fn inline_flattened() -> String {

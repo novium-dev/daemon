@@ -79,12 +79,11 @@ pub(crate) fn process(
             #[cfg(feature = "ts")]
             {
                 use convert_case::{Case, Casing};
-                ts_options_body.push_str("requestOptions.body = ");
+                ts_options_body.push_str("request.data = ");
                 ts_options_body.push_str(&arg_name.to_string().to_case(Case::Camel));
                 ts_options_body.push_str(";\n");
-                ts_options_body.push_str(
-                    "requestOptions.headers['content-type'] = 'application/octet-stream';\n",
-                );
+                ts_options_body
+                    .push_str("request.headers['content-type'] = 'application/octet-stream';\n");
             }
         } else {
             #[cfg(feature = "ts")]
@@ -111,11 +110,10 @@ pub(crate) fn process(
                     }
                 });
 
-                ts_options_body.push_str("requestOptions.body = JSON.stringify(");
+                ts_options_body.push_str("request.data = ");
                 ts_options_body.push_str(&arg_name.to_string().to_case(Case::Camel));
-                ts_options_body.push_str(");\n");
-                ts_options_body
-                    .push_str("requestOptions.headers['content-type'] = 'application/json';\n");
+                ts_options_body.push_str(";\n");
+                ts_options_body.push_str("request.headers['content-type'] = 'application/json';\n");
             }
 
             http_args.extend(quote! {
@@ -246,7 +244,7 @@ pub(crate) fn process(
                 }
             });
 
-            ts_options_body.push_str("requestOptions.body = JSON.stringify({ ");
+            ts_options_body.push_str("request.data = { ");
             #[allow(unstable_name_collisions)]
             let arg_names: String = fn_args_payload
                 .iter()
@@ -254,9 +252,8 @@ pub(crate) fn process(
                 .intersperse(", ".to_string())
                 .collect();
             ts_options_body.push_str(&arg_names);
-            ts_options_body.push_str(" });\n");
-            ts_options_body
-                .push_str("requestOptions.headers['content-type'] = 'application/json';\n");
+            ts_options_body.push_str(" };\n");
+            ts_options_body.push_str("request.headers['content-type'] = 'application/json';\n");
         }
     }
 }

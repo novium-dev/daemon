@@ -35,6 +35,7 @@ fn export_ts() {
     use crate::user::UserSignature;
 
     use crate::service::backup::BackupServiceUserKeyExtension;
+    use crate::service::database::DatabaseUserPermissions;
     use crate::service::files::FilesServiceUserKeyExtension;
     use crate::service::server::ServerServiceUserKeyExtension;
 
@@ -51,6 +52,11 @@ fn export_ts() {
 
     let mut out = String::new();
     out += "import * as ed from '@noble/ed25519';\n";
+    out += "import { AxiosRequestConfig, AxiosInstance, ResponseType as AxiosResponseType, AxiosError, AxiosResponse } from 'axios';\n";
+    out += "import axios from 'axios'\n";
+    out += "import * as https from 'node:https';\n";
+    out += "import { Readable } from 'node:stream';\n";
+    out += "import * as forge from 'node-forge';\n";
     out += "\n";
     out += &visitor.out;
     out += "\n";
@@ -69,23 +75,28 @@ fn export_ts() {
     out += "\n";
     out += &format!(
         r#"
-type DaemonSDKRequestInit = {{ method: string, headers: Record<string, string>, body?: BodyInit }};
+type DaemonSDKRequest = {{ url: string, method: string, headers: Record<string, string>, data?: any, responseType: AxiosResponseType }};
 
 export class DaemonSDK {{
   private readonly baseUrl: string;
   protected readonly identifier: string;
-  private readonly headers: Record<string, string>;
+  private readonly client: AxiosInstance;
 
-  constructor(baseUrl: string, identifier: string, token: string | null, headers: Record<string, string> = {{}}) {{
+  constructor(baseUrl: string, identifier: string, daemonRootKey: string, backendKey: string, headers: Record<string, string> = {{}}) {{
     if (!baseUrl.endsWith("/")) {{
       baseUrl += "/";
     }}
     this.baseUrl = baseUrl;
     this.identifier = identifier;
-    if (token != null) {{
-      headers['Authorization'] = `Bearer ${{token}}`;
-    }}
-    this.headers = headers;
+    this.client = axios.create({{
+      headers: headers,
+      httpsAgent: new https.Agent({{
+        key: backendKey,
+        cert: backendKey,
+        ca: daemonRootKey,
+        servername: `node-${{identifier}}`,
+      }}),
+    }});
   }}
 
 {}
@@ -95,9 +106,25 @@ export class DaemonSDK {{
 export class DaemonSDKWithUserKey extends DaemonSDK {{
   private readonly userKey: string | Uint8Array;
 
-  constructor(baseUrl: string, identifier: string, token: string | null, userKey: string | Uint8Array, headers: Record<string, string> = {{}}) {{
-    super(baseUrl, identifier, token, headers);
-    this.userKey = userKey;
+  constructor(baseUrl: string, identifier: string, daemonRootKey: string, backendKey: string, headers: Record<string, string> = {{}}) {{
+    super(baseUrl, identifier, daemonRootKey, backendKey, headers);
+    this.userKey = "";
+
+    let userKey: forge.util.ByteStringBuffer | null = null;
+    const daemonRootKeyDecoded = forge.pem.decode(daemonRootKey);
+    for (const entry of daemonRootKeyDecoded) {{
+      if (entry.type === "PRIVATE USER KEY") {{
+        userKey = forge.util.createBuffer(entry.body);
+        break;
+      }}
+    }}
+    if (userKey === null) {{
+      throw new Error("User Key is not present");
+    }}
+    const keyAsn1 = forge.asn1.fromDer(userKey as forge.util.ByteStringBuffer);
+    const userPrivateKey = forge.pki.ed25519.privateKeyFromAsn1(keyAsn1);
+
+    this.userKey = userPrivateKey.privateKeyBytes;
   }}
 
 {}

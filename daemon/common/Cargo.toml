@@ -56,7 +56,7 @@ sdk = [
     "dep:either",
     "dep:http"
 ]
-ts = ["service", "daemon_framework/ts"]
+ts = ["service", "daemon_framework/ts", "sdk"]
 default = ["service", "keys", "backend"]
 ci = ["default"]
 
