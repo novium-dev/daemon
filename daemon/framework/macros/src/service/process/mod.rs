@@ -498,7 +498,10 @@ const daemonRequest: DaemonSDKRequest = {{
   method: '{}',
   headers: Object.assign({{}}, this.headers),
 }};
-const client = new UndiciClient(daemonRequestUrl.origin, {{ connect: this.connect }});
+const client = new UndiciClient(daemonRequestUrl.origin, {{
+  connect: this.connect,
+  bodyTimeout: 0,
+}});
 {}
 try {{
   const response = await client.request(daemonRequest);
