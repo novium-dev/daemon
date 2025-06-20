@@ -9,7 +9,7 @@ import * as forge from 'node-forge';
 
 type DaemonSDKRequest = { path: string, method: string, headers: Record<string, string>, body?: string | Buffer | Uint8Array | Readable };
 
-declare class BodyReadable extends Readable {
+export declare class BodyReadable extends Readable {
   text (): Promise<string>
   json (): Promise<unknown>
   blob (): Promise<Blob>
