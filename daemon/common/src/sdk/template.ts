@@ -1,6 +1,5 @@
 import * as ed from '@noble/ed25519';
-import { AxiosRequestConfig, AxiosInstance, ResponseType as AxiosResponseType, AxiosError, AxiosResponse } from 'axios';
-import axios from 'axios'
+import { Client as UndiciClient } from 'undici';
 import * as https from 'node:https';
 import * as crypto from 'node:crypto';
 import { Readable } from 'node:stream';
@@ -8,12 +7,21 @@ import * as forge from 'node-forge';
 
 /** {types} */
 
-type DaemonSDKRequest = { url: string, method: string, headers: Record<string, string>, data?: any, responseType: AxiosResponseType };
+type DaemonSDKRequest = { path: string, method: string, headers: Record<string, string>, body?: string | Buffer | Uint8Array | Readable };
+
+declare class BodyReadable extends Readable {
+  text (): Promise<string>
+  json (): Promise<unknown>
+  blob (): Promise<Blob>
+  bytes (): Promise<Uint8Array>
+  arrayBuffer (): Promise<ArrayBuffer>
+}
 
 export class DaemonSDK {
   private readonly baseUrl: string;
   protected readonly identifier: string;
-  private readonly client: AxiosInstance;
+  private readonly headers: Record<string, string>;
+  private readonly connect: { ca: string, cert: string, key: string, servername: string };
 
   constructor(baseUrl: string, identifier: string, daemonRootKey: string, backendKey: string, headers: Record<string, string> = {}) {
     if (!baseUrl.endsWith("/")) {
@@ -21,15 +29,13 @@ export class DaemonSDK {
     }
     this.baseUrl = baseUrl;
     this.identifier = identifier;
-    this.client = axios.create({
-      headers: headers,
-      httpsAgent: new https.Agent({
-        key: backendKey,
-        cert: backendKey,
-        ca: daemonRootKey,
-        servername: `node-${identifier}`,
-      }),
-    });
+    this.headers = headers;
+    this.connect = {
+      key: backendKey,
+      cert: backendKey,
+      ca: daemonRootKey,
+      servername: `node-${identifier}`,
+    };
   }
 
 /** {sdk_implementation} */

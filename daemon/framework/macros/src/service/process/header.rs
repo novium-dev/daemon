@@ -64,7 +64,7 @@ pub(crate) fn process(
                 let key = format!("daemon_header_{}_{}", fn_ident, variable_name);
 
                 if *required {
-                    ts_options_body.push_str("request.headers[");
+                    ts_options_body.push_str("daemonRequest.headers[");
                     ts_options_body.push_str(&key);
                     ts_options_body.push_str("] = ");
                     ts_options_body.push_str(&variable_name.to_string().to_case(Case::Camel));
@@ -72,7 +72,7 @@ pub(crate) fn process(
                 } else {
                     ts_options_body.push_str("if (");
                     ts_options_body.push_str(&variable_name.to_string().to_case(Case::Camel));
-                    ts_options_body.push_str(" != null) { request.headers[");
+                    ts_options_body.push_str(" != null) { daemonRequest.headers[");
                     ts_options_body.push_str(&key);
                     ts_options_body.push_str("] = ");
                     ts_options_body.push_str(&variable_name.to_string().to_case(Case::Camel));

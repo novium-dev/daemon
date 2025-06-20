@@ -23,6 +23,7 @@ use x509_parser::certificate::X509Certificate;
 
 pub use rcgen;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
+use rustls::crypto::CryptoProvider;
 pub use x509_parser;
 
 pub struct DaemonRootKey {
@@ -335,7 +336,7 @@ impl DaemonRootKey {
         let tls_cert = CertifiedKey::from_der(
             tls_cert,
             privkey.clone_key(),
-            &rustls::crypto::aws_lc_rs::default_provider(),
+            CryptoProvider::get_default().unwrap(),
         )?;
 
         Ok(BackendKey {
@@ -385,7 +386,7 @@ impl BackendKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            &rustls::crypto::aws_lc_rs::default_provider(),
+            CryptoProvider::get_default().unwrap(),
         )?;
 
         tls_cert.keys_match()?;
@@ -431,7 +432,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            &rustls::crypto::aws_lc_rs::default_provider(),
+            CryptoProvider::get_default().unwrap(),
         )?;
 
         tls_cert.keys_match()?;
@@ -487,7 +488,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             vec![cert.clone()],
             privkey.clone_key(),
-            &rustls::crypto::aws_lc_rs::default_provider(),
+            CryptoProvider::get_default().unwrap(),
         )?;
 
         Ok(DaemonKey {
@@ -551,7 +552,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            &rustls::crypto::aws_lc_rs::default_provider(),
+            CryptoProvider::get_default().unwrap(),
         )?;
 
         tls_cert.keys_match()?;
@@ -654,9 +655,9 @@ mod tests {
 
     #[test]
     fn keys() {
-        /*rustls::crypto::ring::default_provider()
-        .install_default()
-        .unwrap();*/
+        rustls::crypto::aws_lc_rs::default_provider()
+            .install_default()
+            .unwrap();
 
         // Root
         let ca = KeyPair::generate().unwrap();

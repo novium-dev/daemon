@@ -79,6 +79,10 @@ fn main() {
         cap_setup();
     }
 
+    rustls::crypto::aws_lc_rs::default_provider()
+        .install_default()
+        .unwrap();
+
     let reg = tracing_subscriber::registry()
         .with(tracing_subscriber::filter::LevelFilter::from_level(
             if matches.get_flag("debug") {

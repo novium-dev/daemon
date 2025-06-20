@@ -128,9 +128,9 @@ pub mod internal {
     impl<T: Serialize + MaybeUnit + 'static> IntoResponse for FrameworkJsonResponse<T> {
         fn into_response(self) -> Response {
             if T::unit().is_some() {
-                Json(self.0).into_response()
-            } else {
                 StatusCode::NO_CONTENT.into_response()
+            } else {
+                Json(self.0).into_response()
             }
         }
     }
@@ -446,9 +446,9 @@ impl<V: ToSchema + MaybeUnit + 'static, E: FrameworkDocumentedResponse + 'static
     fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
         let mut responses_owned = ResponsesBuilder::new();
         mem::swap(responses, &mut responses_owned);
-        if V::unit().is_none() {
+        if V::unit().is_some() {
             responses_owned = responses_owned.response(
-                "204", //
+                "204",
                 Response::builder().description(SUCCESS_DESCRIPTION).build(),
             );
         } else {
@@ -651,7 +651,7 @@ impl ts_rs::TS for DataStream {
     type OptionInnerType = Self;
 
     fn decl() -> String {
-        "type DataStream = Readable;".to_string()
+        "type DataStream = string | Buffer | Uint8Array | Readable;".to_string()
     }
 
     fn decl_concrete() -> String {
@@ -659,7 +659,7 @@ impl ts_rs::TS for DataStream {
     }
 
     fn name() -> String {
-        "Readable".to_string()
+        "string | Buffer | Uint8Array | Readable".to_string()
     }
 
     fn inline() -> String {

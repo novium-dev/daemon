@@ -492,33 +492,30 @@ pub(crate) fn process(
             .intersperse(", ")
             .collect();
         let ts_func_body = format!(
-            r#"const request: DaemonSDKRequest = {{
-  url: this.{}({}).toString(),
+            r#"const daemonRequestUrl = this.{}({});
+const daemonRequest: DaemonSDKRequest = {{
+  path: `${{daemonRequestUrl.pathname}}${{daemonRequestUrl.search}}`,
   method: '{}',
-  headers: {{}},
-  responseType: daemon_response_type,
+  headers: Object.assign({{}}, this.headers),
 }};
+const client = new UndiciClient(daemonRequestUrl.origin, {{ connect: this.connect }});
 {}
 try {{
-  const response = await this.client.request(request);
-  daemon_return_response
-}} catch (err) {{
-  try {{
-    const axiosResponse = (err as AxiosError).response;
-    if (axiosResponse === undefined) {{
-      throw err;
-    }}
-
-    const errorResponse = daemon_set_error_response as {{ error: {{ id: string, msg: string }} }};
+  const response = await client.request(daemonRequest);
+  if (response.statusCode >= 200 && response.statusCode <= 299) {{
+    daemon_return_response
+  }} else {{
+    const errorResponse = await response.body.json() as {{ error: {{ id: string, msg: string }} }};
     const errorId = errorResponse.error.id;
     switch (errorId) {{
 daemon_return_error_response
       default:
         throw new Error(`Unknown error: ${{errorId}}`);
     }}
-  }} catch (err) {{
-    return {{ Err: {{ "Communication": err }} }};
   }}
+
+}} catch (err) {{
+  return {{ Err: {{ "Communication": err }} }};
 }}
             "#,
             format!("{}_url", fn_ident).to_case(Case::Camel),
@@ -541,20 +538,6 @@ daemon_return_error_response
                &(
                     <#result as #crate_prefix ts::FrameworkTSResponse>::visit_ts_response()
                 )
-            },
-        );
-        ts_replace.insert(
-            "daemon_response_type".to_string(),
-            quote! {
-                &(
-                    #crate_prefix serde_json::to_string(<#result as #crate_prefix ts::FrameworkTSResponse>::visit_ts_response_type()).unwrap()
-                )
-            }
-        );
-        ts_replace.insert(
-            "daemon_set_error_response".to_string(),
-            quote! {
-                <#result as #crate_prefix ts::FrameworkTSResponse>::visit_ts_response_parse()
             },
         );
 
