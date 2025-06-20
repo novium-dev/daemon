@@ -5,6 +5,7 @@ use axum_server::Server;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use daemon::internal::middleware;
 use daemon::key::{DaemonCertResolver, TlsAcceptor};
+use daemon_common::key::rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use daemon_common::node::{
     BackupStorage, HostAndPort, NodeRegistrationRequest, NodeUpdateRequest, ServerStorage,
@@ -184,7 +185,8 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
     let (backend, code) = default(backend_url, code);
 
     println!("Retrieving daemon root key...");
-    let root = Arc::new(read_root_key(backend.clone(), code.clone()).unwrap());
+    let (root, rsa) = read_root_key(backend.clone(), code.clone()).unwrap();
+    let root = Arc::new(root);
 
     let mut mounts = Vec::new();
 
@@ -289,7 +291,12 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
         toml::from_str(&str).unwrap()
     };
 
-    let keypair = crate::common::key::rcgen::KeyPair::generate().unwrap();
+    let keypair = crate::common::key::rcgen::KeyPair::generate_for(if rsa {
+        &PKCS_RSA_SHA256
+    } else {
+        &PKCS_ECDSA_P256_SHA256
+    })
+    .unwrap();
 
     let csr = DaemonKey::new_request(&keypair).unwrap();
     let temp_key = Arc::new(DaemonKey::new_temp(&keypair).unwrap());
@@ -482,7 +489,7 @@ fn hostname() -> String {
         .unwrap_or_default()
 }
 
-fn read_root_key(url: Url, code: String) -> Result<DaemonRootKey, anyhow::Error> {
+fn read_root_key(url: Url, code: String) -> Result<(DaemonRootKey, bool), anyhow::Error> {
     let response = Client::default()
         .get(url.join("/api/internal/daemon/root_key").unwrap())
         .bearer_auth(code)
@@ -491,9 +498,10 @@ fn read_root_key(url: Url, code: String) -> Result<DaemonRootKey, anyhow::Error>
         println!("Code is invalid");
         exit(0);
     }
+    let rsa = response.headers().contains_key("X-Prefer-RSA-Key");
     let str: String = response.json().map_err(io::Error::other)?;
     println!("{}", str);
-    Ok(DaemonRootKey::parse(str)?.0)
+    Ok((DaemonRootKey::parse(str)?.0, rsa))
 }
 
 impl StringValidator for MySQLValidator {

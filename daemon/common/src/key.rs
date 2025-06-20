@@ -5,7 +5,6 @@ use rcgen::{
     BasicConstraints, CertificateParams, CertificateSigningRequestParams, DistinguishedName,
     DnType, ExtendedKeyUsagePurpose, Ia5String, IsCa, KeyPair, KeyUsagePurpose, PublicKey, SanType,
 };
-use rustls::crypto::CryptoProvider;
 use rustls::pki_types::pem::SectionKind;
 use rustls::pki_types::{
     CertificateDer, CertificateSigningRequestDer, DnsName, PrivateKeyDer, PrivatePkcs1KeyDer,
@@ -336,7 +335,7 @@ impl DaemonRootKey {
         let tls_cert = CertifiedKey::from_der(
             tls_cert,
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            &rustls::crypto::aws_lc_rs::default_provider(),
         )?;
 
         Ok(BackendKey {
@@ -386,7 +385,7 @@ impl BackendKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            &rustls::crypto::aws_lc_rs::default_provider(),
         )?;
 
         tls_cert.keys_match()?;
@@ -432,7 +431,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            &rustls::crypto::aws_lc_rs::default_provider(),
         )?;
 
         tls_cert.keys_match()?;
@@ -488,7 +487,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             vec![cert.clone()],
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            &rustls::crypto::aws_lc_rs::default_provider(),
         )?;
 
         Ok(DaemonKey {
@@ -552,7 +551,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            &rustls::crypto::aws_lc_rs::default_provider(),
         )?;
 
         tls_cert.keys_match()?;
@@ -655,9 +654,9 @@ mod tests {
 
     #[test]
     fn keys() {
-        rustls::crypto::ring::default_provider()
-            .install_default()
-            .unwrap();
+        /*rustls::crypto::ring::default_provider()
+        .install_default()
+        .unwrap();*/
 
         // Root
         let ca = KeyPair::generate().unwrap();

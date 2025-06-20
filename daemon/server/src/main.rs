@@ -89,10 +89,6 @@ fn main() {
         ))
         .with(tracing_subscriber::fmt::layer());
 
-    rustls::crypto::ring::default_provider()
-        .install_default()
-        .expect("Unable to set ring as default crypto provider");
-
     #[cfg(not(all(feature = "sentry", not(debug_assertions))))]
     reg.init();
 

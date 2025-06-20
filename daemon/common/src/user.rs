@@ -18,6 +18,7 @@ define_error!(auth {
     signature_expired ("The provided signature is expired" UNAUTHORIZED),
 });
 
+/// An already parsed signature.
 #[derive(Debug, Copy, Clone)]
 pub struct UserSignature(Signature);
 
@@ -259,8 +260,8 @@ impl<'de> Deserialize<'de> for UserSignature {
 
 #[cfg(feature = "ts")]
 impl daemon_framework::ts_rs::TS for UserSignature {
-    type WithoutGenerics = <String as daemon_framework::ts_rs::TS>::WithoutGenerics;
-    const DOCS: Option<&'static str> = String::DOCS;
+    type WithoutGenerics = Self;
+    type OptionInnerType = Self;
 
     fn decl() -> String {
         panic!(
@@ -283,6 +284,10 @@ impl daemon_framework::ts_rs::TS for UserSignature {
 
     fn inline_flattened() -> String {
         Self::name()
+    }
+
+    fn docs() -> Option<String> {
+        None
     }
 }
 

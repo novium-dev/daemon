@@ -39,27 +39,17 @@ fn export_ts() {
     use crate::service::files::FilesServiceUserKeyExtension;
     use crate::service::server::ServerServiceUserKeyExtension;
 
-    let mut visitor = daemon_framework::ts::TSTypeVisitor::default();
+    let mut type_visitor = daemon_framework::ts::TSTypeVisitor::default();
 
-    daemon_framework::framework_ts_type_export!(DefaultDaemonSDK visitor {
+    daemon_framework::framework_ts_type_export!(DefaultDaemonSDK type_visitor {
         ServerService, BackupService, FilesService, NetworkService,
         ResourceService, DatabaseService, ScheduleService
     });
 
-    DatabaseUserPermissions::visit_types(&mut visitor);
-    FileMode::visit_types(&mut visitor);
-    UserSignature::visit_types(&mut visitor);
+    DatabaseUserPermissions::visit_types(&mut type_visitor);
+    FileMode::visit_types(&mut type_visitor);
+    UserSignature::visit_types(&mut type_visitor);
 
-    let mut out = String::new();
-    out += "import * as ed from '@noble/ed25519';\n";
-    out += "import { AxiosRequestConfig, AxiosInstance, ResponseType as AxiosResponseType, AxiosError, AxiosResponse } from 'axios';\n";
-    out += "import axios from 'axios'\n";
-    out += "import * as https from 'node:https';\n";
-    out += "import { Readable } from 'node:stream';\n";
-    out += "import * as forge from 'node-forge';\n";
-    out += "\n";
-    out += &visitor.out;
-    out += "\n";
     let mut visitor = daemon_framework::ts::TSClassFunctionVisitor::default();
 
     daemon_framework::framework_ts_func_export!(DefaultDaemonSDK visitor {
@@ -72,67 +62,11 @@ fn export_ts() {
     <DaemonSDKWithUserKey as BackupServiceUserKeyExtension>::visit_funcs(&mut user_visitor);
     <DaemonSDKWithUserKey as FilesServiceUserKeyExtension>::visit_funcs(&mut user_visitor);
 
-    out += "\n";
-    out += &format!(
-        r#"
-type DaemonSDKRequest = {{ url: string, method: string, headers: Record<string, string>, data?: any, responseType: AxiosResponseType }};
+    let sdk = include_str!("sdk/template.ts")
+        .replace("/** {types} */", &type_visitor.out)
+        .replace("/** {sdk_implementation} */", &visitor.out)
+        .replace("/** {sdk_user_implementation} */", &user_visitor.out)
+        .replace("/** {sdk_config_consts} */", &format!("export const DAEMON_ROOT_KEY_COMMON_NAME: string = {};\nexport const DAEMON_BACKEND_KEY_COMMON_NAME: string = {};\n", serde_json::to_string(&crate::DAEMON_ROOT_KEY_COMMON_NAME).unwrap(), serde_json::to_string(&crate::DAEMON_BACKEND_KEY_COMMON_NAME).unwrap()));
 
-export class DaemonSDK {{
-  private readonly baseUrl: string;
-  protected readonly identifier: string;
-  private readonly client: AxiosInstance;
-
-  constructor(baseUrl: string, identifier: string, daemonRootKey: string, backendKey: string, headers: Record<string, string> = {{}}) {{
-    if (!baseUrl.endsWith("/")) {{
-      baseUrl += "/";
-    }}
-    this.baseUrl = baseUrl;
-    this.identifier = identifier;
-    this.client = axios.create({{
-      headers: headers,
-      httpsAgent: new https.Agent({{
-        key: backendKey,
-        cert: backendKey,
-        ca: daemonRootKey,
-        servername: `node-${{identifier}}`,
-      }}),
-    }});
-  }}
-
-{}
-
-}}
-
-export class DaemonSDKWithUserKey extends DaemonSDK {{
-  private readonly userKey: string | Uint8Array;
-
-  constructor(baseUrl: string, identifier: string, daemonRootKey: string, backendKey: string, headers: Record<string, string> = {{}}) {{
-    super(baseUrl, identifier, daemonRootKey, backendKey, headers);
-
-    let userKey: forge.util.ByteStringBuffer | null = null;
-    const daemonRootKeyDecoded = forge.pem.decode(daemonRootKey);
-    for (const entry of daemonRootKeyDecoded) {{
-      if (entry.type === "PRIVATE USER KEY") {{
-        userKey = forge.util.createBuffer(entry.body);
-        break;
-      }}
-    }}
-    if (userKey === null) {{
-      throw new Error("User Key is not present");
-    }}
-    const keyAsn1 = forge.asn1.fromDer(userKey as forge.util.ByteStringBuffer);
-    const userPrivateKey = forge.pki.ed25519.privateKeyFromAsn1(keyAsn1);
-
-    this.userKey = userPrivateKey.privateKeyBytes;
-  }}
-
-{}
-
-}}
-    "#,
-        visitor.out, user_visitor.out
-    );
-    out += "\n";
-
-    std::fs::write("sdk.ts", out).unwrap();
+    std::fs::write("sdk.ts", sdk).unwrap();
 }

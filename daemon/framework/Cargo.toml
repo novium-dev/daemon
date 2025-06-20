@@ -35,7 +35,7 @@ features = ["io-util"]
 workspace = true
 
 [dependencies.ts-rs]
-version = "10.1.0"
+version = "11.0.1"
 features = ["tokio-impl", "url-impl", "uuid-impl", "bytes-impl", "chrono-impl", "bigdecimal-impl", "serde-json-impl"]
 optional = true
 

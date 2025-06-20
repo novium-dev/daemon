@@ -32,7 +32,7 @@ impl TypeVisitor for TSTypeVisitor {
                 .extend(T::dependencies().into_iter().map(|dep| dep.type_id));
             T::visit_dependencies(self);
 
-            let docs = &T::DOCS;
+            let docs = &T::docs();
             if let Some(docs) = docs {
                 self.out.push_str(docs);
             }
@@ -169,6 +169,7 @@ impl<E> FrameworkTSResponse for Result<FileResponse, E> {
 
 impl<E: TS> TS for TSResponse<Result<FileResponse, E>> {
     type WithoutGenerics = Self;
+    type OptionInnerType = Self;
 
     fn decl() -> String {
         panic!("{} cannot be declared", Self::name())

@@ -525,7 +525,7 @@ pub struct JsonVec<T: Clone>(pub Vec<T>);
 #[cfg(feature = "ts")]
 impl<T: Clone + ts_rs::TS> ts_rs::TS for JsonVec<T> {
     type WithoutGenerics = <Vec<T> as ts_rs::TS>::WithoutGenerics;
-    const DOCS: Option<&'static str> = <Vec<T>>::DOCS;
+    type OptionInnerType = Self;
 
     fn ident() -> String {
         <Vec<T>>::ident()
@@ -549,6 +549,10 @@ impl<T: Clone + ts_rs::TS> ts_rs::TS for JsonVec<T> {
 
     fn inline_flattened() -> String {
         <Vec<T>>::inline_flattened()
+    }
+
+    fn docs() -> Option<String> {
+        <Vec<T>>::docs()
     }
 }
 
@@ -586,6 +590,9 @@ impl<'de, T: for<'a> Deserialize<'a> + Clone> Deserialize<'de> for JsonVec<T> {
     }
 }
 
+/// Universal type for data streams over the network.
+///
+/// It can be received using axum and be used in a request with reqwest.
 pub enum DataStream {
     Axum(BodyDataStream),
     Stream(Pin<BoxedStream>),
@@ -641,6 +648,7 @@ impl<S: Send + Sync> FromRequest<S> for DataStream {
 #[cfg(feature = "ts")]
 impl ts_rs::TS for DataStream {
     type WithoutGenerics = Self;
+    type OptionInnerType = Self;
 
     fn decl() -> String {
         "type DataStream = Readable;".to_string()
@@ -660,6 +668,10 @@ impl ts_rs::TS for DataStream {
 
     fn inline_flattened() -> String {
         Self::name()
+    }
+
+    fn docs() -> Option<String> {
+        Some("/// Universal type for data streams over the network".to_string())
     }
 }
 

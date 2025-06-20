@@ -280,8 +280,8 @@ impl FetchedServer {
 
                         #[cfg(not(feature = "no_tty_size_please"))]
                         console_size: Some(vec![
-                            server_data.size.1 as i32,
-                            server_data.size.0 as i32,
+                            server_data.size.1 as usize,
+                            server_data.size.0 as usize,
                         ]),
 
                         ..HostConfig::default()
