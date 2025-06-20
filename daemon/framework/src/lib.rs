@@ -643,7 +643,7 @@ impl ts_rs::TS for DataStream {
     type WithoutGenerics = Self;
 
     fn decl() -> String {
-        "type DataStream = Blob;".to_string()
+        "type DataStream = Readable;".to_string()
     }
 
     fn decl_concrete() -> String {
@@ -651,7 +651,7 @@ impl ts_rs::TS for DataStream {
     }
 
     fn name() -> String {
-        "Blob".to_string()
+        "Readable".to_string()
     }
 
     fn inline() -> String {

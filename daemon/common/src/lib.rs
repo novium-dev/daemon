@@ -108,7 +108,6 @@ export class DaemonSDKWithUserKey extends DaemonSDK {{
 
   constructor(baseUrl: string, identifier: string, daemonRootKey: string, backendKey: string, headers: Record<string, string> = {{}}) {{
     super(baseUrl, identifier, daemonRootKey, backendKey, headers);
-    this.userKey = "";
 
     let userKey: forge.util.ByteStringBuffer | null = null;
     const daemonRootKeyDecoded = forge.pem.decode(daemonRootKey);
