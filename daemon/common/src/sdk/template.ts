@@ -1,6 +1,5 @@
 import * as ed from '@noble/ed25519';
 import { Client as UndiciClient } from 'undici';
-import * as https from 'node:https';
 import * as crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import * as forge from 'node-forge';
