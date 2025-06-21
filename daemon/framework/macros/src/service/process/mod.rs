@@ -501,6 +501,7 @@ const daemonRequest: DaemonSDKRequest = {{
 const client = new UndiciClient(daemonRequestUrl.origin, {{
   connect: this.connect,
   bodyTimeout: 0,
+  headersTimeout: 0,
 }});
 {}
 try {{
