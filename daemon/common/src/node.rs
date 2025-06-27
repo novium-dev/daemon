@@ -53,15 +53,16 @@ pub enum BackupStorage {
 }
 
 impl BackupStorage {
+    #[must_use]
     pub fn is_compatible_with(&self, storage: &ServerStorage) -> bool {
         match (self, storage) {
             #[cfg(feature = "btrfs")]
-            (BackupStorage::Btrfs(backup_group), ServerStorage::Btrfs(server_group)) => {
+            (Self::Btrfs(backup_group), ServerStorage::Btrfs(server_group)) => {
                 server_group.eq(backup_group)
             }
             #[cfg(feature = "btrfs")]
-            (BackupStorage::Btrfs(_), ServerStorage::Directory) => false,
-            (BackupStorage::Archive, _) => true,
+            (Self::Btrfs(_), ServerStorage::Directory) => false,
+            (Self::Archive, _) => true,
         }
     }
 }

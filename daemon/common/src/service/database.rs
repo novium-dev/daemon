@@ -67,7 +67,7 @@ impl DatabaseUserPermissions {
         visitor
             .out
             .push_str("namespace DatabaseUserPermissions {\n");
-        for (name, value) in DatabaseUserPermissions::all().iter_names() {
+        for (name, value) in Self::all().iter_names() {
             visitor.out.push_str("  const ");
             visitor.out.push_str(name);
             visitor.out.push_str(": ");
@@ -109,6 +109,6 @@ impl<'de> Deserialize<'de> for DatabaseUserPermissions {
     where
         D: Deserializer<'de>,
     {
-        i8::deserialize(deserializer).map(DatabaseUserPermissions::from_bits_truncate)
+        i8::deserialize(deserializer).map(Self::from_bits_truncate)
     }
 }

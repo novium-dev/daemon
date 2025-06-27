@@ -1,6 +1,7 @@
 use proc_macro2::TokenStream;
 
-pub(crate) fn ts(crate_prefix: TokenStream, attr: TokenStream, input: TokenStream) -> TokenStream {
+#[cfg_attr(feature = "ts", expect(clippy::needless_pass_by_value))]
+pub fn ts0(crate_prefix: &TokenStream, attr: &TokenStream, input: TokenStream) -> TokenStream {
     #[cfg(feature = "ts")]
     {
         use proc_macro2::Span;
@@ -15,7 +16,7 @@ pub(crate) fn ts(crate_prefix: TokenStream, attr: TokenStream, input: TokenStrea
             }
         };
 
-        let crate_literal = LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+        let crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
         quote! {
             #[derive(#crate_prefix ts_rs::TS)]
             #[ts(crate = #crate_literal)]
@@ -25,7 +26,7 @@ pub(crate) fn ts(crate_prefix: TokenStream, attr: TokenStream, input: TokenStrea
     }
     #[cfg(not(feature = "ts"))]
     {
-        filter_stream(&crate_prefix, &attr, input)
+        filter_stream(crate_prefix, attr, input)
     }
 }
 
@@ -47,22 +48,19 @@ fn filter_stream(
             )));
             continue;
         }
-        if let TokenTree::Punct(p) = &token {
-            if p.as_char() == '#' {
+        if let TokenTree::Punct(punct) = &token {
+            if punct.as_char() == '#' {
                 let next = iter.next();
                 if let Some(next) = next {
-                    if let TokenTree::Group(g) = &next {
-                        if let Some(TokenTree::Ident(i)) = g.stream().into_iter().next() {
+                    if let TokenTree::Group(group) = &next {
+                        if let Some(TokenTree::Ident(i)) = group.stream().into_iter().next() {
                             if i.to_string().eq("ts") {
                                 continue;
                             }
                         }
-                        out.push(token);
-                        out.push(next);
-                    } else {
-                        out.push(token);
-                        out.push(next);
                     }
+                    out.push(token);
+                    out.push(next);
                     continue;
                 }
             }

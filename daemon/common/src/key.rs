@@ -1,4 +1,8 @@
-use ed25519_dalek::pkcs8::{DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey};
+use core::fmt::Debug;
+use core::str::FromStr as _;
+use ed25519_dalek::pkcs8::{
+    DecodePrivateKey as _, DecodePublicKey as _, EncodePrivateKey as _, EncodePublicKey as _,
+};
 use ed25519_dalek::{SignatureError, SigningKey, VerifyingKey};
 use pem::{Pem, PemError};
 use rcgen::{
@@ -13,9 +17,7 @@ use rustls::pki_types::{
 use rustls::sign::CertifiedKey;
 use rustls::{DigitallySignedStruct, Error, RootCertStore, SignatureScheme};
 use rustls_pemfile::Item;
-use std::fmt::Debug;
 use std::io;
-use std::str::FromStr;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
 use uuid::Uuid;
@@ -25,6 +27,7 @@ pub use rcgen;
 use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::crypto::CryptoProvider;
 pub use x509_parser;
+use x509_parser::error::X509Error;
 
 pub struct DaemonRootKey {
     pub tls_ca: CertificateDer<'static>,
@@ -124,9 +127,7 @@ impl DaemonRootKey {
         params.key_usages.push(KeyUsagePurpose::KeyCertSign);
         params.key_usages.push(KeyUsagePurpose::CrlSign);
 
-        params.not_after = OffsetDateTime::now_utc()
-            .checked_add(Duration::days(365 * 64))
-            .unwrap();
+        params.not_after = OffsetDateTime::now_utc().saturating_add(Duration::days(365 * 64));
         params.not_before = OffsetDateTime::now_utc();
 
         let cert = params.self_signed(keypair)?;
@@ -143,15 +144,14 @@ impl DaemonRootKey {
         })
     }
 
-    pub fn x509(&self) -> X509Certificate<'_> {
-        let (_, x509) = x509_parser::parse_x509_certificate(&self.tls_ca)
-            .expect("Unable to reproduce successful x509 parse");
-        x509
+    pub fn x509(&self) -> Result<X509Certificate<'_>, X509Error> {
+        let (_, x509) = x509_parser::parse_x509_certificate(&self.tls_ca)?;
+        Ok(x509)
     }
 
-    pub fn parse(
-        data: impl AsRef<[u8]>,
-    ) -> Result<(DaemonRootKey, Option<KeyPair>, Option<SigningKey>), DaemonRootKeyError> {
+    pub fn parse<D: AsRef<[u8]>>(
+        data: D,
+    ) -> Result<(Self, Option<KeyPair>, Option<SigningKey>), DaemonRootKeyError> {
         let mut tls_ca = None;
         let mut public_user_key = None;
         let mut user_key = None;
@@ -171,35 +171,38 @@ impl DaemonRootKey {
                     user_key = Some(key);
                 }
                 (_, Ok(section)) => {
-                    use SectionKind::*;
                     let contents = cert.into_contents();
 
                     match section {
-                        Certificate => {
+                        SectionKind::Certificate => {
                             tls_ca = Some(CertificateDer::from(contents));
                         }
-                        PrivateKey => {
+                        SectionKind::PrivateKey => {
                             privkey = Some(
                                 PrivatePkcs8KeyDer::from(contents)
                                     .secret_pkcs8_der()
                                     .to_vec(),
                             );
                         }
-                        RsaPrivateKey => {
+                        SectionKind::RsaPrivateKey => {
                             privkey = Some(
                                 PrivatePkcs1KeyDer::from(contents)
                                     .secret_pkcs1_der()
                                     .to_vec(),
                             );
                         }
-                        EcPrivateKey => {
+                        SectionKind::EcPrivateKey => {
                             privkey =
                                 Some(PrivateSec1KeyDer::from(contents).secret_sec1_der().to_vec());
                         }
-                        _ => {}
+                        SectionKind::PublicKey
+                        | SectionKind::Crl
+                        | SectionKind::Csr
+                        | SectionKind::EchConfigList
+                        | _ => {}
                     }
                 }
-                (_, Err(_)) => {
+                (_, Err(())) => {
                     // Ignore the tag for now
                 }
             }
@@ -221,7 +224,7 @@ impl DaemonRootKey {
         }
 
         Ok((
-            DaemonRootKey {
+            Self {
                 tls_ca,
                 cert_store: Arc::new(cert_store),
                 user_key: public_user_key,
@@ -231,16 +234,17 @@ impl DaemonRootKey {
         ))
     }
 
+    #[must_use]
     pub fn dump(&self, keypair: Option<&KeyPair>, user_key: Option<&SigningKey>) -> String {
         let mut out = String::new();
         if let Some(keypair) = keypair {
             let pem = Pem::new("PRIVATE KEY", keypair.serialize_der());
-            out += &pem::encode(&pem);
+            out.push_str(&pem::encode(&pem));
         }
 
         let pem = Pem::new("CERTIFICATE", self.tls_ca.to_vec());
-        out += &pem::encode(&pem);
-        out += "\n";
+        out.push_str(&pem::encode(&pem));
+        out.push('\n');
         if let Some(public_user_key) = &self.user_key {
             match user_key {
                 None => {
@@ -248,16 +252,16 @@ impl DaemonRootKey {
                         "USER KEY",
                         public_user_key.to_public_key_der().unwrap().as_bytes(),
                     );
-                    out += &pem::encode(&pem);
-                    out += "\n";
+                    out.push_str(&pem::encode(&pem));
+                    out.push('\n');
                 }
                 Some(user_key) => {
                     let pem = Pem::new(
                         "PRIVATE USER KEY",
                         user_key.to_pkcs8_der().unwrap().as_bytes(),
                     );
-                    out += &pem::encode(&pem);
-                    out += "\n";
+                    out.push_str(&pem::encode(&pem));
+                    out.push('\n');
                 }
             }
         }
@@ -273,13 +277,12 @@ impl DaemonRootKey {
         let mut params = CertificateParams::default();
         params
             .distinguished_name
-            .push(DnType::CommonName, format!("node-{}", identifier));
+            .push(DnType::CommonName, format!("node-{identifier}"));
 
         params
             .subject_alt_names
             .push(SanType::DnsName(Ia5String::try_from(format!(
-                "node-{}",
-                identifier
+                "node-{identifier}"
             ))?));
 
         params.key_usages.push(KeyUsagePurpose::DigitalSignature);
@@ -316,9 +319,7 @@ impl DaemonRootKey {
             .push(ExtendedKeyUsagePurpose::ClientAuth);
         params.use_authority_key_identifier_extension = true;
 
-        params.not_after = OffsetDateTime::now_utc()
-            .checked_add(Duration::days(365 * 64))
-            .unwrap();
+        params.not_after = OffsetDateTime::now_utc().saturating_add(Duration::days(365 * 64));
         params.not_before = OffsetDateTime::now_utc();
 
         let root_cert = CertificateParams::from_ca_cert_der(&self.tls_ca)?;
@@ -348,6 +349,7 @@ impl DaemonRootKey {
 }
 
 impl BackendKey {
+    #[must_use]
     pub fn x509(&self) -> X509Certificate<'_> {
         let (_, x509) = x509_parser::parse_x509_certificate(
             self.tls_cert
@@ -358,23 +360,22 @@ impl BackendKey {
         x509
     }
 
-    pub fn parse(
-        root: &DaemonRootKey,
-        data: impl AsRef<[u8]>,
-    ) -> Result<BackendKey, BackendKeyError> {
-        #[allow(clippy::useless_asref)] // False positive
+    pub fn parse<D: AsRef<[u8]>>(root: &DaemonRootKey, data: D) -> Result<Self, BackendKeyError> {
         let cert = rustls_pemfile::certs(&mut data.as_ref()).collect::<Result<Vec<_>, _>>()?;
         let mut tls_certificate = cert.clone();
         tls_certificate.push(root.tls_ca.clone());
 
         // Check the entire PEM file for the key in case it is not first section
-        #[allow(clippy::useless_asref)] // False positive
         let mut tls_privkeys: Vec<Vec<u8>> = rustls_pemfile::read_all(&mut data.as_ref())
             .filter_map(|i| match i.ok()? {
                 Item::Sec1Key(key) => Some(key.secret_sec1_der().to_vec()),
                 Item::Pkcs1Key(key) => Some(key.secret_pkcs1_der().to_vec()),
                 Item::Pkcs8Key(key) => Some(key.secret_pkcs8_der().to_vec()),
-                _ => None,
+                Item::X509Certificate(_)
+                | Item::SubjectPublicKeyInfo(_)
+                | Item::Crl(_)
+                | Item::Csr(_)
+                | _ => None,
             })
             .collect();
 
@@ -394,27 +395,28 @@ impl BackendKey {
         let (_, x509) = x509_parser::parse_x509_certificate(tls_cert.end_entity_cert()?)?;
         let key_usage = x509
             .extended_key_usage()
-            .map_err(|_| BackendKeyError::Invalid)?
+            .map_err(|err| BackendKeyError::X509(asn1_rs::Err::Error(err)))?
             .ok_or(BackendKeyError::Invalid)?;
         if !key_usage.value.client_auth {
             return Err(BackendKeyError::Invalid);
         }
 
-        Ok(BackendKey {
+        Ok(Self {
             privkey,
             cert,
             tls_cert: Arc::new(tls_cert),
         })
     }
 
+    #[must_use]
     pub fn dump(&self) -> String {
         let pem = Pem::new("PRIVATE KEY", self.privkey.secret_der().to_vec());
         let mut out = pem::encode(&pem);
-        out += "\n";
+        out.push('\n');
         for cert in &self.cert {
             let pem = Pem::new("CERTIFICATE", cert.to_vec());
-            out += &pem::encode(&pem);
-            out += "\n";
+            out.push_str(&pem::encode(&pem));
+            out.push('\n');
         }
 
         out
@@ -426,7 +428,7 @@ impl DaemonKey {
         root: &DaemonRootKey,
         signed: CertificateDer<'static>,
         privkey: PrivateKeyDer<'static>,
-    ) -> Result<DaemonKey, DaemonKeyError> {
+    ) -> Result<Self, DaemonKeyError> {
         let tls_certificate = vec![signed.clone(), root.tls_ca.clone()];
 
         let tls_cert = CertifiedKey::from_der(
@@ -450,33 +452,30 @@ impl DaemonKey {
             .strip_prefix("node-")
             .ok_or(DaemonKeyError::Invalid)?;
 
-        Ok(DaemonKey {
-            id: Uuid::from_str(id).map_err(|_| DaemonKeyError::Invalid)?,
+        Ok(Self {
+            id: Uuid::from_str(id).map_err(|_err| DaemonKeyError::Invalid)?,
             privkey,
             cert: vec![signed],
             tls_cert: Arc::new(tls_cert),
         })
     }
 
-    pub fn new_temp(keypair: &KeyPair) -> Result<DaemonKey, DaemonKeyError> {
+    pub fn new_temp(keypair: &KeyPair) -> Result<Self, DaemonKeyError> {
         let id = Uuid::nil();
 
         let mut distinguished_name = DistinguishedName::new();
-        distinguished_name.push(DnType::CommonName, format!("node-{}", id));
+        distinguished_name.push(DnType::CommonName, format!("node-{id}"));
 
         let mut params = CertificateParams::default();
         params.distinguished_name = distinguished_name;
 
         params
             .subject_alt_names
-            .push(SanType::DnsName(Ia5String::try_from(format!(
-                "node-{}",
-                id
-            ))?));
+            .push(SanType::DnsName(Ia5String::try_from(
+                format!("node-{id}",),
+            )?));
 
-        params.not_after = OffsetDateTime::now_utc()
-            .checked_add(Duration::minutes(30))
-            .unwrap();
+        params.not_after = OffsetDateTime::now_utc().saturating_add(Duration::minutes(30));
         params.not_before = OffsetDateTime::now_utc();
 
         let request = params.self_signed(keypair)?;
@@ -491,7 +490,7 @@ impl DaemonKey {
             CryptoProvider::get_default().unwrap(),
         )?;
 
-        Ok(DaemonKey {
+        Ok(Self {
             id,
             privkey,
             cert: vec![cert],
@@ -508,15 +507,14 @@ impl DaemonKey {
         let mut params = CertificateParams::default();
         params.distinguished_name = distinguished_name;
 
-        params.not_after = OffsetDateTime::now_utc()
-            .checked_add(Duration::days(365 * 64))
-            .unwrap();
+        params.not_after = OffsetDateTime::now_utc().saturating_add(Duration::days(365 * 64));
         params.not_before = OffsetDateTime::now_utc();
 
         let request = params.serialize_request(keypair)?;
         Ok(request.der().clone())
     }
 
+    #[must_use]
     pub fn x509(&self) -> X509Certificate<'_> {
         let (_, x509) = x509_parser::parse_x509_certificate(
             self.tls_cert
@@ -527,20 +525,24 @@ impl DaemonKey {
         x509
     }
 
-    pub fn parse(root: &DaemonRootKey, data: &[u8]) -> Result<DaemonKey, DaemonKeyError> {
-        #[allow(clippy::useless_asref)] // False positive
+    pub fn parse(root: &DaemonRootKey, data: &[u8]) -> Result<Self, DaemonKeyError> {
+        #[expect(clippy::useless_asref, reason = "False positive")]
         let cert = rustls_pemfile::certs(&mut data.as_ref()).collect::<Result<Vec<_>, _>>()?;
         let mut tls_certificate = cert.clone();
         tls_certificate.push(root.tls_ca.clone());
 
         // Check the entire PEM file for the key in case it is not first section
-        #[allow(clippy::useless_asref)] // False positive
+        #[expect(clippy::useless_asref, reason = "False positive")]
         let mut tls_privkeys: Vec<Vec<u8>> = rustls_pemfile::read_all(&mut data.as_ref())
             .filter_map(|i| match i.ok()? {
                 Item::Sec1Key(key) => Some(key.secret_sec1_der().to_vec()),
                 Item::Pkcs1Key(key) => Some(key.secret_pkcs1_der().to_vec()),
                 Item::Pkcs8Key(key) => Some(key.secret_pkcs8_der().to_vec()),
-                _ => None,
+                Item::X509Certificate(_)
+                | Item::SubjectPublicKeyInfo(_)
+                | Item::Crl(_)
+                | Item::Csr(_)
+                | _ => None,
             })
             .collect();
 
@@ -561,7 +563,7 @@ impl DaemonKey {
 
         let key_usage = x509
             .extended_key_usage()
-            .map_err(|_| DaemonKeyError::Invalid)?
+            .map_err(|err| DaemonKeyError::X509(asn1_rs::Err::Error(err)))?
             .ok_or(DaemonKeyError::Invalid)?;
         if !key_usage.value.server_auth {
             return Err(DaemonKeyError::Invalid);
@@ -578,22 +580,23 @@ impl DaemonKey {
             .strip_prefix("node-")
             .ok_or(DaemonKeyError::Invalid)?;
 
-        Ok(DaemonKey {
-            id: Uuid::from_str(id).map_err(|_| DaemonKeyError::Invalid)?,
+        Ok(Self {
+            id: Uuid::from_str(id).map_err(|_err| DaemonKeyError::Invalid)?,
             privkey,
             cert,
             tls_cert: Arc::new(tls_cert),
         })
     }
 
+    #[must_use]
     pub fn dump(&self) -> String {
         let pem = Pem::new("PRIVATE KEY", self.privkey.secret_der().to_vec());
         let mut out = pem::encode(&pem);
-        out += "\n";
+        out.push('\n');
         for cert in &self.cert {
             let pem = Pem::new("CERTIFICATE", cert.to_vec());
-            out += &pem::encode(&pem);
-            out += "\n";
+            out.push_str(&pem::encode(&pem));
+            out.push('\n');
         }
 
         out
@@ -686,7 +689,7 @@ mod tests {
         assert_eq!(root.user_key, root_parsed.0.user_key);
         assert_eq!(root.tls_ca, root_parsed.0.tls_ca);
 
-        let x509 = root_parsed.0.x509();
+        let x509 = root_parsed.0.x509().unwrap();
         assert!(x509.is_ca());
 
         // Backend key

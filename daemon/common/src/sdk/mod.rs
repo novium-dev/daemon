@@ -1,6 +1,6 @@
+use core::error::Error;
 use ed25519_dalek::SigningKey;
 use http::Uri;
-use std::error::Error;
 
 pub mod builder;
 
@@ -22,7 +22,7 @@ use reqwest::{Client, ResolveServerName, Url};
 use rustls::pki_types::{DnsName, ServerName};
 use uuid::Uuid;
 
-#[allow(private_bounds)]
+#[expect(private_bounds, reason = "trait should be sealed")]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}
 pub(crate) trait DaemonSdkSealed {}
 impl DaemonSDKExtra for () {}
@@ -32,6 +32,7 @@ pub type DefaultDaemonSDK = DaemonSDK<()>;
 pub type DaemonSDKWithUserKey = DaemonSDK<WithUserKey>;
 
 #[derive(Debug, Clone)]
+#[must_use]
 pub struct DaemonSDK<T: DaemonSDKExtra + Send + Sync> {
     client: Client,
     identifier: Uuid,

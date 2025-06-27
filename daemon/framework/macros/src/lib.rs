@@ -1,52 +1,48 @@
+#![allow(clippy::expect_used, reason = "This is a macro. Panics are fine.")]
+#![allow(clippy::panic, reason = "This is a macro. Panics are fine.")]
+#![forbid(
+    clippy::inline_always,
+    reason = "This is a macro. Compile time is more important here than minor speed improvements."
+)]
+
 mod error;
 mod route;
 mod service;
 mod ts;
 mod utils;
 
+use crate::error::define::define_error0;
+use crate::error::error0;
 use crate::service::args::ServiceArgs;
+use crate::service::service0;
+use crate::ts::ts0;
+use proc_macro::TokenStream as StdTokenStream;
 use proc_macro2::TokenStream;
 use quote::quote;
 use syn::parse_macro_input;
 
 #[proc_macro_attribute]
-pub fn service(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
+pub fn service(attr: StdTokenStream, input: StdTokenStream) -> StdTokenStream {
     let args = parse_macro_input!(attr as ServiceArgs);
-    proc_macro::TokenStream::from(crate::service::service0(
-        crate_prefix(),
-        args,
-        proc_macro2::TokenStream::from(input),
-    ))
+    StdTokenStream::from(service0(&crate_prefix(), &args, TokenStream::from(input)))
 }
 
 #[proc_macro]
-pub fn error(attr: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    proc_macro::TokenStream::from(crate::error::error0(
-        crate_prefix(),
-        proc_macro2::TokenStream::from(attr),
-    ))
+pub fn error(attr: proc_macro::TokenStream) -> StdTokenStream {
+    StdTokenStream::from(error0(&crate_prefix(), TokenStream::from(attr)))
 }
 
 #[proc_macro]
-pub fn define_error(attr: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    proc_macro::TokenStream::from(crate::error::define::define_error0(
-        crate_prefix(),
-        proc_macro2::TokenStream::from(attr),
-    ))
+pub fn define_error(attr: StdTokenStream) -> StdTokenStream {
+    StdTokenStream::from(define_error0(&crate_prefix(), TokenStream::from(attr)))
 }
 
 #[proc_macro_attribute]
-pub fn ts(
-    attr: proc_macro::TokenStream,
-    input: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    proc_macro::TokenStream::from(crate::ts::ts(
-        crate_prefix(),
-        proc_macro2::TokenStream::from(attr),
-        proc_macro2::TokenStream::from(input),
+pub fn ts(attr: StdTokenStream, input: StdTokenStream) -> StdTokenStream {
+    StdTokenStream::from(ts0(
+        &crate_prefix(),
+        &TokenStream::from(attr),
+        TokenStream::from(input),
     ))
 }
 

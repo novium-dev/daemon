@@ -65,6 +65,7 @@ define_error!(storage {
     ),
     mutex_locked ("The server storage is locked (currently in use)" SERVICE_UNAVAILABLE),
     quota_reached ("The server storage disk limit has been reached" FORBIDDEN),
+    patch_failed ("The patch did not succeed" FORBIDDEN )
 });
 
 impl FromStorageQuotaReached for io::Error {
@@ -72,7 +73,7 @@ impl FromStorageQuotaReached for io::Error {
     where
         Self: Sized,
     {
-        io::Error::new(ErrorKind::QuotaExceeded, "Quota reached")
+        Self::new(ErrorKind::QuotaExceeded, "Quota reached")
     }
 }
 

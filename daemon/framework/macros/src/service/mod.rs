@@ -1,19 +1,15 @@
-pub(crate) mod args;
-pub(crate) mod parse;
-pub(crate) mod process;
+pub mod args;
+pub mod parse;
+pub mod process;
 
 use crate::service::args::ServiceArgs;
 use crate::service::parse::ParseExpectation;
+use core::mem::take;
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::VecDeque;
-use std::mem::take;
 
-pub(crate) fn service0(
-    crate_prefix: TokenStream,
-    args: ServiceArgs,
-    input: TokenStream,
-) -> TokenStream {
+pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStream) -> TokenStream {
     let mut output = Vec::new();
 
     output.extend(quote! {
@@ -25,7 +21,10 @@ pub(crate) fn service0(
         .into_iter()
         .skip_while(|item| match item {
             TokenTree::Ident(ident) if ident.to_string().eq("trait") => false,
-            _ => {
+            TokenTree::Group(_)
+            | TokenTree::Ident(_)
+            | TokenTree::Punct(_)
+            | TokenTree::Literal(_) => {
                 output.push(item.clone());
                 true
             }
@@ -44,7 +43,10 @@ pub(crate) fn service0(
         .into_iter()
         .skip_while(|item| match item {
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => false,
-            _ => {
+            TokenTree::Group(_)
+            | TokenTree::Ident(_)
+            | TokenTree::Punct(_)
+            | TokenTree::Literal(_) => {
                 output.push(item.clone());
                 true
             }
@@ -163,12 +165,16 @@ pub(crate) fn service0(
                 expect_fn = ParseExpectation::FnKeyword; // for next function
 
                 trait_body_output.extend(process::process(
-                    &crate_prefix,
-                    &args,
+                    crate_prefix,
+                    args,
                     &trait_ident,
-                    fn_keyword,
+                    &fn_keyword,
                     fn_ident,
                     punct.clone(),
+                    #[expect(
+                        clippy::iter_with_drain,
+                        reason = "We want to reuse the pre_fn later, it should be cleared"
+                    )]
                     pre_fn.drain(..).collect(),
                     take(&mut post_fn),
                     fn_args,
@@ -202,7 +208,7 @@ pub(crate) fn service0(
     let mut output_extra = Vec::new();
 
     process::finish(
-        &crate_prefix,
+        crate_prefix,
         &trait_ident,
         &mut trait_body_output,
         &mut output_extra,

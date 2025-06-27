@@ -180,21 +180,21 @@ impl<T: BackupServiceURL + UserKeyProvider> BackupServiceUserKeyExtension for T 
         visitor.visit_argument::<u32>("serverId");
         visitor.visit_argument::<String>("backupStorage");
         visitor.visit_argument::<i64>("backupId");
-        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newServerBackupDownloadAsync(this.userKey, timestamp, this.identifier, serverId, backupStorage, backupId);
-return this.serverDownloadBackupUserUrl(serverId, backupStorage, backupId, timestamp, signature);"#, "URL");
+return this.serverDownloadBackupUserUrl(serverId, backupStorage, backupId, timestamp, signature);", "URL");
 
         visitor.visit_start(true, "serverDownloadRealtimeUserUrlSigned");
         visitor.visit_argument::<u32>("serverId");
         visitor.visit_argument::<String>("compression");
-        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newServerRealtimeDownloadAsync(this.userKey, timestamp, this.identifier, serverId, compression);
-return this.serverDownloadRealtimeUserUrl(serverId, timestamp, signature, compression);"#, "URL");
+return this.serverDownloadRealtimeUserUrl(serverId, timestamp, signature, compression);", "URL");
     }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[schema(example = json!({"time": 1731160477597i64, "storage": "local"}))]
+#[schema(example = json!({"time": 1_731_160_477_597i64, "storage": "local"}))]
 #[ts]
 pub struct BackupResponseEntry {
     pub time: i64,

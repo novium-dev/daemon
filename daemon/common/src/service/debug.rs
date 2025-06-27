@@ -1,3 +1,8 @@
+#![expect(
+    clippy::option_if_let_else,
+    reason = "utoipa doesn't use #[automatically_derived], see https://github.com/juhaku/utoipa/pull/1402"
+)]
+
 use super::*;
 use daemon_framework::{service, ts};
 use serde::{Deserialize, Serialize};

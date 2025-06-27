@@ -4,16 +4,47 @@ use std::collections::HashMap;
 use syn::parse::{Parse, ParseStream};
 use syn::{Error, LitStr, Token};
 
-pub(crate) struct ErrorDefinitionContent {
-    pub(crate) map: HashMap<Ident, ErrorDefinitionInner>,
+pub struct ErrorDefinitionContent {
+    pub map: HashMap<Ident, ErrorDefinitionInner>,
 }
 
-pub(crate) struct ErrorDefinitionInner {
-    pub(crate) description: LitStr,
-    pub(crate) statuscode: Ident,
+impl Parse for ErrorDefinitionContent {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut map = HashMap::new();
+        for (name, description, statuscode) in
+            input.parse_terminated(parse_error_content, Token![,])?
+        {
+            map.insert(
+                name,
+                ErrorDefinitionInner {
+                    description,
+                    statuscode,
+                },
+            );
+        }
+        Ok(Self { map })
+    }
 }
 
-pub(crate) fn define_error0(crate_prefix: TokenStream, attr: TokenStream) -> TokenStream {
+pub struct ErrorDefinitionInner {
+    pub description: LitStr,
+    pub statuscode: Ident,
+}
+
+impl Parse for ErrorDefinitionInner {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let description: LitStr = input.parse()?;
+
+        let statuscode = input.parse()?;
+
+        Ok(Self {
+            description,
+            statuscode,
+        })
+    }
+}
+
+pub fn define_error0(crate_prefix: &TokenStream, attr: TokenStream) -> TokenStream {
     let mut result = Vec::new();
 
     let mut attr = attr.into_iter();
@@ -25,9 +56,7 @@ pub(crate) fn define_error0(crate_prefix: TokenStream, attr: TokenStream) -> Tok
     let Some(TokenTree::Group(content)) = attr.next() else {
         panic!("Expected braces");
     };
-    if content.delimiter() != Delimiter::Brace {
-        panic!("Expected braces");
-    }
+    assert_eq!(content.delimiter(), Delimiter::Brace, "Expected braces");
     let ErrorDefinitionContent { map } =
         syn::parse2(content.stream()).expect("Expected error content");
 
@@ -37,6 +66,7 @@ pub(crate) fn define_error0(crate_prefix: TokenStream, attr: TokenStream) -> Tok
 
         result.extend(quote! {
             #crate_prefix paste::paste! {
+                #[automatically_derived]
                 pub mod [< error_ #category:snake _ #error:snake >] {
 
                     pub const STATUSCODE: #crate_prefix http::StatusCode = #crate_prefix http::StatusCode::#statuscode;
@@ -56,24 +86,6 @@ pub(crate) fn define_error0(crate_prefix: TokenStream, attr: TokenStream) -> Tok
     TokenStream::from_iter(result)
 }
 
-impl Parse for ErrorDefinitionContent {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut map = HashMap::new();
-        for (name, description, statuscode) in
-            input.parse_terminated(parse_error_content, Token![,])?
-        {
-            map.insert(
-                name,
-                ErrorDefinitionInner {
-                    description,
-                    statuscode,
-                },
-            );
-        }
-        Ok(ErrorDefinitionContent { map })
-    }
-}
-
 fn parse_error_content(stream: ParseStream) -> Result<(Ident, LitStr, Ident), syn::Error> {
     let name: Ident = stream.parse()?;
     let group: Group = stream.parse()?;
@@ -89,17 +101,4 @@ fn parse_error_content(stream: ParseStream) -> Result<(Ident, LitStr, Ident), sy
     } = syn::parse2(group.stream())?;
 
     Ok((name, description, statuscode))
-}
-
-impl Parse for ErrorDefinitionInner {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let description: LitStr = input.parse()?;
-
-        let statuscode = input.parse()?;
-
-        Ok(ErrorDefinitionInner {
-            description,
-            statuscode,
-        })
-    }
 }

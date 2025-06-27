@@ -5,6 +5,9 @@ edition = "2024"
 authors = ["Markus Probst <markustieger@gmail.com>"]
 license = "AGPL-3.0-only"
 
+[lints]
+workspace = true
+
 [lib]
 crate-type = ["rlib", "staticlib"]
 
@@ -47,6 +50,8 @@ service = [
     "tokio/io-util",
     "tokio/rt",
     "tokio/fs",
+    "dep:tokio-util",
+    "tokio-util/io-util",
 ]
 backend = ["dep:serde"]
 sdk = [
@@ -179,4 +184,13 @@ optional = true
 
 [dependencies.time]
 version = "0.3.41"
+optional = true
+
+[dependencies.json-patch]
+git = "https://github.com/qu0b/json-patch.git"
+rev = "4eca239"
+features = ["utoipa"]
+
+[dependencies.tokio-util]
+workspace = true
 optional = true

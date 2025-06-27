@@ -9,38 +9,41 @@ use crate::route::RouteArgs;
 use crate::service::args::ServiceArgs;
 use crate::service::parse::FunctionArgument;
 use crate::utils::{TokenStreamArray, type_option};
+use core::fmt::{Display, Formatter};
+use core::str::FromStr;
 use proc_macro2::{Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::VecDeque;
-use std::fmt::{Display, Formatter};
-use std::str::FromStr;
 use syn::LitStr;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
-#[allow(clippy::upper_case_acronyms)]
-pub(crate) enum HttpMethod {
-    GET,
-    POST,
-    PUT,
-    DELETE,
-    OPTIONS,
-    HEAD,
-    PATCH,
-    TRACE,
-    WS,
+#[expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "common http methods order"
+)]
+pub enum HttpMethod {
+    Get,
+    Post,
+    Put,
+    Patch,
+    Delete,
+    Head,
+    Options,
+    Trace,
+    Ws,
 }
 
 impl Display for HttpMethod {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            HttpMethod::GET | HttpMethod::WS => "GET",
-            HttpMethod::POST => "POST",
-            HttpMethod::PUT => "PUT",
-            HttpMethod::DELETE => "DELETE",
-            HttpMethod::OPTIONS => "OPTIONS",
-            HttpMethod::HEAD => "HEAD",
-            HttpMethod::PATCH => "PATCH",
-            HttpMethod::TRACE => "TRACE",
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(match self {
+            Self::Get | Self::Ws => "GET",
+            Self::Post => "POST",
+            Self::Put => "PUT",
+            Self::Patch => "PATCH",
+            Self::Delete => "DELETE",
+            Self::Head => "HEAD",
+            Self::Options => "OPTIONS",
+            Self::Trace => "TRACE",
         })
     }
 }
@@ -48,52 +51,68 @@ impl Display for HttpMethod {
 impl FromStr for HttpMethod {
     type Err = ();
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
-            "get" => Ok(HttpMethod::GET),
-            "post" => Ok(HttpMethod::POST),
-            "put" => Ok(HttpMethod::PUT),
-            "delete" => Ok(HttpMethod::DELETE),
-            "options" => Ok(HttpMethod::OPTIONS),
-            "head" => Ok(HttpMethod::HEAD),
-            "patch" => Ok(HttpMethod::PATCH),
-            "trace" => Ok(HttpMethod::TRACE),
-            "ws" => Ok(HttpMethod::WS),
+    fn from_str(str: &str) -> Result<Self, Self::Err> {
+        match str.to_lowercase().as_str() {
+            "get" => Ok(Self::Get),
+            "post" => Ok(Self::Post),
+            "put" => Ok(Self::Put),
+            "patch" => Ok(Self::Patch),
+            "delete" => Ok(Self::Delete),
+            "head" => Ok(Self::Head),
+            "options" => Ok(Self::Options),
+            "trace" => Ok(Self::Trace),
+            "ws" => Ok(Self::Ws),
             _ => Err(()),
         }
     }
 }
 
 impl HttpMethod {
+    pub(crate) fn to_http(self) -> Ident {
+        Ident::new(&self.to_string(), Span::call_site())
+    }
+
     pub(crate) fn to_utoipa(self) -> Ident {
         Ident::new(
             match self {
-                HttpMethod::GET | HttpMethod::WS => "Get",
-                HttpMethod::POST => "Post",
-                HttpMethod::PUT => "Put",
-                HttpMethod::DELETE => "Delete",
-                HttpMethod::OPTIONS => "Options",
-                HttpMethod::HEAD => "Head",
-                HttpMethod::PATCH => "Patch",
-                HttpMethod::TRACE => "Trace",
+                Self::Get | Self::Ws => "Get",
+                Self::Post => "Post",
+                Self::Put => "Put",
+                Self::Patch => "Patch",
+                Self::Delete => "Delete",
+                Self::Head => "Head",
+                Self::Options => "Options",
+                Self::Trace => "Trace",
             },
             Span::call_site(),
         )
     }
-
-    pub(crate) fn to_http(self) -> Ident {
-        Ident::new(&self.to_string(), Span::call_site())
-    }
 }
 
-#[allow(clippy::too_many_arguments)]
-#[allow(clippy::type_complexity)]
-pub(crate) fn process(
+pub struct ProcessedFunction {
+    client_def: TokenStream,
+    client_impl: TokenStream,
+
+    fn_ident: Ident,
+    method: HttpMethod,
+    operations: TokenStream,
+    path: String,
+    result: TokenStream,
+    schema_extra: TokenStream,
+    #[cfg(feature = "ts")]
+    ts_funcs_impl: TokenStream,
+    #[cfg(feature = "ts")]
+    ts_types_impl: TokenStream,
+    user: bool,
+}
+
+#[expect(clippy::too_many_arguments)]
+pub fn process(
     crate_prefix: &TokenStream,
     args: &ServiceArgs,
 
     trait_ident: &Ident,
-    fn_keyword: Ident,
+    fn_keyword: &Ident,
     fn_ident: Ident,
     end_punct: Punct,
 
@@ -104,19 +123,7 @@ pub(crate) fn process(
     errors: &mut TokenStream,
     routes: &mut TokenStream,
     mut result: Vec<TokenTree>,
-    functions: &mut Vec<(
-        Ident,
-        String,
-        HttpMethod,
-        bool,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-    )>,
+    functions: &mut Vec<ProcessedFunction>,
 ) -> Vec<TokenTree> {
     let mut operations = TokenStream::new();
 
@@ -124,7 +131,6 @@ pub(crate) fn process(
         operations.extend(quote! { .tag(#tag) });
     }
 
-    #[allow(unused_variables)]
     let (
         pre_fn_result,
         RouteArgs {
@@ -144,8 +150,11 @@ pub(crate) fn process(
         errors,
         &mut post_fn,
         &mut result,
-        &mut operations,
     );
+
+    if let Some(desc) = &doc {
+        operations.extend(quote! { .description(Some(#desc)) });
+    }
 
     let path = if absolute {
         path
@@ -168,17 +177,21 @@ pub(crate) fn process(
             let Some(TokenTree::Punct(punct)) = fn_arg.next() else {
                 panic!("Your function needs to have &self as the first argument");
             };
-            if punct.as_char() != '&' {
-                panic!("Your function needs to have &self as the first argument");
-            }
+            assert_eq!(
+                punct.as_char(),
+                '&',
+                "Your function needs to have &self as the first argument"
+            );
             let Some(TokenTree::Ident(ident)) = fn_arg.next() else {
                 panic!("Your function needs to have &self as the first argument");
             };
-            if !ident.to_string().eq("self") {
-                panic!("Your function needs to have &self as the first argument");
-            }
+            assert_eq!(
+                ident.to_string(),
+                "self",
+                "Your function needs to have &self as the first argument"
+            );
 
-            if let HttpMethod::WS = method {
+            if HttpMethod::Ws == method {
                 fn_args_out
                     .extend(quote! { ws: #crate_prefix axum::extract::ws::WebSocketUpgrade, });
             }
@@ -191,16 +204,16 @@ pub(crate) fn process(
         let Some(TokenTree::Punct(punct)) = fn_arg.next() else {
             panic!("Expected : after function argument");
         };
-        if punct.as_char() != ':' {
-            panic!(
-                "Expected : after function argument, got {}",
-                punct.as_char()
-            );
-        }
+        assert_eq!(
+            punct.as_char(),
+            ':',
+            "Expected : after function argument, got {}",
+            punct.as_char()
+        );
         let fn_arg_type: TokenStream = fn_arg.collect();
         let (fn_arg_type_opt, fn_arg_type_opt_used) = type_option(fn_arg_type.clone());
 
-        if path.contains(&format!("{{{}}}", fn_arg_name)) {
+        if path.contains(&format!("{{{fn_arg_name}}}")) {
             fn_args_identified.push(FunctionArgument::Path {
                 variable_name: fn_arg_name,
                 variable_type: fn_arg_type,
@@ -208,6 +221,7 @@ pub(crate) fn process(
         } else if let Some(desc) = query.get(&fn_arg_name.to_string()) {
             fn_args_identified.push(FunctionArgument::Query {
                 variable_name: fn_arg_name,
+                #[cfg(feature = "ts")]
                 variable_type: fn_arg_type_opt,
                 variable_type_wopt: fn_arg_type,
                 required: !fn_arg_type_opt_used,
@@ -263,9 +277,9 @@ pub(crate) fn process(
     let mut client_def_body = TokenStream::new();
     let mut fn_def_args = quote! { &self, };
     let mut fn_def_call = TokenStream::new();
-    #[allow(unused_mut)]
+    #[cfg(feature = "ts")]
     let mut ts_types_impl = TokenStream::new();
-    #[allow(unused_mut)]
+    #[cfg(feature = "ts")]
     let mut ts_funcs_impl = TokenStream::new();
 
     #[cfg(feature = "ts")]
@@ -281,7 +295,9 @@ pub(crate) fn process(
 
     path::process(
         crate_prefix,
+        #[cfg(feature = "ts")]
         trait_ident,
+        #[cfg(feature = "ts")]
         &fn_ident,
         &path,
         &fn_args_identified,
@@ -301,6 +317,7 @@ pub(crate) fn process(
 
     query::process(
         crate_prefix,
+        #[cfg(feature = "ts")]
         trait_ident,
         &fn_ident,
         &fn_args_identified,
@@ -321,6 +338,7 @@ pub(crate) fn process(
 
     header::process(
         crate_prefix,
+        #[cfg(feature = "ts")]
         &fn_ident,
         &fn_args_identified,
         &mut http_args,
@@ -336,6 +354,7 @@ pub(crate) fn process(
 
     payload::process(
         crate_prefix,
+        #[cfg(feature = "ts")]
         trait_ident,
         &fn_ident,
         &fn_args_identified,
@@ -380,13 +399,12 @@ pub(crate) fn process(
 
     let fn_def_call = Group::new(Delimiter::Parenthesis, fn_def_call);
     let method_http = method.to_http();
-    if method == HttpMethod::WS {
+    if method == HttpMethod::Ws {
         client_impl_body = quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
     } else if raw {
         #[cfg(feature = "ts")]
         {
-            let ts_crate_literal =
-                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+            let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
             let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
             let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
 
@@ -405,7 +423,7 @@ pub(crate) fn process(
                     <TypescriptResultStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
                 }
             });
-        }
+        };
 
         client_impl_body = quote! {
             let mut request = self.client().request(#crate_prefix http::Method::#method_http, self.[< #fn_ident _url >] #fn_def_call);
@@ -425,8 +443,7 @@ pub(crate) fn process(
     } else {
         #[cfg(feature = "ts")]
         {
-            let ts_crate_literal =
-                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+            let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
             let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
             let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
 
@@ -445,7 +462,7 @@ pub(crate) fn process(
                     <TypescriptResultStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
                 }
             });
-        }
+        };
 
         client_impl_body = quote! {
             let mut request = self.client().request(#crate_prefix http::Method::#method_http, self.[< #fn_ident _url >] #fn_def_call)
@@ -464,7 +481,7 @@ pub(crate) fn process(
                 }
             }
         };
-    };
+    }
 
     let client_impl = quote! { async #fn_keyword #fn_ident #fn_args #post_fn #result {
         #client_impl_body
@@ -481,11 +498,11 @@ pub(crate) fn process(
 
     #[cfg(feature = "ts")]
     {
-        use convert_case::{Case, Casing};
-        use itertools::Itertools;
+        use convert_case::{Case, Casing as _};
+        use itertools::Itertools as _;
         ts_func_body_url.push_str("return daemonResultUrl;\n");
 
-        #[allow(unstable_name_collisions)]
+        #[expect(unstable_name_collisions)]
         let ts_func_url_args: String = ts_func_args_url
             .keys()
             .map(String::as_str)
@@ -522,13 +539,13 @@ daemon_return_error_response
   return {{ Err: {{ "Communication": err }} }};
 }}
             "#,
-            format!("{}_url", fn_ident).to_case(Case::Camel),
+            format!("{fn_ident}_url").to_case(Case::Camel),
             ts_func_url_args,
             method,
             ts_options_body,
         );
 
-        ts_replace.insert("daemon_return_error_response".to_string(), quote! {
+        ts_replace.insert("daemon_return_error_response".to_owned(), quote! {
             &{
                 <#result as #crate_prefix FrameworkDocumentedResponse>::error_values()
                     .iter()
@@ -537,7 +554,7 @@ daemon_return_error_response
             }
         });
         ts_replace.insert(
-            "daemon_return_response".to_string(),
+            "daemon_return_response".to_owned(),
             quote! {
                &(
                     <#result as #crate_prefix ts::FrameworkTSResponse>::visit_ts_response()
@@ -545,7 +562,7 @@ daemon_return_error_response
             },
         );
 
-        let func_name_url = LitStr::new(&format!("{}_url", fn_ident), Span::call_site());
+        let func_name_url = LitStr::new(&format!("{fn_ident}_url"), Span::call_site());
         let func_name = LitStr::new(&fn_ident.to_string(), Span::call_site());
         let func_body_url = LitStr::new(&ts_func_body_url, Span::call_site());
         let func_body = LitStr::new(&ts_func_body, Span::call_site());
@@ -615,7 +632,7 @@ daemon_return_error_response
             });
         }
 
-        if method == HttpMethod::WS {
+        if method == HttpMethod::Ws {
             // client_impl_body = quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
         } else if raw {
             if let Some(doc) = doc {
@@ -648,7 +665,44 @@ daemon_return_error_response
         }
     }
 
-    functions.push((
+    functions.push(ProcessedFunction {
+        client_def,
+        client_impl,
+        fn_ident,
+        method,
+        operations,
+        path,
+        result,
+        schema_extra,
+        #[cfg(feature = "ts")]
+        ts_funcs_impl,
+        #[cfg(feature = "ts")]
+        ts_types_impl,
+        user,
+    });
+
+    func
+}
+
+pub fn finish(
+    crate_prefix: &TokenStream,
+    trait_ident: &Ident,
+    trait_body_output: &mut Vec<TokenTree>,
+    output_extra: &mut Vec<TokenTree>,
+    functions: Vec<ProcessedFunction>,
+) {
+    let mut routes = TokenStream::new();
+    let mut routes_user = TokenStream::new();
+
+    let mut client_impl_merged = TokenStream::new();
+    let mut client_def_merged = TokenStream::new();
+
+    #[cfg(feature = "ts")]
+    let mut ts_types_impl_merged = TokenStream::new();
+    #[cfg(feature = "ts")]
+    let mut ts_funcs_impl_merged = TokenStream::new();
+
+    for ProcessedFunction {
         fn_ident,
         path,
         method,
@@ -658,75 +712,33 @@ daemon_return_error_response
         schema_extra,
         client_impl,
         client_def,
+        #[cfg(feature = "ts")]
         ts_types_impl,
+        #[cfg(feature = "ts")]
         ts_funcs_impl,
-    ));
-
-    func
-}
-
-#[allow(clippy::type_complexity)]
-pub(crate) fn finish(
-    crate_prefix: &TokenStream,
-    trait_ident: &Ident,
-    trait_body_output: &mut Vec<TokenTree>,
-    output_extra: &mut Vec<TokenTree>,
-    functions: Vec<(
-        Ident,
-        String,
-        HttpMethod,
-        bool,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-        TokenStream,
-    )>,
-) {
-    let mut routes = TokenStream::new();
-    let mut routes_user = TokenStream::new();
-
-    let mut client_impl = TokenStream::new();
-    let mut client_definition = TokenStream::new();
-
-    let mut types_impl = TokenStream::new();
-    let mut funcs_impl = TokenStream::new();
-
-    for (
-        ident,
-        path,
-        method,
-        user,
-        result,
-        operations,
-        schema,
-        client,
-        client_def,
-        types_func_impl,
-        funcs_func_impl,
-    ) in functions
+    } in functions
     {
         let token = if user { &mut routes_user } else { &mut routes };
 
-        client_impl.extend(client);
-        client_definition.extend(client_def);
-        types_impl.extend(types_func_impl);
-        funcs_impl.extend(funcs_func_impl);
+        client_impl_merged.extend(client_impl);
+        client_def_merged.extend(client_def);
+        #[cfg(feature = "ts")]
+        ts_types_impl_merged.extend(ts_types_impl);
+        #[cfg(feature = "ts")]
+        ts_funcs_impl_merged.extend(ts_funcs_impl);
 
         let method = method.to_utoipa();
 
         let path = LitStr::new(&path, Span::call_site());
 
-        let operation_id = LitStr::new(&ident.to_string(), Span::call_site());
+        let operation_id = LitStr::new(&fn_ident.to_string(), Span::call_site());
 
         token.extend(quote! {
 
             .routes(
                 {
                     let mut schemas = std::collections::HashMap::new();
-                    #schema
+                    #schema_extra
                     let mut builder = #crate_prefix utoipa::openapi::ResponsesBuilder::new();
                     <#result as #crate_prefix FrameworkDocumentedResponse>::openapi(&mut builder, &mut schemas);
                     (schemas.into_iter().collect(), {
@@ -741,7 +753,7 @@ pub(crate) fn finish(
                             .build()
                         );
                         paths
-                    }, MethodRouter::new().on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), __daemon_framework_routes::#ident(self.clone())))
+                    }, MethodRouter::new().on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), __daemon_framework_routes::#fn_ident(self.clone())))
                 }
             )
 
@@ -783,24 +795,24 @@ pub(crate) fn finish(
             #crate_prefix paste::paste! {
 
                 fn visit_types(visitor: &mut #crate_prefix ts::TSTypeVisitor) where Self: Sized {
-                    #types_impl
+                    #ts_types_impl_merged
                 }
 
                 fn visit_funcs(visitor: &mut #crate_prefix ts::TSClassFunctionVisitor) where Self: Sized {
-                    #funcs_impl
+                    #ts_funcs_impl_merged
                 }
 
             }
 
         });
-    }
+    };
 
     output_extra.extend(quote! {
 
         #crate_prefix paste::paste! {
 
             pub trait [< #trait_ident URL >]: #crate_prefix FrameworkClientImpl {
-                #client_definition
+                #client_def_merged
             }
 
             pub trait [< #trait_ident ClientImpl >]: #crate_prefix FrameworkClientImpl {
@@ -812,10 +824,10 @@ pub(crate) fn finish(
             }
 
             #[#crate_prefix async_trait]
-            // #[diagnostic::do_not_recommend]
+            #[diagnostic::do_not_recommend]
             #[allow(unused_variables)] // TODO: Why is this needed?
             impl<T: [< #trait_ident ClientImpl >] + Send + Sync> #trait_ident for T {
-                #client_impl
+                #client_impl_merged
             }
 
         }

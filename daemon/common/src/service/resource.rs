@@ -12,88 +12,88 @@ pub trait ResourceService {
 
 #[derive(Serialize, Deserialize, PartialEq, utoipa::ToSchema)]
 #[schema(example = json!({
-  "mem_total": 67319472128u64,
-  "mem_used": 6551359488u64,
+  "mem_total": 67_319_472_128u64,
+  "mem_used": 6_551_359_488u64,
   "mem_allocated": 0u64,
-  "swap_total": 137438949376u64,
+  "swap_total": 137_438_949_376u64,
   "swap_used": 0u64,
   "swap_allocated": 0u64,
-  "cpu_used": 1.1980442f32,
+  "cpu_used": 1.198_044_2f32,
   "cpu_count": 12u32,
   "disks": [
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/boot",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/root",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/home",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/srv",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/var/cache",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/var/log",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/var/swap",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/var/tmp",
       "readonly": false,
       "filesystem": "btrfs"
     },
     {
-      "available": 34058813440u64,
-      "total": 34342944768u64,
+      "available": 34_058_813_440u64,
+      "total": 34_342_944_768u64,
       "mountpoint": "/efi",
       "readonly": false,
       "filesystem": "vfat"
     },
     {
-      "available": 392462217216u64,
-      "total": 1966021279744u64,
+      "available": 392_462_217_216u64,
+      "total": 1_966_021_279_744u64,
       "mountpoint": "/var/lib/docker/btrfs",
       "readonly": false,
       "filesystem": "btrfs"

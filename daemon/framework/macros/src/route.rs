@@ -1,20 +1,71 @@
 use crate::service::process::HttpMethod;
+use core::str::FromStr as _;
 use proc_macro2::{Delimiter, Group, Ident, Punct};
 use std::collections::HashMap;
-use std::str::FromStr;
 use syn::parse::{Parse, ParseStream};
 use syn::{LitStr, Token};
 
-pub(crate) struct RouteArgs {
-    pub(crate) absolute: bool,
-    pub(crate) path: String,
-    pub(crate) method: HttpMethod,
-    pub(crate) query: HashMap<String, Option<LitStr>>,
-    pub(crate) user: bool,
-    pub(crate) raw: bool,
+pub struct RouteArgs {
+    pub absolute: bool,
+    pub method: HttpMethod,
+    pub path: String,
+    pub query: HashMap<String, Option<LitStr>>,
+    pub raw: bool,
+    pub user: bool,
 }
 
-#[allow(clippy::type_complexity)]
+impl Parse for RouteArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let absolute = input.peek(Token![!]);
+        if absolute {
+            let _: Punct = input.parse()?;
+        }
+        let path: LitStr = input.parse()?;
+        let mut method = HttpMethod::Get;
+        let mut query = HashMap::new();
+        let mut user = false;
+        let mut raw = false;
+
+        if input.peek(Token![,]) {
+            let _: Punct = input.parse()?;
+            for (method_opt, query_opt, user_opt, raw_opt) in
+                input.parse_terminated(parse_route_args_option, Token![,])?
+            {
+                if let Some(opt) = method_opt {
+                    method = opt;
+                }
+                if let Some(opt) = user_opt {
+                    user = opt;
+                }
+                if let Some(opt) = raw_opt {
+                    raw = opt;
+                }
+                query.extend(query_opt);
+            }
+        }
+
+        Ok(Self {
+            absolute,
+            path: path.value(),
+            method,
+            query,
+            user,
+            raw,
+        })
+    }
+}
+
+struct QueryArgs(Vec<(Ident, Option<LitStr>)>);
+
+impl Parse for QueryArgs {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        input
+            .parse_terminated(parse_query_arg, Token![,])
+            .map(|result| Self(result.into_iter().collect()))
+    }
+}
+
+#[expect(clippy::type_complexity)]
 fn parse_route_args_option(
     stream: ParseStream,
 ) -> Result<
@@ -40,7 +91,7 @@ fn parse_route_args_option(
                 let method_ident: Ident = stream.parse()?;
                 match HttpMethod::from_str(&method_ident.to_string()) {
                     Ok(val) => Ok((Some(val), HashMap::new(), None, None)),
-                    Err(_) => Err(stream.error("Unknown method")),
+                    Err(()) => Err(stream.error("Unknown method")),
                 }
             }
             "query" => {
@@ -66,59 +117,12 @@ fn parse_route_args_option(
     }
 }
 
-impl Parse for RouteArgs {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let absolute = input.peek(Token![!]);
-        if absolute {
-            let _: Punct = input.parse()?;
-        }
-        let path: LitStr = input.parse()?;
-        let mut method = HttpMethod::GET;
-        let mut query = HashMap::new();
-        let mut user = false;
-        let mut raw = false;
-
-        if input.peek(Token![,]) {
-            let _: Punct = input.parse()?;
-            for (method_opt, query_opt, user_opt, raw_opt) in
-                input.parse_terminated(parse_route_args_option, Token![,])?
-            {
-                if let Some(opt) = method_opt {
-                    method = opt;
-                }
-                if let Some(opt) = user_opt {
-                    user = opt;
-                }
-                if let Some(opt) = raw_opt {
-                    raw = opt;
-                }
-                query.extend(query_opt);
-            }
-        }
-
-        Ok(RouteArgs {
-            absolute,
-            path: path.value(),
-            method,
-            query,
-            user,
-            raw,
-        })
-    }
-}
-
-struct QueryArgs(Vec<(Ident, Option<LitStr>)>);
-
-impl Parse for QueryArgs {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        input
-            .parse_terminated(parse_query_arg, Token![,])
-            .map(|f| QueryArgs(f.into_iter().collect()))
-    }
-}
-
 fn parse_query_arg(stream: ParseStream) -> Result<(Ident, Option<LitStr>), syn::Error> {
     let arg: Ident = stream.parse()?;
+    #[expect(
+        clippy::if_then_some_else_none,
+        reason = "False positive. It does have a question-mark"
+    )]
     let desc = if stream.peek(syn::LitStr) {
         Some(stream.parse()?)
     } else {

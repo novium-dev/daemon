@@ -1,65 +1,54 @@
+#![expect(
+    clippy::arbitrary_source_item_ordering,
+    reason = "This order is more readable"
+)]
+
 #[cfg(feature = "ts")]
 pub mod ts;
 
 pub use async_trait::async_trait;
 pub use axum;
-use axum::body::BodyDataStream;
-use axum::extract::{FromRequest, Request};
-use axum::response::IntoResponse;
 pub use axum_extra;
-use bytes::Bytes;
 pub use daemon_framework_macros::define_error;
 pub use daemon_framework_macros::error;
 pub use daemon_framework_macros::service;
 pub use daemon_framework_macros::ts;
-use futures_util::{Stream, TryStreamExt};
 pub use http;
-use http::HeaderMap;
 pub use paste;
 pub use reqwest;
-use reqwest::Url;
 pub use serde;
-use serde::de::Error as DeError;
-use serde::ser::Error as SerError;
-use serde::{Deserialize, Deserializer, Serialize, Serializer};
 pub use serde_json;
 pub use serde_urlencoded;
 pub use sqlx;
-use std::any::TypeId;
-use std::collections::HashMap;
-use std::mem::MaybeUninit;
-use std::ops::{Deref, DerefMut};
-use std::pin::Pin;
-use std::{io, mem};
-use tokio::io::AsyncRead;
-use tokio_util::io::{ReaderStream, StreamReader};
 #[cfg(feature = "ts")]
 pub use ts_rs;
 pub use url;
 pub use urlencoding;
 pub use utoipa;
+pub use utoipa_axum;
+
+use axum::body::BodyDataStream;
+use axum::extract::{FromRequest, Request};
+use axum::response::IntoResponse;
+use bytes::Bytes;
+use core::any::TypeId;
+use core::mem::{self, MaybeUninit};
+use core::ops::{Deref, DerefMut};
+use core::pin::Pin;
+use futures_util::{Stream, TryStreamExt as _};
+use http::HeaderMap;
+use reqwest::Url;
+use serde::de::Error as _;
+use serde::ser::Error as _;
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::collections::HashMap;
+use std::io;
+use tokio::io::AsyncRead;
+use tokio_util::io::{ReaderStream, StreamReader};
 use utoipa::ToSchema;
 use utoipa::openapi::schema::RefBuilder;
 use utoipa::openapi::{Content, RefOr, Response, ResponsesBuilder, Schema};
-pub use utoipa_axum;
 use utoipa_axum::router::OpenApiRouter;
-
-pub const SUCCESS_DESCRIPTION: &str = "Success";
-
-pub trait FrameworkDocumentedResponse {
-    fn openapi(
-        responses: &mut utoipa::openapi::ResponsesBuilder,
-        schemas: &mut HashMap<String, RefOr<Schema>>,
-    );
-
-    fn error_values() -> &'static [&'static str];
-}
-
-pub trait FrameworkClientImpl {
-    fn client(&self) -> &reqwest::Client;
-
-    fn base_url(&self) -> &Url;
-}
 
 #[doc(hidden)]
 pub mod internal {
@@ -68,40 +57,19 @@ pub mod internal {
     use axum::response::{IntoResponse, Response};
     use axum::routing::MethodRouter;
     use axum_extra::TypedHeader;
-    use axum_extra::headers::{Header, HeaderMapExt};
+    use axum_extra::headers::{Header, HeaderMapExt as _};
+    use core::fmt::{Debug, Display, Formatter};
+    use core::str::FromStr;
     use http::{HeaderMap, HeaderName, StatusCode};
-    use serde::de::{DeserializeOwned, Error};
+    use serde::de::{DeserializeOwned, Error as _};
     use serde::ser::Impossible;
     use serde::{Deserialize, Deserializer, Serialize, Serializer};
-    use std::fmt::{Debug, Display, Formatter};
-    use std::str::FromStr;
     use thiserror::Error;
-    use utoipa::PartialSchema;
+    use utoipa::PartialSchema as _;
     use utoipa::openapi::path::OperationBuilder;
     use utoipa::openapi::{Object, RefOr, Schema, Type};
-    use utoipa_axum::PathItemExt;
+    use utoipa_axum::PathItemExt as _;
     use utoipa_axum::router::OpenApiRouter;
-
-    pub fn error_schema(id: &str, msg: &str) -> Schema {
-        let mut obj = Object::with_type(Type::Object);
-        let mut error = Object::with_type(Type::Object);
-
-        let mut id_obj = Object::with_type(Type::String);
-        id_obj.example = Some(serde_json::Value::String(id.to_string()));
-        error
-            .properties
-            .insert("id".to_string(), RefOr::T(Schema::Object(id_obj)));
-
-        let mut msg_obj = Object::with_type(Type::String);
-        msg_obj.example = Some(serde_json::Value::String(msg.to_string()));
-        error
-            .properties
-            .insert("msg".to_string(), RefOr::T(Schema::Object(msg_obj)));
-
-        obj.properties
-            .insert("error".to_string(), RefOr::T(Schema::Object(error)));
-        Schema::Object(obj)
-    }
 
     trait TypedHeaderExt<T: Header> {
         fn inner(self) -> T;
@@ -111,16 +79,6 @@ pub mod internal {
         fn inner(self) -> T {
             self.0
         }
-    }
-
-    #[allow(private_bounds)]
-    pub fn header_name<T: TypedHeaderExt<E>, E: Header>() -> &'static HeaderName {
-        E::name()
-    }
-
-    #[allow(private_bounds)]
-    pub fn header_insert<T: TypedHeaderExt<E>, E: Header>(value: T, map: &mut HeaderMap) {
-        map.typed_insert(value.inner())
     }
 
     pub struct FrameworkJsonResponse<T>(pub T);
@@ -138,9 +96,9 @@ pub mod internal {
     impl<T: DeserializeOwned + MaybeUnit + 'static> FrameworkJsonResponse<T> {
         pub async fn from_reqwest(response: reqwest::Response) -> Result<Self, reqwest::Error> {
             if let Some(unit) = T::unit() {
-                Ok(FrameworkJsonResponse(unit))
+                Ok(Self(unit))
             } else {
-                response.json().await.map(FrameworkJsonResponse)
+                response.json().await.map(Self)
             }
         }
     }
@@ -151,7 +109,7 @@ pub mod internal {
             Self: Sized,
         {
             OpenApiRouter::new().routes((
-                vec![("Result".to_string(), <()>::schema())],
+                vec![("Result".to_owned(), <()>::schema())],
                 {
                     let mut paths = utoipa::openapi::path::Paths::new();
                     paths.add_path_operation(
@@ -188,11 +146,15 @@ pub mod internal {
     }
 
     impl Display for StringSerializerError {
-        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-            <Self as Debug>::fmt(self, f)
+        fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
+            <Self as Debug>::fmt(self, formatter)
         }
     }
 
+    #[expect(
+        clippy::unimplemented,
+        reason = "Some serializer functions are not needed and therefore aren't implemented"
+    )]
     impl Serializer for StringSerializer {
         type Ok = Option<String>;
         type Error = StringSerializerError;
@@ -204,60 +166,60 @@ pub mod internal {
         type SerializeStruct = Impossible<Self::Ok, Self::Error>;
         type SerializeStructVariant = Impossible<Self::Ok, Self::Error>;
 
-        fn serialize_bool(self, v: bool) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_bool(self, value: bool) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_i8(self, v: i8) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_i8(self, value: i8) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_i16(self, v: i16) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_i16(self, value: i16) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_i32(self, v: i32) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_i32(self, value: i32) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_i64(self, v: i64) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_i64(self, value: i64) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_u8(self, v: u8) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_u8(self, value: u8) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_u16(self, v: u16) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_u16(self, value: u16) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_u32(self, v: u32) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_u32(self, value: u32) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_u64(self, v: u64) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_u64(self, value: u64) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_f32(self, v: f32) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_f32(self, value: f32) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_f64(self, value: f64) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_char(self, value: char) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_string()))
         }
 
-        fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(v.to_string()))
+        fn serialize_str(self, value: &str) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(value.to_owned()))
         }
 
-        fn serialize_bytes(self, v: &[u8]) -> Result<Self::Ok, Self::Error> {
-            Ok(Some(String::from_utf8_lossy(v).to_string()))
+        fn serialize_bytes(self, value: &[u8]) -> Result<Self::Ok, Self::Error> {
+            Ok(Some(String::from_utf8_lossy(value).to_string()))
         }
 
         fn serialize_none(self) -> Result<Self::Ok, Self::Error> {
@@ -361,6 +323,45 @@ pub mod internal {
         }
     }
 
+    #[must_use]
+    pub fn error_schema(id: &str, msg: &str) -> Schema {
+        let mut obj = Object::with_type(Type::Object);
+        let mut error = Object::with_type(Type::Object);
+
+        let mut id_obj = Object::with_type(Type::String);
+        id_obj.example = Some(serde_json::Value::String(id.to_owned()));
+        error
+            .properties
+            .insert("id".to_owned(), RefOr::T(Schema::Object(id_obj)));
+
+        let mut msg_obj = Object::with_type(Type::String);
+        msg_obj.example = Some(serde_json::Value::String(msg.to_owned()));
+        error
+            .properties
+            .insert("msg".to_owned(), RefOr::T(Schema::Object(msg_obj)));
+
+        obj.properties
+            .insert("error".to_owned(), RefOr::T(Schema::Object(error)));
+        Schema::Object(obj)
+    }
+
+    #[expect(
+        private_bounds,
+        reason = "Trait only implemented for TypedHeader, it should be sealed"
+    )]
+    #[must_use]
+    pub fn header_name<T: TypedHeaderExt<E>, E: Header>() -> &'static HeaderName {
+        E::name()
+    }
+
+    #[expect(
+        private_bounds,
+        reason = "Trait only implemented for TypedHeader, it should be sealed"
+    )]
+    pub fn header_insert<T: TypedHeaderExt<E>, E: Header>(value: T, map: &mut HeaderMap) {
+        map.typed_insert(value.inner());
+    }
+
     pub async fn error_by_response<T: FromStr<Err = ()> + From<reqwest::Error>>(
         response: reqwest::Response,
     ) -> T {
@@ -373,7 +374,7 @@ pub mod internal {
                 let id = String::deserialize(deserializer)?;
                 T::from_str(&id)
                     .map(FromStrData)
-                    .map_err(|_| D::Error::custom("Error not found!"))
+                    .map_err(|()| D::Error::custom("Error not found!"))
             }
         }
 
@@ -396,9 +397,26 @@ pub mod internal {
         }
     }
 
+    #[must_use]
     pub fn from_raw<T: From<reqwest::Response>>(response: reqwest::Response) -> T {
         T::from(response)
     }
+}
+
+pub const SUCCESS_DESCRIPTION: &str = "Success";
+
+pub trait FrameworkDocumentedResponse {
+    fn error_values() -> &'static [&'static str];
+
+    fn openapi(
+        responses: &mut utoipa::openapi::ResponsesBuilder,
+        schemas: &mut HashMap<String, RefOr<Schema>>,
+    );
+}
+
+pub trait FrameworkClientImpl {
+    fn base_url(&self) -> &Url;
+    fn client(&self) -> &reqwest::Client;
 }
 
 pub trait MaybeUnit {
@@ -412,11 +430,9 @@ impl<T: 'static> MaybeUnit for T {
     where
         Self: Sized,
     {
-        if TypeId::of::<()>() == TypeId::of::<T>() {
-            Some(unsafe { MaybeUninit::zeroed().assume_init() }) // TODO: Replace with auto traits when stable, see https://github.com/rust-lang/rust/issues/13231
-        } else {
-            None
-        }
+        // SAFETY: It is certain that the current type is (), and therefore doesn't have any size. There is no undefined behaviour.
+        (TypeId::of::<()>() == TypeId::of::<T>())
+            .then(|| unsafe { MaybeUninit::zeroed().assume_init() })
     }
 }
 
@@ -431,18 +447,22 @@ impl IntoResponse for WebsocketResponse {
 impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
     for Result<WebsocketResponse, E>
 {
-    fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
-        <Result<(), E>>::openapi(responses, schemas)
-    }
-
     fn error_values() -> &'static [&'static str] {
         E::error_values()
+    }
+
+    fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
+        <Result<(), E>>::openapi(responses, schemas);
     }
 }
 
 impl<V: ToSchema + MaybeUnit + 'static, E: FrameworkDocumentedResponse + 'static>
     FrameworkDocumentedResponse for Result<V, E>
 {
+    fn error_values() -> &'static [&'static str] {
+        E::error_values()
+    }
+
     fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
         let mut responses_owned = ResponsesBuilder::new();
         mem::swap(responses, &mut responses_owned);
@@ -471,11 +491,7 @@ impl<V: ToSchema + MaybeUnit + 'static, E: FrameworkDocumentedResponse + 'static
         }
         *responses = responses_owned;
 
-        E::openapi(responses, schemas)
-    }
-
-    fn error_values() -> &'static [&'static str] {
-        E::error_values()
+        E::openapi(responses, schemas);
     }
 }
 
@@ -499,6 +515,10 @@ impl IntoResponse for FileResponse {
 impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
     for Result<FileResponse, E>
 {
+    fn error_values() -> &'static [&'static str] {
+        E::error_values()
+    }
+
     fn openapi(responses: &mut ResponsesBuilder, schemas: &mut HashMap<String, RefOr<Schema>>) {
         let mut responses_owned = ResponsesBuilder::new();
         mem::swap(responses, &mut responses_owned);
@@ -511,11 +531,7 @@ impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
         );
         *responses = responses_owned;
 
-        E::openapi(responses, schemas)
-    }
-
-    fn error_values() -> &'static [&'static str] {
-        E::error_values()
+        E::openapi(responses, schemas);
     }
 }
 
@@ -595,44 +611,49 @@ impl<'de, T: for<'a> Deserialize<'a> + Clone> Deserialize<'de> for JsonVec<T> {
 /// It can be received using axum and be used in a request with reqwest.
 pub enum DataStream {
     Axum(BodyDataStream),
-    Stream(Pin<BoxedStream>),
     Read(Pin<Box<dyn AsyncRead + Send + 'static>>),
+    Stream(Pin<BoxedStream>),
 }
 
 type BoxedStream = Box<dyn Stream<Item = Result<Bytes, io::Error>> + Send>;
 impl DataStream {
+    #[must_use]
+    pub fn by_read<T: AsyncRead + Send + 'static>(read: T) -> Self {
+        Self::Read(Box::pin(read))
+    }
+
+    #[must_use]
     pub fn by_stream<T: Stream<Item = Result<Bytes, io::Error>> + Send + 'static>(
         stream: T,
     ) -> Self {
         Self::Stream(Box::pin(stream))
     }
 
-    pub fn by_read<T: AsyncRead + Send + 'static>(read: T) -> Self {
-        Self::Read(Box::pin(read))
-    }
-
+    #[must_use]
     pub fn into_axum(self) -> axum::body::Body {
         match self {
-            DataStream::Axum(stream) => axum::body::Body::from_stream(stream),
-            DataStream::Stream(stream) => axum::body::Body::from_stream(stream),
-            DataStream::Read(read) => axum::body::Body::from_stream(ReaderStream::new(read)),
+            Self::Axum(stream) => axum::body::Body::from_stream(stream),
+            Self::Stream(stream) => axum::body::Body::from_stream(stream),
+            Self::Read(read) => axum::body::Body::from_stream(ReaderStream::new(read)),
         }
     }
 
+    #[must_use]
     pub fn into_reqwest(self) -> reqwest::Body {
         match self {
-            DataStream::Axum(stream) => reqwest::Body::wrap_stream(stream),
-            DataStream::Stream(stream) => reqwest::Body::wrap_stream(stream),
-            DataStream::Read(read) => reqwest::Body::wrap_stream(ReaderStream::new(read)),
+            Self::Axum(stream) => reqwest::Body::wrap_stream(stream),
+            Self::Stream(stream) => reqwest::Body::wrap_stream(stream),
+            Self::Read(read) => reqwest::Body::wrap_stream(ReaderStream::new(read)),
         }
     }
 
+    #[must_use]
     pub fn reader(self) -> StreamReader<Pin<BoxedStream>, Bytes> {
-        use futures_util::TryStreamExt;
+        use futures_util::TryStreamExt as _;
         StreamReader::new(match self {
-            DataStream::Axum(stream) => Box::pin(stream.map_err(io::Error::other)),
-            DataStream::Stream(stream) => stream,
-            DataStream::Read(read) => Box::pin(ReaderStream::new(read)),
+            Self::Axum(stream) => Box::pin(stream.map_err(io::Error::other)),
+            Self::Stream(stream) => stream,
+            Self::Read(read) => Box::pin(ReaderStream::new(read)),
         })
     }
 }
@@ -641,7 +662,7 @@ impl<S: Send + Sync> FromRequest<S> for DataStream {
     type Rejection = ();
 
     async fn from_request(req: Request, _state: &S) -> Result<Self, Self::Rejection> {
-        Ok(DataStream::Axum(req.into_body().into_data_stream()))
+        Ok(Self::Axum(req.into_body().into_data_stream()))
     }
 }
 
@@ -651,7 +672,7 @@ impl ts_rs::TS for DataStream {
     type OptionInnerType = Self;
 
     fn decl() -> String {
-        "type DataStream = string | Buffer | Uint8Array | Readable;".to_string()
+        "type DataStream = string | Buffer | Uint8Array | Readable;".to_owned()
     }
 
     fn decl_concrete() -> String {
@@ -659,7 +680,7 @@ impl ts_rs::TS for DataStream {
     }
 
     fn name() -> String {
-        "string | Buffer | Uint8Array | Readable".to_string()
+        "string | Buffer | Uint8Array | Readable".to_owned()
     }
 
     fn inline() -> String {
@@ -671,7 +692,18 @@ impl ts_rs::TS for DataStream {
     }
 
     fn docs() -> Option<String> {
-        Some("/// Universal type for data streams over the network".to_string())
+        Some("/// Universal type for data streams over the network".to_owned())
+    }
+}
+
+pub trait MultiRouterExtension {
+    #[must_use]
+    fn merge(self, other: Self) -> Self;
+}
+
+impl MultiRouterExtension for (OpenApiRouter, OpenApiRouter) {
+    fn merge(self, other: Self) -> Self {
+        (self.0.merge(other.0), self.1.merge(other.1))
     }
 }
 
@@ -753,14 +785,4 @@ macro_rules! framework_ts_func_export {
             )*
         }
     };
-}
-
-pub trait MultiRouterExtension {
-    fn merge(self, other: Self) -> Self;
-}
-
-impl MultiRouterExtension for (OpenApiRouter, OpenApiRouter) {
-    fn merge(self, other: Self) -> Self {
-        (self.0.merge(other.0), self.1.merge(other.1))
-    }
 }

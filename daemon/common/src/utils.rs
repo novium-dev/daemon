@@ -1,3 +1,10 @@
+use serde_json::Map;
+use std::io;
+use std::io::{Error, SeekFrom};
+use std::sync::LazyLock;
+use tokio::fs::File;
+use tokio::io::{AsyncSeek, AsyncSeekExt as _};
+use tokio_util::io::SyncIoBridge;
 use url::Url;
 
 #[cfg(feature = "docker")]
@@ -8,12 +15,11 @@ pub async fn identify_container_by_pid(
     use bollard::query_parameters::InspectContainerOptions;
     use std::io;
     use tokio::fs::File;
-    use tokio::io::AsyncReadExt;
-    lazy_static::lazy_static! {
-        static ref CGROUP_REGEX: regex::Regex = regex::Regex::new("docker-([a-z0-9]{64}).scope").unwrap();
-    }
+    use tokio::io::AsyncReadExt as _;
+    static CGROUP_REGEX: LazyLock<regex::Regex> =
+        LazyLock::new(|| regex::Regex::new("docker-([a-z0-9]{64}).scope").unwrap());
 
-    let mut file = File::open(format!("/proc/{}/cgroup", pid)).await?;
+    let mut file = File::open(format!("/proc/{pid}/cgroup")).await?;
     let mut buf = String::new();
     file.read_to_string(&mut buf).await?;
     let captures = CGROUP_REGEX.captures(&buf);
@@ -28,21 +34,19 @@ pub async fn identify_container_by_pid(
                 Ok(container) => container,
                 Err(err) => return Err(io::Error::other(err)),
             };
-            match container.name {
+            match container.name.as_deref() {
                 None => Err(io::Error::other("Container unknown (name missing)")),
-                Some(name) => {
-                    let mut name: &str = &name;
-                    if name.starts_with("/") {
-                        name = &name[1..];
+                Some(mut name) => {
+                    if let Some(new_name) = name.strip_prefix('/') {
+                        name = new_name;
                     }
-                    if !name.starts_with(crate::CONTAINER_PREFIX) {
+
+                    let Some(stripped_name) = name.strip_prefix(crate::CONTAINER_PREFIX) else {
                         return Err(io::Error::other(format!(
-                            "Container unknown (not starting with prefix: {:?})",
-                            name
+                            "Container unknown (not starting with prefix: {name:?})"
                         )));
-                    }
-                    let str = &name[crate::CONTAINER_PREFIX.len()..];
-                    str.parse().map_err(io::Error::other)
+                    };
+                    stripped_name.parse().map_err(io::Error::other)
                 }
             }
         }
@@ -50,7 +54,157 @@ pub async fn identify_container_by_pid(
 }
 
 pub fn base_url(url: &mut Url) {
-    if !url.path().ends_with("/") {
+    if !url.path().ends_with('/') {
         url.set_path(&format!("{}/", url.path()));
+    }
+}
+
+pub trait JsonExt {
+    fn to_yaml(self) -> serde_yaml::Value;
+
+    fn from_yaml(yaml: serde_yaml::Value) -> Self;
+}
+
+const JSON_MAGIC: &str = "{DAEMON_JSON_MAGIC}!";
+
+impl JsonExt for serde_json::Value {
+    fn to_yaml(self) -> serde_yaml::Value {
+        match self {
+            Self::Null => serde_yaml::Value::Null,
+            Self::Bool(value) => serde_yaml::Value::Bool(value),
+            Self::Number(value) => match (value.as_u64(), value.as_i64(), value.as_f64()) {
+                (Some(value), _, _) => serde_yaml::Value::Number(serde_yaml::Number::from(value)),
+                (_, Some(value), _) => serde_yaml::Value::Number(serde_yaml::Number::from(value)),
+                (_, _, value) => {
+                    serde_yaml::Value::Number(serde_yaml::Number::from(value.unwrap_or_default()))
+                }
+            },
+            Self::String(value) => serde_yaml::Value::String(value),
+            Self::Array(value) => {
+                serde_yaml::Value::Sequence(value.into_iter().map(Self::to_yaml).collect())
+            }
+            Self::Object(value) => {
+                if let Some(Self::String(tag)) = value.get(&format!("{JSON_MAGIC}_tag"))
+                    && let Some(untagged) = value.get("value")
+                    && value.len() == 2
+                {
+                    let tag = serde_yaml::value::Tag::new(tag);
+                    serde_yaml::Value::Tagged(Box::new(serde_yaml::value::TaggedValue {
+                        tag,
+                        value: untagged.clone().to_yaml(),
+                    }))
+                } else {
+                    let mut map = serde_yaml::Mapping::with_capacity(value.len());
+                    for (key, val) in value {
+                        let val = val.to_yaml();
+                        if let Some(key) = key.strip_prefix(JSON_MAGIC) {
+                            let Ok(key_json) = serde_json::from_str::<Self>(key) else {
+                                continue;
+                            };
+                            let key = key_json.to_yaml();
+                            map.insert(key, val);
+                            continue;
+                        }
+                        map.insert(serde_yaml::Value::String(key), val);
+                    }
+                    serde_yaml::Value::Mapping(map)
+                }
+            }
+        }
+    }
+
+    fn from_yaml(yaml: serde_yaml::Value) -> Self {
+        use serde_yaml::Value;
+        match yaml {
+            Value::Null => Self::Null,
+            Value::Bool(value) => Self::Bool(value),
+            Value::Number(value) => match (value.as_u64(), value.as_i64(), value.as_f64()) {
+                (Some(value), _, _) => Self::Number(serde_json::Number::from(value)),
+                (_, Some(value), _) => Self::Number(serde_json::Number::from(value)),
+                (_, _, value) => Self::Number(
+                    serde_json::Number::from_f64(value.unwrap_or_default())
+                        .unwrap_or_else(|| serde_json::Number::from(0u64)),
+                ),
+            },
+            Value::String(value) => Self::String(value),
+            Value::Sequence(seq) => Self::Array(seq.into_iter().map(Self::from_yaml).collect()),
+            Value::Mapping(map) => Self::Object(
+                map.into_iter()
+                    .map(|(key, val)| {
+                        let key_json = Self::from_yaml(key);
+                        let key = if let Self::String(str) = key_json {
+                            str
+                        } else {
+                            format!(
+                                "{JSON_MAGIC}{}",
+                                serde_json::to_string(&key_json).unwrap_or_default()
+                            )
+                        };
+                        (key, Self::from_yaml(val))
+                    })
+                    .collect(),
+            ),
+            Value::Tagged(tagged) => {
+                let mut obj = Map::with_capacity(2);
+                obj.insert(
+                    format!("{JSON_MAGIC}_tag"),
+                    Self::String(tagged.tag.to_string()),
+                );
+                obj.insert("value".to_owned(), Self::from_yaml(tagged.value));
+                Self::Object(obj)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "service")]
+pub(crate) async fn io_sync<
+    F: FnOnce(&mut SyncIoBridge<R>) -> Result<V, E> + Send + 'static,
+    V: Send + 'static,
+    E: Send + From<io::Error> + 'static,
+    R: Unpin + Send + 'static,
+>(
+    func: F,
+    io: R,
+) -> Result<(R, V), E> {
+    tokio::task::spawn_blocking(move || {
+        let mut read = SyncIoBridge::new(io);
+        let val = func(&mut read)?;
+        Ok((read.into_inner(), val))
+    })
+    .await
+    .map_err(io::Error::from)?
+}
+
+#[cfg(feature = "service")]
+pub(crate) async fn io_sync_seek_truncate<
+    F: FnOnce(&mut SyncIoBridge<R>) -> Result<V, E> + Send + 'static,
+    V: Send + 'static,
+    E: Send + From<io::Error> + 'static,
+    R: AsyncSeek + Truncate + Unpin + Send + 'static,
+>(
+    func: F,
+    mut io: R,
+) -> Result<(R, V), E> {
+    io.seek(SeekFrom::Start(0)).await?;
+    io.truncate().await?;
+    tokio::task::spawn_blocking(move || {
+        let mut read = SyncIoBridge::new(io);
+        let val = func(&mut read)?;
+        Ok((read.into_inner(), val))
+    })
+    .await
+    .map_err(io::Error::from)?
+}
+
+#[cfg(feature = "service")]
+pub(crate) trait Truncate {
+    async fn truncate(&self) -> Result<(), io::Error>;
+}
+
+#[cfg(feature = "service")]
+impl Truncate for File {
+    async fn truncate(&self) -> Result<(), Error> {
+        self.set_len(0).await
     }
 }

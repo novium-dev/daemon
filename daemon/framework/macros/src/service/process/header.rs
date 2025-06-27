@@ -2,10 +2,10 @@ use crate::service::parse::FunctionArgument;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn process(
+#[cfg_attr(feature = "ts", expect(clippy::too_many_arguments))]
+pub fn process(
     crate_prefix: &TokenStream,
-    #[allow(unused_variables)] fn_ident: &Ident,
+    #[cfg(feature = "ts")] fn_ident: &Ident,
     fn_args_identified: &[FunctionArgument],
     http_args: &mut TokenStream,
     func_args: &mut Vec<TokenStream>,
@@ -60,8 +60,8 @@ pub(crate) fn process(
 
             #[cfg(feature = "ts")]
             {
-                use convert_case::{Case, Casing};
-                let key = format!("daemon_header_{}_{}", fn_ident, variable_name);
+                use convert_case::{Case, Casing as _};
+                let key = format!("daemon_header_{fn_ident}_{variable_name}");
 
                 if *required {
                     ts_options_body.push_str("daemonRequest.headers[");
@@ -81,7 +81,7 @@ pub(crate) fn process(
                 ts_replace.insert(key, quote! {
                     &#crate_prefix serde_json::to_string(#crate_prefix internal::header_name::<#variable_type, _>().as_str()).unwrap()
                 });
-            }
+            };
 
             let required = Ident::new(if *required { "True" } else { "False" }, Span::call_site());
 

@@ -3,10 +3,10 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn process(
+#[expect(clippy::too_many_arguments)]
+pub fn process(
     crate_prefix: &TokenStream,
-    #[allow(unused_variables)] trait_ident: &Ident,
+    #[cfg(feature = "ts")] trait_ident: &Ident,
     fn_ident: &Ident,
     fn_args_identified: &[FunctionArgument],
     routes: &mut TokenStream,
@@ -21,20 +21,19 @@ pub(crate) fn process(
 ) {
     let fn_args_payload: Vec<_> = fn_args_identified
         .iter()
-        .filter(|arg| matches!(arg, FunctionArgument::Payload { .. }))
-        .cloned()
-        .map(|arg| {
-            let FunctionArgument::Payload {
+        .filter_map(|arg| {
+            if let FunctionArgument::Payload {
                 variable_name,
                 variable_type,
             } = arg
-            else {
-                unreachable!()
-            };
-            (variable_name, variable_type)
+            {
+                Some((variable_name.clone(), variable_type.clone()))
+            } else {
+                None
+            }
         })
         .collect();
-    let content_extra = if let Some(example) = example {
+    let content_extra = example.map_or_else(TokenStream::new, |example| {
         let err = LitStr::new(
             &format!("Failed to parse example {:?}", example.value()),
             Span::call_site(),
@@ -42,16 +41,15 @@ pub(crate) fn process(
         quote! {
             .example(Some(#crate_prefix serde_json::from_str::<'static, #crate_prefix serde_json::Value>(include_str!(#example)).expect(#err)))
         }
-    } else {
-        TokenStream::new()
-    };
+    });
 
     let stream = fn_args_payload
         .iter()
-        .map(|(_, t)| t.to_string())
-        .any(|s| s.eq("DataStream"));
+        .map(|(_, typ)| typ.to_string())
+        .any(|typ| typ.eq("DataStream"));
 
     if fn_args_payload.len() == 1 {
+        #[expect(clippy::indexing_slicing, reason = "Bounds check before indexing")]
         let (arg_name, arg_type) = fn_args_payload[0].clone();
 
         if stream {
@@ -78,20 +76,20 @@ pub(crate) fn process(
 
             #[cfg(feature = "ts")]
             {
-                use convert_case::{Case, Casing};
+                use convert_case::{Case, Casing as _};
                 ts_options_body.push_str("daemonRequest.body = ");
                 ts_options_body.push_str(&arg_name.to_string().to_case(Case::Camel));
                 ts_options_body.push_str(";\n");
                 ts_options_body.push_str(
                     "daemonRequest.headers['content-type'] = 'application/octet-stream';\n",
                 );
-            }
+            };
         } else {
             #[cfg(feature = "ts")]
             {
-                use convert_case::{Case, Casing};
+                use convert_case::{Case, Casing as _};
                 let ts_crate_literal =
-                    LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+                    LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
                 let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
                 let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
 
@@ -116,7 +114,7 @@ pub(crate) fn process(
                 ts_options_body.push_str(");\n");
                 ts_options_body
                     .push_str("daemonRequest.headers['content-type'] = 'application/json';\n");
-            }
+            };
 
             http_args.extend(quote! {
                 #crate_prefix axum::extract::Json(
@@ -156,9 +154,10 @@ pub(crate) fn process(
             });
         }
     } else if !fn_args_payload.is_empty() {
-        if stream {
-            panic!("You can't mix a DataStream with multiple payload fields");
-        }
+        assert!(
+            !stream,
+            "You can't mix a DataStream with multiple payload fields"
+        );
         let mut payload_fields = TokenStream::new();
         let mut payload_names = TokenStream::new();
 
@@ -175,8 +174,7 @@ pub(crate) fn process(
         let (ts_extra, ts_attr_extra) = { (TokenStream::new(), TokenStream::new()) };
         #[cfg(feature = "ts")]
         let (ts_extra, ts_attr_extra) = {
-            let ts_crate_literal =
-                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+            let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
 
             let ts_extra = quote! { #crate_prefix ts_rs::TS };
             #[cfg(feature = "ts")]
@@ -233,8 +231,8 @@ pub(crate) fn process(
 
         #[cfg(feature = "ts")]
         {
-            use convert_case::{Case, Casing};
-            use itertools::Itertools;
+            use convert_case::{Case, Casing as _};
+            use itertools::Itertools as _;
             let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
             let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
             types_impl.extend(quote! {
@@ -247,16 +245,18 @@ pub(crate) fn process(
             });
 
             ts_options_body.push_str("daemonRequest.body = JSON.stringify({ ");
-            #[allow(unstable_name_collisions)]
+            #[expect(unstable_name_collisions)]
             let arg_names: String = fn_args_payload
                 .iter()
                 .map(|(ident, _)| format!("{}: {}", ident, ident.to_string().to_case(Case::Camel)))
-                .intersperse(", ".to_string())
+                .intersperse(", ".to_owned())
                 .collect();
             ts_options_body.push_str(&arg_names);
             ts_options_body.push_str(" });\n");
             ts_options_body
                 .push_str("daemonRequest.headers['content-type'] = 'application/json';\n");
         }
+    } else {
+        // If there are no payload arguments, there is no payload.
     }
 }

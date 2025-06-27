@@ -1,15 +1,17 @@
 use super::*;
+use crate::service::error_storage_patch_failed::FromStoragePatchFailed;
 use crate::user::*;
+use crate::utils::{JsonExt as _, io_sync, io_sync_seek_truncate};
 use axum::extract::ws::Message;
 use chrono::Utc;
 use crc64::crc64;
 use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable, ts};
+use json_patch::Patch;
 use serde::{Deserialize, Serialize};
-use serde_json::{Map, Value};
-use serde_yaml::Mapping;
+use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::SeekFrom;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 use url::Url;
@@ -200,24 +202,24 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
         visitor.visit_argument::<Option<u32>>("cols");
         visitor.visit_argument::<Option<u32>>("rows");
         visitor.visit_argument::<bool>("write");
-        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newTerminalAsync(this.userKey, timestamp, this.identifier, serverId, write);
-return this.serverTerminalUrl(serverId, cols, rows, write, timestamp, signature);"#, "URL");
+return this.serverTerminalUrl(serverId, cols, rows, write, timestamp, signature);", "URL");
 
         visitor.visit_start(true, "serverStatsUrlSigned");
         visitor.visit_argument::<u32>("serverId");
-        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newStatsAsync(this.userKey, timestamp, this.identifier, serverId);
-return this.serverStatsUrl(serverId, timestamp, signature);"#, "URL");
+return this.serverStatsUrl(serverId, timestamp, signature);", "URL");
 
         visitor.visit_start(true, "execServerInteractiveUrlSigned");
         visitor.visit_argument::<u32>("serverId");
         visitor.visit_argument::<Option<u32>>("cols");
         visitor.visit_argument::<Option<u32>>("rows");
         visitor.visit_argument::<JsonVec<String>>("command");
-        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newExecAsync(this.userKey, timestamp, this.identifier, serverId, command);
-return this.execServerInteractiveUrl(serverId, cols, rows, command, timestamp, signature);"#, "URL");
+return this.execServerInteractiveUrl(serverId, cols, rows, command, timestamp, signature);", "URL");
     }
 }
 
@@ -263,10 +265,12 @@ pub struct ServerBuildImage {
 }
 
 impl ServerBuildImage {
+    #[must_use]
     pub fn id(&self) -> u64 {
         crc64(0, self.dockerfile().as_bytes())
     }
 
+    #[must_use]
     pub fn used_tag(&self) -> Option<String> {
         match (&self.default_tag, &self.tag) {
             (_, Some(tag)) | (Some(tag), _) => Some(tag.clone()),
@@ -274,6 +278,7 @@ impl ServerBuildImage {
         }
     }
 
+    #[must_use]
     pub fn dockerfile(&self) -> String {
         match self.base {
             Some(base) => {
@@ -294,7 +299,8 @@ impl ServerBuildImage {
         }
     }
 
-    pub fn all(&self) -> Vec<&ServerBuildImage> {
+    #[must_use]
+    pub fn all(&self) -> Vec<&Self> {
         let mut vec = Vec::with_capacity(1);
         for entries in &self.parents {
             vec.extend(entries.all());
@@ -342,32 +348,61 @@ pub struct PublicServerState {
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[ts]
-#[serde(tag = "filetype")]
+#[serde(tag = "filetype", rename_all = "snake_case")]
 pub enum ServerFileWrite {
-    #[serde(rename = "write")]
     WRITE { data: Vec<u8> },
-    #[serde(rename = "properties")]
     PROPERTIES { content: HashMap<String, String> },
-    #[serde(rename = "json")]
-    JSON {
-        content: HashMap<String, serde_json::Value>,
+    JSON { set: Vec<PatchSet> },
+    YAML { set: Vec<PatchSet> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
+pub struct PatchSet {
+    #[ts(type = r#"(
+      { op: 'add', path: string, value: any }
+      | { op: 'remove', path: string }
+      | { op: 'replace', path: string, value: any }
+      | { op: 'move', from: string, path: string }
+      | { op: 'copy', from: string, path: string }
+      | { op: 'test', path: string, value: any }
+    ) []"#)]
+    condition: Patch,
+    patch: PatchEntry,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
+#[serde(tag = "patchtype", rename_all = "snake_case")]
+pub enum PatchEntry {
+    Normal {
+        #[ts(type = r#"(
+      { op: 'add', path: string, value: any }
+      | { op: 'remove', path: string }
+      | { op: 'replace', path: string, value: any }
+      | { op: 'move', from: string, path: string }
+      | { op: 'copy', from: string, path: string }
+      | { op: 'test', path: string, value: any }
+    ) []"#)]
+        patch: Patch,
     },
-    #[serde(rename = "yaml")]
-    YAML {
-        content: HashMap<String, serde_json::Value>,
+    Merge {
+        patch: Value,
     },
 }
 
 impl ServerFileWrite {
     /// Not Cancel Safe
-    pub async fn apply<E: From<io::Error> + FromStorageQuotaReached + Send + 'static>(
+    pub async fn apply<
+        E: From<io::Error> + FromStorageQuotaReached + FromStoragePatchFailed + Send + 'static,
+    >(
         &self,
         mut file: tokio::fs::File,
     ) -> Result<(), E> {
-        use std::io::Seek;
+        use std::io::Seek as _;
 
         match self {
-            ServerFileWrite::WRITE { data } => {
+            Self::WRITE { data } => {
                 file.set_len(0)
                     .await
                     .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
@@ -378,9 +413,9 @@ impl ServerFileWrite {
                     .await
                     .inspect_err(|err| {
                         if err.kind() == ErrorKind::QuotaExceeded {
-                            debug!("Failed to write data: {:?}", err)
+                            debug!("Failed to write data: {:?}", err);
                         } else {
-                            error!("Failed to write data: {:?}", err)
+                            error!("Failed to write data: {:?}", err);
                         }
                     })
                     .map_err(|err| {
@@ -391,7 +426,7 @@ impl ServerFileWrite {
                         }
                     })?;
             }
-            ServerFileWrite::PROPERTIES { content } => {
+            Self::PROPERTIES { content } => {
                 let content = content.clone();
                 let mut file = file.into_std().await;
                 tokio::task::spawn_blocking(move || {
@@ -415,171 +450,71 @@ impl ServerFileWrite {
                 .inspect_err(|err| error!("Failed to write properties (task): {:?}", err))
                 .map_err(<io::Error as From<JoinError>>::from)??;
             }
-            ServerFileWrite::JSON { content } => {
-                let mut file = file.into_std().await;
-                let content = content.clone();
-                let (mut value, mut file) =
-                    tokio::task::spawn_blocking(move || match serde_json::from_reader(&mut file) {
-                        Ok(val) => Ok::<_, E>((val, file)),
-                        Err(err) if err.is_io() => {
-                            let kind = err.io_error_kind().unwrap();
-                            if kind == ErrorKind::QuotaExceeded {
-                                debug!("Failed to read json file: {:?}", err);
-                                Err(<E as FromStorageQuotaReached>::from())
-                            } else {
-                                error!("Failed to read json file: {:?}", err);
-                                Err(<E as From<io::Error>>::from(io::Error::new(
-                                    err.io_error_kind().unwrap(),
-                                    err,
-                                )))
-                            }
-                        }
-                        Err(_err) => Ok((Value::Object(Map::new()), file)),
-                    })
-                    .await
-                    .inspect_err(|err| error!("Failed to read json (task): {:?}", err))
-                    .map_err(<io::Error as From<JoinError>>::from)??;
+            Self::JSON { set } => {
+                let (file, mut parsed): (_, serde_json::Value) = io_sync(
+                    |read| serde_json::from_reader(read).map_err(io::Error::other),
+                    file,
+                )
+                .await?;
 
-                for (key, val) in content {
-                    let components: Vec<String> = key.split(".").map(String::from).collect();
-                    let mut current = &mut value;
-                    for comp in components {
-                        match &current {
-                            Value::Array(array) => {
-                                let index = comp.parse::<usize>().map_err(io::Error::other)?;
-                                if index < array.len() {
-                                    current = &mut current.as_array_mut().unwrap()[index];
-                                } else {
-                                    while index >= current.as_array_mut().unwrap().len() {
-                                        current.as_array_mut().unwrap().push(
-                                            serde_json::Value::Object(serde_json::Map::new()),
-                                        );
-                                    }
-                                    current = &mut current.as_array_mut().unwrap()[index];
-                                }
-                            }
-                            Value::Object(obj) => {
-                                if obj.contains_key(&comp) {
-                                    current =
-                                        current.as_object_mut().unwrap().get_mut(&comp).unwrap();
-                                } else {
-                                    current.as_object_mut().unwrap().insert(
-                                        comp.clone(),
-                                        serde_json::Value::Object(serde_json::Map::new()),
-                                    );
-                                    current =
-                                        current.as_object_mut().unwrap().get_mut(&comp).unwrap();
-                                }
-                            }
-                            _ => {
-                                *current = serde_json::Value::Object(Map::new());
-                                if current.as_object_mut().unwrap().contains_key(&comp) {
-                                    current =
-                                        current.as_object_mut().unwrap().get_mut(&comp).unwrap();
-                                } else {
-                                    current.as_object_mut().unwrap().insert(
-                                        comp.clone(),
-                                        serde_json::Value::Object(serde_json::Map::new()),
-                                    );
-                                    current =
-                                        current.as_object_mut().unwrap().get_mut(&comp).unwrap();
-                                }
-                            }
+                for patch in set {
+                    let mut copy = parsed.clone();
+                    if json_patch::patch(&mut copy, &patch.condition).is_err() {
+                        continue;
+                    }
+                    match &patch.patch {
+                        PatchEntry::Normal { patch } => {
+                            json_patch::patch(&mut parsed, patch)
+                                .map_err(|_err| <E as FromStoragePatchFailed>::from())?;
+                        }
+                        PatchEntry::Merge { patch } => {
+                            json_patch::merge(&mut parsed, patch);
                         }
                     }
-                    *current = val;
                 }
-                tokio::task::spawn_blocking(move || {
-                    file.set_len(0)
-                        .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
-                    file.seek(SeekFrom::Start(0))
-                        .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
-                    serde_json::to_writer_pretty(&mut file, &value)
-                        .inspect_err(|err| warn!("Failed to write json: {:?}", err))
-                        .map_err(io::Error::other)
-                })
-                .await
-                .inspect_err(|err| error!("Failed to write json (task): {:?}", err))
-                .map_err(<io::Error as From<JoinError>>::from)??;
+
+                io_sync_seek_truncate(
+                    move |write| {
+                        serde_json::to_writer_pretty(write, &parsed).map_err(io::Error::other)
+                    },
+                    file,
+                )
+                .await?;
             }
-            ServerFileWrite::YAML { content } => {
-                let mut file = file.into_std().await;
-                let content = content.clone();
-                let (mut value, mut file): (serde_yaml::Value, _) =
-                    tokio::task::spawn_blocking(move || {
-                        serde_yaml::from_reader(&mut file)
-                            .inspect_err(|err| debug!("Failed to read yaml: {:?}", err))
-                            .map_err(|err| <E as From<io::Error>>::from(io::Error::other(err)))
-                            .map(|val: serde_yaml::Value| (val, file))
-                    })
-                    .await
-                    .inspect_err(|err| error!("Failed to read yaml (task): {:?}", err))
-                    .map_err(<io::Error as From<JoinError>>::from)??;
+            Self::YAML { set } => {
+                let (file, mut parsed): (_, serde_json::Value) = io_sync(
+                    |read| {
+                        serde_yaml::from_reader(read)
+                            .map_err(io::Error::other)
+                            .map(serde_json::Value::from_yaml)
+                    },
+                    file,
+                )
+                .await?;
 
-                for (key, val) in content {
-                    let components: Vec<String> = key.split(".").map(String::from).collect();
-                    let mut current = &mut value;
-                    for comp in components {
-                        match &current {
-                            serde_yaml::Value::Sequence(array) => {
-                                let index = comp.parse::<usize>().map_err(|err| {
-                                    <E as From<io::Error>>::from(io::Error::other(err))
-                                })?;
-                                if index < array.len() {
-                                    current = &mut current.as_sequence_mut().unwrap()[index];
-                                } else {
-                                    while index >= current.as_sequence_mut().unwrap().len() {
-                                        current.as_sequence_mut().unwrap().push(
-                                            serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                                        );
-                                    }
-                                    current = &mut current.as_sequence_mut().unwrap()[index];
-                                }
-                            }
-                            serde_yaml::Value::Mapping(obj) => {
-                                if obj.contains_key(&comp) {
-                                    current =
-                                        current.as_mapping_mut().unwrap().get_mut(&comp).unwrap();
-                                } else {
-                                    current.as_mapping_mut().unwrap().insert(
-                                        serde_yaml::Value::String(comp.clone()),
-                                        serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                                    );
-                                    current =
-                                        current.as_mapping_mut().unwrap().get_mut(&comp).unwrap();
-                                }
-                            }
-                            _ => {
-                                *current = serde_yaml::Value::Mapping(Mapping::new());
-                                if current.as_mapping_mut().unwrap().contains_key(&comp) {
-                                    current =
-                                        current.as_mapping_mut().unwrap().get_mut(&comp).unwrap();
-                                } else {
-                                    current.as_mapping_mut().unwrap().insert(
-                                        serde_yaml::Value::String(comp.clone()),
-                                        serde_yaml::Value::Mapping(serde_yaml::Mapping::new()),
-                                    );
-                                    current =
-                                        current.as_mapping_mut().unwrap().get_mut(&comp).unwrap();
-                                }
-                            }
+                for patch in set {
+                    let mut copy = parsed.clone();
+                    if json_patch::patch(&mut copy, &patch.condition).is_err() {
+                        continue;
+                    }
+                    match &patch.patch {
+                        PatchEntry::Normal { patch } => {
+                            json_patch::patch(&mut parsed, patch)
+                                .map_err(|_err| <E as FromStoragePatchFailed>::from())?;
+                        }
+                        PatchEntry::Merge { patch } => {
+                            json_patch::merge(&mut parsed, patch);
                         }
                     }
-                    *current = serde_json::from_value(val)
-                        .inspect_err(|err| warn!("Failed to convert json to yaml: {:?}", err))
-                        .map_err(|err| <E as From<io::Error>>::from(io::Error::other(err)))?;
                 }
-                tokio::task::spawn_blocking(move || {
-                    file.set_len(0)
-                        .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
-                    file.seek(SeekFrom::Start(0))
-                        .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
-                    serde_yaml::to_writer(&mut file, &value)
-                        .inspect_err(|err| warn!("Failed to write yaml: {:?}", err))
-                        .map_err(io::Error::other)
-                })
-                .await
-                .map_err(<io::Error as From<JoinError>>::from)??;
+
+                io_sync_seek_truncate(
+                    move |write| {
+                        serde_yaml::to_writer(write, &parsed.to_yaml()).map_err(io::Error::other)
+                    },
+                    file,
+                )
+                .await?;
             }
         }
         Ok(())
@@ -587,12 +522,13 @@ impl ServerFileWrite {
 }
 
 #[derive(Copy, Clone, Serialize, Deserialize)]
+#[must_use]
 pub struct ServerStats {
-    pub cpu: f32,
-    pub ram: f32,
-    pub swap: f32,
+    pub cpu: f64,
+    pub ram: f64,
+    pub swap: f64,
     pub disk: i64,
-    pub cpu_max: f32,
+    pub cpu_max: f64,
     pub ram_max: i64,
     pub swap_max: i64,
     pub disk_max: i64,
@@ -601,11 +537,11 @@ pub struct ServerStats {
 impl Default for ServerStats {
     fn default() -> Self {
         Self {
-            cpu: -1f32,
-            ram: -1f32,
-            swap: -1f32,
+            cpu: -1f64,
+            ram: -1f64,
+            swap: -1f64,
             disk: -1,
-            cpu_max: -1f32,
+            cpu_max: -1f64,
             ram_max: -1,
             swap_max: -1,
             disk_max: -1,
@@ -614,7 +550,7 @@ impl Default for ServerStats {
 }
 
 impl ServerStats {
-    pub fn with_max(self, cpu: f32, ram: i64, swap: i64, disk: i64) -> Self {
+    pub const fn with_max(self, cpu: f64, ram: i64, swap: i64, disk: i64) -> Self {
         Self {
             cpu_max: cpu,
             ram_max: ram,
@@ -624,65 +560,11 @@ impl ServerStats {
         }
     }
 
-    pub fn with_disk(self, disk: i64) -> Self {
+    pub const fn with_disk(self, disk: i64) -> Self {
         Self { disk, ..self }
     }
-}
 
-#[cfg(feature = "docker")]
-impl From<bollard::models::ContainerStatsResponse> for ServerStats {
-    fn from(value: bollard::models::ContainerStatsResponse) -> Self {
-        let mut cpu = -1f32;
-        let mut ram = -1f32;
-        let swap = -1f32;
-
-        let cpu_stats = value.cpu_stats.unwrap_or_default();
-        let precpu_stats = value.precpu_stats.unwrap_or_default();
-        let memory_stats = value.memory_stats.unwrap_or_default();
-
-        let system_delta = cpu_stats.system_cpu_usage.unwrap_or_default() as f64
-            - precpu_stats.system_cpu_usage.unwrap_or_default() as f64;
-        let cpu_delta = cpu_stats
-            .cpu_usage
-            .unwrap_or_default()
-            .total_usage
-            .unwrap_or_default() as f64
-            - precpu_stats
-                .cpu_usage
-                .unwrap_or_default()
-                .total_usage
-                .unwrap_or_default() as f64;
-
-        if cpu_stats.online_cpus.is_some() && system_delta > 0f64 && cpu_delta > 0f64 {
-            cpu = (((cpu_delta / system_delta)
-                * cpu_stats.online_cpus.unwrap_or_default() as f64
-                * 10000f64)
-                .round()
-                / 100f64) as f32;
-        }
-
-        if let Some(usage) = memory_stats.usage {
-            let mut usage = usage as f64;
-            usage /= 1024f64;
-            usage /= 1024f64;
-            usage *= 100f64;
-            usage = usage.round();
-            usage /= 100f64;
-            if usage <= f32::MAX as f64 {
-                ram = usage as f32;
-            }
-        }
-
-        Self {
-            cpu,
-            ram,
-            swap,
-            ..Self::default()
-        }
-    }
-}
-
-impl ServerStats {
+    #[must_use]
     pub fn as_websocket_message(&self) -> Message {
         const STATS_MAGIC: &str = "STATS!";
         Message::Text(
@@ -693,5 +575,64 @@ impl ServerStats {
             )
             .into(),
         )
+    }
+}
+
+#[cfg(feature = "docker")]
+impl From<bollard::models::ContainerStatsResponse> for ServerStats {
+    #[expect(
+        clippy::cast_precision_loss,
+        reason = "cpu and ram doesn't have to be precise"
+    )]
+    fn from(value: bollard::models::ContainerStatsResponse) -> Self {
+        let mut cpu = -1f64;
+        let mut ram = -1f64;
+        let swap = -1f64;
+
+        let cpu_stats = value.cpu_stats.unwrap_or_default();
+        let precpu_stats = value.precpu_stats.unwrap_or_default();
+        let memory_stats = value.memory_stats.unwrap_or_default();
+
+        let system_delta = cpu_stats
+            .system_cpu_usage
+            .unwrap_or_default()
+            .saturating_sub(precpu_stats.system_cpu_usage.unwrap_or_default())
+            as f64;
+        let cpu_delta = cpu_stats
+            .cpu_usage
+            .unwrap_or_default()
+            .total_usage
+            .unwrap_or_default()
+            .saturating_sub(
+                precpu_stats
+                    .cpu_usage
+                    .unwrap_or_default()
+                    .total_usage
+                    .unwrap_or_default(),
+            ) as f64;
+
+        if cpu_stats.online_cpus.is_some() && system_delta > 0f64 && cpu_delta > 0f64 {
+            cpu = ((cpu_delta / system_delta)
+                * f64::from(cpu_stats.online_cpus.unwrap_or_default())
+                * 10000f64)
+                .round()
+                / 100f64;
+        }
+
+        if let Some(usage) = memory_stats.usage {
+            ram = usage as f64;
+            ram /= 1024f64;
+            ram /= 1024f64;
+            ram *= 100f64;
+            ram = ram.round();
+            ram /= 100f64;
+        }
+
+        Self {
+            cpu,
+            ram,
+            swap,
+            ..Self::default()
+        }
     }
 }

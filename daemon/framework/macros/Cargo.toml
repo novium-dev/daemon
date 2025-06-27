@@ -5,6 +5,9 @@ edition = "2024"
 authors = ["Markus Probst <markustieger@gmail.com>"]
 license = "AGPL-3.0-only"
 
+[lints]
+workspace = true
+
 [features]
 ts = ["serde_json", "convert_case"]
 
@@ -14,7 +17,7 @@ proc-macro = true
 [dependencies]
 proc-macro2 = "1.0.95"
 quote = "1.0.40"
-syn = "2.0.103"
+syn = "2.0.104"
 either.workspace = true
 itertools.workspace = true
 indexmap.workspace = true

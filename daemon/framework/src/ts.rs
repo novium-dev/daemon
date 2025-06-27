@@ -1,8 +1,8 @@
 use crate::{FileResponse, MaybeUnit};
-use convert_case::{Case, Casing};
-use std::any::TypeId;
+use convert_case::{Case, Casing as _};
+use core::any::TypeId;
+use core::marker::PhantomData;
 use std::collections::HashSet;
-use std::marker::PhantomData;
 use ts_rs::{TS, TypeVisitor};
 
 pub struct TSResponse<T>(PhantomData<T>);
@@ -77,53 +77,43 @@ impl TSClassFunctionVisitor {
     }
 
     pub fn visit_end_result_custom(&mut self, body: impl Into<String>, result: &str) {
+        self.visit_end_internal(body, Some(result));
+    }
+
+    fn visit_end_internal(&mut self, body: impl Into<String>, result: Option<&str>) {
         let body = body.into();
         if let Some(out) = self.out.strip_suffix(", ") {
             self.out = String::from(out);
         }
-        self.out.push_str("): ");
-        if self.r#async {
-            self.out.push_str("Promise<");
-        }
-        self.out.push_str(result);
-        if self.r#async {
-            self.out.push('>');
+        self.out.push(')');
+        if let Some(result) = result {
+            self.out.push_str(": ");
+            if self.r#async {
+                self.out.push_str("Promise<");
+            }
+            self.out.push_str(result);
+            if self.r#async {
+                self.out.push('>');
+            }
         }
         self.out.push_str(" {\n");
         for line in body.lines() {
-            if line.is_empty() {
-                self.out.push('\n');
-            } else {
+            if !line.is_empty() {
                 self.out.push_str("    ");
                 self.out.push_str(line);
-                self.out.push('\n');
             }
+            self.out.push('\n');
         }
         self.out.push_str("  ");
         self.out.push_str("}\n\n");
     }
 
-    pub fn visit_end_result<T: TS>(&mut self, body: impl Into<String>) {
+    pub fn visit_end_result<T: TS + MaybeUnit>(&mut self, body: impl Into<String>) {
         self.visit_end_result_custom(body, &T::name());
     }
 
     pub fn visit_end(&mut self, body: impl Into<String>) {
-        let body = body.into();
-        if let Some(out) = self.out.strip_suffix(", ") {
-            self.out = String::from(out);
-        }
-        self.out.push_str(") {\n");
-        for line in body.lines() {
-            if line.is_empty() {
-                self.out.push('\n');
-            } else {
-                self.out.push_str("    ");
-                self.out.push_str(line);
-                self.out.push('\n');
-            }
-        }
-        self.out.push_str("  ");
-        self.out.push_str("}\n\n");
+        self.visit_end_internal(body, None);
     }
 }
 
@@ -134,7 +124,7 @@ pub trait FrameworkTSResponse {
 impl<V: MaybeUnit + ts_rs::TS, E> FrameworkTSResponse for Result<V, E> {
     fn visit_ts_response() -> String {
         if V::unit().is_some() {
-            "return { Ok: null };".to_string()
+            "return { Ok: null };".to_owned()
         } else {
             format!(
                 "return {{ Ok: await response.body.json() as {} }};",
@@ -146,10 +136,11 @@ impl<V: MaybeUnit + ts_rs::TS, E> FrameworkTSResponse for Result<V, E> {
 
 impl<E> FrameworkTSResponse for Result<FileResponse, E> {
     fn visit_ts_response() -> String {
-        "return { Ok: response.body };".to_string()
+        "return { Ok: response.body };".to_owned()
     }
 }
 
+#[expect(clippy::panic, reason = "Type cannot be declared")]
 impl<E: TS> TS for TSResponse<Result<FileResponse, E>> {
     type WithoutGenerics = Self;
     type OptionInnerType = Self;
@@ -174,22 +165,23 @@ impl<E: TS> TS for TSResponse<Result<FileResponse, E>> {
         panic!("{} cannot be flattened", Self::name())
     }
 
-    fn visit_dependencies(v: &mut impl TypeVisitor)
+    fn visit_dependencies(visitor: &mut impl TypeVisitor)
     where
         Self: 'static,
     {
-        E::visit_dependencies(v);
+        E::visit_dependencies(visitor);
     }
 
-    fn visit_generics(v: &mut impl TypeVisitor)
+    fn visit_generics(visitor: &mut impl TypeVisitor)
     where
         Self: 'static,
     {
-        E::visit_generics(v);
-        v.visit::<E>();
+        E::visit_generics(visitor);
+        visitor.visit::<E>();
     }
 }
 
+#[must_use]
 pub fn to_camel(str: &str) -> String {
     str.to_case(Case::Camel)
 }

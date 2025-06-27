@@ -206,16 +206,16 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
         visitor.visit_argument::<u32>("serverId");
         visitor.visit_argument::<String>("path");
         visitor.visit_argument::<Option<u64>>("limit");
-        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newServerFileDownloadAsync(this.userKey, timestamp, this.identifier, serverId, path);
-return this.serverDownloadFileUserUrl(serverId, path, limit, timestamp, signature);"#, "URL");
+return this.serverDownloadFileUserUrl(serverId, path, limit, timestamp, signature);", "URL");
 
         visitor.visit_start(true, "serverUploadFileUserUrlSigned");
         visitor.visit_argument::<u32>("serverId");
         visitor.visit_argument::<String>("path");
-        visitor.visit_end_result_custom(r#"const timestamp: bigint = BigInt(Date.now());
+        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newServerFileUploadAsync(this.userKey, timestamp, this.identifier, serverId, path);
-return this.serverUploadFileUserUrl(serverId, path, timestamp, signature);"#, "URL");
+return this.serverUploadFileUserUrl(serverId, path, timestamp, signature);", "URL");
     }
 }
 

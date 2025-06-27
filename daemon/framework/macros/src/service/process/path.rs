@@ -1,13 +1,15 @@
 use crate::service::parse::FunctionArgument;
-use proc_macro2::{Ident, Span, TokenStream};
+#[cfg(feature = "ts")]
+use proc_macro2::Ident;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn process(
+#[expect(clippy::too_many_arguments)]
+pub fn process(
     crate_prefix: &TokenStream,
-    #[allow(unused_variables)] trait_ident: &Ident,
-    #[allow(unused_variables)] fn_ident: &Ident,
+    #[cfg(feature = "ts")] trait_ident: &Ident,
+    #[cfg(feature = "ts")] fn_ident: &Ident,
     path: &str,
     fn_args_identified: &[FunctionArgument],
     http_args: &mut TokenStream,
@@ -22,17 +24,16 @@ pub(crate) fn process(
 ) {
     let fn_args_path: Vec<_> = fn_args_identified
         .iter()
-        .filter(|arg| matches!(arg, FunctionArgument::Path { .. }))
-        .cloned()
-        .map(|arg| {
-            let FunctionArgument::Path {
+        .filter_map(|arg| {
+            if let FunctionArgument::Path {
                 variable_name,
                 variable_type,
             } = arg
-            else {
-                unreachable!()
-            };
-            (variable_name, variable_type)
+            {
+                Some((variable_name.clone(), variable_type.clone()))
+            } else {
+                None
+            }
         })
         .collect();
 
@@ -64,17 +65,17 @@ pub(crate) fn process(
 
             #[cfg(feature = "ts")]
             {
-                use convert_case::{Case, Casing};
+                use convert_case::{Case, Casing as _};
                 ts_func_args_url
                     .insert(arg_name.to_string().to_case(Case::Camel), arg_type.clone());
 
                 ts_func_body_url.push_str("const ");
-                ts_func_body_url.push_str(&format!("{}_encoded", arg_name).to_case(Case::Camel));
+                ts_func_body_url.push_str(&format!("{arg_name}_encoded").to_case(Case::Camel));
                 ts_func_body_url.push_str(" = ");
                 ts_func_body_url.push_str("encodeURIComponent(String(");
                 ts_func_body_url.push_str(&arg_name.to_string().to_case(Case::Camel));
                 ts_func_body_url.push_str("));\n");
-            }
+            };
 
             urlencode.extend(quote! {
                 let #arg_name: String = #arg_name.serialize(#crate_prefix internal::StringSerializer).unwrap().unwrap_or_default();
@@ -86,8 +87,7 @@ pub(crate) fn process(
 
         #[cfg(feature = "ts")]
         {
-            let ts_crate_literal =
-                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+            let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
             let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
             let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
 
@@ -107,7 +107,7 @@ pub(crate) fn process(
                     <TypescriptPathStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
                 }
             });
-        }
+        };
 
         http_args.extend(quote! {
             #crate_prefix axum::extract::Path((#path_names)): #crate_prefix axum::extract::Path<(#path_types)>,
@@ -121,18 +121,18 @@ pub(crate) fn process(
 
     #[cfg(feature = "ts")]
     {
-        use convert_case::{Case, Casing};
+        use convert_case::{Case, Casing as _};
         ts_func_body_url.push_str("const daemonResultUrl = new URL(`${this.baseUrl}");
-        let mut ts_path = path.to_string();
+        let mut ts_path = path.to_owned();
         for (name, _) in fn_args_path {
             ts_path = ts_path.replace(
-                &format!("{{{}}}", name),
-                &format!("${{{}}}", format!("{}_encoded", name).to_case(Case::Camel)),
+                &format!("{{{name}}}"),
+                &format!("${{{}}}", format!("{name}_encoded").to_case(Case::Camel)),
             );
         }
         ts_func_body_url.push_str(&ts_path);
         ts_func_body_url.push_str("`);\n");
-    }
+    };
 
     let path = LitStr::new(path, Span::call_site());
     client_def_body.extend(quote! {

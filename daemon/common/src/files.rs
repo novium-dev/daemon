@@ -17,7 +17,7 @@ bitflags! {
 impl FileMode {
     pub fn visit_types(visitor: &mut daemon_framework::ts::TSTypeVisitor) {
         visitor.out.push_str("namespace FileMode {\n");
-        for (name, value) in FileMode::all().iter_names() {
+        for (name, value) in Self::all().iter_names() {
             visitor.out.push_str("  const ");
             visitor.out.push_str(name);
             visitor.out.push_str(": ");

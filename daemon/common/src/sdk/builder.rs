@@ -9,7 +9,7 @@ use rustls::{ClientConfig, RootCertStore};
 use std::sync::Arc;
 use uuid::Uuid;
 
-#[allow(private_bounds)]
+#[expect(private_bounds, reason = "trait should be sealed")]
 pub trait DaemonSDKBuilderState: DaemonSdkSealed {
     type Inner;
 }
@@ -53,26 +53,30 @@ impl DaemonSdkSealed for RequiresRootKey {}
 impl DaemonSdkSealed for RequiresBackendKey {}
 impl DaemonSdkSealed for RequiresBaseURL {}
 
+#[must_use]
 pub struct DaemonSDKBuilder<T: DaemonSDKBuilderState + Send + Sync>(pub(crate) T::Inner);
 
 impl DaemonSDK<()> {
-    pub fn builder() -> DaemonSDKBuilder<RequiresIdentifier> {
+    pub const fn builder() -> DaemonSDKBuilder<RequiresIdentifier> {
         DaemonSDKBuilder(())
     }
 }
 
 impl DaemonSDKBuilder<RequiresIdentifier> {
-    pub fn with_identifier(self, identifier: Uuid) -> DaemonSDKBuilder<RequiresRootKey> {
+    pub const fn with_identifier(self, identifier: Uuid) -> DaemonSDKBuilder<RequiresRootKey> {
         DaemonSDKBuilder(identifier)
     }
 }
 
 impl DaemonSDKBuilder<RequiresRootKey> {
-    pub fn with_root_key(self, root: Arc<DaemonRootKey>) -> DaemonSDKBuilder<RequiresBackendKey> {
+    pub const fn with_root_key(
+        self,
+        root: Arc<DaemonRootKey>,
+    ) -> DaemonSDKBuilder<RequiresBackendKey> {
         DaemonSDKBuilder((self.0, Either::Left(root)))
     }
 
-    pub fn with_custom_cert_store(
+    pub const fn with_custom_cert_store(
         self,
         der: Arc<RootCertStore>,
     ) -> DaemonSDKBuilder<RequiresBackendKey> {
@@ -94,8 +98,12 @@ impl DaemonSDKBuilder<RequiresBaseURL> {
 }
 
 impl DaemonSDKBuilder<()> {
+    pub fn with_user_key(self, user_key: SigningKey) -> DaemonSDKBuilder<WithUserKey> {
+        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, self.0.3, user_key))
+    }
+
     pub fn build(self) -> DaemonSDK<()> {
-        Self::build0(self.0.0, self.0.1, self.0.2, self.0.3, ())
+        Self::build0(self.0.0, self.0.1, &self.0.2, self.0.3, ())
     }
 }
 
@@ -103,12 +111,12 @@ impl<T: DaemonSDKExtra + DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T
     pub(crate) fn build0(
         identifier: Uuid,
         root_key: Either<Arc<DaemonRootKey>, Arc<RootCertStore>>,
-        backend_key: Arc<BackendKey>,
+        backend_key: &BackendKey,
         base_url: Url,
         extra: T,
     ) -> DaemonSDK<T> {
         let cert_store = match root_key {
-            Either::Left(key) => key.cert_store.clone(),
+            Either::Left(key) => Arc::clone(&key.cert_store),
             Either::Right(cert_store) => cert_store,
         };
         let mut tls = ClientConfig::builder()
@@ -149,18 +157,12 @@ impl DaemonSDKBuilderState for WithUserKey {
     );
 }
 
-impl DaemonSDKBuilder<()> {
-    pub fn with_user_key(self, user_key: SigningKey) -> DaemonSDKBuilder<WithUserKey> {
-        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, self.0.3, user_key))
-    }
-}
-
 impl DaemonSDKBuilder<WithUserKey> {
     pub fn build(self) -> DaemonSDK<WithUserKey> {
         Self::build0(
             self.0.0,
             self.0.1,
-            self.0.2,
+            &self.0.2,
             self.0.3,
             WithUserKey(self.0.4),
         )

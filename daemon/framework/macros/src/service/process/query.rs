@@ -1,12 +1,12 @@
 use crate::service::parse::FunctionArgument;
 use proc_macro2::{Ident, Span, TokenStream};
-use quote::{ToTokens, quote};
+use quote::{ToTokens as _, quote};
 use syn::LitStr;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn process(
+#[expect(clippy::too_many_arguments)]
+pub fn process(
     crate_prefix: &TokenStream,
-    #[allow(unused_variables)] trait_ident: &Ident,
+    #[cfg(feature = "ts")] trait_ident: &Ident,
     fn_ident: &Ident,
     fn_args_identified: &[FunctionArgument],
     routes: &mut TokenStream,
@@ -22,20 +22,24 @@ pub(crate) fn process(
 ) {
     let fn_args_query: Vec<_> = fn_args_identified
         .iter()
-        .filter(|arg| matches!(arg, FunctionArgument::Query { .. }))
-        .cloned()
-        .map(|arg| {
-            let FunctionArgument::Query {
+        .filter_map(|arg| {
+            if let FunctionArgument::Query {
                 variable_name,
                 variable_type_wopt,
                 required,
                 desc,
                 ..
             } = arg
-            else {
-                unreachable!()
-            };
-            (variable_name, variable_type_wopt, required, desc)
+            {
+                Some((
+                    variable_name.clone(),
+                    variable_type_wopt.clone(),
+                    *required,
+                    desc.clone(),
+                ))
+            } else {
+                None
+            }
         })
         .collect();
     if !fn_args_query.is_empty() {
@@ -59,9 +63,10 @@ pub(crate) fn process(
             let required_indent =
                 Ident::new(if required { "True" } else { "False" }, Span::call_site());
 
-            let desc = desc
-                .map(|d| d.into_token_stream())
-                .unwrap_or(quote! { [< variable_query_ #arg_name:snake >]::DESCRIPTION });
+            let desc = desc.map_or_else(
+                || quote! { [< variable_query_ #arg_name:snake >]::DESCRIPTION },
+                LitStr::into_token_stream,
+            );
             operations.extend(quote! {
                 .parameter(
                     #crate_prefix utoipa::openapi::path::ParameterBuilder::from(
@@ -75,7 +80,7 @@ pub(crate) fn process(
 
             #[cfg(feature = "ts")]
             {
-                use convert_case::{Case, Casing};
+                use convert_case::{Case, Casing as _};
                 ts_func_args_url
                     .insert(arg_name.to_string().to_case(Case::Camel), arg_type.clone());
 
@@ -95,7 +100,7 @@ pub(crate) fn process(
                 }
 
                 ts_func_body_url.push('\n');
-            }
+            };
 
             fn_def_args.extend(quote! { #arg_name: #arg_type, });
             fn_def_call.extend(quote! { #arg_name, });
@@ -117,8 +122,7 @@ pub(crate) fn process(
         let (ts_extra, ts_attr_extra) = { (TokenStream::new(), TokenStream::new()) };
         #[cfg(feature = "ts")]
         let (ts_extra, ts_attr_extra) = {
-            let ts_crate_literal =
-                LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+            let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
 
             let ts_extra = quote! { #crate_prefix ts_rs::TS };
             #[cfg(feature = "ts")]

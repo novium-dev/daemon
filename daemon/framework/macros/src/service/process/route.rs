@@ -2,8 +2,8 @@ use crate::service::process::HttpMethod;
 use proc_macro2::{Ident, TokenStream};
 use quote::quote;
 
-#[allow(clippy::too_many_arguments)]
-pub(crate) fn process(
+#[expect(clippy::too_many_arguments)]
+pub fn process(
     crate_prefix: &TokenStream,
     method: HttpMethod,
     raw: bool,
@@ -18,7 +18,7 @@ pub(crate) fn process(
     let mut target_generic_types = TokenStream::new();
     let mut generic_type_conditions = TokenStream::new();
 
-    if let HttpMethod::WS = method {
+    if HttpMethod::Ws == method {
         func_args.insert(
             0,
             quote! { #crate_prefix axum::extract::ws::WebSocketUpgrade },
@@ -35,7 +35,7 @@ pub(crate) fn process(
         target_generic_types.extend(quote! { M, });
         for (index, arg) in func_args.iter().enumerate() {
             target_generic_types.extend(quote! { #arg, });
-            if index == func_args.len() - 1 {
+            if index == func_args.len().wrapping_sub(1) {
                 generic_type_conditions.extend(
                     quote! { #arg: #crate_prefix axum::extract::FromRequest<(), M> + Send, },
                 );
@@ -43,9 +43,7 @@ pub(crate) fn process(
         }
     }
 
-    let result_map = if let HttpMethod::WS = method {
-        TokenStream::new()
-    } else if raw {
+    let result_map = if HttpMethod::Ws == method || raw {
         TokenStream::new()
     } else {
         quote! { .map(#crate_prefix internal::FrameworkJsonResponse) }

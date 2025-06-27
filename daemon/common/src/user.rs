@@ -1,10 +1,10 @@
 use crate::user::error_auth_signature_expired::FromAuthSignatureExpired;
 use crate::user::error_auth_signature_invalid::FromAuthSignatureInvalid;
-use base64::Engine;
+use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
 use daemon_framework::{define_error, define_query_variable, paste};
-use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
-use serde::de::Error;
+use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier as _, VerifyingKey};
+use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::error;
@@ -20,6 +20,7 @@ define_error!(auth {
 
 /// An already parsed signature.
 #[derive(Debug, Copy, Clone)]
+#[must_use]
 pub struct UserSignature(Signature);
 
 macro_rules! signature_impl {
@@ -36,7 +37,7 @@ macro_rules! signature_impl {
                 Self::new(key, timestamp, node_identifier, server_id, $name, $extra)
             }
 
-            pub fn [< verify_ $id >]<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(&self, key: &Option<VerifyingKey>, timestamp: i64, node_identifier: &uuid::Uuid, server_id: u32, $( $arg )*) -> Result<(), E> {
+            pub fn [< verify_ $id >]<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(&self, key: Option<&VerifyingKey>, timestamp: i64, node_identifier: &uuid::Uuid, server_id: u32, $( $arg )*) -> Result<(), E> {
                 self.verify(key, timestamp, node_identifier, server_id, $name, $extra)
             }
 
@@ -48,36 +49,39 @@ macro_rules! signature_impl {
 #[cfg(feature = "ts")]
 macro_rules! signature_ts_impl {
     (
-        $visitor:ident,
+        $replace:ident,
         $id:literal,
         $name:literal,
         ($args: literal),
         $extra:literal
     ) => {
-        $visitor.out.push_str(&format!(r#"
+        {
+            use core::fmt::Write as _;
+            let _ = write!(&mut $replace, r"
   static {}(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number{}{}): UserSignature {{
     return UserSignature.new(privateKey, timestamp, nodeIdentifier, serverId, {}, {});
   }}
-"#, daemon_framework::ts::to_camel(&format!("new_{}", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra));
+", daemon_framework::ts::to_camel(&format!("new_{}", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra);
 
-        $visitor.out.push_str(&format!(r#"
+            let _ = write!(&mut $replace, r"
   static async {}(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number{}{}): Promise<UserSignature> {{
     return await UserSignature.newAsync(privateKey, timestamp, nodeIdentifier, serverId, {}, {});
   }}
-"#, daemon_framework::ts::to_camel(&format!("new_{}_async", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra));
+", daemon_framework::ts::to_camel(&format!("new_{}_async", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra);
 
 
-        $visitor.out.push_str(&format!(r#"
+            let _ = write!(&mut $replace, r"
   {}(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number{}{}): boolean {{
     return this.verify(publicKey, timestamp, nodeIdentifier, serverId, {}, {});
   }}
-"#, daemon_framework::ts::to_camel(&format!("verify_{}", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra));
+", daemon_framework::ts::to_camel(&format!("verify_{}", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra);
 
-        $visitor.out.push_str(&format!(r#"
+            let _ = write!(&mut $replace, r"
   async {}(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number{}{}): Promise<boolean> {{
     return await this.verifyAsync(publicKey, timestamp, nodeIdentifier, serverId, {}, {});
   }}
-"#, daemon_framework::ts::to_camel(&format!("verify_{}_async", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra));
+", daemon_framework::ts::to_camel(&format!("verify_{}_async", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra);
+        }
     };
 }
 
@@ -109,7 +113,7 @@ impl UserSignature {
 
     fn verify<E: FromAuthSignatureInvalid + FromAuthSignatureExpired>(
         &self,
-        key: &Option<VerifyingKey>,
+        key: Option<&VerifyingKey>,
         timestamp: i64,
         node_identifier: &Uuid,
         server_id: u32,
@@ -118,7 +122,7 @@ impl UserSignature {
     ) -> Result<(), E> {
         let key = key
             .as_ref()
-            .ok_or(<E as FromAuthSignatureInvalid>::from())?;
+            .ok_or_else(<E as FromAuthSignatureInvalid>::from)?;
         key.verify(
             format!(
                 "{}-{}-{}-{}{}",
@@ -131,102 +135,78 @@ impl UserSignature {
             .as_bytes(),
             &self.0,
         )
-        .map_err(|_| <E as FromAuthSignatureInvalid>::from())?;
+        .map_err(|_err| <E as FromAuthSignatureInvalid>::from())?;
         let unix = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .inspect_err(|err| error!("Time error: {:?}", err))
-            .map_err(|_| <E as FromAuthSignatureExpired>::from())?;
-        if (timestamp as i128 + Self::THRESHOLD) as u128 <= unix.as_millis() {
+            .map_err(|_err| <E as FromAuthSignatureExpired>::from())?;
+        if i128::from(timestamp)
+            .saturating_add(Self::THRESHOLD)
+            .unsigned_abs()
+            <= unix.as_millis()
+        {
             return Err(<E as FromAuthSignatureExpired>::from());
         }
         Ok(())
     }
 
     #[cfg(feature = "ts")]
+    #[expect(clippy::cognitive_complexity, reason = "isn't that complex")]
     pub fn visit_types(visitor: &mut daemon_framework::ts::TSTypeVisitor) {
-        visitor.out.push_str(r#"
-export class UserSignature {
-  readonly signature: Uint8Array;
-
-  constructor(signature: Uint8Array) {
-    this.signature = signature;
-  }
-
-  static new(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null) {
-    return new UserSignature(ed.sign(UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), privateKey));
-  }
-
-  static async newAsync(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): Promise<UserSignature> {
-    return new UserSignature(await ed.signAsync(UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), privateKey));
-  }
-
-  verify(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): boolean {
-    return ed.verify(this.signature, UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), publicKey);
-  }
-
-  async verifyAsync(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): Promise<boolean> {
-    return await ed.verifyAsync(this.signature, UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), publicKey);
-  }
-
-  private static content(timestamp: bigint, node_identifier: string, server_id: number, name: string, extra: string | null): Buffer {
-    return Buffer.from(`${name}-${node_identifier}-${server_id}-${timestamp}${extra === null ? "" : extra}`, 'utf8');
-  }
-
-  toString(): string {
-    return Buffer.from(this.signature).toString('base64');
-  }
-"#);
+        let mut replace = String::new();
 
         signature_ts_impl!(
-            visitor,
+            replace,
             "server_backup_download",
             "backup",
             ("backupStorage: string, backupId: bigint"),
-            r#"`-${backupStorage}-${backupId}`"#
+            "`-${backupStorage}-${backupId}`"
         );
         signature_ts_impl!(
-            visitor,
+            replace,
             "server_realtime_download",
             "backup_rt",
             ("compression: string"),
-            r#"`-${compression}`"#
+            "`-${compression}`"
         );
         signature_ts_impl!(
-            visitor,
+            replace,
             "terminal",
             "terminal",
             ("write: boolean"),
-            r#"`-${write}`"#
+            "`-${write}`"
         );
-        signature_ts_impl!(visitor, "stats", "stats", (""), r#"null"#);
+        signature_ts_impl!(replace, "stats", "stats", (""), "null");
         signature_ts_impl!(
-            visitor,
+            replace,
             "exec",
             "exec",
             ("command: Array<string>"),
             r#"`-${command.join(";")}`"#
         );
         signature_ts_impl!(
-            visitor,
+            replace,
             "server_file_download",
             "server_file_download",
             ("path: string"),
-            r#"`-${path}`"#
+            "`-${path}`"
         );
         signature_ts_impl!(
-            visitor,
+            replace,
             "server_file_upload",
             "server_file_upload",
             ("path: string"),
-            r#"`-${path}`"#
+            "`-${path}`"
         );
 
-        visitor.out.push_str("}\n");
+        visitor
+            .out
+            .push_str(&include_str!("sdk/ts/user.ts").replace("/** {user_methods} */", &replace));
     }
 
     signature_impl!(server_backup_download, "backup", (backup_storage: impl Into<String>, backup_id: i64), Some(format!("-{}-{}", backup_storage.into(), backup_id)));
     signature_impl!(server_realtime_download, "backup_rt", (compression: impl Into<String>), Some(format!("-{}", compression.into())));
-    signature_impl!(terminal, "terminal", (write: bool), Some(format!("-{}", write)));
+    signature_impl!(terminal, "terminal", (write: bool), Some(format!("-{write}")));
     signature_impl!(stats, "stats", (), None);
     signature_impl!(exec, "exec", (command: &[String]), Some(format!("-{}", command.join(";"))));
     signature_impl!(server_file_download, "server_file_download", (path: impl Into<String>), Some(format!("-{}", path.into())));
@@ -259,6 +239,7 @@ impl<'de> Deserialize<'de> for UserSignature {
 }
 
 #[cfg(feature = "ts")]
+#[expect(clippy::panic, reason = "Type cannot be declared")]
 impl daemon_framework::ts_rs::TS for UserSignature {
     type WithoutGenerics = Self;
     type OptionInnerType = Self;
@@ -275,7 +256,7 @@ impl daemon_framework::ts_rs::TS for UserSignature {
     }
 
     fn name() -> String {
-        "UserSignature".to_string()
+        "UserSignature".to_owned()
     }
 
     fn inline() -> String {

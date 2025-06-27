@@ -1,31 +1,12 @@
-pub(crate) mod define;
+pub mod define;
 
 use either::Either;
 use proc_macro2::{Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::{HashMap, HashSet};
 use syn::parse::{Parse, ParseStream};
+use syn::token::{Brace, Bracket};
 use syn::{LitStr, Token};
-
-type ErrorAttributes = Vec<(Ident, Option<Ident>)>;
-type ErrorInner = Either<(Ident, Ident, LitStr), (Ident, Ident)>;
-
-pub(crate) struct ErrorContent {
-    pub(crate) ident: Ident,
-    pub(crate) errors: Vec<(ErrorInner, ErrorAttributes)>,
-}
-
-pub(crate) struct ErrorCategoryContent {
-    pub(crate) vec: Vec<(Ident, ErrorAttributes)>,
-}
-
-pub(crate) struct ErrorCustomContent {
-    pub(crate) vec: Vec<(Ident, Ident, LitStr, ErrorAttributes)>,
-}
-
-pub(crate) struct ErrorAttributesContent {
-    pub(crate) vec: Vec<(Ident, Option<Ident>)>,
-}
 
 // Taken from https://stackoverflow.com/a/73727708
 const INVISIBLE_CHARS: &[u32] = &[
@@ -44,7 +25,141 @@ const INVISIBLE_CHARS: &[u32] = &[
     0xE0077, 0xE0078, 0xE0079, 0xE007A, 0xE007B, 0xE007C, 0xE007D, 0xE007E, 0xE007F,
 ];
 
-pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStream {
+type ErrorAttributes = Vec<(Ident, Option<Ident>)>;
+type ErrorInner = Either<(Ident, Ident, LitStr), (Ident, Ident)>;
+
+pub struct ErrorContent {
+    pub errors: Vec<(ErrorInner, ErrorAttributes)>,
+    pub ident: Ident,
+}
+
+impl Parse for ErrorContent {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut errors = Vec::new();
+        let ident: Ident = input.parse()?;
+
+        while !input.is_empty() {
+            if input.peek(Token![,]) {
+                let _: Punct = input.parse()?;
+            }
+            if input.peek(syn::Ident) {
+                let category: Ident = input.parse()?;
+                let content: Group = input.parse()?;
+                if content.delimiter() != Delimiter::Parenthesis {
+                    return Err(syn::Error::new(content.span(), "Expected parenthesis"));
+                }
+                let content: ErrorCategoryContent = syn::parse2(content.stream())?;
+                for (error, attributes) in content.vec {
+                    errors.push((Either::Right((category.clone(), error)), attributes));
+                }
+            } else if input.peek(Brace) {
+                let custom: Group = input.parse()?;
+                let content: ErrorCustomContent = syn::parse2(custom.stream())?;
+                for (error, statuscode, description, attributes) in content.vec {
+                    errors.push((Either::Left((error, statuscode, description)), attributes));
+                }
+            } else {
+                let token: TokenTree = input.parse()?;
+                return Err(syn::Error::new(
+                    token.span(),
+                    "Expected identifier or braces",
+                ));
+            }
+
+            if input.peek(Token![,]) {
+                let _: Punct = input.parse()?;
+            }
+        }
+
+        Ok(Self { errors, ident })
+    }
+}
+
+pub struct ErrorCategoryContent {
+    pub vec: Vec<(Ident, ErrorAttributes)>,
+}
+
+impl Parse for ErrorCategoryContent {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut vec = Vec::new();
+
+        while !input.is_empty() {
+            let error: Ident = input.parse()?;
+            let attributes = if input.peek(Bracket) {
+                let group: Group = input.parse()?;
+                let attributes: ErrorAttributesContent = syn::parse2(group.stream())?;
+                attributes.vec
+            } else {
+                Vec::new()
+            };
+            vec.push((error, attributes));
+        }
+
+        Ok(Self { vec })
+    }
+}
+
+pub struct ErrorCustomContent {
+    pub vec: Vec<(Ident, Ident, LitStr, ErrorAttributes)>,
+}
+
+impl Parse for ErrorCustomContent {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut vec = Vec::new();
+
+        while !input.is_empty() {
+            if input.peek(Token![,]) {
+                let _: Punct = input.parse()?;
+            }
+            let error: Ident = input.parse()?;
+            let description: LitStr = input.parse()?;
+            let statuscode: Ident = input.parse()?;
+            let attributes = if input.peek(Bracket) {
+                let group: Group = input.parse()?;
+                let attributes: ErrorAttributesContent = syn::parse2(group.stream())?;
+                attributes.vec
+            } else {
+                Vec::new()
+            };
+            vec.push((error, statuscode, description, attributes));
+
+            if input.peek(Token![,]) {
+                let _: Punct = input.parse()?;
+            }
+        }
+
+        Ok(Self { vec })
+    }
+}
+
+pub struct ErrorAttributesContent {
+    pub vec: Vec<(Ident, Option<Ident>)>,
+}
+
+impl Parse for ErrorAttributesContent {
+    fn parse(input: ParseStream) -> syn::Result<Self> {
+        let mut vec = Vec::new();
+
+        while !input.is_empty() {
+            let key: Ident = input.parse()?;
+            let punct: Punct = input.parse()?;
+            if punct.as_char() != ':' {
+                return Err(syn::Error::new(punct.span(), "Expected :"));
+            }
+            if input.peek(Token![*]) {
+                let _: Punct = input.parse()?;
+                vec.push((key, None));
+            } else {
+                let value: Ident = input.parse()?;
+                vec.push((key, Some(value)));
+            }
+        }
+
+        Ok(Self { vec })
+    }
+}
+
+pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
     let ErrorContent { ident, mut errors } = syn::parse2(input).expect("Expected error content");
 
     let mut content = TokenStream::new();
@@ -69,7 +184,13 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
     let mut attributes_parsed = HashMap::new();
     let mut errors2 = Vec::with_capacity(errors.len());
     for (index, (error, attributes)) in errors.into_iter().enumerate() {
-        let error_suffix = char::from_u32(INVISIBLE_CHARS[index]).unwrap().to_string(); // So I can have multiple errors in openapi with the same status code
+        let error_suffix = char::from_u32(
+            *INVISIBLE_CHARS
+                .get(index)
+                .expect("Not enough invisible chars available"),
+        )
+        .expect("Unable to convert ascii code to char")
+        .to_string(); // So I can have multiple errors in openapi with the same status code
 
         let error_suffix = LitStr::new(&error_suffix, Span::call_site());
         let entry = match error {
@@ -127,8 +248,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                 quote! { [< #error_ident >] }
             }
             Either::Right((category, error_ident)) => {
-                let error_id =
-                    LitStr::new(&format!("{}/{}", category, error_ident), Span::call_site());
+                let error_id = LitStr::new(&format!("{category}/{error_ident}"), Span::call_site());
 
                 from.extend(quote! {
                     #error_id => Ok([< #category:camel #error_ident:camel >]),
@@ -164,6 +284,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                 });
 
                 impls.extend(quote! {
+                    #[automatically_derived]
                     impl [< error_ #category _ #error_ident >]::[< From #category:camel #error_ident:camel >] for #ident {
 
                         fn from() -> Self {
@@ -185,35 +306,37 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
         for (attr, key) in &attributes {
             if key.is_none() {
-                if attributes_parsed.contains_key(attr) {
-                    panic!("Duplicate default entry for {} in error", attr);
-                }
+                assert!(
+                    !attributes_parsed.contains_key(attr),
+                    "Duplicate default entry for {attr} in error"
+                );
                 attributes_parsed
                     .entry(attr.clone())
-                    .or_insert((entry.clone(), Vec::new()));
+                    .or_insert_with(|| (entry.clone(), Vec::new()));
             }
         }
         errors2.push((attributes, entry));
     }
     for (attributes, entry) in errors2 {
         for (attr, key) in attributes {
-            if key.is_none() {
+            let Some(key) = key else {
                 continue;
-            }
+            };
             attributes_parsed
                 .get_mut(&attr)
                 .expect("Default implementation missing in error attribute")
                 .1
-                .push((key.unwrap(), entry.clone()));
+                .push((key, entry.clone()));
         }
     }
 
     for (attr, (_, vec)) in &attributes_parsed {
         let mut set = HashSet::new();
         for (entry, _) in vec {
-            if !set.insert(entry.to_string()) {
-                panic!("Duplicate entry {} for {} in error", entry, attr);
-            }
+            assert!(
+                set.insert(entry.to_string()),
+                "Duplicate entry {entry} for {attr} in error"
+            );
         }
     }
 
@@ -266,12 +389,12 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                         }
                         "unique" => {
                             database_matches.extend(quote! {
-                                    if database.is_check_violation() {
+                                    if database.is_unique_violation() {
                                         return Self::#variant;
                                     }
                             });
                         }
-                        _ => panic!("Unknown entry {} for {} in error", kind, attr),
+                        _ => panic!("Unknown entry {kind} for {attr} in error"),
                     }
                 }
                 if !database_matches.is_empty() {
@@ -282,6 +405,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                     });
                 }
                 impls.extend(quote! {
+                    #[automatically_derived]
                     impl From<#crate_prefix sqlx::Error> for #ident {
 
                         fn from(err: #crate_prefix sqlx::Error) -> Self {
@@ -292,21 +416,23 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
                     }
                 });
             }
-            _ => panic!("Unknown attribute {} in error", attr),
+            _ => panic!("Unknown attribute {attr} in error"),
         }
     }
 
-    let ts_crate_literal = LitStr::new(&format!("{}ts_rs", crate_prefix), Span::call_site());
+    let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
 
     quote! {
         #crate_prefix paste::paste! {
             #[derive(Debug)]
             #[#crate_prefix ts]
             #[ts(crate = #ts_crate_literal)]
+            #[automatically_derived]
             pub enum #ident {
                 #content
             }
 
+            #[automatically_derived]
             impl std::str::FromStr for #ident {
                 type Err = ();
 
@@ -320,6 +446,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
             }
 
+            #[automatically_derived]
             impl #crate_prefix axum::response::IntoResponse for #ident {
 
                 fn into_response(self) -> #crate_prefix http::response::Response<#crate_prefix axum::body::Body> {
@@ -332,6 +459,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
             }
 
+            #[automatically_derived]
             impl #crate_prefix FrameworkDocumentedResponse for #ident {
 
                 fn openapi(responses: &mut #crate_prefix utoipa::openapi::ResponsesBuilder, _schemas: &mut std::collections::HashMap<String, #crate_prefix utoipa::openapi::RefOr<#crate_prefix utoipa::openapi::schema::Schema>>) {
@@ -347,6 +475,7 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
             }
 
+            #[automatically_derived]
             impl From<#crate_prefix reqwest::Error> for #ident {
 
                 fn from(err: #crate_prefix reqwest::Error) -> Self {
@@ -357,119 +486,5 @@ pub(crate) fn error0(crate_prefix: TokenStream, input: TokenStream) -> TokenStre
 
             #impls
         }
-    }
-}
-
-impl Parse for ErrorContent {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut errors = Vec::new();
-        let ident: Ident = input.parse()?;
-
-        while !input.is_empty() {
-            if input.peek(Token![,]) {
-                let _: Punct = input.parse()?;
-            }
-            if input.peek(syn::Ident) {
-                let category: Ident = input.parse()?;
-                let content: Group = input.parse()?;
-                if content.delimiter() != Delimiter::Parenthesis {
-                    return Err(syn::Error::new(content.span(), "Expected parenthesis"));
-                }
-                let content: ErrorCategoryContent = syn::parse2(content.stream())?;
-                for (error, attributes) in content.vec {
-                    errors.push((Either::Right((category.clone(), error)), attributes));
-                }
-            } else if input.peek(syn::token::Brace) {
-                let custom: Group = input.parse()?;
-                let content: ErrorCustomContent = syn::parse2(custom.stream())?;
-                for (error, statuscode, description, attributes) in content.vec {
-                    errors.push((Either::Left((error, statuscode, description)), attributes));
-                }
-            } else {
-                let token: TokenTree = input.parse()?;
-                return Err(syn::Error::new(
-                    token.span(),
-                    "Expected identifier or braces",
-                ));
-            }
-
-            if input.peek(Token![,]) {
-                let _: Punct = input.parse()?;
-            }
-        }
-
-        Ok(ErrorContent { ident, errors })
-    }
-}
-
-impl Parse for ErrorCustomContent {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut vec = Vec::new();
-
-        while !input.is_empty() {
-            if input.peek(Token![,]) {
-                let _: Punct = input.parse()?;
-            }
-            let error: Ident = input.parse()?;
-            let description: LitStr = input.parse()?;
-            let statuscode: Ident = input.parse()?;
-            let attributes = if input.peek(syn::token::Bracket) {
-                let group: Group = input.parse()?;
-                let attributes: ErrorAttributesContent = syn::parse2(group.stream())?;
-                attributes.vec
-            } else {
-                Vec::new()
-            };
-            vec.push((error, statuscode, description, attributes));
-
-            if input.peek(Token![,]) {
-                let _: Punct = input.parse()?;
-            }
-        }
-
-        Ok(ErrorCustomContent { vec })
-    }
-}
-
-impl Parse for ErrorCategoryContent {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut vec = Vec::new();
-
-        while !input.is_empty() {
-            let error: Ident = input.parse()?;
-            let attributes = if input.peek(syn::token::Bracket) {
-                let group: Group = input.parse()?;
-                let attributes: ErrorAttributesContent = syn::parse2(group.stream())?;
-                attributes.vec
-            } else {
-                Vec::new()
-            };
-            vec.push((error, attributes));
-        }
-
-        Ok(ErrorCategoryContent { vec })
-    }
-}
-
-impl Parse for ErrorAttributesContent {
-    fn parse(input: ParseStream) -> syn::Result<Self> {
-        let mut vec = Vec::new();
-
-        while !input.is_empty() {
-            let key: Ident = input.parse()?;
-            let p: Punct = input.parse()?;
-            if p.as_char() != ':' {
-                return Err(syn::Error::new(p.span(), "Expected :"));
-            }
-            if input.peek(Token![*]) {
-                let _: Punct = input.parse()?;
-                vec.push((key, None));
-            } else {
-                let value: Ident = input.parse()?;
-                vec.push((key, Some(value)));
-            }
-        }
-
-        Ok(ErrorAttributesContent { vec })
     }
 }

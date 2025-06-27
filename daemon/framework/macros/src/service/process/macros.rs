@@ -5,14 +5,13 @@ use quote::quote;
 use std::collections::VecDeque;
 use syn::LitStr;
 
-pub(crate) fn process(
+pub fn process(
     crate_prefix: &TokenStream,
     fn_ident: &Ident,
     mut pre_fn: VecDeque<TokenTree>,
     errors: &mut TokenStream,
     post_fn: &mut Vec<TokenTree>,
     result: &mut Vec<TokenTree>,
-    operations: &mut TokenStream,
 ) -> (Vec<TokenTree>, RouteArgs, Option<LitStr>, Option<Literal>) {
     let mut route_args = None;
     let mut pre_fn_result0 = VecDeque::new();
@@ -20,12 +19,13 @@ pub(crate) fn process(
     let mut description = None;
     let mut example = None;
 
-    let mut result_edited = false;
-    if result.is_empty() {
+    let result_edited = if result.is_empty() {
         post_fn.extend(quote! { -> });
         *result = quote! { std::result::Result<(), _> }.into_iter().collect();
-        result_edited = true;
-    }
+        true
+    } else {
+        false
+    };
 
     while let Some(pre_fn_tree) = pre_fn.pop_front() {
         let TokenTree::Punct(punct) = pre_fn_tree.clone() else {
@@ -56,23 +56,23 @@ pub(crate) fn process(
                 let Some(TokenTree::Group(group)) = macro_inner.pop_front() else {
                     panic!("Expected route macro arguments");
                 };
-                if group.delimiter() != Delimiter::Parenthesis {
-                    panic!("Expected route macro arguments in parenthesis");
-                }
+                assert_eq!(
+                    group.delimiter(),
+                    Delimiter::Parenthesis,
+                    "Expected route macro arguments in parenthesis"
+                );
                 match syn::parse2::<RouteArgs>(group.stream()) {
                     Ok(args) => {
                         route_args = Some(args);
                     }
-                    Err(err) => panic!("Failed to parse route macro arguments: {}", err),
+                    Err(err) => panic!("Failed to parse route macro arguments: {err}"),
                 }
             }
             "doc" => {
                 let Some(TokenTree::Punct(punct)) = macro_inner.pop_front() else {
                     panic!("Expected =");
                 };
-                if punct.as_char() != '=' {
-                    panic!("Expected =");
-                }
+                assert_eq!(punct.as_char(), '=', "Expected =");
                 let Some(TokenTree::Literal(lit)) = macro_inner.pop_front() else {
                     panic!("Expected documentation");
                 };
@@ -86,9 +86,11 @@ pub(crate) fn process(
                 let Some(TokenTree::Group(group)) = macro_inner.pop_front() else {
                     panic!("Expected example macro arguments");
                 };
-                if group.delimiter() != Delimiter::Parenthesis {
-                    panic!("Expected example macro arguments in parenthesis");
-                }
+                assert_eq!(
+                    group.delimiter(),
+                    Delimiter::Parenthesis,
+                    "Expected example macro arguments in parenthesis"
+                );
                 example = Some(
                     syn::parse2(group.stream()).expect("Expected literal string as example path"),
                 );
@@ -96,19 +98,16 @@ pub(crate) fn process(
             _ => {
                 pre_fn_result0.push_back(pre_fn_tree);
                 pre_fn_result0.push_back(TokenTree::Group(group));
-                continue;
             }
         }
     }
 
     let route_args = route_args.take().expect("Expected route attribute");
 
-    if let HttpMethod::WS = route_args.method {
-        if result_edited {
-            *result = quote! { std::result::Result<#crate_prefix WebsocketResponse, _> }
-                .into_iter()
-                .collect();
-        }
+    if HttpMethod::Ws == route_args.method && result_edited {
+        *result = quote! { std::result::Result<#crate_prefix WebsocketResponse, _> }
+            .into_iter()
+            .collect();
     }
 
     while let Some(pre_fn_tree) = pre_fn_result0.pop_front() {
@@ -137,14 +136,17 @@ pub(crate) fn process(
         };
 
         let fn_ident = fn_ident.clone();
+        #[expect(clippy::single_match_else, reason = "Could be extended in the future")]
         match ident.to_string().as_str() {
             "error" => {
                 let Some(TokenTree::Group(group)) = macro_inner.pop_front() else {
                     panic!("Expected error macro arguments");
                 };
-                if group.delimiter() != Delimiter::Parenthesis {
-                    panic!("Expected error macro arguments in parenthesis");
-                }
+                assert_eq!(
+                    group.delimiter(),
+                    Delimiter::Parenthesis,
+                    "Expected error macro arguments in parenthesis"
+                );
 
                 let mut args = TokenStream::new();
                 if !route_args.user {
@@ -183,13 +185,8 @@ pub(crate) fn process(
             _ => {
                 pre_fn_result1.push(pre_fn_tree);
                 pre_fn_result1.push(TokenTree::Group(group));
-                continue;
             }
         }
-    }
-
-    if let Some(desc) = &description {
-        operations.extend(quote! { .description(Some(#desc)) });
     }
 
     (pre_fn_result1, route_args, example, description)

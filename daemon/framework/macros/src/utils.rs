@@ -1,35 +1,17 @@
 use proc_macro2::{Ident, Punct, TokenStream, TokenTree};
-use quote::TokenStreamExt;
+use quote::TokenStreamExt as _;
 use syn::Token;
-use syn::ext::IdentExt;
+use syn::ext::IdentExt as _;
 use syn::parse::{Parse, ParseStream};
 
-pub(crate) struct TokenStreamArray(pub(crate) Vec<TokenStream>);
+pub struct TokenStreamArray(pub Vec<TokenStream>);
 
 impl Parse for TokenStreamArray {
     fn parse(input: ParseStream) -> syn::Result<Self> {
         input
             .parse_terminated(parse_tokenstream_array, Token![,])
-            .map(|f| TokenStreamArray(f.into_iter().collect()))
+            .map(|result| Self(result.into_iter().collect()))
     }
-}
-
-fn parse_tokenstream_array(stream: ParseStream) -> Result<TokenStream, syn::Error> {
-    let mut result = TokenStream::new();
-    let mut level = 0;
-    while !stream.is_empty() {
-        if stream.peek(Token![,]) && level == 0 {
-            break;
-        }
-        if stream.peek(Token![<]) {
-            level += 1;
-        }
-        if stream.peek(Token![>]) {
-            level -= 1;
-        }
-        result.append(stream.parse::<TokenTree>()?);
-    }
-    Ok(result)
 }
 
 struct OptionTypeParseResult(Option<TokenStream>);
@@ -55,15 +37,19 @@ impl Parse for OptionTypeParseResult {
         }
         let mut stream = TokenStream::new();
 
-        let mut layer = 1;
+        let mut layer = 1u8;
         while !input.is_empty() {
             let token: TokenTree = input.parse()?;
             if let TokenTree::Punct(ref punct) = token {
                 if punct.as_char() == '<' {
-                    layer += 1;
+                    layer = layer
+                        .checked_add(1)
+                        .expect("Overflow occurred adding layer");
                 }
                 if punct.as_char() == '>' {
-                    layer -= 1;
+                    layer = layer
+                        .checked_sub(1)
+                        .expect("Underflow occurred removing layer");
                 }
             }
             if layer == 0 {
@@ -79,10 +65,29 @@ impl Parse for OptionTypeParseResult {
     }
 }
 
-pub(crate) fn type_option(input: TokenStream) -> (TokenStream, bool) {
-    let OptionTypeParseResult(result) = syn::parse2(input.clone()).unwrap();
-    match result {
-        None => (input, false),
-        Some(result) => (result, true),
+fn parse_tokenstream_array(stream: ParseStream) -> Result<TokenStream, syn::Error> {
+    let mut result = TokenStream::new();
+    let mut level = 0u8;
+    while !stream.is_empty() {
+        if stream.peek(Token![,]) && level == 0 {
+            break;
+        }
+        if stream.peek(Token![<]) {
+            level = level
+                .checked_add(1)
+                .expect("Overflow occurred adding layer");
+        }
+        if stream.peek(Token![>]) {
+            level = level
+                .checked_sub(1)
+                .expect("Underflow occurred removing layer");
+        }
+        result.append(stream.parse::<TokenTree>()?);
     }
+    Ok(result)
+}
+
+pub fn type_option(input: TokenStream) -> (TokenStream, bool) {
+    let OptionTypeParseResult(result) = syn::parse2(input.clone()).expect("Unable to parse type");
+    result.map_or((input, false), |result| (result, true))
 }

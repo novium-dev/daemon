@@ -5,6 +5,9 @@ edition = "2024"
 authors = ["Markus Probst <markustieger@gmail.com>"]
 license = "AGPL-3.0-only"
 
+[lints]
+workspace = true
+
 [package.metadata.deb]
 name = "novium-daemon"
 depends = ["novium-daemon-mariadb-plugin", "adduser (>=3.40)", "docker.io | docker-ce", "vim", "liblzma5", "init-system-helpers"]
