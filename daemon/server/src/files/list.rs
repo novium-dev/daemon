@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use tracing::{debug, error};
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn list_files<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -36,16 +37,16 @@ pub(crate) async fn list_files<
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::NotADirectory => {
-                debug!("Failed to list files (read_dir): {:?}", err)
+                debug!("Failed to list files (read_dir): {err:?}")
             }
-            _ => error!("Failed to list files (read_dir): {:?}", err),
+            _ => error!("Failed to list files (read_dir): {err:?}"),
         })?;
     let mut files = Vec::new();
     for entry in read_dir {
-        let entry = entry.inspect_err(|err| error!("Failed to list files (entry): {:?}", err))?;
+        let entry = entry.inspect_err(|err| error!("Failed to list files (entry): {err:?}"))?;
         let metadata = entry
             .metadata()
-            .inspect_err(|err| error!("Failed to list files (metadata): {:?}", err))?;
+            .inspect_err(|err| error!("Failed to list files (metadata): {err:?}"))?;
         let mut link_path = None;
         let mut archive = false;
 
@@ -56,7 +57,7 @@ pub(crate) async fn list_files<
                 storage
                     .read_link(PathBuf::from(&path).join(entry.file_name()))
                     .await
-                    .inspect_err(|err| error!("Failed to list files (read_link): {:?}", err))?
+                    .inspect_err(|err| error!("Failed to list files (read_link): {err:?}"))?
                     .to_string_lossy()
                     .to_string(),
             );
@@ -72,9 +73,9 @@ pub(crate) async fn list_files<
                 }
             })
             .await
-            .inspect_err(|err| error!("Failed to list files (detect): {:?}", err))
+            .inspect_err(|err| error!("Failed to list files (detect): {err:?}"))
             .map_err(io::Error::from)?
-            .inspect_err(|err| error!("Failed to list files (detect): {:?}", err))?;
+            .inspect_err(|err| error!("Failed to list files (detect): {err:?}"))?;
         }
 
         files.push(metadata.into_fileentry(

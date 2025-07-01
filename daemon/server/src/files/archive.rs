@@ -21,6 +21,7 @@ use tar::{Archive, Builder};
 use tracing::{debug, error};
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn unpack_archive<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -45,8 +46,8 @@ pub(crate) async fn unpack_archive<
             ErrorKind::NotFound
             | ErrorKind::PermissionDenied
             | ErrorKind::IsADirectory
-            | ErrorKind::NotADirectory => debug!("Failed to unpack archive: {:?}", err),
-            _ => error!("Failed to unpack archive: {:?}", err),
+            | ErrorKind::NotADirectory => debug!("Failed to unpack archive: {err:?}"),
+            _ => error!("Failed to unpack archive: {err:?}"),
         })?;
 
     let fd: OwnedFd = file.into_std().into();
@@ -55,7 +56,7 @@ pub(crate) async fn unpack_archive<
         Ok::<_, io::Error>((ArchiveCompression::detect_blocking(&mut file)?, file))
     })
     .await
-    .inspect_err(|err| debug!("Failed to unpack archive (detect): {:?}", err))
+    .inspect_err(|err| debug!("Failed to unpack archive (detect): {err:?}"))
     .map_err(io::Error::from)?
     {
         Ok((Some(compression), file)) => {
@@ -65,9 +66,9 @@ pub(crate) async fn unpack_archive<
                 .await
                 .inspect_err(|err| match err.kind() {
                     ErrorKind::InvalidData | ErrorKind::QuotaExceeded => {
-                        debug!("Failed to unpack archive (unpack): {:?}", err)
+                        debug!("Failed to unpack archive (unpack): {err:?}")
                     }
-                    _ => error!("Failed to unpack archive (unpack): {:?}", err),
+                    _ => error!("Failed to unpack archive (unpack): {err:?}"),
                 })?;
         }
         Ok(_) => return Err(<E as FromCompressionUnsupported>::from()),
@@ -77,9 +78,9 @@ pub(crate) async fn unpack_archive<
         Err(err) => {
             match err.kind() {
                 ErrorKind::IsADirectory | ErrorKind::NotADirectory | ErrorKind::InvalidData => {
-                    debug!("Failed to unpack archive (detect): {:?}", err)
+                    debug!("Failed to unpack archive (detect): {err:?}")
                 }
-                _ => error!("Failed to unpack archive (detect): {:?}", err),
+                _ => error!("Failed to unpack archive (detect): {err:?}"),
             }
             return Err(<E as From<io::Error>>::from(err));
         }
@@ -146,8 +147,8 @@ async fn create_archive0<E: From<io::Error>>(
             ErrorKind::NotFound
             | ErrorKind::PermissionDenied
             | ErrorKind::IsADirectory
-            | ErrorKind::QuotaExceeded => debug!("Failed to create archive (open): {:?}", err),
-            _ => error!("Failed to create archive (open): {:?}", err),
+            | ErrorKind::QuotaExceeded => debug!("Failed to create archive (open): {err:?}"),
+            _ => error!("Failed to create archive (open): {err:?}"),
         })?;
 
     let fd: OwnedFd = file.into_std().into();
@@ -155,14 +156,14 @@ async fn create_archive0<E: From<io::Error>>(
     let archive = Builder::new(
         compression
             .create_encoder(file)
-            .inspect_err(|err| error!("Failed to create archive (create_encoder): {:?}", err))?,
+            .inspect_err(|err| error!("Failed to create archive (create_encoder): {err:?}"))?,
     );
     let (archive, _) = archive
         .append_dir_all_sandboxed(storage_path, "", src, HashSet::new(), (), true)
         .await
         .inspect_err(|err| match err.kind() {
-            ErrorKind::QuotaExceeded => debug!("Failed to create archive (create): {:?}", err),
-            _ => error!("Failed to create archive (create): {:?}", err),
+            ErrorKind::QuotaExceeded => debug!("Failed to create archive (create): {err:?}"),
+            _ => error!("Failed to create archive (create): {err:?}"),
         })?;
 
     tokio::task::spawn_blocking(move || {
@@ -170,11 +171,11 @@ async fn create_archive0<E: From<io::Error>>(
         archive.into_inner().unwrap().finish()?.flush()
     })
     .await
-    .inspect_err(|err| error!("Failed to create archive (flush): {:?}", err))
+    .inspect_err(|err| error!("Failed to create archive (flush): {err:?}"))
     .map_err(io::Error::from)?
     .inspect_err(|err| match err.kind() {
-        ErrorKind::QuotaExceeded => debug!("Failed to create archive (flush): {:?}", err),
-        _ => error!("Failed to create archive (flush): {:?}", err),
+        ErrorKind::QuotaExceeded => debug!("Failed to create archive (flush): {err:?}"),
+        _ => error!("Failed to create archive (flush): {err:?}"),
     })?;
     Ok(())
 }

@@ -10,14 +10,14 @@ use std::sync::Arc;
 use tracing::{debug, error};
 use uuid::Uuid;
 
-pub(crate) async fn open(
+pub async fn open(
     session: &mut DaemonSftpSession,
     path: String,
     options: &OpenOptions,
 ) -> Result<String, StatusCode> {
-    let (storage, temp_prefix, temp_suffix) = session.resolve_path(path).await?;
+    let (storage, temp_prefix, temp_suffix) = session.resolve_path(path)?;
     match storage {
-        None => open_internal(session, temp_prefix).await,
+        None => open_internal(session, temp_prefix),
         Some((dir, permissions)) => {
             open_regular(session, dir, options, permissions, temp_suffix).await
         }
@@ -25,7 +25,7 @@ pub(crate) async fn open(
 }
 
 #[inline(always)]
-async fn open_internal(
+fn open_internal(
     session: &mut DaemonSftpSession,
     path: Vec<String>,
 ) -> Result<String, StatusCode> {

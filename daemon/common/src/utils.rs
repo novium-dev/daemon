@@ -16,8 +16,10 @@ pub async fn identify_container_by_pid(
     use std::io;
     use tokio::fs::File;
     use tokio::io::AsyncReadExt as _;
-    static CGROUP_REGEX: LazyLock<regex::Regex> =
-        LazyLock::new(|| regex::Regex::new("docker-([a-z0-9]{64}).scope").unwrap());
+    static CGROUP_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
+        regex::Regex::new("docker-([a-z0-9]{64}).scope")
+            .expect("Unable to build cgroup regex for docker")
+    });
 
     let mut file = File::open(format!("/proc/{pid}/cgroup")).await?;
     let mut buf = String::new();
@@ -60,41 +62,41 @@ pub fn base_url(url: &mut Url) {
 }
 
 pub trait JsonExt {
-    fn to_yaml(self) -> serde_yaml::Value;
+    fn to_yaml(self) -> serde_yaml_ng::Value;
 
-    fn from_yaml(yaml: serde_yaml::Value) -> Self;
+    fn from_yaml(yaml: serde_yaml_ng::Value) -> Self;
 }
 
 const JSON_MAGIC: &str = "{DAEMON_JSON_MAGIC}!";
 
 impl JsonExt for serde_json::Value {
-    fn to_yaml(self) -> serde_yaml::Value {
+    fn to_yaml(self) -> serde_yaml_ng::Value {
         match self {
-            Self::Null => serde_yaml::Value::Null,
-            Self::Bool(value) => serde_yaml::Value::Bool(value),
+            Self::Null => serde_yaml_ng::Value::Null,
+            Self::Bool(value) => serde_yaml_ng::Value::Bool(value),
             Self::Number(value) => match (value.as_u64(), value.as_i64(), value.as_f64()) {
-                (Some(value), _, _) => serde_yaml::Value::Number(serde_yaml::Number::from(value)),
-                (_, Some(value), _) => serde_yaml::Value::Number(serde_yaml::Number::from(value)),
+                (Some(value), _, _) => serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(value)),
+                (_, Some(value), _) => serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(value)),
                 (_, _, value) => {
-                    serde_yaml::Value::Number(serde_yaml::Number::from(value.unwrap_or_default()))
+                    serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(value.unwrap_or_default()))
                 }
             },
-            Self::String(value) => serde_yaml::Value::String(value),
+            Self::String(value) => serde_yaml_ng::Value::String(value),
             Self::Array(value) => {
-                serde_yaml::Value::Sequence(value.into_iter().map(Self::to_yaml).collect())
+                serde_yaml_ng::Value::Sequence(value.into_iter().map(Self::to_yaml).collect())
             }
             Self::Object(value) => {
                 if let Some(Self::String(tag)) = value.get(&format!("{JSON_MAGIC}_tag"))
                     && let Some(untagged) = value.get("value")
                     && value.len() == 2
                 {
-                    let tag = serde_yaml::value::Tag::new(tag);
-                    serde_yaml::Value::Tagged(Box::new(serde_yaml::value::TaggedValue {
+                    let tag = serde_yaml_ng::value::Tag::new(tag);
+                    serde_yaml_ng::Value::Tagged(Box::new(serde_yaml_ng::value::TaggedValue {
                         tag,
                         value: untagged.clone().to_yaml(),
                     }))
                 } else {
-                    let mut map = serde_yaml::Mapping::with_capacity(value.len());
+                    let mut map = serde_yaml_ng::Mapping::with_capacity(value.len());
                     for (key, val) in value {
                         let val = val.to_yaml();
                         if let Some(key) = key.strip_prefix(JSON_MAGIC) {
@@ -105,16 +107,16 @@ impl JsonExt for serde_json::Value {
                             map.insert(key, val);
                             continue;
                         }
-                        map.insert(serde_yaml::Value::String(key), val);
+                        map.insert(serde_yaml_ng::Value::String(key), val);
                     }
-                    serde_yaml::Value::Mapping(map)
+                    serde_yaml_ng::Value::Mapping(map)
                 }
             }
         }
     }
 
-    fn from_yaml(yaml: serde_yaml::Value) -> Self {
-        use serde_yaml::Value;
+    fn from_yaml(yaml: serde_yaml_ng::Value) -> Self {
+        use serde_yaml_ng::Value;
         match yaml {
             Value::Null => Self::Null,
             Value::Bool(value) => Self::Bool(value),

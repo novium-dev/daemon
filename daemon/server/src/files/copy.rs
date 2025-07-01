@@ -12,6 +12,7 @@ use std::ops::Deref;
 use tracing::{debug, error};
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn copy_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -37,8 +38,8 @@ pub(crate) async fn copy_file<
             ErrorKind::NotFound
             | ErrorKind::PermissionDenied
             | ErrorKind::IsADirectory
-            | ErrorKind::QuotaExceeded => debug!("Failed to copy file: {:?}", err),
-            _ => error!("Failed to copy file: {:?}", err),
+            | ErrorKind::QuotaExceeded => debug!("Failed to copy file: {err:?}"),
+            _ => error!("Failed to copy file: {err:?}"),
         })?;
     drop(lock);
     Ok(())

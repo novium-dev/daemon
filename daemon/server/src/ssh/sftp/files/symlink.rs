@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error};
 
-pub(crate) async fn symlink(
+pub async fn symlink(
     storage: Arc<Dir>,
     path: PathBuf,
     content: String,
@@ -17,9 +17,9 @@ pub(crate) async fn symlink(
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::AlreadyExists => {
-                debug!("Failed to symlink: {:?}", err)
+                debug!("Failed to symlink: {err:?}");
             }
-            _ => error!("Failed to symlink: {:?}", err),
+            _ => error!("Failed to symlink: {err:?}"),
         })
         .map_err(sftp_err)
 }

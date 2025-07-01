@@ -11,7 +11,6 @@ use tokio::net::{UnixListener, unix::UCred};
 use tracing::{error, warn};
 
 #[derive(Clone, Debug)]
-#[allow(dead_code)]
 struct UdsConnectInfo {
     peer_addr: Arc<tokio::net::unix::SocketAddr>,
     peer_cred: UCred,
@@ -28,7 +27,7 @@ impl connect_info::Connected<IncomingStream<'_, UnixListener>> for UdsConnectInf
     }
 }
 
-pub(crate) async fn run(state: Daemon) {
+pub(crate) async fn run(daemon: Daemon) {
     let path = PathBuf::from("./control.sock");
     let _ = tokio::fs::remove_file(&path).await; // Ignore any errors
 
@@ -45,7 +44,7 @@ pub(crate) async fn run(state: Daemon) {
 
     let app = Router::new()
         .route("/mark_restart", get(restart))
-        .with_state(state)
+        .with_state(daemon)
         .into_make_service_with_connect_info::<UdsConnectInfo>();
 
     axum::serve(listener, app).await.unwrap();

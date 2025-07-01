@@ -6,19 +6,19 @@ use sqlx::{Error, Executor, MySql, Transaction, query, query_as};
 use tracing::error;
 
 #[derive(Debug, Clone, Eq, PartialEq, sqlx::FromRow)]
-pub(crate) struct Network {
-    pub(crate) id: u32,
-    pub(crate) ipv4: u16,
-    pub(crate) ipv6: u16,
+pub struct Network {
+    pub id: u32,
+    pub ipv4: u16,
+    pub ipv6: u16,
 }
 
 impl Network {
-    pub(crate) async fn create<E: From<sqlx::Error> + FromDockerFailure>(
+    pub async fn create<E: From<sqlx::Error> + FromDockerFailure>(
         docker: &Docker,
         tx: &mut Transaction<'_, MySql>,
         ipv4: u16,
         ipv6: u16,
-    ) -> Result<Network, E> {
+    ) -> Result<Self, E> {
         let id = query!(
             "INSERT INTO `networks` (`ipv4`, `ipv6`) VALUES (?, ?)",
             ipv4,
@@ -36,7 +36,7 @@ impl Network {
         })?
         .last_insert_id() as u32;
 
-        let ipv4_split = [(ipv4 >> 8) as u8, ipv4 as u8];
+        let ipv4_split = [(ipv4 >> 8u16) as u8, ipv4 as u8];
 
         docker
             .create_network(NetworkCreateRequest {
@@ -72,17 +72,17 @@ impl Network {
             })
             .await
             .inspect_err(|err| error!("Failed to create network: {:?}", err))
-            .map_err(|_| <E as FromDockerFailure>::from())?;
+            .map_err(|_err| <E as FromDockerFailure>::from())?;
 
-        Ok(Network { id, ipv4, ipv6 })
+        Ok(Self { id, ipv4, ipv6 })
     }
 
-    pub(crate) async fn resolve<E: From<sqlx::Error>>(
+    pub async fn resolve<E: From<sqlx::Error>>(
         conn: impl Executor<'_, Database = MySql>,
         id: u32,
-    ) -> Result<Option<Network>, E> {
+    ) -> Result<Option<Self>, E> {
         query_as!(
-            Network,
+            Self,
             "SELECT * FROM `networks` WHERE `id` = ? LIMIT 1",
             id
         )
@@ -92,7 +92,7 @@ impl Network {
         .map_err(<E as From<sqlx::Error>>::from)
     }
 
-    pub(crate) async fn delete<E: From<sqlx::Error> + FromDockerFailure>(
+    pub async fn delete<E: From<sqlx::Error> + FromDockerFailure>(
         &self,
         docker: &Docker,
         tx: &mut Transaction<'_, MySql>,
@@ -137,8 +137,7 @@ impl Network {
             .remove_network(&format!("{}{}", crate::common::NETWORK_PREFIX, self.id))
             .await
         {
-            Ok(_) => {}
-            Err(bollard::errors::Error::DockerResponseServerError {
+            Ok(()) | Err(bollard::errors::Error::DockerResponseServerError {
                 status_code: 404, ..
             }) => {}
             Err(err) => {

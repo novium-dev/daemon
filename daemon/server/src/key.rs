@@ -7,13 +7,13 @@ use futures_util::future::BoxFuture;
 use rustls::pki_types::CertificateDer;
 use rustls::server::{ClientHello, ResolvesServerCert};
 use rustls::sign::CertifiedKey;
-use serde::Serializer;
-use std::fmt::{Debug, Formatter};
+use serde::Serializer as _;
+use core::fmt::{Debug, Formatter};
 use std::io;
 use std::sync::Arc;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_rustls::server::TlsStream;
-use tower_layer::Layer;
+use tower_layer::Layer as _;
 use tracing::debug;
 use uuid::Uuid;
 
@@ -23,22 +23,22 @@ impl ResolvesServerCert for DaemonCertResolver {
     fn resolve(&self, client_hello: ClientHello<'_>) -> Option<Arc<CertifiedKey>> {
         debug!("Server name: {:?}", client_hello.server_name());
         match &self.1 {
-            None => Some(self.0.tls_cert.clone()),
+            None => Some(Arc::clone(&self.0.tls_cert)),
             Some(_)
                 if client_hello
                     .server_name()
                     .eq(&Some(&format!("node-{}", self.2))) =>
             {
-                Some(self.0.tls_cert.clone())
+                Some(Arc::clone(&self.0.tls_cert))
             }
-            Some(key) => Some(key.clone()),
+            Some(key) => Some(Arc::clone(key)),
         }
     }
 }
 
 impl Debug for DaemonCertResolver {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.serialize_str("DaemonCertResolver")
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
+        formatter.serialize_str("DaemonCertResolver")
     }
 }
 

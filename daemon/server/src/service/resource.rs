@@ -3,12 +3,11 @@ use async_trait::async_trait;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::resource::error::ResourceInfoError;
 use daemon_common::service::resource::{ResourceDisk, ResourceResponse};
-use num_traits::ToPrimitive;
+use num_traits::ToPrimitive as _;
 use sqlx::query_as;
 use sqlx::types::BigDecimal;
-use std::ops::Deref;
 use std::thread;
-use std::time::Duration;
+use core::time::Duration;
 use tracing::{debug, error};
 
 #[async_trait]
@@ -27,7 +26,7 @@ impl ResourceService for Daemon {
             ResourceSummary,
             "SELECT SUM(`ram`) AS `ram`, SUM(`swap`) AS `swap` FROM `servers`"
         )
-        .fetch_one(self.conn.deref())
+        .fetch_one(&*self.conn)
         .await
         .inspect_err(|err| error!("Failed to retrieve memory usage from servers: {:?}", err))?;
 
@@ -45,16 +44,14 @@ impl ResourceService for Daemon {
                     .unwrap_or_default()
                     .to_u64()
                     .unwrap_or_default()
-                    * 1024
-                    * 1024,
+                    .saturating_mul(0x0010_0000),
                 swap_total: system.total_swap(),
                 swap_used: system.used_swap(),
                 swap_allocated: swap_allocated
                     .unwrap_or_default()
                     .to_u64()
                     .unwrap_or_default()
-                    * 1024u64
-                    * 1024,
+                    .saturating_mul(0x0010_0000),
                 cpu_count: system.cpus().len() as u32,
                 cpu_used: system
                     .cpus()
@@ -75,6 +72,6 @@ impl ResourceService for Daemon {
         })
         .await
         .inspect_err(|err| debug!("Failed to provide resource info: {:?}", err))
-        .map_err(|_| ResourceInfoError::ResourceError)
+        .map_err(|_err| ResourceInfoError::ResourceError)
     }
 }

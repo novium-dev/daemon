@@ -2,7 +2,7 @@ use crate::key::TlsData;
 use axum::Extension;
 use axum::extract::Request;
 use axum::middleware::Next;
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse as _, Response};
 use daemon_common::service::BlankError;
 
 pub async fn middleware(

@@ -13,6 +13,7 @@ use daemon_common::service::error_http_request_read_failed::FromHttpRequestReadF
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
 use daemon_common::service::server::ServerFileWrite;
 use std::io;
@@ -33,7 +34,7 @@ pub(crate) async fn write_file<
         + FromStorageMutexLocked
         + FromStorageFailure,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     path: String,
     length: Option<TypedHeader<ContentLength>>,
@@ -42,7 +43,7 @@ pub(crate) async fn write_file<
     let _length = length.map(|header| header.0.0);
 
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let mut reader = stream.reader();
@@ -56,8 +57,8 @@ pub(crate) async fn write_file<
             ErrorKind::NotFound
             | ErrorKind::PermissionDenied
             | ErrorKind::IsADirectory
-            | ErrorKind::QuotaExceeded => debug!("Failed to write file (open): {:?}", err),
-            _ => error!("Failed to write file (open): {:?}", err),
+            | ErrorKind::QuotaExceeded => debug!("Failed to write file (open): {err:?}"),
+            _ => error!("Failed to write file (open): {err:?}"),
         })?
         .into_std()
         .into();
@@ -65,14 +66,15 @@ pub(crate) async fn write_file<
     tokio::io::copy(&mut reader, &mut writer)
         .await
         .inspect_err(|err| match err.kind() {
-            ErrorKind::QuotaExceeded => debug!("Failed to write file: {:?}", err),
-            _ => error!("Failed to write file: {:?}", err),
+            ErrorKind::QuotaExceeded => debug!("Failed to write file: {err:?}"),
+            _ => error!("Failed to write file: {err:?}"),
         })?;
     drop(lock);
     Ok(())
 }
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn write_file_by_template<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -80,16 +82,17 @@ pub(crate) async fn write_file_by_template<
         + FromStorageMutexLocked
         + FromStorageFailure
         + FromStorageQuotaReached
+        + FromStoragePatchFailed
         + Send
         + 'static,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     path: String,
     template: ServerFileWrite,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
 
@@ -101,9 +104,9 @@ pub(crate) async fn write_file_by_template<
             | ErrorKind::PermissionDenied
             | ErrorKind::IsADirectory
             | ErrorKind::QuotaExceeded => {
-                debug!("Failed to write file by template (open): {:?}", err)
+                debug!("Failed to write file by template (open): {err:?}")
             }
-            _ => error!("Failed to write file by template (open): {:?}", err),
+            _ => error!("Failed to write file by template (open): {err:?}"),
         })?
         .into_std()
         .into();
@@ -117,6 +120,7 @@ pub(crate) async fn write_file_by_template<
 }
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn write_file_by_url<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -129,39 +133,40 @@ pub(crate) async fn write_file_by_url<
         + Send
         + 'static,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     path: String,
     url: Url,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
-    tokio::task::spawn(write_file_by_url0::<E>(state.clone(), storage, path, url))
+    tokio::task::spawn(write_file_by_url0::<E>(daemon.clone(), storage, path, url))
         .await
         .map_err(<io::Error as From<JoinError>>::from)??;
     drop(lock);
     Ok(())
 }
 
+#[inline(always)]
 async fn write_file_by_url0<
     E: From<io::Error> + FromHttpRequestFailed + FromHttpRequestNotSuccess + FromHttpRequestReadFailed,
 >(
-    state: Daemon,
+    daemon: Daemon,
     storage: Dir,
     path: PathBuf,
     url: Url,
 ) -> Result<(), E> {
-    let mut response = state
+    let mut response = daemon
         .client
         .get(url.clone())
         .send()
         .await
-        .inspect_err(|err| warn!("Failed to write file by url {} (request): {:?}", url, err))
+        .inspect_err(|err| warn!("Failed to write file by url {url} (request): {err:?}"))
         .map_err(|_err| <E as FromHttpRequestFailed>::from())?
         .error_for_status()
-        .inspect_err(|err| warn!("Failed to write file by url {} (status): {:?}", url, err))
+        .inspect_err(|err| warn!("Failed to write file by url {url} (status): {err:?}"))
         .map_err(|_err| <E as FromHttpRequestNotSuccess>::from())?;
 
     let fd: OwnedFd = storage
@@ -174,8 +179,8 @@ async fn write_file_by_url0<
             ErrorKind::NotFound
             | ErrorKind::PermissionDenied
             | ErrorKind::IsADirectory
-            | ErrorKind::QuotaExceeded => debug!("Failed to write file by url (open): {:?}", err),
-            _ => error!("Failed to write file by url (open): {:?}", err),
+            | ErrorKind::QuotaExceeded => debug!("Failed to write file by url (open): {err:?}"),
+            _ => error!("Failed to write file by url (open): {err:?}"),
         })?
         .into_std()
         .into();
@@ -183,15 +188,15 @@ async fn write_file_by_url0<
     while let Some(chunk) = response
         .chunk()
         .await
-        .inspect_err(|err| warn!("Failed to read by url: {:?}", err))
+        .inspect_err(|err| warn!("Failed to read by url: {err:?}"))
         .map_err(|_err| <E as FromHttpRequestReadFailed>::from())?
     {
         writer
             .write(&chunk)
             .await
             .inspect_err(|err| match err.kind() {
-                ErrorKind::QuotaExceeded => debug!("Failed to write file by url: {:?}", err),
-                _ => error!("Failed to write file by url: {:?}", err),
+                ErrorKind::QuotaExceeded => debug!("Failed to write file by url: {err:?}"),
+                _ => error!("Failed to write file by url: {err:?}"),
             })?;
     }
     writer.flush().await?;

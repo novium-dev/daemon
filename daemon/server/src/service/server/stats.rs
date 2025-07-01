@@ -6,7 +6,8 @@ use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use axum::extract::ws::WebSocket;
 use sqlx::{MySql, Pool};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use core::time::Duration;
+use std::time::Instant;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, error, warn};
@@ -18,12 +19,13 @@ pub(super) async fn stats_websocket_handle(
     socket: WebSocket,
 ) {
     let server_data = server_data_arc.lock().await;
-    let stats_sender = server_data.stats_sender.clone();
+    let stats_sender = Arc::clone(&server_data.stats_sender);
     drop(server_data);
     tokio::task::spawn(new_stats_session(id, conn, socket, stats_sender));
 }
 
-pub(crate) async fn new_stats_session<
+#[inline(always)]
+async fn new_stats_session<
     A: ChannelAdapter<E, J, Q> + Send + 'static,
     E: Send + 'static,
     J: Send + 'static,
@@ -54,11 +56,10 @@ pub(crate) async fn new_stats_session<
                 debug!("Closing connection. Terminal session timed out");
                 state.close().await;
                 return;
-            } else {
-                let _ = state.write(ChannelWriteData::Ping).await;
-                ping_sent = true;
-                last_sent = Instant::now();
             }
+            let _ = state.write(ChannelWriteData::Ping).await;
+            ping_sent = true;
+            last_sent = Instant::now();
         }
         tokio::select! {
             stdout = recv.recv() => {

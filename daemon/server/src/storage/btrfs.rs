@@ -5,26 +5,27 @@ use libc::ioctl;
 use std::collections::HashMap;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use std::{io, mem};
+use core::mem;
+use std::io;
 use sys::*;
 use tokio::fs::File;
 
-pub(crate) fn get_subvol_id(file: Result<impl AsRawFd, io::Error>) -> std::io::Result<u64> {
+pub fn get_subvol_id(file: Result<impl AsRawFd, io::Error>) -> io::Result<u64> {
     let mut args = btrfs_ioctl_ino_lookup_args {
         treeid: 0,
-        objectid: BTRFS_FIRST_FREE_OBJECTID as _,
+        objectid: BTRFS_FIRST_FREE_OBJECTID.into(),
         ..Default::default()
     };
     let file = file?;
     let fd = file.as_raw_fd();
 
-    if unsafe { ioctl(fd, BTRFS_IOC_INO_LOOKUP as _, &mut args) } < 0 {
+    if unsafe { ioctl(fd, BTRFS_IOC_INO_LOOKUP.into(), &mut args) } < 0i32 {
         return Err(std::io::Error::last_os_error());
     }
     Ok(args.treeid)
 }
 
-pub(crate) fn search_quotas(
+pub fn search_quotas(
     file: Result<impl AsRawFd, io::Error>,
     out: &mut HashMap<u64, u64>,
 ) -> Result<(), io::Error> {
@@ -33,7 +34,7 @@ pub(crate) fn search_quotas(
 
     let mut args = btrfs_ioctl_search_args {
         key: btrfs_ioctl_search_key {
-            tree_id: BTRFS_QUOTA_TREE_OBJECTID as _,
+            tree_id: BTRFS_QUOTA_TREE_OBJECTID.into(),
             max_type: BTRFS_QGROUP_RELATION_KEY,
             min_type: BTRFS_QGROUP_STATUS_KEY,
             max_objectid: u64::MAX,
@@ -49,7 +50,7 @@ pub(crate) fn search_quotas(
     let mut off: u64;
 
     'l: loop {
-        if unsafe { ioctl(fd, BTRFS_IOC_TREE_SEARCH as _, &mut args) } < 0 {
+        if unsafe { ioctl(fd, BTRFS_IOC_TREE_SEARCH.into(), &mut args) } < 0_i32 {
             return Err(std::io::Error::last_os_error());
         }
         let sk = &mut args.key;
@@ -76,7 +77,7 @@ pub(crate) fn search_quotas(
             key.offset = sh.offset;
 
             if key_in_range(&key, &*sk) {
-                match key.type_ as u32 {
+                match u32::from(key.type_) {
                     BTRFS_QGROUP_STATUS_KEY
                     | BTRFS_QGROUP_LIMIT_KEY
                     | BTRFS_QGROUP_RELATION_KEY => {}

@@ -80,7 +80,7 @@ impl FilesService for Daemon {
         verify: UserSignature,
     ) -> Result<FileResponse, ServerDownloadFileUserError> {
         verify.verify_server_file_download::<ServerDownloadFileUserError>(
-            &self.root.user_key,
+            self.root.user_key.as_ref(),
             timestamp,
             &self.key.id,
             server_id,
@@ -111,7 +111,7 @@ impl FilesService for Daemon {
         data: DataStream,
     ) -> Result<(), ServerUploadFileUserError> {
         verify.verify_server_file_upload::<ServerUploadFileUserError>(
-            &self.root.user_key,
+            self.root.user_key.as_ref(),
             timestamp,
             &self.key.id,
             server_id,

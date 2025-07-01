@@ -12,15 +12,15 @@ use cron::Schedule;
 use daemon_common::service::schedule::{ScheduleRunPolicy, ScheduleStep};
 use sqlx::__rt::timeout;
 use std::collections::HashSet;
-use std::ops::{Deref, DerefMut};
-use std::time::Duration;
-use tokio::io::AsyncWriteExt;
+use std::sync::Arc;
+use core::time::Duration;
+use tokio::io::AsyncWriteExt as _;
 use tokio::time::Instant;
 use tracing::error;
 
-pub(crate) async fn task(
+pub async fn task(
     server_id: u32,
-    state: Daemon,
+    daemon: Daemon,
     policy: ScheduleRunPolicy,
     steps: Vec<ScheduleStep>,
     schedule: Schedule,
@@ -30,9 +30,9 @@ pub(crate) async fn task(
         loop {
             if let Some(next) = determine_next_run(&schedule, &timezone) {
                 tokio::time::sleep_until(next).await;
-                run(server_id, state.clone(), policy, &steps).await;
+                run(daemon.clone(), server_id, policy, &steps).await;
             }
-        }
+        };
     }));
 }
 
@@ -46,48 +46,48 @@ fn determine_next_run(schedule: &Schedule, timezone: &(impl TimeZone + Copy)) ->
         .map(TimeDelta::to_std)
         .map(Result::ok)
         .unwrap_or_default()
-        .map(|d| Instant::now() + d)
+        .map(|duration| Instant::now().checked_add(duration))
+        .unwrap_or_default()
 }
 
 // Ensure this function is cancel-safe
-async fn run(server_id: u32, state: Daemon, policy: ScheduleRunPolicy, steps: &Vec<ScheduleStep>) {
-    let running = match FetchedServer::state(server_id, HashSet::new(), &state.docker, None).await {
+async fn run(daemon: Daemon, server_id: u32, policy: ScheduleRunPolicy, steps: &Vec<ScheduleStep>) {
+    let running = match FetchedServer::state(server_id, HashSet::new(), &daemon.docker, None).await {
         Ok(
             InternalServerState::Running(_, _)
             | InternalServerState::Unhealthy(_, _)
-            | InternalServerState::Starting(_, _),
+            | InternalServerState::Starting(_, _)
+            // Technically not possible
+            | InternalServerState::Restarting(_)
+            | InternalServerState::Stopping(_)
         ) => true,
-        Ok(InternalServerState::Stopped) => false,
-        Ok(_) => unreachable!(),
+        Ok(InternalServerState::Stopped | /* Technically not possible */ InternalServerState::Locked) => false,
         Err(err) => {
             error!(
-                "Failed to check server state for schedule execution of server {}: {:?}",
-                server_id, err
+                "Failed to check server state for schedule execution of server {server_id}: {err:?}"
             );
             return;
         }
     };
     match (policy, running) {
-        (ScheduleRunPolicy::Always, _) => {}
-        (ScheduleRunPolicy::Running, true) => {}
-        (ScheduleRunPolicy::Stopped, false) => {}
+        (ScheduleRunPolicy::Always, _) | (ScheduleRunPolicy::Running, true) | (ScheduleRunPolicy::Stopped, false) => {}
         _ => return,
     }
     for step in steps {
-        if let ScheduleStepResult::Interrupt = match step {
-            ScheduleStep::Start => start(server_id, state.clone()).await,
-            ScheduleStep::Stop => stop(server_id, state.clone()).await,
-            ScheduleStep::Restart => restart(server_id, state.clone()).await,
-            ScheduleStep::Kill => kill(server_id, state.clone()).await,
+        if ScheduleStepResult::Interrupt == match step {
+            ScheduleStep::Start => start(daemon.clone(), server_id).await,
+            ScheduleStep::Stop => stop(daemon.clone(), server_id).await,
+            ScheduleStep::Restart => restart(daemon.clone(), server_id).await,
+            ScheduleStep::Kill => kill(daemon.clone(), server_id).await,
             ScheduleStep::Sleep { time } => {
                 tokio::time::sleep(Duration::from_secs(*time)).await;
                 ScheduleStepResult::Continue
             }
             ScheduleStep::TerminalCommand { command } => {
-                terminal(server_id, command, state.clone()).await
+                terminal(daemon.clone(), server_id, command).await
             }
             ScheduleStep::ContainerCommand { command } => {
-                exec(server_id, command.clone(), state.clone()).await
+                exec(daemon.clone(), server_id, command.clone()).await
             }
         } {
             break;
@@ -96,19 +96,19 @@ async fn run(server_id: u32, state: Daemon, policy: ScheduleRunPolicy, steps: &V
 }
 
 #[inline(always)]
-async fn start(server_id: u32, state: Daemon) -> ScheduleStepResult {
-    let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
+async fn start(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
+    let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
     else {
         return ScheduleStepResult::Interrupt;
     };
     let (Ok(mut server_data_locked), storage) = tokio::join!(
-        timeout(Duration::from_millis(100), server_data.clone().lock_owned()),
+        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()),
         storage_read_timeout::<StorageError>(
-            &state.config,
-            state.conn.deref(),
-            &state.storages,
+            &daemon.config,
+            &*daemon.conn,
+            &daemon.storages,
             StorageIdentifier::Primary(server_id),
         )
     ) else {
@@ -124,20 +124,19 @@ async fn start(server_id: u32, state: Daemon) -> ScheduleStepResult {
     };
 
     // Ensure the start doesn't get cancelled
-    let state = state.clone();
+    let state = daemon.clone();
     tokio::task::spawn(async move {
         match server
             .start(
-                state.docker.clone(),
-                server_data_locked.deref_mut(),
+                Arc::clone(&state.docker),
+                &mut server_data_locked,
                 storage,
                 server_data,
                 &state,
             )
             .await
         {
-            Ok(_) => ScheduleStepResult::Continue,
-            Err(ServerStartError::AlreadyRunning) => ScheduleStepResult::Continue,
+            Ok(()) | Err(ServerStartError::AlreadyRunning) => ScheduleStepResult::Continue,
             Err(_) => ScheduleStepResult::Interrupt,
         }
     })
@@ -146,25 +145,24 @@ async fn start(server_id: u32, state: Daemon) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn stop(server_id: u32, state: Daemon) -> ScheduleStepResult {
-    let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
+async fn stop(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
+    let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
     else {
         return ScheduleStepResult::Interrupt;
     };
     let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), server_data.clone().lock_owned()).await
+        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
     else {
         return ScheduleStepResult::Continue;
     };
 
     // Ensure the stop doesn't get cancelled
-    let state = state.clone();
+    let state = daemon.clone();
     tokio::task::spawn(async move {
         match server.stop(&state.docker, server_data_locked).await {
-            Ok(_) => ScheduleStepResult::Continue,
-            Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
+            Ok(()) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
             Err(_) => ScheduleStepResult::Interrupt,
         }
     })
@@ -173,25 +171,24 @@ async fn stop(server_id: u32, state: Daemon) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn restart(server_id: u32, state: Daemon) -> ScheduleStepResult {
-    let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
+async fn restart(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
+    let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
     else {
         return ScheduleStepResult::Interrupt;
     };
     let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), server_data.clone().lock_owned()).await
+        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
     else {
         return ScheduleStepResult::Continue;
     };
 
     // Ensure the restart doesn't get cancelled
-    let state = state.clone();
+    let state = daemon.clone();
     tokio::task::spawn(async move {
         match server.restart(&state.docker, server_data_locked).await {
-            Ok(_) => ScheduleStepResult::Continue,
-            Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
+            Ok(()) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
             Err(_) => ScheduleStepResult::Interrupt,
         }
     })
@@ -200,25 +197,24 @@ async fn restart(server_id: u32, state: Daemon) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn kill(server_id: u32, state: Daemon) -> ScheduleStepResult {
-    let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
+async fn kill(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
+    let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
     else {
         return ScheduleStepResult::Interrupt;
     };
     let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), server_data.clone().lock_owned()).await
+        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
     else {
         return ScheduleStepResult::Continue;
     };
 
     // Ensure the kill doesn't get cancelled
-    let state = state.clone();
+    let state = daemon.clone();
     tokio::task::spawn(async move {
         match server.kill(&state.docker, server_data_locked).await {
-            Ok(_) => ScheduleStepResult::Continue,
-            Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
+            Ok(()) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
             Err(_) => ScheduleStepResult::Interrupt,
         }
     })
@@ -227,33 +223,32 @@ async fn kill(server_id: u32, state: Daemon) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn exec(server_id: u32, command: Vec<String>, state: Daemon) -> ScheduleStepResult {
-    let Ok(Some((server, server_data))) = server(&state.conn, &state.servers, server_id)
+async fn exec(daemon: Daemon, server_id: u32, command: Vec<String>) -> ScheduleStepResult {
+    let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(mut server_data_locked) =
-        timeout(Duration::from_millis(100), server_data.clone().lock_owned()).await
+    let Ok(server_data_locked) =
+        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
     else {
         return ScheduleStepResult::Continue;
     };
 
     // Ensure the kill doesn't get cancelled
-    let state = state.clone();
+    let state = daemon.clone();
     tokio::task::spawn(async move {
         match server
             .exec(
                 &state.docker,
                 command,
-                server_data_locked.deref_mut(),
+                &server_data_locked,
                 false,
             )
             .await
         {
-            Ok(_) => ScheduleStepResult::Continue,
-            Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
+            Ok(_) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
             Err(_) => ScheduleStepResult::Interrupt,
         }
     })
@@ -262,20 +257,20 @@ async fn exec(server_id: u32, command: Vec<String>, state: Daemon) -> ScheduleSt
 }
 
 #[inline(always)]
-async fn terminal(server_id: u32, command: &str, state: Daemon) -> ScheduleStepResult {
-    let Ok(Some((_, server_data))) = server(&state.conn, &state.servers, server_id)
+async fn terminal(daemon: Daemon, server_id: u32, command: &str) -> ScheduleStepResult {
+    let Ok(Some((_, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
     else {
         return ScheduleStepResult::Interrupt;
     };
     let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), server_data.clone().lock_owned()).await
+        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
     else {
         return ScheduleStepResult::Continue;
     };
 
-    match server_data_locked.attach_write.lock().await.deref_mut() {
+    match &mut *server_data_locked.attach_write.lock().await {
         None => ScheduleStepResult::Interrupt,
         Some(write) => {
             let mut content = "\x08".repeat(4096);

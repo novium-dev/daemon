@@ -1,5 +1,5 @@
 use crate::ssh::sftp::{DaemonSftpSession, FileHandle};
-use cap_async_std::fs::{OpenOptions, OpenOptionsExt};
+use cap_async_std::fs::{OpenOptions, OpenOptionsExt as _};
 use daemon_common::node::BackendAuthServerPermissions;
 use indexmap::IndexMap;
 use russh_sftp::protocol::*;
@@ -7,6 +7,8 @@ use std::collections::HashMap;
 use tracing::*;
 
 impl DaemonSftpSession {
+
+    #[expect(clippy::unnecessary_wraps, reason = "The Result removes boilerplate code")]
     fn success(id: u32) -> Result<Status, StatusCode> {
         Ok(Status {
             id,
@@ -38,8 +40,8 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
         let handle =
             FileHandle::Internal(IndexMap::new(), false, BackendAuthServerPermissions::all());
-        let empty = "empty".to_string();
-        self.file_handles.insert(empty.clone(), handle);
+        let empty = "empty".to_owned();
+        self.file_handles.insert(empty, handle);
 
         debug!("version: {:?}, extensions: {:?}", self.version, extensions);
         Ok(Version::new())
@@ -47,10 +49,8 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
         debug!("Close {} {}", id, handle);
-        match self.file_handles.remove(&handle) {
-            None => Err(StatusCode::NoSuchFile),
-            Some(_handle) => Self::success(id),
-        }
+        self.file_handles.remove(&handle)
+            .map_or(Err(StatusCode::NoSuchFile), |_handle| Self::success(id))
     }
 
     async fn open(
@@ -99,7 +99,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         let handle = self.handle(handle, BackendAuthServerPermissions::FILES_READ)?;
         Ok(Name {
             id,
-            files: super::files::readdir(handle).await?,
+            files: super::files::readdir(handle)?,
         })
     }
 
@@ -167,8 +167,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Mkdir {} {}", id, path);
         let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)
-            .await?;
+            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::mkdir(storage, path, attrs.permissions).await?;
         Self::success(id)
     }
@@ -176,8 +175,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Stat {} {}", id, path);
         let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_READ)
-            .await?;
+            .sandboxed_path(path, BackendAuthServerPermissions::FILES_READ)?;
         super::files::stat(storage, path)
             .await
             .map(|attrs| Attrs { id, attrs })
@@ -191,8 +189,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Setstat {} {}", id, path);
         let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)
-            .await?;
+            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::setstat(storage, path, attrs.permissions, attrs.size).await?;
         Self::success(id)
     }
@@ -205,11 +202,9 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Rename {} {} to {}", id, oldpath, newpath);
         let (old_storage, old_path) = self
-            .sandboxed_path(oldpath, BackendAuthServerPermissions::FILES_WRITE)
-            .await?;
+            .sandboxed_path(oldpath, BackendAuthServerPermissions::FILES_WRITE)?;
         let (new_storage, new_path) = self
-            .sandboxed_path(newpath, BackendAuthServerPermissions::FILES_WRITE)
-            .await?;
+            .sandboxed_path(newpath, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::rename(old_storage, old_path, new_storage, new_path).await?;
         Self::success(id)
     }
@@ -217,8 +212,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
         debug!("Remove {} {}", id, filename);
         let (storage, path) = self
-            .sandboxed_path(filename, BackendAuthServerPermissions::FILES_WRITE)
-            .await?;
+            .sandboxed_path(filename, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::remove(storage, path).await?;
         Self::success(id)
     }
@@ -226,8 +220,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
         debug!("rmdir {} {}", id, path);
         let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)
-            .await?;
+            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::rmdir(storage, path).await?;
         Self::success(id)
     }
@@ -240,8 +233,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     ) -> Result<Status, Self::Error> {
         debug!("Symlink {} {} {}", id, linkpath, targetpath);
         let (storage, path) = self
-            .sandboxed_path(linkpath, BackendAuthServerPermissions::FILES_WRITE)
-            .await?;
+            .sandboxed_path(linkpath, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::symlink(storage, path, targetpath).await?;
         Self::success(id)
     }
@@ -249,8 +241,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         debug!("Readlink {} {}", id, path);
         let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_READ)
-            .await?;
+            .sandboxed_path(path, BackendAuthServerPermissions::FILES_READ)?;
         super::files::readlink(storage, path)
             .await
             .map(|filename| Name {

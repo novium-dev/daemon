@@ -7,8 +7,7 @@ use daemon_common::service::schedule::error::{
     CreateScheduleError, DeleteScheduleError, UpdateScheduleError,
 };
 use daemon_common::service::schedule::{SchedulePayload, ScheduleRunPolicy};
-use sqlx::{Connection, query, query_scalar};
-use std::ops::Deref;
+use sqlx::{Connection as _, query, query_scalar};
 use tracing::error;
 
 #[async_trait]
@@ -18,7 +17,7 @@ impl ScheduleService for Daemon {
         server_id: u32,
         payload: SchedulePayload,
     ) -> Result<u32, CreateScheduleError> {
-        let _ = server_required::<CreateScheduleError>(self.conn.deref(), &self.servers, server_id)
+        let _ = server_required::<CreateScheduleError>(&self.conn, &self.servers, server_id)
             .await?;
         let mut conn = self.conn.acquire().await?;
 
@@ -41,7 +40,7 @@ impl ScheduleService for Daemon {
                     .last_insert_id() as u32;
 
                 for (index, step) in steps.into_iter().enumerate() {
-                    let value = serde_json::to_value(step).unwrap();
+                    let value = serde_json::to_value(step).expect("Failed to serialize schedule step");
                     query!("INSERT INTO `schedule_steps` (`schedule`, `index`, `value`) VALUES (?, ?, ?)", id, index as u32, value)
                         .execute(&mut **tx)
                         .await
@@ -69,7 +68,7 @@ impl ScheduleService for Daemon {
                 .schedules
                 .insert(id, handle);
             Ok(id)
-        }).await.unwrap()
+        }).await.expect("Schedule create task paniced")
     }
 
     async fn update_schedule(
@@ -78,7 +77,7 @@ impl ScheduleService for Daemon {
         schedule_id: u32,
         payload: SchedulePayload,
     ) -> Result<(), UpdateScheduleError> {
-        let _ = server_required::<UpdateScheduleError>(self.conn.deref(), &self.servers, server_id)
+        let _ = server_required::<UpdateScheduleError>(&self.conn, &self.servers, server_id)
             .await?;
         let mut conn = self.conn.acquire().await?;
 
@@ -104,28 +103,28 @@ impl ScheduleService for Daemon {
                 }, cron.to_string(), timezone.to_string(), schedule_id, server_id)
                     .execute(&mut **tx)
                     .await
-                    .inspect_err(|err| error!("Failed to update schedule: {:?}", err))?;
+                    .inspect_err(|err| error!("Failed to update schedule: {err:?}"))?;
 
                 query!("DELETE FROM `schedule_steps` WHERE `schedule` = ?", schedule_id)
                     .execute(&mut **tx)
                     .await
-                    .inspect_err(|err| error!("Failed to delete schedule steps: {:?}", err))?;
+                    .inspect_err(|err| error!("Failed to delete schedule steps: {err:?}"))?;
 
                 for (index, step) in steps.into_iter().enumerate() {
-                    let value = serde_json::to_value(step).unwrap();
+                    let value = serde_json::to_value(step).expect("Failed to serialize schedule step");
                     query!("INSERT INTO `schedule_steps` (`schedule`, `index`, `value`) VALUES (?, ?, ?)", schedule_id, index as u32, value)
                         .execute(&mut **tx)
                         .await
-                        .inspect_err(|err| error!("Failed to insert schedule step (update): {:?}", err))?;
+                        .inspect_err(|err| error!("Failed to insert schedule step (update): {err:?}"))?;
                 }
 
                 Ok::<_, UpdateScheduleError>(())
             })).await?;
 
             let mut schedules = daemon.schedules.lock().await;
-            let mut schedules = schedules.entry(server_id).or_default().lock().await;
+            let mut server_schedules = schedules.entry(server_id).or_default().lock().await;
 
-            if let Some(handle) = schedules.schedules.remove(&schedule_id) {
+            if let Some(handle) = server_schedules.schedules.remove(&schedule_id) {
                 handle.abort();
             }
 
@@ -138,10 +137,12 @@ impl ScheduleService for Daemon {
                 payload.timezone,
             ));
 
-            schedules.schedules.insert(schedule_id, handle);
+            server_schedules.schedules.insert(schedule_id, handle);
+            drop(server_schedules);
+            drop(schedules);
 
             Ok(())
-        }).await.unwrap()
+        }).await.expect("Schedule update task paniced")
     }
 
     async fn delete_schedule(
@@ -149,7 +150,7 @@ impl ScheduleService for Daemon {
         server_id: u32,
         schedule_id: u32,
     ) -> Result<(), DeleteScheduleError> {
-        let _ = server_required::<DeleteScheduleError>(self.conn.deref(), &self.servers, server_id)
+        let _ = server_required::<DeleteScheduleError>(&self.conn, &self.servers, server_id)
             .await?;
         let mut conn = self.conn.acquire().await?;
         let daemon = self.clone();
@@ -163,15 +164,18 @@ impl ScheduleService for Daemon {
             .await
             .inspect_err(|err| error!("Failed to delete schedule: {:?}", err))?;
 
-            if let Some(schedules) = daemon.schedules.lock().await.get_mut(&server_id) {
-                if let Some(sender) = schedules.lock().await.schedules.remove(&schedule_id) {
+            let mut schedules = daemon.schedules.lock().await;
+            if let Some(schedules) = schedules.get_mut(&server_id) {
+                let schedule = schedules.lock().await.schedules.remove(&schedule_id);
+                if let Some(sender) = schedule {
                     sender.abort();
                 }
             }
+            drop(schedules);
 
             Ok(())
         })
         .await
-        .unwrap()
+        .expect("Delete schedule task paniced")
     }
 }

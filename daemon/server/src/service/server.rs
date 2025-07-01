@@ -16,7 +16,7 @@ use crate::utils::server_required;
 use crate::{Daemon, sql, storage};
 use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
-use base64::Engine;
+use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
 use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
@@ -33,12 +33,11 @@ use daemon_common::service::server::{
 };
 use daemon_common::service::{JsonVec, WebsocketResponse};
 use daemon_common::user::UserSignature;
-use sqlx::{Connection, MySql, Transaction, query, query_scalar};
+use sqlx::{Connection as _, MySql, Transaction, query, query_scalar};
 use std::collections::HashSet;
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use core::sync::atomic::{AtomicU32, Ordering};
+use core::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, error, warn};
 
@@ -83,7 +82,7 @@ impl ServerService for Daemon {
         ports: Option<Vec<ServerPortEntryPayload>>,
         network: Option<ServerNetworkPayload>,
     ) -> Result<(), UpdateServerError> {
-        server_required::<UpdateServerError>(self.conn.deref(), &self.servers, server_id).await?;
+        server_required::<UpdateServerError>(&self.conn, &self.servers, server_id).await?;
 
         let mut conn = self.conn.acquire().await?;
         conn.transaction(|tx| {
@@ -96,14 +95,14 @@ impl ServerService for Daemon {
 
     async fn delete_server(&self, server_id: u32) -> Result<(), DeleteServerError> {
         let (server, server_data) =
-            server_required::<DeleteServerError>(self.conn.deref(), &self.servers, server_id)
+            server_required::<DeleteServerError>(&self.conn, &self.servers, server_id)
                 .await?;
 
         let daemon = self.clone();
         match timeout(Duration::from_secs(10), server_data.lock_owned()).await {
             Ok(server_data_locked) => tokio::task::spawn(async move {
                 match server.kill(&daemon.docker, server_data_locked).await {
-                    Ok(_) | Err(ServerStopError::NotRunning) => {}
+                    Ok(()) | Err(ServerStopError::NotRunning) => {}
                     Err(ServerStopError::Docker(docker)) => {
                         warn!("Failed to kill server for deletion: {:?}", docker);
                         return Err(DeleteServerError::DockerFailure);
@@ -111,7 +110,7 @@ impl ServerService for Daemon {
                 }
                 let mut conn = daemon.conn.acquire().await?;
 
-                sql::drop_user(format!("server_{}", server_id), "%")
+                sql::drop_user(format!("server_{server_id}"), "%")
                     .prepare(&mut *conn)
                     .await?
                     .execute(&mut *conn)
@@ -123,11 +122,14 @@ impl ServerService for Daemon {
 
                 daemon.servers.lock().await.remove(&server_id);
 
-                if let Some(schedules) = daemon.schedules.lock().await.remove(&server_id) {
-                    for (_, handle) in schedules.lock().await.schedules.drain() {
+                let mut schedules = daemon.schedules.lock().await;
+                if let Some(schedules) = schedules.remove(&server_id) {
+                    let mut schedules = schedules.lock().await;
+                    for (_, handle) in schedules.schedules.drain() {
                         handle.abort();
                     }
                 }
+                drop(schedules);
 
                 tokio::task::spawn(async move {
                     if let Some(storage) = daemon.config.storage.get(&server.storage) {
@@ -144,7 +146,7 @@ impl ServerService for Daemon {
                 Ok(())
             })
             .await
-            .unwrap(),
+            .expect("Server delete task paniced"),
             Err(_) => {
                 debug!("Timeout using Server data lock");
                 Err(DeleteServerError::ServerMutexLocked)
@@ -158,12 +160,13 @@ impl ServerService for Daemon {
         precise: Option<bool>,
     ) -> Result<PublicServerState, ServerStatusError> {
         let (server, server_data) =
-            server_required::<ServerStatusError>(self.conn.deref(), &self.servers, server_id)
+            server_required::<ServerStatusError>(&self.conn, &self.servers, server_id)
                 .await?;
 
+        #[expect(clippy::if_then_some_else_none, reason = "await is used, there is no then_async yet")]
         let server_data = if precise.unwrap_or(true) {
             let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
-            Some(server_data.map_err(|_| ServerStatusError::ServerMutexLocked)?)
+            Some(server_data.map_err(|_elapsed| ServerStatusError::ServerMutexLocked)?)
         } else {
             None
         };
@@ -185,19 +188,19 @@ impl ServerService for Daemon {
 
     async fn start_server(&self, server_id: u32) -> Result<(), StartServerError> {
         let (server, server_data) =
-            server_required::<StartServerError>(self.conn.deref(), &self.servers, server_id)
+            server_required::<StartServerError>(&self.conn, &self.servers, server_id)
                 .await?;
 
         debug!("Starting Server {:?}", server);
 
-        let state = self.clone();
+        let daemon = self.clone();
         tokio::task::spawn(async move {
             let (server_data_locked, storage) = tokio::join!(
                 timeout(Duration::from_millis(100), server_data.lock()),
                 storage_read_timeout::<StorageError>(
-                    &state.config,
-                    state.conn.deref(),
-                    &state.storages,
+                    &daemon.config,
+                    &*daemon.conn,
+                    &daemon.storages,
                     StorageIdentifier::Primary(server_id),
                 )
             );
@@ -206,11 +209,11 @@ impl ServerService for Daemon {
                     Ok(storage) => {
                         if let Err(err) = server
                             .start(
-                                state.docker.clone(),
-                                server_data_locked.deref_mut(),
+                                Arc::clone(&daemon.docker),
+                                &mut server_data_locked,
                                 storage,
-                                server_data.clone(),
-                                &state,
+                                Arc::clone(&server_data),
+                                &daemon,
                             )
                             .await
                         {
@@ -237,13 +240,13 @@ impl ServerService for Daemon {
 
     async fn stop_server(&self, server_id: u32) -> Result<(), StopServerError> {
         let (server, server_data) =
-            server_required::<StopServerError>(self.conn.deref(), &self.servers, server_id).await?;
+            server_required::<StopServerError>(&self.conn, &self.servers, server_id).await?;
 
-        let state = self.clone();
+        let daemon = self.clone();
         tokio::task::spawn(async move {
             let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
             if let Ok(server_data) = server_data {
-                if let Err(err) = server.stop(&state.docker, server_data).await {
+                if let Err(err) = server.stop(&daemon.docker, server_data).await {
                     warn!("Failed to stop server: {:?}", err);
                 }
             }
@@ -254,13 +257,13 @@ impl ServerService for Daemon {
 
     async fn kill_server(&self, server_id: u32) -> Result<(), KillServerError> {
         let (server, server_data) =
-            server_required::<KillServerError>(self.conn.deref(), &self.servers, server_id).await?;
+            server_required::<KillServerError>(&self.conn, &self.servers, server_id).await?;
 
-        let state = self.clone();
+        let daemon = self.clone();
         tokio::task::spawn(async move {
             let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
             if let Ok(server_data) = server_data {
-                if let Err(err) = server.kill(&state.docker, server_data).await {
+                if let Err(err) = server.kill(&daemon.docker, server_data).await {
                     warn!("Failed to kill server: {:?}", err);
                 }
             }
@@ -271,7 +274,7 @@ impl ServerService for Daemon {
 
     async fn restart_server(&self, server_id: u32) -> Result<(), RestartServerError> {
         let (server, server_data) =
-            server_required::<RestartServerError>(self.conn.deref(), &self.servers, server_id)
+            server_required::<RestartServerError>(&self.conn, &self.servers, server_id)
                 .await?;
 
         let state = self.clone();
@@ -289,14 +292,14 @@ impl ServerService for Daemon {
 
     async fn exec_server(&self, server_id: u32, cmd: Vec<String>) -> Result<(), ExecServerError> {
         let (server, server_data) =
-            server_required::<ExecServerError>(self.conn.deref(), &self.servers, server_id).await?;
+            server_required::<ExecServerError>(&self.conn, &self.servers, server_id).await?;
 
         let state = self.clone();
         tokio::task::spawn(async move {
             let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
-            if let Ok(mut server_data) = server_data {
+            if let Ok(server_data) = server_data {
                 if let Err(err) = server
-                    .exec(&state.docker, cmd, server_data.deref_mut(), false)
+                    .exec(&state.docker, cmd, &server_data, false)
                     .await
                 {
                     warn!("Failed to execute command in server: {:?}", err);
@@ -315,7 +318,7 @@ impl ServerService for Daemon {
             ..
         } = storage_write_timeout::<WipeServerError>(
             &self.config,
-            self.conn.deref(),
+            &*self.conn,
             &self.storages,
             StorageIdentifier::Primary(server_id),
         )
@@ -340,7 +343,7 @@ impl ServerService for Daemon {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, ServerTerminalError> {
         verify.verify_terminal::<ServerTerminalError>(
-            &self.root.user_key,
+            self.root.user_key.as_ref(),
             timestamp,
             &self.key.id,
             server_id,
@@ -348,16 +351,20 @@ impl ServerService for Daemon {
         )?;
 
         let (_, server_data) =
-            server_required::<ServerTerminalError>(self.conn.deref(), &self.servers, server_id)
+            server_required::<ServerTerminalError>(&self.conn, &self.servers, server_id)
                 .await?;
-        let docker = self.docker.clone();
+        let docker = Arc::clone(&self.docker);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
             terminal_websocket_handle(
                 server_id,
+                #[cfg(not(feature = "no_tty_size_please"))]
                 docker,
+                #[cfg(not(feature = "no_tty_size_please"))]
                 server_data,
                 socket,
+                #[cfg(not(feature = "no_tty_size_please"))]
                 Arc::new(AtomicU32::new(cols.unwrap_or_default())),
+                #[cfg(not(feature = "no_tty_size_please"))]
                 Arc::new(AtomicU32::new(rows.unwrap_or_default())),
                 write,
             )
@@ -372,16 +379,16 @@ impl ServerService for Daemon {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, ServerStatsError> {
         verify.verify_stats::<ServerStatsError>(
-            &self.root.user_key,
+            self.root.user_key.as_ref(),
             timestamp,
             &self.key.id,
             server_id,
         )?;
 
         let (_, server_data) =
-            server_required::<ServerStatsError>(self.conn.deref(), &self.servers, server_id)
+            server_required::<ServerStatsError>(&self.conn, &self.servers, server_id)
                 .await?;
-        let conn = self.conn.clone();
+        let conn = Arc::clone(&self.conn);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
             stats_websocket_handle(server_id, conn, server_data, socket)
         })))
@@ -398,7 +405,7 @@ impl ServerService for Daemon {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, ExecServerInteractiveError> {
         verify.verify_exec::<ExecServerInteractiveError>(
-            &self.root.user_key,
+            self.root.user_key.as_ref(),
             timestamp,
             &self.key.id,
             server_id,
@@ -406,13 +413,13 @@ impl ServerService for Daemon {
         )?;
 
         let (server, server_data) = server_required::<ExecServerInteractiveError>(
-            self.conn.deref(),
+            &self.conn,
             &self.servers,
             server_id,
         )
         .await?;
 
-        let docker = self.docker.clone();
+        let docker = Arc::clone(&self.docker);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
             exec_websocket_handle(
                 server,
@@ -508,28 +515,28 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
 
         for (path, file_write) in &build.files_write {
             match file_write {
-                ServerFileWrite::WRITE { data } => {
+                ServerFileWrite::Write { data } => {
                     query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'write', NULL, ?)", server_id, path, BASE64_STANDARD.encode(data))
                         .execute(&mut **tx)
                         .await?;
                 }
-                ServerFileWrite::PROPERTIES { content } => {
+                ServerFileWrite::JavaProperties { content } => {
                     for (key, value) in content {
                         query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'properties', ?, ?)", server_id, path, key, value)
                             .execute(&mut **tx)
                             .await?;
                     }
                 }
-                ServerFileWrite::JSON { content } => {
-                    for (key, value) in content {
-                        query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'json', ?, ?)", server_id, path, key, serde_json::to_string(value).unwrap())
+                ServerFileWrite::Json { set } => {
+                    for patch in set {
+                        query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'json', ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
                             .execute(&mut **tx)
                             .await?;
                     }
                 }
-                ServerFileWrite::YAML { content } => {
-                    for (key, value) in content {
-                        query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'yaml', ?, ?)", server_id, path, key, serde_yaml::to_string(value).unwrap())
+                ServerFileWrite::Yaml { set } => {
+                    for patch in set {
+                        query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'yaml', ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
                             .execute(&mut **tx)
                             .await?;
                     }

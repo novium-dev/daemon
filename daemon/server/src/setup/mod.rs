@@ -230,10 +230,10 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
                 SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 22),
             ]),
             host_key: vec![
-                crate::config::SSHHostKey::ED25519 {
+                crate::config::SSHHostKey::Ed25519 {
                     path: "ed25519.pem".to_string(),
                 },
-                crate::config::SSHHostKey::RSA {
+                crate::config::SSHHostKey::Rsa {
                     path: "rsa.pem".to_string(),
                 },
             ],

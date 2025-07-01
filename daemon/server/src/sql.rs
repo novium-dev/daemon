@@ -81,7 +81,6 @@ pub(crate) async fn init(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-#[allow(unused)]
 pub(crate) fn create_user(
     user: impl Into<String>,
     host: impl Into<String>,
@@ -132,7 +131,6 @@ pub(crate) fn proxy_user() -> PreparedQuery {
     ))
 }
 
-#[allow(unused)]
 pub(crate) fn drop_user(user: impl Into<String>, host: impl Into<String>) -> PreparedQuery {
     PreparedQuery(query!(
         "SET @STATEMENT = CONCAT('DROP USER IF EXISTS ', QUOTE(?), '@', QUOTE(?))",
@@ -156,7 +154,6 @@ pub(crate) fn grant_privilege(
     ))
 }
 
-#[allow(unused)]
 pub(crate) fn revoke_all_privileges(
     table: impl Into<String>,
     user: impl Into<String>,
@@ -170,7 +167,6 @@ pub(crate) fn revoke_all_privileges(
     ))
 }
 
-#[allow(unused)]
 pub(crate) fn grant_proxy(
     user: impl Into<String>,
     host: impl Into<String>,
@@ -186,7 +182,6 @@ pub(crate) fn grant_proxy(
     ))
 }
 
-#[allow(unused)]
 pub(crate) fn create_database(name: impl Into<String>) -> PreparedQuery {
     PreparedQuery(query!(
         "SET @STATEMENT = CONCAT('CREATE DATABASE ', ?)",
@@ -194,7 +189,6 @@ pub(crate) fn create_database(name: impl Into<String>) -> PreparedQuery {
     ))
 }
 
-#[allow(unused)]
 pub(crate) fn drop_database(name: impl Into<String>) -> PreparedQuery {
     PreparedQuery(query!(
         "SET @STATEMENT = CONCAT('DROP DATABASE ', ?)",
@@ -202,7 +196,6 @@ pub(crate) fn drop_database(name: impl Into<String>) -> PreparedQuery {
     ))
 }
 
-#[allow(unused)]
 pub(crate) fn flush_privileges() -> PreparedQuery {
     PreparedQuery(query!("SET @STATEMENT = 'FLUSH PRIVILEGES'"))
 }

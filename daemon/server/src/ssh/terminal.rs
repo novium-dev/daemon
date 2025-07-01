@@ -1,6 +1,4 @@
-use crate::ServerData;
 use crate::ssh::handler::DaemonSSHHandler;
-use crate::sync::Mutex;
 use crate::terminal::{TerminalData, new_session};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
@@ -11,19 +9,17 @@ use sqlx::__rt::timeout;
 use std::io::{self, ErrorKind};
 use std::sync::Arc;
 use std::time::Duration;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tracing::debug;
+use daemon_common::ssh::DaemonBackendAuthServer;
 
 impl DaemonSSHHandler {
     pub(crate) async fn ssh_terminal(
         &mut self,
         channel_id: ChannelId,
         session: &mut Session,
-        server_id: String,
+        server: Option<DaemonBackendAuthServer>,
     ) -> Result<(), russh::Error> {
-        let auth = self.auth.as_ref().unwrap();
-
-        let server = Self::find_server(auth, &server_id);
         let (internal_server_id, write) = match server {
             None => {
                 debug!("Terminal access denied. Server not found");
@@ -46,17 +42,7 @@ impl DaemonSSHHandler {
             }
         };
 
-        let mut servers = self.state.servers.lock().await;
-        let server_data_arc = match servers.get(&internal_server_id) {
-            None => {
-                servers.insert(
-                    internal_server_id,
-                    Arc::new(Mutex::new(ServerData::default())),
-                );
-                servers.get(&internal_server_id).unwrap()
-            }
-            Some(server) => server,
-        };
+        let server_data_arc = Arc::clone(self.daemon.servers.lock().await.entry(internal_server_id).or_default());
         let server = timeout(Duration::from_millis(100), server_data_arc.lock()).await;
         match server {
             Ok(server_data) => {
@@ -100,7 +86,7 @@ impl DaemonSSHHandler {
                                 rows,
                                 write,
                             },
-                            self.state.docker.clone(),
+                            self.daemon.docker.clone(),
                             server_data_arc.clone(),
                         ));
                         session.channel_success(channel_id)

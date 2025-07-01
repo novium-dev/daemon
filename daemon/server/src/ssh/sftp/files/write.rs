@@ -2,10 +2,10 @@ use crate::ssh::sftp::FileHandle;
 use russh_sftp::protocol::StatusCode;
 use std::io;
 use std::io::SeekFrom;
-use tokio::io::{AsyncSeekExt, AsyncWriteExt};
+use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 use tracing::{debug, error};
 
-pub(crate) async fn write(
+pub async fn write(
     handle: &mut FileHandle,
     offset: u64,
     data: Vec<u8>,

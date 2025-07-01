@@ -8,7 +8,6 @@ use crate::{Daemon, StorageData};
 use daemon_common::service::server::ServerStats;
 use sqlx::query;
 use std::collections::HashMap;
-use std::fs::File;
 use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -20,13 +19,13 @@ use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::TryRecvError;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
-use tracing::{error, warn};
+use tracing::warn;
 
-pub(crate) async fn run(state: Daemon) {
-    for (storage_id, storage_entry) in state.config.storage.clone() {
-        let mut server_task = state.server_task_cancellable.lock().await;
-        let state = state.clone();
-        server_task.spawn_blocking(move || watch(state, storage_id, storage_entry));
+pub(crate) async fn run(daemon: Daemon) {
+    for (storage_id, storage_entry) in daemon.config.storage.clone() {
+        let mut server_task = daemon.server_task_cancellable.lock().await;
+        let daemon = daemon.clone();
+        server_task.spawn_blocking(move || watch(daemon, storage_id, storage_entry));
     }
 }
 
@@ -103,12 +102,12 @@ async fn resolve(
     Some(available)
 }
 
-pub(crate) fn watch(state: Daemon, storage_id: String, storage_entry: StorageEntry) {
+pub(crate) fn watch(daemon: Daemon, storage_id: String, storage_entry: StorageEntry) {
     let mut last = SystemTime::UNIX_EPOCH;
-    let mut recv = state.shutdown_channel.subscribe();
+    let mut recv = daemon.shutdown_channel.subscribe();
     while let Err(TryRecvError::Empty) = recv.try_recv() {
         let Some(storages) =
-            Handle::current().block_on(resolve(&state, storage_id.clone(), &storage_entry))
+            Handle::current().block_on(resolve(&daemon, storage_id.clone(), &storage_entry))
         else {
             thread::sleep(Duration::from_secs(30));
             continue;
@@ -122,6 +121,8 @@ pub(crate) fn watch(state: Daemon, storage_id: String, storage_entry: StorageEnt
             ..
         } = storage_entry
         {
+            use std::fs::File;
+            use tracing::error;
             quota = true;
 
             let mut quotas = HashMap::new();
@@ -169,18 +170,18 @@ pub(crate) fn watch(state: Daemon, storage_id: String, storage_entry: StorageEnt
                         };
                         data.value.0.store(size, Ordering::Relaxed);
                         let allowed = data.value.1.load(Ordering::Relaxed);
-                        let exceeded = (size / 1048576) > allowed && allowed != -1;
+                        let exceeded = (size / 0x0010_0000) > allowed && allowed != -1; // 0x100000 = 1024*1024
                         if let Some(server_id) = server_id {
                             if exceeded {
                                 if let Err(err) = Handle::current().block_on(query!("INSERT IGNORE INTO `server_locks` (`server`, `lock`) VALUES (?, 'storage')", server_id)
-                                    .execute(state.conn.deref())) {
+                                    .execute(daemon.conn.deref())) {
                                     warn!("Unable to lock server {}: {:?}", server_id, err);
                                 }
-                                let servers = state.servers.blocking_lock();
+                                let servers = daemon.servers.blocking_lock();
                                 if let Some(server) = servers.get(server_id).cloned() {
                                     drop(servers);
                                     let server_id = *server_id;
-                                    let docker = state.docker.clone();
+                                    let docker = daemon.docker.clone();
                                     tokio::task::spawn(async move {
                                         let server_data = server.lock_owned().await;
                                         if let Err(err) = FetchedServer::stop(&FetchedServer {
@@ -195,9 +196,11 @@ pub(crate) fn watch(state: Daemon, storage_id: String, storage_entry: StorageEnt
                                     });
                                 }
                             } else if let Err(err) = Handle::current().block_on(query!("DELETE FROM `server_locks` WHERE `server` = ? AND `lock` = 'storage'", server_id)
-                                    .execute(state.conn.deref())) {
+                                    .execute(daemon.conn.deref())) {
                                     warn!("Unable to unlock server {}: {:?}", server_id, err);
-                                }
+                                } else {
+                                // Sucessfully unlocked the server
+                            }
                         }
                     }
                     Err(err) => {
@@ -208,16 +211,12 @@ pub(crate) fn watch(state: Daemon, storage_id: String, storage_entry: StorageEnt
         }
 
         let mut join = JoinSet::new();
-        for (_id, (server_id, _path, cpu, ram, swap, data, sender)) in storages {
-            let conn = state.conn.clone();
+        for (_id, (server_id, _path, cpu_max, ram_max, swap_max, data, sender)) in storages {
+            let conn = daemon.conn.clone();
             join.spawn(async move {
                 let stats_guard = timeout(Duration::from_millis(100), data.stats_lock.lock()).await;
                 if stats_guard.is_ok() {
                     if let Some(stats_sender) = sender {
-                        let cpu_max = cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
-                        let ram_max = ram.map(|ram| ram as i64).unwrap_or(-1);
-                        let swap_max = swap.map(|ram| ram as i64).unwrap_or(-1);
-
                         if !quota && server_id.is_some() {
                             let locks =
                                 FetchedServer::resolve_locked(server_id.unwrap(), conn.deref())
@@ -229,14 +228,16 @@ pub(crate) fn watch(state: Daemon, storage_id: String, storage_entry: StorageEnt
                                     InternalServerState::Locked
                                 }));
                         }
+                        let disk = data.value.0.load(Ordering::Relaxed);
+                        let disk_max = data.value.1.load(Ordering::Relaxed);
                         let _ = stats_sender.send(ChannelWriteData::Stats(
                             ServerStats::default()
-                                .with_disk(data.value.0.load(Ordering::Relaxed))
+                                .with_disk((disk == -1).then(|| disk.unsigned_abs()))
                                 .with_max(
                                     cpu_max,
                                     ram_max,
                                     swap_max,
-                                    data.value.1.load(Ordering::Relaxed),
+                                    (disk_max == -1).then(|| disk_max.unsigned_abs()),
                                 ),
                         ));
                     }

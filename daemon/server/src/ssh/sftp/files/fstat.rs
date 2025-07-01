@@ -5,7 +5,7 @@ use russh_sftp::protocol::*;
 use std::fs::Metadata as StdMetadata;
 use tracing::error;
 
-pub(crate) async fn fstat(handle: &mut FileHandle) -> Result<FileAttributes, StatusCode> {
+pub async fn fstat(handle: &mut FileHandle) -> Result<FileAttributes, StatusCode> {
     match handle {
         FileHandle::RegularFile(file, _) => file
             .metadata()

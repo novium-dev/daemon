@@ -250,7 +250,10 @@ impl DaemonRootKey {
                 None => {
                     let pem = Pem::new(
                         "USER KEY",
-                        public_user_key.to_public_key_der().unwrap().as_bytes(),
+                        public_user_key
+                            .to_public_key_der()
+                            .expect("Unable to serialize user key as pkcs8 der")
+                            .as_bytes(),
                     );
                     out.push_str(&pem::encode(&pem));
                     out.push('\n');
@@ -258,7 +261,10 @@ impl DaemonRootKey {
                 Some(user_key) => {
                     let pem = Pem::new(
                         "PRIVATE USER KEY",
-                        user_key.to_pkcs8_der().unwrap().as_bytes(),
+                        user_key
+                            .to_pkcs8_der()
+                            .expect("Unable to serialize private user key as pkcs8 der")
+                            .as_bytes(),
                     );
                     out.push_str(&pem::encode(&pem));
                     out.push('\n');
@@ -337,7 +343,7 @@ impl DaemonRootKey {
         let tls_cert = CertifiedKey::from_der(
             tls_cert,
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            CryptoProvider::get_default().expect("No crypto provider set"),
         )?;
 
         Ok(BackendKey {
@@ -387,7 +393,7 @@ impl BackendKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            CryptoProvider::get_default().expect("No crypto provider set"),
         )?;
 
         tls_cert.keys_match()?;
@@ -434,7 +440,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            CryptoProvider::get_default().expect("No crypto provider set"),
         )?;
 
         tls_cert.keys_match()?;
@@ -487,7 +493,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             vec![cert.clone()],
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            CryptoProvider::get_default().expect("No crypto provider set"),
         )?;
 
         Ok(Self {
@@ -554,7 +560,7 @@ impl DaemonKey {
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
             privkey.clone_key(),
-            CryptoProvider::get_default().unwrap(),
+            CryptoProvider::get_default().expect("No crypto provider set"),
         )?;
 
         tls_cert.keys_match()?;
@@ -618,7 +624,9 @@ impl ServerCertVerifier for DaemonKeyVerifier {
         self.1.verify_server_cert(
             end_entity,
             intermediates,
-            &ServerName::DnsName(DnsName::try_from(format!("node-{}", self.0)).unwrap()),
+            &ServerName::DnsName(
+                DnsName::try_from(format!("node-{}", self.0)).expect("Unable to parse dns name"),
+            ),
             ocsp_response,
             now,
         )

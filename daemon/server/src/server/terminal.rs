@@ -41,7 +41,6 @@ impl FetchedServer {
         );
     }
 
-    #[allow(dead_code)]
     #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) async fn update_exec_tty_size(
         id: String,

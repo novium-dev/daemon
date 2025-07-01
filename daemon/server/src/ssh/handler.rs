@@ -12,13 +12,12 @@ use russh::server::{Auth, Handler, Msg, Session};
 use russh::{Channel, ChannelId, Pty};
 use std::collections::HashMap;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU32, Ordering};
 use tracing::{debug, error};
 
-pub(crate) type DaemonChannel = (
+pub type DaemonChannel = (
     Option<Channel<Msg>>,
     Option<u32>,
     Option<Arc<AtomicU32>>,
@@ -26,13 +25,13 @@ pub(crate) type DaemonChannel = (
 );
 
 pub struct DaemonSSHHandler {
-    pub(crate) state: Daemon,
-    pub(crate) channels: HashMap<ChannelId, DaemonChannel>,
-    pub(crate) publickey_cache: InvalidationCacheMap<
+    pub daemon: Daemon,
+    pub channels: HashMap<ChannelId, DaemonChannel>,
+    pub publickey_cache: InvalidationCacheMap<
         (String, [u8; HashAlg::Sha512.digest_size()]),
         DaemonBackendAuthResponse,
     >,
-    pub(crate) auth: Option<DaemonBackendAuthResponse>,
+    pub auth: Option<DaemonBackendAuthResponse>,
 }
 
 impl Handler for DaemonSSHHandler {
@@ -71,7 +70,7 @@ impl Handler for DaemonSSHHandler {
                 return Ok(Auth::Accept);
             }
         }
-        match password_auth(&self.state, user, password)
+        match password_auth(&self.daemon, user, password)
             .await
             .inspect_err(|err| debug!("Password authentication failed: {:?}", err))
         {
@@ -79,12 +78,12 @@ impl Handler for DaemonSSHHandler {
                 self.auth = Some(response);
                 Ok(Auth::Accept)
             }
-            Err(err) => match err {
-                err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
-                    proceed_with_methods: None,
-                    partial_success: false,
-                }),
-                err => Err(russh::Error::IO(err)),
+            Err(err) if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
+                proceed_with_methods: None,
+                partial_success: false,
+            }),
+            Err(err) => {
+                Err(russh::Error::IO(err))
             },
         }
     }
@@ -102,7 +101,7 @@ impl Handler for DaemonSSHHandler {
         }
         match self
             .publickey_cache
-            .get_resolved(&self.state, user, public_key)
+            .get_resolved(&self.daemon, user, public_key)
             .await
             .inspect_err(|err| debug!("Publickey authentication failed: {:?}", err))
         {
@@ -133,7 +132,7 @@ impl Handler for DaemonSSHHandler {
         }
         match self
             .publickey_cache
-            .get_resolved(&self.state, user, public_key)
+            .get_resolved(&self.daemon, user, public_key)
             .await
             .inspect_err(|err| debug!("Publickey offered authentication failed: {:?}", err))
         {
@@ -188,30 +187,29 @@ impl Handler for DaemonSSHHandler {
                 cols.store(col_width, Ordering::Relaxed);
                 rows.store(row_height, Ordering::Relaxed);
                 match id {
-                    None => Ok(()),
-                    #[allow(unused_variables)]
+                    None => {}
+                    #[cfg(feature = "no_tty_size_please")]
+                    Some(_) => {}
+                    #[cfg(not(feature = "no_tty_size_please"))]
                     Some(id) => {
-                        #[cfg(not(feature = "no_tty_size_please"))]
-                        {
-                            let mut servers = self.state.servers.lock().await;
-                            let server_data_arc = match servers.get(id) {
-                                None => {
-                                    servers.insert(*id, Arc::default());
-                                    servers.get(id).unwrap()
-                                }
-                                Some(server) => server,
-                            };
+                        let mut servers = self.daemon.servers.lock().await;
+                        let server_data_arc = match servers.get(id) {
+                            None => {
+                                servers.insert(*id, Arc::default());
+                                servers.get(id).unwrap()
+                            }
+                            Some(server) => server,
+                        };
 
-                            crate::terminal::update_size(
-                                *id,
-                                &self.state.docker,
-                                server_data_arc.clone(),
-                            )
-                            .await;
-                        }
-                        session.channel_success(channel_id)
+                        crate::terminal::update_size(
+                            *id,
+                            &self.daemon.docker,
+                            server_data_arc.clone(),
+                        )
+                        .await;
                     }
-                }
+                };
+                session.channel_success(channel_id)
             }
             None => {
                 debug!("Tried to access a non existent channel");
@@ -226,9 +224,9 @@ impl Handler for DaemonSSHHandler {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        if self.auth.is_none() {
+        let Some(auth) = self.auth.as_ref() else {
             return Err(russh::Error::NotAuthenticated);
-        }
+        };
         let server_id = String::from_utf8(data.to_vec())
             .inspect_err(|_err| debug!("Command is not utf-8 encoded"))
             .map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
@@ -240,7 +238,9 @@ impl Handler for DaemonSSHHandler {
                 .await;
         }
 
-        self.ssh_terminal(channel_id, session, server_id).await
+        let server = Self::find_server(auth, &server_id);
+
+        self.ssh_terminal(channel_id, session, server).await
     }
 
     async fn pty_request(
@@ -324,9 +324,9 @@ impl Handler for DaemonSSHHandler {
                             let identifier = StorageIdentifier::Primary(server.id);
                             if let Ok(StorageLockData { lock, storage, .. }) =
                                 storage_read_timeout::<StorageError>(
-                                    &self.state.config,
-                                    self.state.conn.deref(),
-                                    &self.state.storages,
+                                    &self.daemon.config,
+                                    &*self.daemon.conn,
+                                    &self.daemon.storages,
                                     identifier,
                                 )
                                 .await
@@ -357,12 +357,12 @@ impl Handler for DaemonSSHHandler {
                             .contains(BackendAuthServerPermissions::BACKUP_DOWNLOAD)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
-                            for (name, backup) in &self.state.config.backup {
+                            for (name, backup) in &self.daemon.config.backup {
                                 if let Ok(StorageLockData { lock, .. }) =
                                     storage_read_timeout::<StorageError>(
-                                        &self.state.config,
-                                        self.state.conn.deref(),
-                                        &self.state.storages,
+                                        &self.daemon.config,
+                                        &*self.daemon.conn,
+                                        &self.daemon.storages,
                                         identifier,
                                     )
                                     .await
@@ -372,30 +372,29 @@ impl Handler for DaemonSSHHandler {
                                     if let Ok(false) = tokio::fs::try_exists(&base).await {
                                         let _ = tokio::fs::create_dir_all(&base).await;
                                     }
-                                    match Dir::open_ambient_dir(&base, ambient_authority())
-                                        .await
-                                        .inspect_err(|err| {
-                                            error!(
-                                                "Failed to open backup directory: {} {:?}",
-                                                base.to_string_lossy(),
-                                                err
-                                            )
-                                        }) {
-                                        Ok(storage) => {
-                                            sftp.access.insert(
-                                                vec![
-                                                    "backups".to_string(),
-                                                    name.clone(),
-                                                    server.name.clone(),
-                                                ],
-                                                (
-                                                    Arc::new(storage),
-                                                    BackendAuthServerPermissions::FILES_READ,
-                                                    lock,
-                                                ),
-                                            );
-                                        }
-                                        Err(_err) => continue,
+                                    if let Ok(storage) =
+                                        Dir::open_ambient_dir(&base, ambient_authority())
+                                            .await
+                                            .inspect_err(|err| {
+                                                error!(
+                                                    "Failed to open backup directory: {} {:?}",
+                                                    base.to_string_lossy(),
+                                                    err
+                                                )
+                                            })
+                                    {
+                                        sftp.access.insert(
+                                            vec![
+                                                "backups".to_string(),
+                                                name.clone(),
+                                                server.name.clone(),
+                                            ],
+                                            (
+                                                Arc::new(storage),
+                                                BackendAuthServerPermissions::FILES_READ,
+                                                lock,
+                                            ),
+                                        );
                                     }
                                 }
                             }

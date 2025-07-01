@@ -4,7 +4,7 @@ use crate::ssh::handler::DaemonSSHHandler;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, storage_read};
 use crate::sync::Mutex;
-use crate::utils::{ChannelWriteData, SyncIOBridgeExt};
+use crate::utils::{ChannelWriteData, SyncIOBridgeExt, from_mib};
 use crate::{Daemon, ServerData, utils};
 use chrono::{TimeZone, Utc};
 use crossterm::terminal::ClearType;
@@ -23,7 +23,6 @@ use russh::server::{Msg, Session};
 use russh::{ChannelId, ChannelStream};
 use std::cmp::{max, min};
 use std::io::{ErrorKind, Write};
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
@@ -80,7 +79,7 @@ impl DaemonSSHHandler {
                 )
             }
         };
-        let mut servers = self.state.servers.lock().await;
+        let mut servers = self.daemon.servers.lock().await;
         let server_data_arc = match servers.get(&internal_server_id) {
             None => {
                 servers.insert(
@@ -120,12 +119,12 @@ impl DaemonSSHHandler {
                     Some(rows) => rows.clone(),
                 };
 
-                let state = self.state.clone();
+                let daemon = self.daemon.clone();
                 tokio::task::spawn_blocking(move || {
                     new_control_session(
+                        daemon,
                         internal_server_id,
                         server_id,
-                        state,
                         power,
                         channel.unwrap().into_stream(),
                         server_data_arc,
@@ -139,23 +138,23 @@ impl DaemonSSHHandler {
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 fn new_control_session(
+    daemon: Daemon,
     server_id: u32,
     name: String,
-    state: Daemon,
     power: bool,
     mut stream: ChannelStream<Msg>,
     arc: Arc<Mutex<ServerData>>,
     cols: Arc<AtomicU32>,
     rows: Arc<AtomicU32>,
 ) {
-    let mut cpu = ConstGenericRingBuffer::<f32, 120>::new();
-    let mut ram = ConstGenericRingBuffer::<f32, 120>::new();
-    let mut swap = ConstGenericRingBuffer::<f32, 120>::new();
-    cpu.extend([-100.0; 120]);
-    ram.extend([-100.0; 120]);
-    swap.extend([-100.0; 120]);
+    let mut cpu = ConstGenericRingBuffer::<Option<f64>, 120>::new();
+    let mut ram = ConstGenericRingBuffer::<Option<u64>, 120>::new();
+    let mut swap = ConstGenericRingBuffer::<Option<u64>, 120>::new();
+    cpu.extend([None; 120]);
+    ram.extend([None; 120]);
+    swap.extend([None; 120]);
 
     let mut current_stat = ServerStats::default();
 
@@ -169,7 +168,7 @@ fn new_control_session(
 
     let mut selected = 0u8;
 
-    let conn = state.conn.clone();
+    let conn = daemon.conn.clone();
     let mut server_state: InternalServerState = if Handle::current()
         .block_on(async move { FetchedServer::resolve_locked(server_id, &conn).await })
         .is_empty()
@@ -293,7 +292,7 @@ fn new_control_session(
         });
 
         if Handle::current().block_on(read(
-            state.clone(),
+            daemon.clone(),
             server_id,
             server_state.clone(),
             terminal.backend_mut().inner_mut(),
@@ -375,8 +374,8 @@ fn calc_buttons(
             width,
             height,
         );
-        index += enabled as u8;
-        (pos, index - enabled as u8, label, enabled, area)
+        index += u8::from(enabled);
+        (pos, index - u8::from(enabled), label, enabled, area)
     })
     .collect()
 }
@@ -385,9 +384,9 @@ fn draw_stats(
     frame: &mut Frame,
     width: u16,
     height: u16,
-    cpu: &ConstGenericRingBuffer<f32, 120>,
-    ram: &ConstGenericRingBuffer<f32, 120>,
-    swap: &ConstGenericRingBuffer<f32, 120>,
+    cpu: &ConstGenericRingBuffer<Option<f64>, 120>,
+    ram: &ConstGenericRingBuffer<Option<u64>, 120>,
+    swap: &ConstGenericRingBuffer<Option<u64>, 120>,
     current_stat: &ServerStats,
 ) {
     if height >= 20 {
@@ -420,60 +419,34 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
 
     frame.render_widget(stats_border, stats_area);
 
-    let cpu_current_str = if current_stat.cpu == -1f32 {
-        "-".to_string()
-    } else {
-        format!("{:.2} %", current_stat.cpu)
-    };
-    let cpu_max_str = if current_stat.cpu_max == -1f32 {
-        "∞".to_string()
-    } else {
-        format!("{:.2} %", current_stat.cpu_max)
-    };
-    let cpu_text = Text::raw(format!("CPU: {} / {}", cpu_current_str, cpu_max_str));
+    let cpu_current_str = current_stat.cpu.map_or_else(|| "-".to_owned(), |cpu| format!("{:.2} %", cpu * 100.0f64));
+    let cpu_max_str = current_stat.cpu_max.map_or_else(|| "∞".to_owned(), |cpu_max| format!("{:.2} %", cpu_max * 100.0f32));
+    let cpu_text = Text::raw(format!("CPU: {cpu_current_str} / {cpu_max_str}"));
 
-    let mem_current_str = if current_stat.ram == -1f32 {
-        "-".to_string()
-    } else {
-        format!("{:.2} MiB", current_stat.ram)
-    };
-    let mem_max_str = if current_stat.ram_max == -1 {
-        "∞".to_string()
-    } else {
-        format!("{:.2} MiB", current_stat.ram_max)
-    };
-    let mem_text = Text::raw(format!("RAM: {} / {}", mem_current_str, mem_max_str));
+    let ram_current_str = current_stat.ram.map_or_else(|| "-".to_owned(), |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64));
+    let ram_max_str = current_stat.ram_max.map_or_else(|| "∞".to_owned(), |ram_max| format!("{} MiB", ram_max));
+    let mem_text = Text::raw(format!("RAM: {ram_current_str} / {ram_max_str}"));
 
-    let swap_current_str = if current_stat.swap == -1f32 {
-        "-".to_string()
-    } else {
-        format!("{:.2} MiB", current_stat.swap)
-    };
-    let swap_max_str = if current_stat.swap_max == -1 {
-        "∞".to_string()
-    } else {
-        format!("{:.2} MiB", current_stat.swap_max)
-    };
+    let swap_current_str = current_stat.swap.map_or_else(|| "-".to_owned(), |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64));
+    let swap_max_str = current_stat.swap_max.map_or_else(|| "∞".to_owned(), |swap_max| format!("{swap_max} MiB"));
     let swap_text = Text::raw(format!("Swap: {} / {}", swap_current_str, swap_max_str));
 
-    let disk_current_str = if current_stat.disk == -1 {
-        "-".to_string()
-    } else {
-        let disk = current_stat.disk as f32 / 1048576.0;
-        if disk > 1024.0 {
-            format!("{:.2} GiB", disk / 1024.0)
+    let disk_current_str = current_stat.disk.map_or_else(|| "-".to_owned(), |disk| {
+        let disk = disk as f64 / 1_048_576.0;
+        if disk > 1024.0f64 {
+            format!("{:.2} GiB", disk / 1024.0f64)
         } else {
-            format!("{:.2} MiB", disk)
+            format!("{disk:.2} MiB")
         }
-    };
-    let disk_max_str = if current_stat.disk_max == -1 {
-        "∞".to_string()
-    } else if current_stat.disk_max > 1024 {
-        format!("{:.2} GiB", current_stat.disk_max as f32 / 1024.0)
-    } else {
-        format!("{:.2} MiB", current_stat.disk_max)
-    };
-    let disk_text = Text::raw(format!("Disk: {} / {}", disk_current_str, disk_max_str));
+    });
+    let disk_max_str = current_stat.disk_max.map_or_else(|| "∞".to_owned(), |disk_max| {
+        if disk_max > 1024u64 {
+            format!("{:.2} GiB", disk_max as f64 / 1024.0f64)
+        } else {
+            format!("{disk_max:.2} MiB")
+        }
+    });
+    let disk_text = Text::raw(format!("Disk: {disk_current_str} / {disk_max_str}"));
 
     frame.render_widget(cpu_text, stats[0]);
     frame.render_widget(mem_text, stats[1]);
@@ -485,9 +458,9 @@ fn draw_chart_stats(
     frame: &mut Frame,
     width: u16,
     height: u16,
-    cpu: &ConstGenericRingBuffer<f32, 120>,
-    ram: &ConstGenericRingBuffer<f32, 120>,
-    swap: &ConstGenericRingBuffer<f32, 120>,
+    cpu: &ConstGenericRingBuffer<Option<f64>, 120>,
+    ram: &ConstGenericRingBuffer<Option<u64>, 120>,
+    swap: &ConstGenericRingBuffer<Option<u64>, 120>,
     current_stat: &ServerStats,
 ) {
     let stats_border = Block::new()
@@ -513,17 +486,24 @@ fn draw_chart_stats(
 
 fn draw_cpu_chart(
     frame: &mut Frame,
-    cpu: &ConstGenericRingBuffer<f32, 120>,
+    cpu: &ConstGenericRingBuffer<Option<f64>, 120>,
     current_stat: &ServerStats,
     mut area: Rect,
 ) {
     let cpu_peak = current_stat
         .cpu_max
-        .max(cpu.iter().copied().fold(0.0, |a, b| a.max(b)))
-        .max(50.0);
+        .map(f64::from)
+        .unwrap_or(50.0f64)
+        .max(
+            cpu.iter()
+                .copied()
+                .filter_map(std::convert::identity)
+                .fold(0.0, |a, b| a.max(b)),
+        )
+        .max(50.0f64);
     let cpu_peak_divided_by_50 = (cpu_peak / 50.0) as u16;
     let mut cpu_peak_multiplied = cpu_peak_divided_by_50 * 50;
-    if cpu_peak > cpu_peak_multiplied as f32 {
+    if cpu_peak > cpu_peak_multiplied as f64 {
         cpu_peak_multiplied += 50;
     }
 
@@ -532,7 +512,7 @@ fn draw_cpu_chart(
         .skip(90)
         .copied()
         .enumerate()
-        .map(|(index, cpu)| (index as f64, cpu as f64))
+        .map(|(index, cpu)| (index as f64, cpu.map(|cpu| cpu as f64).unwrap_or(-1f64)))
         .collect();
     let cpu = Chart::new(vec![
         Dataset::default()
@@ -553,16 +533,8 @@ fn draw_cpu_chart(
             .border_type(BorderType::Plain)
             .border_style(Style::new().fg(Color::White)),
     );
-    let cpu_current_str = if current_stat.cpu == -1f32 {
-        "-".to_string()
-    } else {
-        format!("{:.2} %", current_stat.cpu)
-    };
-    let cpu_max_str = if current_stat.cpu_max == -1f32 {
-        "∞".to_string()
-    } else {
-        format!("{:.2} %", current_stat.cpu_max)
-    };
+    let cpu_current_str = current_stat.cpu.map_or_else(|| "-".to_owned(), |cpu| format!("{:.2} %", cpu * 100.0f64));
+    let cpu_max_str = current_stat.cpu_max.map_or_else(|| "∞".to_owned(), |cpu_max| format!("{:.2} %", cpu_max * 100.0f32));
     let cpu_text =
         Text::raw(format!("CPU: {} / {}", cpu_current_str, cpu_max_str)).fg(Color::Yellow);
     let cpu_text_block = Block::bordered().border_style(Style::new().fg(Color::White));
@@ -586,17 +558,27 @@ fn draw_cpu_chart(
 
 fn draw_mem_chart(
     frame: &mut Frame,
-    ram: &ConstGenericRingBuffer<f32, 120>,
-    swap: &ConstGenericRingBuffer<f32, 120>,
+    ram: &ConstGenericRingBuffer<Option<u64>, 120>,
+    swap: &ConstGenericRingBuffer<Option<u64>, 120>,
     current_stat: &ServerStats,
     mut area: Rect,
 ) {
-    let mem_peak = (current_stat.ram_max as f32)
-        .max(ram.iter().copied().fold(0.0, |a, b| a.max(b)))
-        .max(swap.iter().copied().fold(0.0, |a, b| a.max(b)))
-        .max(512.0);
+    let mem_peak = (current_stat.ram_max.unwrap_or(512) as u64)
+        .max(
+            ram.iter()
+                .copied()
+                .filter_map(std::convert::identity)
+                .fold(0, |a, b| from_mib(a).max(b)),
+        )
+        .max(
+            swap.iter()
+                .copied()
+                .filter_map(std::convert::identity)
+                .fold(0, |a, b| from_mib(a).max(b)),
+        )
+        .max(512);
     let mut mem_peak_power_of_2 = 0u16;
-    while ((1 << mem_peak_power_of_2) as f32) < mem_peak {
+    while ((1 << mem_peak_power_of_2) as u64) < mem_peak {
         mem_peak_power_of_2 += 1;
     }
 
@@ -608,14 +590,14 @@ fn draw_mem_chart(
         .skip(90)
         .copied()
         .enumerate()
-        .map(|(index, mem)| (index as f64, mem as f64))
+        .map(|(index, mem)| (index as f64, mem.map(|mem| mem as f64).unwrap_or(-1f64)))
         .collect();
     let swap_data: Vec<_> = swap
         .iter()
         .skip(90)
         .copied()
         .enumerate()
-        .map(|(index, mem)| (index as f64, mem as f64))
+        .map(|(index, mem)| (index as f64, mem.map(|mem| mem as f64).unwrap_or(-1f64)))
         .collect();
 
     let mem = Chart::new(vec![
@@ -642,26 +624,11 @@ fn draw_mem_chart(
             .border_type(BorderType::Plain)
             .border_style(Style::new().fg(Color::White)),
     );
-    let ram_current_str = if current_stat.ram == -1f32 {
-        "-".to_string()
-    } else {
-        format!("{:.2} MiB", current_stat.ram)
-    };
-    let ram_max_str = if current_stat.ram_max == -1 {
-        "∞".to_string()
-    } else {
-        format!("{:.2} MiB", current_stat.ram_max)
-    };
-    let swap_current_str = if current_stat.swap == -1f32 {
-        "-".to_string()
-    } else {
-        format!("{:.2} MiB", current_stat.swap)
-    };
-    let swap_max_str = if current_stat.swap_max == -1 {
-        "∞".to_string()
-    } else {
-        format!("{:.2} MiB", current_stat.swap_max)
-    };
+    let ram_current_str = current_stat.ram.map_or_else(|| "-".to_owned(), |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64));
+    let ram_max_str = current_stat.ram_max.map_or_else(|| "∞".to_owned(), |ram_max| format!("{} MiB", ram_max));
+
+    let swap_current_str = current_stat.swap.map_or_else(|| "-".to_owned(), |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64));
+    let swap_max_str = current_stat.swap_max.map_or_else(|| "∞".to_owned(), |swap_max| format!("{swap_max} MiB"));
 
     let ram_text = Text::raw(format!("RAM: {} / {}", ram_current_str, ram_max_str)).fg(ram_color);
     let swap_text =
@@ -772,7 +739,7 @@ impl<T: AsyncWrite + Unpin> SyncIOBridgeExt<T>
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 async fn read(
     daemon: Daemon,
     server_id: u32,
@@ -858,7 +825,7 @@ async fn read(
 }
 
 async fn launch_selected(
-    state: Daemon,
+    daemon: Daemon,
     server_id: u32,
     selected: u8,
     (start, stop, restart, kill): (bool, bool, bool, bool),
@@ -885,7 +852,7 @@ async fn launch_selected(
         255
     };
 
-    let (server, server_data) = match utils::server(&state.conn, &state.servers, server_id).await {
+    let (server, server_data) = match utils::server(&daemon.conn, &daemon.servers, server_id).await {
         Ok(Some((server, server_data))) => (server, server_data),
         Ok(None) => {
             warn!(
@@ -899,7 +866,6 @@ async fn launch_selected(
             return;
         }
     };
-    let state = state.clone();
     tokio::task::spawn(async move {
         let server_data_arc = server_data.clone();
         let Ok(mut server_data) =
@@ -910,9 +876,9 @@ async fn launch_selected(
 
         if selected == start {
             let Ok(storage) = storage_read::<StorageError>(
-                &state.config,
-                state.conn.deref(),
-                &state.storages,
+                &daemon.config,
+                &*daemon.conn,
+                &daemon.storages,
                 StorageIdentifier::Primary(server_id),
             )
             .await
@@ -921,28 +887,30 @@ async fn launch_selected(
             };
             if let Err(err) = server
                 .start(
-                    state.docker.clone(),
-                    server_data.deref_mut(),
+                    Arc::clone(&daemon.docker),
+                    &mut server_data,
                     storage,
                     server_data_arc,
-                    &state,
+                    &daemon,
                 )
                 .await
             {
                 warn!("Failed to start server using ssh (control): {:?}", err);
             }
         } else if selected == stop {
-            if let Err(err) = server.stop(&state.docker, server_data).await {
+            if let Err(err) = server.stop(&daemon.docker, server_data).await {
                 warn!("Failed to stop server using ssh (control): {:?}", err);
             }
         } else if selected == restart {
-            if let Err(err) = server.restart(&state.docker, server_data).await {
+            if let Err(err) = server.restart(&daemon.docker, server_data).await {
                 warn!("Failed to stop server using ssh (control): {:?}", err);
             }
         } else if selected == kill {
-            if let Err(err) = server.kill(&state.docker, server_data).await {
+            if let Err(err) = server.kill(&daemon.docker, server_data).await {
                 warn!("Failed to kill server using ssh (control): {:?}", err);
             }
+        } else {
+            // Nothing is selected, so nothing to do
         }
     });
 }
@@ -966,9 +934,9 @@ async fn read_inner(
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "Size is zero"));
         }
         let data = &buf[0..size];
-        for b in data {
-            ring1.push(*b);
-            ring2.push(*b);
+        for byte in data {
+            ring1.push(*byte);
+            ring2.push(*byte);
             match (ring1[0], ring1[1], ring1[2]) {
                 (27, 91, 67) => events.push(Event::ArrowRight),
                 (27, 91, 68) => events.push(Event::ArrowLeft),
@@ -984,11 +952,11 @@ async fn read_inner(
                     continue;
                 };
 
-                let button = (cb & 0b0000_0011) | ((cb & 0b1100_0000) >> 4); // 1 = left
+                let button = (cb & 0b0000_0011u8) | ((cb & 0b1100_0000u8) >> 4u8); // 1 = left
                 let dragging = cb & 0b0010_0000 == 0b0010_0000;
 
-                let x = u16::from(cx.saturating_sub(32)) - 1;
-                let y = u16::from(cy.saturating_sub(32)) - 1;
+                let x = u16::from(cx.saturating_sub(32)).saturating_sub(1);
+                let y = u16::from(cy.saturating_sub(32)).saturating_sub(1);
 
                 events.push(Event::Mouse {
                     button,

@@ -15,6 +15,7 @@ use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 use url::Url;
+use core::error::Error as _;
 
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),
@@ -350,10 +351,10 @@ pub struct PublicServerState {
 #[ts]
 #[serde(tag = "filetype", rename_all = "snake_case")]
 pub enum ServerFileWrite {
-    WRITE { data: Vec<u8> },
-    PROPERTIES { content: HashMap<String, String> },
-    JSON { set: Vec<PatchSet> },
-    YAML { set: Vec<PatchSet> },
+    Write { data: Vec<u8> },
+    JavaProperties { content: HashMap<String, String> },
+    Json { set: Vec<PatchSet> },
+    Yaml { set: Vec<PatchSet> },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
@@ -402,7 +403,7 @@ impl ServerFileWrite {
         use std::io::Seek as _;
 
         match self {
-            Self::WRITE { data } => {
+            Self::Write { data } => {
                 file.set_len(0)
                     .await
                     .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
@@ -426,7 +427,7 @@ impl ServerFileWrite {
                         }
                     })?;
             }
-            Self::PROPERTIES { content } => {
+            Self::JavaProperties { content } => {
                 let content = content.clone();
                 let mut file = file.into_std().await;
                 tokio::task::spawn_blocking(move || {
@@ -443,16 +444,26 @@ impl ServerFileWrite {
                         .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
                     java_properties::write(&mut file, &current)
                         .inspect_err(|err| warn!("Failed to write properties: {:?}", err)) // only warning, Potential QUOTA_EXCEEDED
-                        .map_err(io::Error::other)?;
+                        .map_err(|err| {
+                            if let Some(err) = err.source()
+                                && let Some(err) = err.downcast_ref::<io::Error>() && err.kind() == ErrorKind::QuotaExceeded {
+                                <E as FromStorageQuotaReached>::from()
+                            } else {
+                                <E as From<io::Error>>::from(io::Error::other(err))
+                            }
+                        })?;
                     Ok::<_, E>(())
                 })
                 .await
                 .inspect_err(|err| error!("Failed to write properties (task): {:?}", err))
                 .map_err(<io::Error as From<JoinError>>::from)??;
             }
-            Self::JSON { set } => {
+            Self::Json { set } => {
                 let (file, mut parsed): (_, serde_json::Value) = io_sync(
-                    |read| serde_json::from_reader(read).map_err(io::Error::other),
+                    |read| {
+                        serde_json::from_reader(read)
+                            .map_err(<io::Error as From<serde_json::Error>>::from)
+                    },
                     file,
                 )
                 .await?;
@@ -475,17 +486,25 @@ impl ServerFileWrite {
 
                 io_sync_seek_truncate(
                     move |write| {
-                        serde_json::to_writer_pretty(write, &parsed).map_err(io::Error::other)
+                        serde_json::to_writer_pretty(write, &parsed)
+                            .map_err(<io::Error as From<serde_json::Error>>::from)
                     },
                     file,
                 )
-                .await?;
+                .await
+                .map_err(|err| {
+                    if err.kind() == ErrorKind::QuotaExceeded {
+                        <E as FromStorageQuotaReached>::from()
+                    } else {
+                        <E as From<io::Error>>::from(err)
+                    }
+                })?;
             }
-            Self::YAML { set } => {
+            Self::Yaml { set } => {
                 let (file, mut parsed): (_, serde_json::Value) = io_sync(
                     |read| {
-                        serde_yaml::from_reader(read)
-                            .map_err(io::Error::other)
+                        serde_yaml_ng::from_reader(read)
+                            .map_err(<io::Error as From<serde_yaml_ng::Error>>::from)
                             .map(serde_json::Value::from_yaml)
                     },
                     file,
@@ -510,47 +529,46 @@ impl ServerFileWrite {
 
                 io_sync_seek_truncate(
                     move |write| {
-                        serde_yaml::to_writer(write, &parsed.to_yaml()).map_err(io::Error::other)
+                        serde_yaml_ng::to_writer(write, &parsed.to_yaml())
+                            .map_err(<io::Error as From<serde_yaml_ng::Error>>::from)
                     },
                     file,
                 )
-                .await?;
+                .await
+                .map_err(|err| {
+                    if err.kind() == ErrorKind::QuotaExceeded {
+                        <E as FromStorageQuotaReached>::from()
+                    } else {
+                        <E as From<io::Error>>::from(err)
+                    }
+                })?;
             }
         }
         Ok(())
     }
 }
 
-#[derive(Copy, Clone, Serialize, Deserialize)]
+#[derive(Default, Copy, Clone, Serialize, Deserialize)]
 #[must_use]
 pub struct ServerStats {
-    pub cpu: f64,
-    pub ram: f64,
-    pub swap: f64,
-    pub disk: i64,
-    pub cpu_max: f64,
-    pub ram_max: i64,
-    pub swap_max: i64,
-    pub disk_max: i64,
-}
-
-impl Default for ServerStats {
-    fn default() -> Self {
-        Self {
-            cpu: -1f64,
-            ram: -1f64,
-            swap: -1f64,
-            disk: -1,
-            cpu_max: -1f64,
-            ram_max: -1,
-            swap_max: -1,
-            disk_max: -1,
-        }
-    }
+    pub cpu: Option<f64>,      // in cpus
+    pub ram: Option<u64>,      // in bytes
+    pub swap: Option<u64>,     // in bytes
+    pub disk: Option<u64>,     // in bytes
+    pub cpu_max: Option<f32>,  // in cpus
+    pub ram_max: Option<u32>,  // in mib
+    pub swap_max: Option<u32>, // in mib
+    pub disk_max: Option<u64>, // in mib
 }
 
 impl ServerStats {
-    pub const fn with_max(self, cpu: f64, ram: i64, swap: i64, disk: i64) -> Self {
+    pub const fn with_max(
+        self,
+        cpu: Option<f32>,
+        ram: Option<u32>,
+        swap: Option<u32>,
+        disk: Option<u64>,
+    ) -> Self {
         Self {
             cpu_max: cpu,
             ram_max: ram,
@@ -560,7 +578,7 @@ impl ServerStats {
         }
     }
 
-    pub const fn with_disk(self, disk: i64) -> Self {
+    pub const fn with_disk(self, disk: Option<u64>) -> Self {
         Self { disk, ..self }
     }
 
@@ -569,9 +587,9 @@ impl ServerStats {
         const STATS_MAGIC: &str = "STATS!";
         Message::Text(
             format!(
-                "{}{}",
-                STATS_MAGIC.to_owned(),
-                serde_json::to_string(self).unwrap()
+                "{STATS_MAGIC}{}",
+                serde_json::to_string(self)
+                    .expect("Unable to serialize stats to websocket message")
             )
             .into(),
         )
@@ -585,10 +603,6 @@ impl From<bollard::models::ContainerStatsResponse> for ServerStats {
         reason = "cpu and ram doesn't have to be precise"
     )]
     fn from(value: bollard::models::ContainerStatsResponse) -> Self {
-        let mut cpu = -1f64;
-        let mut ram = -1f64;
-        let swap = -1f64;
-
         let cpu_stats = value.cpu_stats.unwrap_or_default();
         let precpu_stats = value.precpu_stats.unwrap_or_default();
         let memory_stats = value.memory_stats.unwrap_or_default();
@@ -611,27 +625,18 @@ impl From<bollard::models::ContainerStatsResponse> for ServerStats {
                     .unwrap_or_default(),
             ) as f64;
 
-        if cpu_stats.online_cpus.is_some() && system_delta > 0f64 && cpu_delta > 0f64 {
-            cpu = ((cpu_delta / system_delta)
-                * f64::from(cpu_stats.online_cpus.unwrap_or_default())
-                * 10000f64)
-                .round()
-                / 100f64;
-        }
-
-        if let Some(usage) = memory_stats.usage {
-            ram = usage as f64;
-            ram /= 1024f64;
-            ram /= 1024f64;
-            ram *= 100f64;
-            ram = ram.round();
-            ram /= 100f64;
-        }
-
         Self {
-            cpu,
-            ram,
-            swap,
+            cpu: (cpu_stats.online_cpus.is_some() && system_delta > 0f64 && cpu_delta > 0f64).then(
+                || {
+                    ((cpu_delta / system_delta)
+                        * f64::from(cpu_stats.online_cpus.unwrap_or_default())
+                        * 10000f64)
+                        .round()
+                        / 100f64
+                },
+            ),
+            ram: memory_stats.usage,
+            swap: None, // TODO
             ..Self::default()
         }
     }

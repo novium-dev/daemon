@@ -167,7 +167,6 @@ impl InternalServerState {
         )
     }
 
-    #[allow(unused)]
     pub(crate) fn kill_show(&self) -> bool {
         matches!(
             self,

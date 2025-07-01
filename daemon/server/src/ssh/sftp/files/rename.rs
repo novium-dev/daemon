@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error};
 
-pub(crate) async fn rename(
+pub async fn rename(
     old_storage: Arc<Dir>,
     old_path: PathBuf,
     new_storage: Arc<Dir>,

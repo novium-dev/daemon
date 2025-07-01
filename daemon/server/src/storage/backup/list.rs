@@ -7,7 +7,6 @@ use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
-use std::collections::HashMap;
 use std::io;
 use std::ops::Deref;
 use std::os::unix::fs::MetadataExt;
@@ -75,6 +74,7 @@ pub(crate) async fn list_backups<
             }
             #[cfg(feature = "btrfs")]
             BackupEntry::Btrfs { quota, .. } => {
+                use std::collections::HashMap;
                 let mut readdir = tokio::fs::read_dir(&target_dir).await?;
 
                 let mut quotas = HashMap::new();

@@ -13,7 +13,7 @@ impl FetchedServer {
         &self,
         docker: &Docker,
         cmd: Vec<String>,
-        server_data: &mut ServerData,
+        server_data: &ServerData,
         terminal: bool,
     ) -> Result<
         Option<(

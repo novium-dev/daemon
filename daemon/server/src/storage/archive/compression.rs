@@ -76,14 +76,16 @@ impl ArchiveCompression {
             [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, _, _] => ArchiveCompression::Xz {
                 level: CompressionLevel::Default,
             },
-            [0x78, 0x01, _, _, _, _, _, _]
-            | [0x78, 0x5E, _, _, _, _, _, _]
-            | [0x78, 0x9C, _, _, _, _, _, _]
-            | [0x78, 0xDA, _, _, _, _, _, _]
-            | [0x78, 0x20, _, _, _, _, _, _]
-            | [0x78, 0x7D, _, _, _, _, _, _]
-            | [0x78, 0xBB, _, _, _, _, _, _]
-            | [0x78, 0xF9, _, _, _, _, _, _] => ArchiveCompression::Zlib {
+            [
+                0x78,
+                0x01 | 0x5E | 0x9C | 0xDA | 0x20 | 0x7D | 0xBB | 0xF9,
+                _,
+                _,
+                _,
+                _,
+                _,
+                _,
+            ] => ArchiveCompression::Zlib {
                 level: CompressionLevel::Default,
             },
             [0x04, 0x22, 0x4D, 0x18, _, _, _, _] => ArchiveCompression::Lz4 {
@@ -290,25 +292,25 @@ where
             )
         }
 
-        fn visit_i64<E>(self, v: i64) -> Result<Self::Value, E>
+        fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E>
         where
             E: Error,
         {
-            Ok(CompressionLevel::Precise(v as i32))
+            Ok(CompressionLevel::Precise(i32::try_from(value).map_err(E::custom)?))
         }
 
-        fn visit_u64<E>(self, v: u64) -> Result<Self::Value, E>
+        fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
         where
             E: Error,
         {
-            Ok(CompressionLevel::Precise(v as i32))
+            Ok(CompressionLevel::Precise(i32::try_from(value).map_err(E::custom)?))
         }
 
-        fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
+        fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
         where
             E: Error,
         {
-            match v {
+            match value {
                 "fastest" => Ok(CompressionLevel::Fastest),
                 "default" => Ok(CompressionLevel::Default),
                 "best" => Ok(CompressionLevel::Best),

@@ -3,10 +3,10 @@ use russh_sftp::protocol::StatusCode;
 use std::fs::Permissions;
 use std::io;
 use std::os::fd::OwnedFd;
-use std::os::unix::fs::PermissionsExt;
+use std::os::unix::fs::PermissionsExt as _;
 use tracing::error;
 
-pub(crate) async fn fsetstat(
+pub async fn fsetstat(
     handle: &mut FileHandle,
     permissions: Option<u32>,
     size: Option<u64>,
@@ -28,7 +28,7 @@ pub(crate) async fn fsetstat(
             )
             .await
         }
-        _ => Ok(()),
+        FileHandle::Internal(..) => Ok(()),
     }
     .inspect_err(|err| error!("Failed to fsetstat: {:?}", err))
     .map_err(sftp_err)
@@ -36,7 +36,7 @@ pub(crate) async fn fsetstat(
 
 #[inline(always)]
 async fn fsetstat_regular(
-    file: &mut tokio::fs::File,
+    file: &tokio::fs::File,
     permissions: Option<u32>,
     size: Option<u64>,
 ) -> Result<(), io::Error> {

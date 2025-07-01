@@ -5,7 +5,7 @@ use std::io::{ErrorKind, SeekFrom};
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tracing::{debug, error};
 
-pub(crate) async fn read(
+pub async fn read(
     handle: &mut FileHandle,
     offset: u64,
     len: u32,
@@ -18,10 +18,7 @@ pub(crate) async fn read(
         }
     }
     .inspect_err(|err| error!("Failed to read file: {:?}", err))
-    .map_err(|err| match err.kind() {
-        ErrorKind::UnexpectedEof => StatusCode::Eof,
-        _ => StatusCode::Failure,
-    })
+    .map_err(|err| if err.kind() == ErrorKind::UnexpectedEof { StatusCode::Eof } else { StatusCode::Failure })
 }
 
 #[inline(always)]

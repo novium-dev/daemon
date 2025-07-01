@@ -40,6 +40,7 @@ pub(crate) async fn backup_to_stream<
 ) -> Result<FileResponse, E> {
     let StorageLockData {
         lock,
+        #[cfg(feature = "btrfs")]
         backup_exclude,
         ..
     } = storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
@@ -50,7 +51,14 @@ pub(crate) async fn backup_to_stream<
         .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
 
-    let (header, data) = backup_to_stream0::<E>(id, backup_id, backup, backup_exclude).await?;
+    let (header, data) = backup_to_stream0::<E>(
+        id,
+        backup_id,
+        backup,
+        #[cfg(feature = "btrfs")]
+        backup_exclude,
+    )
+    .await?;
     drop(lock);
 
     Ok(FileResponse(Some(header), data))
@@ -62,7 +70,7 @@ async fn backup_to_stream0<E: From<io::Error>>(
     id: StorageIdentifier,
     backup_id: i64,
     backup: &BackupEntry,
-    #[allow(unused)] exclude: HashSet<String>,
+    #[cfg(feature = "btrfs")] exclude: HashSet<String>,
 ) -> Result<(HeaderMap, DataStream), E> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
@@ -166,13 +174,14 @@ fn filename(id: StorageIdentifier) -> String {
 #[inline(always)]
 fn stream_realtime0(
     path: String,
-    #[allow(unused)] exclude: HashSet<String>,
+    exclude: HashSet<String>,
     compression: ArchiveCompression,
 ) -> impl Future<Output = DataStream> + Send {
     stream_realtime1(compression, PathBuf::from(path), exclude)
 }
 
 /// Cancel safe
+#[expect(clippy::unused_async, reason = "ensure it only gets called in an async context")]
 async fn stream_realtime1(
     compression: ArchiveCompression,
     target: PathBuf,

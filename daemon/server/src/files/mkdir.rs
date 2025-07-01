@@ -12,6 +12,7 @@ use std::ops::Deref;
 use tracing::{debug, error};
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn mkdir_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -36,15 +37,15 @@ pub(crate) async fn mkdir_file<
         }
     })
     .await
-    .inspect_err(|err| error!("Failed to mkdir (task): {:?}", err))
+    .inspect_err(|err| error!("Failed to mkdir (task): {err:?}"))
     .map_err(io::Error::from)?
     .inspect_err(|err| match err.kind() {
         ErrorKind::NotFound
         | ErrorKind::PermissionDenied
         | ErrorKind::NotADirectory
         | ErrorKind::AlreadyExists
-        | ErrorKind::QuotaExceeded => debug!("Failed to mkdir: {:?}", err),
-        _ => error!("Failed to mkdir: {:?}", err),
+        | ErrorKind::QuotaExceeded => debug!("Failed to mkdir: {err:?}"),
+        _ => error!("Failed to mkdir: {err:?}"),
     })?;
     drop(lock);
     Ok(())

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error};
 
-pub(crate) async fn stat(storage: Arc<Dir>, path: PathBuf) -> Result<FileAttributes, StatusCode> {
+pub async fn stat(storage: Arc<Dir>, path: PathBuf) -> Result<FileAttributes, StatusCode> {
     storage
         .metadata(path)
         .await

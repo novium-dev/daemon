@@ -1,6 +1,6 @@
-pub(crate) mod ext;
-pub(crate) mod files;
-pub(crate) mod r#impl;
+pub mod ext;
+pub mod files;
+pub mod r#impl;
 
 use cap_async_std::fs::*;
 use daemon_common::node::BackendAuthServerPermissions;
@@ -14,10 +14,10 @@ use tokio::io;
 use tokio::sync::OwnedRwLockReadGuard;
 use tracing::*;
 
-pub(crate) struct DaemonSftpSession {
-    pub(crate) version: Option<u32>,
-    pub(crate) file_handles: HashMap<String, FileHandle>,
-    pub(crate) access: HashMap<
+pub struct DaemonSftpSession {
+    pub version: Option<u32>,
+    pub file_handles: HashMap<String, FileHandle>,
+    pub access: HashMap<
         Vec<String>,
         (
             Arc<Dir>,

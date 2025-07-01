@@ -5,18 +5,18 @@ use cron::Schedule;
 use daemon_common::service::schedule::ScheduleRunPolicy;
 use sqlx::types::JsonValue;
 use sqlx::{query, query_scalar};
-use std::str::FromStr;
+use core::str::FromStr as _;
 use tracing::error;
 
-pub(crate) mod worker;
+pub mod worker;
 
-#[derive(Clone, Copy, Hash)]
-pub(crate) enum ScheduleStepResult {
+#[derive(Clone, Copy, Hash, PartialEq, Eq)]
+pub enum ScheduleStepResult {
     Continue,
     Interrupt,
 }
 
-pub(crate) async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
+pub async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
     let mut conn = state.conn.acquire().await?;
 
     let mut set = state.schedule_task.lock().await;
@@ -82,5 +82,6 @@ pub(crate) async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
             .schedules
             .insert(schedule.id, handle);
     }
+    drop(set);
     Ok(())
 }

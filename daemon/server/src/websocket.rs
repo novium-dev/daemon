@@ -9,10 +9,10 @@ use std::io;
 impl ChannelWriteData {
     pub fn into_websocket_message(self) -> Message {
         match self {
-            ChannelWriteData::Terminal(data) => Message::Binary(data.into()),
-            ChannelWriteData::Status(state) => state.as_websocket_message(),
-            ChannelWriteData::Ping => Message::Ping(Bytes::new()),
-            ChannelWriteData::Stats(stats) => stats.as_websocket_message(),
+            Self::Terminal(data) => Message::Binary(data.into()),
+            Self::Status(state) => state.as_websocket_message(),
+            Self::Ping => Message::Ping(Bytes::new()),
+            Self::Stats(stats) => stats.as_websocket_message(),
         }
     }
 }
@@ -37,10 +37,9 @@ impl ChannelAdapter<Option<Result<Message, Error>>, Result<(), Error>, Result<()
         Self: Sized,
     {
         match data {
-            None => Err(ChannelError::Closed),
             Some(Ok(Message::Binary(data))) => Ok(data.into()),
             Some(Ok(Message::Text(data))) => Ok(data.to_string().into_bytes()),
-            Some(Ok(Message::Close(_))) => Err(ChannelError::Closed),
+            Some(Ok(Message::Close(_))) | None => Err(ChannelError::Closed),
             Some(Ok(_)) => Ok(Vec::new()),
             Some(Err(err)) => Err(ChannelError::IO(io::Error::other(err))),
         }

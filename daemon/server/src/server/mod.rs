@@ -47,7 +47,7 @@ pub(crate) struct FetchedServer {
     pub(crate) ports: Vec<Port>,
     pub(crate) storage: String,
     pub(crate) internet: bool,
-    #[allow(dead_code)]
+    #[expect(dead_code, reason = "not implemented yet, but present in the db")]
     pub(crate) ipv6_suffix: Option<u64>,
 
     pub(crate) networks: Vec<AssignedNetwork>,
@@ -148,12 +148,12 @@ impl Server {
                     if !files_write.contains_key(&entry.file) {
                         files_write.insert(
                             entry.file.clone(),
-                            ServerFileWrite::PROPERTIES {
+                            ServerFileWrite::JavaProperties {
                                 content: HashMap::new(),
                             },
                         );
                     }
-                    if let ServerFileWrite::PROPERTIES { content } =
+                    if let ServerFileWrite::JavaProperties { content } =
                         files_write.get_mut(&entry.file).unwrap()
                     {
                         content.insert(
@@ -169,7 +169,7 @@ impl Server {
                 "write" => {
                     files_write.insert(
                         entry.file.clone(),
-                        ServerFileWrite::WRITE {
+                        ServerFileWrite::Write {
                             data: BASE64_STANDARD
                                 .decode(entry.value)
                                 .map_err(Box::new)
@@ -181,20 +181,12 @@ impl Server {
                     if !files_write.contains_key(&entry.file) {
                         files_write.insert(
                             entry.file.clone(),
-                            ServerFileWrite::JSON {
-                                content: HashMap::new(),
-                            },
+                            ServerFileWrite::Json { set: Vec::new() },
                         );
                     }
-                    if let ServerFileWrite::JSON { content } =
-                        files_write.get_mut(&entry.file).unwrap()
+                    if let ServerFileWrite::Json { set } = files_write.get_mut(&entry.file).unwrap()
                     {
-                        content.insert(
-                            entry
-                                .key
-                                .ok_or(sqlx::Error::Decode(Box::new(io::Error::other(
-                                    "key is null!",
-                                ))))?,
+                        set.push(
                             serde_json::from_str(&entry.value)
                                 .map_err(|err| sqlx::Error::Decode(Box::new(err)))?,
                         );
@@ -204,21 +196,13 @@ impl Server {
                     if !files_write.contains_key(&entry.file) {
                         files_write.insert(
                             entry.file.clone(),
-                            ServerFileWrite::YAML {
-                                content: HashMap::new(),
-                            },
+                            ServerFileWrite::Yaml { set: Vec::new() },
                         );
                     }
-                    if let ServerFileWrite::YAML { content } =
-                        files_write.get_mut(&entry.file).unwrap()
+                    if let ServerFileWrite::Yaml { set } = files_write.get_mut(&entry.file).unwrap()
                     {
-                        content.insert(
-                            entry
-                                .key
-                                .ok_or(sqlx::Error::Decode(Box::new(io::Error::other(
-                                    "key is null!",
-                                ))))?,
-                            serde_yaml::from_str(&entry.value)
+                        set.push(
+                            serde_json::from_str(&entry.value)
                                 .map_err(|err| sqlx::Error::Decode(Box::new(err)))?,
                         );
                     }

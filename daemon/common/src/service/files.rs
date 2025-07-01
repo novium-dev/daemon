@@ -100,7 +100,7 @@ pub trait FilesService {
     ) -> Result<(), _>;
 
     #[route("/template", method = POST, query = [ path ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
+    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded] patch_failed) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
     #[doc = "Writes a file using a template"]
     async fn server_write_file_by_template(
         &self,

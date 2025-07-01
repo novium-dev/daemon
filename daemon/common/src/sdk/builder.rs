@@ -123,13 +123,15 @@ impl<T: DaemonSDKExtra + DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T
             .dangerous()
             .with_custom_certificate_verifier(Arc::new(DaemonKeyVerifier(
                 identifier,
-                WebPkiServerVerifier::builder(cert_store).build().unwrap(),
+                WebPkiServerVerifier::builder(cert_store)
+                    .build()
+                    .expect("Unable to build webpki server verifier"),
             )))
             .with_client_auth_cert(
                 backend_key.tls_cert.cert.clone(),
                 backend_key.privkey.clone_key(),
             )
-            .unwrap();
+            .expect("Unable to build client config");
         tls.enable_sni = true;
         tls.alpn_protocols = vec!["h2".into()];
         DaemonSDK {
@@ -139,7 +141,7 @@ impl<T: DaemonSDKExtra + DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T
                 .use_preconfigured_tls(tls)
                 .with_server_name_resolver(Arc::new(DaemonSDKServerNameResolver(identifier)))
                 .build()
-                .unwrap(),
+                .expect("Unable to build reqwest client"),
             identifier,
             base_url,
             extra,

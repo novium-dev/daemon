@@ -21,20 +21,20 @@ use tokio::sync::OwnedRwLockReadGuard;
 use tokio::sync::broadcast::Sender;
 use tokio::time::Instant;
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub(crate) async fn attach(
+    daemon: &Daemon,
     server_id: u32,
-    state: &Daemon,
-    cpu_max: f32,
-    ram_max: i64,
-    swap_max: i64,
-    server_data: &mut ServerData,
+    cpu_max: Option<f32>,
+    ram_max: Option<u32>,
+    swap_max: Option<u32>,
+    server_data: &ServerData,
     server_data_arc: Arc<Mutex<ServerData>>,
     storage_lock: OwnedRwLockReadGuard<(), ()>,
     storage_value: Arc<(AtomicI64, AtomicI64)>,
     storage_stats_lock: Arc<Mutex<()>>,
 ) -> Result<(), ServerStartError> {
-    let result = state
+    let result = daemon
         .docker
         .attach_container(
             &FetchedServer::container_name(server_id),
@@ -51,7 +51,7 @@ pub(crate) async fn attach(
         .map_err(ServerStartError::Docker)?;
     *server_data.attach_write.lock().await = Some(result.input);
 
-    let result2 = state.docker.stats(
+    let result2 = daemon.docker.stats(
         &FetchedServer::container_name(server_id),
         Some(StatsOptions {
             stream: true,
@@ -62,15 +62,15 @@ pub(crate) async fn attach(
     let sender = server_data.sender.deref().clone();
     let stats_sender = server_data.stats_sender.deref().clone();
     let buffer = server_data.buffer.clone();
-    let state = state.clone();
+    let daemon = daemon.clone();
 
     tokio::task::spawn(watch(
+        daemon,
         server_id,
         result.output,
         sender,
         stats_sender,
         buffer,
-        state,
         cpu_max,
         ram_max,
         swap_max,
@@ -83,17 +83,17 @@ pub(crate) async fn attach(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(clippy::too_many_arguments)]
 pub(crate) async fn watch(
+    daemon: Daemon,
     server_id: u32,
     mut output: Pin<Box<dyn Stream<Item = Result<LogOutput, Error>> + Send>>,
     sender: Sender<ChannelWriteData>,
     stats_sender: Sender<ChannelWriteData>,
     buffer: Arc<Mutex<AllocRingBuffer<u8>>>,
-    state: Daemon,
-    cpu_max: f32,
-    ram_max: i64,
-    swap_max: i64,
+    cpu_max: Option<f32>,
+    ram_max: Option<u32>,
+    swap_max: Option<u32>,
     mut result2: impl Stream<Item = Result<ContainerStatsResponse, Error>>
     + Sized
     + Send
@@ -125,15 +125,17 @@ pub(crate) async fn watch(
                     None => break,
                 }
             }
-            stat = result2.next() => {
-                if let Some(Ok(stats)) = stat {
-                    let _ = stats_sender.send(ChannelWriteData::Stats(<ContainerStatsResponse as Into<ServerStats>>::into(stats).with_disk(storage_value.0.load(Ordering::Relaxed)).with_max(cpu_max, ram_max, swap_max, storage_value.1.load(Ordering::Relaxed))));
+            stats = result2.next() => {
+                if let Some(Ok(stats)) = stats {
+                    let disk = storage_value.0.load(Ordering::Relaxed);
+                    let disk_max = storage_value.1.load(Ordering::Relaxed);
+                    let _ = stats_sender.send(ChannelWriteData::Stats(<ContainerStatsResponse as Into<ServerStats>>::into(stats).with_disk(if disk == -1 { None } else { Some(disk.unsigned_abs()) }).with_max(cpu_max, ram_max, swap_max, if disk_max == -1 { None } else { Some(disk_max.unsigned_abs()) })));
                 }
             }
             _elapsed = tokio::time::sleep_until(next) => {
                 next = Instant::now().add(Duration::from_millis(500));
                 let stats_sender = stats_sender.clone();
-                let docker = state.docker.clone();
+                let docker = daemon.docker.clone();
                 let server_data_arc = server_data_arc.clone();
                 tokio::task::spawn(async move {
                     FetchedServer::update_status(server_id, HashSet::new(), &stats_sender, &docker, &server_data_arc).await;
@@ -142,7 +144,7 @@ pub(crate) async fn watch(
         }
     }
     drop(storage_lock);
-    let mut failure = if let Ok(inspection) = state
+    let mut failure = if let Ok(inspection) = daemon
         .docker
         .inspect_container(
             &FetchedServer::container_name(server_id),
@@ -178,8 +180,8 @@ pub(crate) async fn watch(
     if do_restart {
         server_data.restart = false;
         tokio::task::spawn(FetchedServer::queue_start(
+            daemon.clone(),
             server_id,
-            state.clone(),
             Duration::from_secs(1),
         ));
     }
@@ -194,14 +196,24 @@ pub(crate) async fn watch(
         );
     }
     drop(buffer);
+    let disk = storage_value.0.load(Ordering::Relaxed);
+    let disk_max = storage_value.1.load(Ordering::Relaxed);
     let _ = stats_sender.send(ChannelWriteData::Stats(
         ServerStats::default()
-            .with_disk(storage_value.0.load(Ordering::Relaxed))
+            .with_disk(if disk == -1 {
+                None
+            } else {
+                Some(disk.unsigned_abs())
+            })
             .with_max(
                 cpu_max,
                 ram_max,
                 swap_max,
-                storage_value.1.load(Ordering::Relaxed),
+                if disk_max == -1 {
+                    None
+                } else {
+                    Some(disk_max.unsigned_abs())
+                },
             ),
     ));
     drop(storage_stats_guard);
@@ -209,8 +221,8 @@ pub(crate) async fn watch(
         tokio::time::sleep(Duration::from_secs(1)).await;
         FetchedServer::update_status0(
             server_id,
-            FetchedServer::resolve_locked(server_id, &state.conn).await,
-            &state.docker,
+            FetchedServer::resolve_locked(server_id, &daemon.conn).await,
+            &daemon.docker,
             &server_data,
         )
         .await;

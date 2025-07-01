@@ -1,7 +1,7 @@
-use cap_async_std::fs::{FileTypeExt, Metadata, MetadataExt};
+use cap_async_std::fs::{FileTypeExt as _, Metadata, MetadataExt as _};
 use russh_sftp::protocol::{FileAttributes, FileMode};
 
-pub(crate) trait IntoFileAttributes {
+pub trait IntoFileAttributes {
     fn into_fileattributes(self) -> FileAttributes;
 }
 

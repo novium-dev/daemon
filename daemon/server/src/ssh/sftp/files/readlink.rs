@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error};
 
-pub(crate) async fn readlink(storage: Arc<Dir>, path: PathBuf) -> Result<String, StatusCode> {
+pub async fn readlink(storage: Arc<Dir>, path: PathBuf) -> Result<String, StatusCode> {
     storage
         .read_link(path)
         .await

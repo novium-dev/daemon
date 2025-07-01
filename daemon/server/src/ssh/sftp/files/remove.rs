@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error};
 
-pub(crate) async fn remove(storage: Arc<Dir>, path: PathBuf) -> Result<(), StatusCode> {
+pub async fn remove(storage: Arc<Dir>, path: PathBuf) -> Result<(), StatusCode> {
     storage
         .remove_file(path)
         .await

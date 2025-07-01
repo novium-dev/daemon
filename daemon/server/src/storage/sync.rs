@@ -151,7 +151,6 @@ pub(crate) async fn storage_read<
 }
 
 /// Cancel safe
-#[allow(dead_code)]
 pub(crate) async fn storage_write<
     'a,
     E: From<sqlx::Error> + FromStorageNotFound + FromStorageFailure,

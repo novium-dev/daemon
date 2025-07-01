@@ -298,7 +298,7 @@ impl Daemon {
         {
             let mut servers = self.servers.lock().await;
 
-            let mut restored = 0;
+            let mut restored = 0i32;
             for container in containers {
                 let names = container.names.unwrap_or_default();
                 let mut id = None::<u32>;
@@ -321,50 +321,48 @@ impl Daemon {
                         "SELECT `cpu`, `ram`, `swap` FROM `servers` WHERE `id` = ?",
                         id
                     )
-                    .fetch_optional(self.conn.deref())
+                    .fetch_optional(&*self.conn)
                     .await
-                    .unwrap()
                     {
-                        Some(row) => {
+                        Ok(Some(row)) => {
                             let mut server_data = server_data_arc.lock().await;
-                            let StorageLockData {
-                                lock: storage_lock,
-                                value: storage_value,
-                                stats_lock: storage_stats_lock,
-                                ..
-                            } = storage_read::<StorageError>(
+
+                            match storage_read::<StorageError>(
                                 &self.config,
-                                self.conn.deref(),
+                                &*self.conn,
                                 &self.storages,
                                 StorageIdentifier::Primary(id),
                             )
-                            .await
-                            .unwrap();
-
-                            let cpu_max = row.cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
-                            let ram_max = row.ram.map(|ram| ram as i64).unwrap_or(-1);
-                            let swap_max = row.swap.map(|swap| swap as i64).unwrap_or(-1);
-
-                            if let Err(err) = attach(
-                                id,
-                                self,
-                                cpu_max,
-                                ram_max,
-                                swap_max,
-                                server_data.deref_mut(),
-                                server_data_arc.clone(),
-                                storage_lock,
-                                storage_value,
-                                storage_stats_lock,
-                            )
-                            .await
-                            {
-                                warn!("Failed to reattach server {}: {:?}", id, err);
-                            } else {
-                                restored += 1;
+                            .await {
+                                Ok(StorageLockData {
+                                    lock: storage_lock,
+                                    value: storage_value,
+                                    stats_lock: storage_stats_lock,
+                                    ..
+                                }) => {
+                                    if let Err(err) = attach(
+                                        self,
+                                        id,
+                                        row.cpu,
+                                        row.ram,
+                                        row.swap,
+                                        &mut server_data,
+                                        Arc::clone(&server_data_arc),
+                                        storage_lock,
+                                        storage_value,
+                                        storage_stats_lock,
+                                    )
+                                    .await
+                                    {
+                                        warn!("Failed to reattach server {id}: {err:?}");
+                                    } else {
+                                        restored = restored.saturating_add(1);
+                                    }
+                                }
+                                Err(err) => warn!("Failed to read lock storage data: {id}: {err:?}"),
                             }
                         }
-                        None => {
+                        Ok(None) => {
                             warn!(
                                 "Found server that is missing in database: {}. Killing silently...",
                                 id
@@ -376,7 +374,8 @@ impl Daemon {
                                     None::<KillContainerOptions>,
                                 )
                                 .await;
-                        }
+                        },
+                        Err(err) => warn!("Unable to select server for reattach {id}: {err:?}"),
                     }
                 }
             }

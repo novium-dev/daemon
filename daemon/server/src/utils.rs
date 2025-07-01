@@ -6,37 +6,21 @@ use daemon_common::service::error_server_not_found::FromServerNotFound;
 use daemon_common::service::server::ServerStats;
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
-use std::fmt::Debug;
-use std::future::Future;
-use std::marker::PhantomData;
+use core::fmt::Debug;
+use core::future::Future;
+use core::marker::PhantomData;
 use std::path::PathBuf;
-use std::pin::Pin;
+use core::pin::Pin;
 use std::sync::Arc;
-use std::{io, mem};
+use std::{io};
 use tokio_util::io::SyncIoBridge;
 use tracing::error;
 
-pub(crate) trait ResourceData {
-    fn into_u64(self) -> u64;
+pub fn from_mib(mib: impl Into<u64>) -> u64 {
+    mib.into().saturating_mul(0x0010_0000)
 }
 
-impl ResourceData for u32 {
-    fn into_u64(self) -> u64 {
-        self as u64
-    }
-}
-
-impl ResourceData for u64 {
-    fn into_u64(self) -> u64 {
-        self
-    }
-}
-
-pub(crate) fn from_mib(mib: impl ResourceData) -> u64 {
-    mib.into_u64() * 1024 * 1024
-}
-
-pub(crate) async fn database<E: From<sqlx::Error>>(
+pub async fn database<E: From<sqlx::Error>>(
     conn: impl Executor<'_, Database = MySql> + Copy,
     database_id: u32,
 ) -> Result<Option<crate::database::FetchedDatabase>, E> {
@@ -53,11 +37,11 @@ pub(crate) async fn database<E: From<sqlx::Error>>(
     };
 
     Ok(Some(database.fetched(conn).await.inspect_err(|err| {
-        error!("Unable to fetch database: {:?}", err)
+        error!("Unable to fetch database: {err:?}");
     })?))
 }
 
-pub(crate) async fn server(
+pub async fn server(
     conn: &Pool<MySql>,
     servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
     server_id: u32,
@@ -65,33 +49,29 @@ pub(crate) async fn server(
     let Some(server) = generic_server_select(conn, server_id).await? else {
         return Ok(None);
     };
-    let mut servers = servers.lock().await;
-    servers
+    let server_data = Arc::clone(servers.lock().await
         .entry(server_id)
-        .or_insert_with(|| Arc::new(crate::sync::Mutex::new(ServerData::default())));
-    Ok(Some((server, servers.get(&server_id).unwrap().clone())))
+        .or_insert_with(|| Arc::new(crate::sync::Mutex::new(ServerData::default()))));
+    Ok(Some((server, server_data)))
 }
 
-pub(crate) async fn server_required<T: From<sqlx::Error> + FromServerNotFound>(
+pub async fn server_required<T: From<sqlx::Error> + FromServerNotFound>(
     conn: &Pool<MySql>,
     servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
     server_id: u32,
 ) -> Result<(FetchedServer, Arc<crate::sync::Mutex<ServerData>>), T> {
-    match server(conn, servers, server_id).await? {
-        None => Err(<T as FromServerNotFound>::from()),
-        Some(server) => Ok(server),
-    }
+    server(conn, servers, server_id).await?.ok_or_else(<T as FromServerNotFound>::from)
 }
 
-pub(crate) fn path_relative(str: String) -> PathBuf {
-    if str.starts_with("/") {
-        PathBuf::from(format!(".{}", str))
+pub fn path_relative(str: String) -> PathBuf {
+    if str.starts_with('/') {
+        PathBuf::from(format!(".{str}"))
     } else {
         PathBuf::from(str)
     }
 }
 
-pub(crate) async fn generic_server_select(
+pub async fn generic_server_select(
     conn: impl Executor<'_, Database = MySql> + Copy,
     server_id: u32,
 ) -> Result<Option<FetchedServer>, sqlx::Error> {
@@ -105,7 +85,7 @@ pub(crate) async fn generic_server_select(
     }
 }
 
-pub(crate) fn parse_path(path: &mut String) -> Result<(Vec<&str>, bool), ()> {
+pub fn parse_path(path: &mut String) -> Result<(Vec<&str>, bool), ()> {
     let ends_with_slash = path.ends_with('/');
     if ends_with_slash {
         path.pop();
@@ -124,34 +104,32 @@ pub(crate) fn parse_path(path: &mut String) -> Result<(Vec<&str>, bool), ()> {
     short_path(components).map(|vec| (vec, ends_with_slash))
 }
 
-pub(crate) fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
+pub fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
     let mut result = Vec::new();
     for component in components {
         if component.eq("..") {
-            if !result.is_empty() {
-                result.remove(result.len() - 1);
-            } else {
+            if result.pop().is_none() {
                 return Err(());
             }
         } else if !component.eq(".") {
             result.push(component);
+        } else {
+            // This is a . component, we just ignore it
         }
     }
     Ok(result)
 }
 
-#[allow(unused)]
 #[derive(Clone)]
-pub(crate) enum ChannelWriteData {
+pub enum ChannelWriteData {
     Terminal(Vec<u8>),
     Status(InternalServerState),
     Stats(ServerStats),
     Ping,
 }
 
-#[allow(unused)]
 #[async_trait]
-pub(crate) trait ChannelAdapter<E: Send + 'static, J: Send + 'static, Q: Send + 'static> {
+pub trait ChannelAdapter<E: Send + 'static, J: Send + 'static, Q: Send + 'static> {
     async fn read(&mut self) -> E;
 
     fn read_transform(&mut self, data: E) -> Result<Vec<u8>, ChannelError>
@@ -173,13 +151,11 @@ pub(crate) trait ChannelAdapter<E: Send + 'static, J: Send + 'static, Q: Send + 
         Self: Sized;
 }
 
-#[allow(unused)]
-pub(crate) enum ChannelError {
+pub enum ChannelError {
     Closed,
     IO(io::Error),
 }
 
-#[allow(unused)]
 pub struct ChannelInterceptor<
     A: ChannelAdapter<E, J, Q> + Send,
     E: Send + 'static,
@@ -188,7 +164,6 @@ pub struct ChannelInterceptor<
     C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>> + Send + 'static,
 >(A, C, PhantomData<E>, PhantomData<Q>, PhantomData<J>);
 
-#[allow(unused)]
 impl<
     C: for<'a> FnMut(&'a mut A, E) -> Pin<Box<dyn Future<Output = E> + Send + 'a>> + Send + 'static,
     A: ChannelAdapter<E, J, Q> + Send,
@@ -197,15 +172,8 @@ impl<
     Q: Send + 'static,
 > ChannelInterceptor<A, E, J, Q, C>
 {
-    #[allow(clippy::default_constructed_unit_structs)]
-    pub(crate) fn new(state: A, intercept: C) -> Self {
-        Self(
-            state,
-            intercept,
-            PhantomData::default(),
-            PhantomData::default(),
-            PhantomData::default(),
-        )
+    pub(crate) const fn new(state: A, intercept: C) -> Self {
+        Self(state, intercept, PhantomData, PhantomData, PhantomData)
     }
 }
 
@@ -246,7 +214,7 @@ impl<
     }
 
     async fn close(self) {
-        self.0.close().await
+        self.0.close().await;
     }
 
     fn send_ping() -> bool
@@ -257,20 +225,20 @@ impl<
     }
 }
 
-#[allow(dead_code)]
 #[derive(Debug)]
 struct SyncIoBridgeCopy<T> {
     src: T,
     rt: tokio::runtime::Handle,
 }
 
-pub(crate) trait SyncIOBridgeExt<T> {
+pub trait SyncIOBridgeExt<T> {
     fn inner_mut(&mut self) -> &mut T;
 }
 
 impl<T> SyncIOBridgeExt<T> for SyncIoBridge<T> {
     fn inner_mut(&mut self) -> &mut T {
-        let r: &mut SyncIoBridgeCopy<T> = unsafe { mem::transmute(self) };
-        &mut r.src
+        let transmuted = core::ptr::from_mut(self).cast::<SyncIoBridgeCopy<T>>();
+        // SAFETY: As long as the crate struct definition doesn't change, this is safe
+        unsafe { &mut (*transmuted).src }
     }
 }

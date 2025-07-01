@@ -1,3 +1,5 @@
+#![deny(clippy::inline_always, reason = "here are many single call methods")]
+
 mod archive;
 mod copy;
 mod delete;

@@ -5,61 +5,69 @@ use crate::utils::ChannelInterceptor;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bollard::Docker;
 use std::sync::Arc;
-use std::sync::atomic::AtomicU32;
+use core::sync::atomic::AtomicU32;
 
-pub(crate) const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
+pub const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
 
 pub(super) async fn terminal_websocket_handle(
     id: u32,
-    docker: Arc<Docker>,
+    #[cfg(not(feature = "no_tty_size_please"))] docker: Arc<Docker>,
     server_data_arc: Arc<Mutex<ServerData>>,
     socket: WebSocket,
-    cols: Arc<AtomicU32>,
-    rows: Arc<AtomicU32>,
+    #[cfg(not(feature = "no_tty_size_please"))] cols: Arc<AtomicU32>,
+    #[cfg(not(feature = "no_tty_size_please"))] rows: Arc<AtomicU32>,
     write: bool,
 ) {
     let server_data = server_data_arc.lock().await;
-    let sender = server_data.sender.clone();
-    let attach_write = server_data.attach_write.clone();
+    let sender = Arc::clone(&server_data.sender);
+    let attach_write = Arc::clone(&server_data.attach_write);
     drop(server_data);
 
-    let server_data_arc2 = server_data_arc.clone();
-    let docker2 = docker.clone();
-    let cols2 = cols.clone();
-    let rows2 = rows.clone();
-
+    #[cfg(not(feature = "no_tty_size_please"))]
+    let server_data_arc2 = Arc::clone(&server_data_arc);
+    #[cfg(not(feature = "no_tty_size_please"))]
+    let docker2 = Arc::clone(&docker);
+    #[cfg(not(feature = "no_tty_size_please"))]
+    let cols2 = Arc::clone(&cols);
+    #[cfg(not(feature = "no_tty_size_please"))]
+    let rows2 = Arc::clone(&rows);
+    #[cfg(not(feature = "no_tty_size_please"))]
     tokio::task::spawn(new_session(
         id,
         ChannelInterceptor::new(socket, move |_socket, mut message| {
-            #[allow(unused_variables)]
-            let server_data_arc2 = server_data_arc2.clone();
-            #[allow(unused_variables)]
-            let docker2 = docker2.clone();
-            #[allow(unused_variables)]
-            let cols2 = cols2.clone();
-            #[allow(unused_variables)]
-            let rows2 = rows2.clone();
+            #[cfg(not(feature = "no_tty_size_please"))]
+            let server_data_arc2 = Arc::clone(&server_data_arc2);
+            #[cfg(not(feature = "no_tty_size_please"))]
+            let docker2 = Arc::clone(&docker2);
+            #[cfg(not(feature = "no_tty_size_please"))]
+            let cols2 = Arc::clone(&cols2);
+            #[cfg(not(feature = "no_tty_size_please"))]
+            let rows2 = Arc::clone(&rows2);
 
             Box::pin(async move {
                 if let Some(Ok(Message::Text(data))) = &mut message {
                     let data_str = data.to_string();
-                    #[allow(unused_variables)]
+                    #[cfg_attr(
+                        feature = "no_tty_size_please",
+                        expect(unused_variables, reason = "unused data2")
+                    )]
                     if let Some(data2) = data_str.strip_prefix(WEBSOCKET_RESIZE_MAGIC) {
                         *data = Utf8Bytes::default();
                         #[cfg(not(feature = "no_tty_size_please"))]
                         if let Some((new_cols, new_rows)) = data2.split_once(':') {
-                            use std::sync::atomic::Ordering;
+                            use core::sync::atomic::Ordering;
 
-                            let new_cols = new_cols.parse();
-                            let new_rows = new_rows.parse();
-                            if new_cols.is_err() && new_rows.is_err() {
+                            let Ok(new_cols) = new_cols.parse() else {
                                 return message;
-                            }
-                            cols2.store(new_cols.unwrap(), Ordering::Relaxed);
-                            rows2.store(new_rows.unwrap(), Ordering::Relaxed);
+                            };
+                            let Ok(new_rows) = new_rows.parse() else {
+                                return message;
+                            };
+                            cols2.store(new_cols, Ordering::Relaxed);
+                            rows2.store(new_rows, Ordering::Relaxed);
                             tokio::task::spawn(async move {
-                                crate::terminal::update_size(id, &docker2, server_data_arc2.clone())
-                                    .await
+                                crate::terminal::update_size(id, &docker2, Arc::clone(&server_data_arc2))
+                                    .await;
                             });
                         }
                     }
@@ -70,8 +78,8 @@ pub(super) async fn terminal_websocket_handle(
         TerminalData {
             sender,
             attach_write,
-            rows,
             cols,
+            rows,
             write,
         },
         docker,

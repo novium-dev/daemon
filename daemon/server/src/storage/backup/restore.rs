@@ -1,7 +1,6 @@
 use crate::config::{BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedUnpackExtension;
-use crate::storage::btrfs::{new_snapshot, remove_subvolume};
 use crate::storage::sync::{StorageLockData, storage_write_timeout};
 use crate::{Daemon, storage};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
@@ -120,12 +119,12 @@ async fn restore_backup0<E: From<io::Error>>(
                     error!("Failed to restore backup (open): {:?}", err)
                 }
             })?;
-            remove_subvolume(&parent, dir.file_name().unwrap().to_str().unwrap())
+            super::super::btrfs::remove_subvolume(&parent, dir.file_name().unwrap().to_str().unwrap())
                 .await
                 .inspect_err(|err| {
                     error!("Failed to restore backup (delete_snapshot): {:?}", err)
                 })?;
-            new_snapshot(
+            super::super::btrfs::new_snapshot(
                 fd,
                 &parent,
                 dir.file_name().unwrap().to_str().unwrap(),

@@ -16,6 +16,7 @@ use std::os::fd::OwnedFd;
 use tracing::{debug, error};
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn stat_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -24,12 +25,12 @@ pub(crate) async fn stat_file<
         + FromStorageFailure
         + FromFileNotFound,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     path: String,
 ) -> Result<FileEntry, E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let metadata = storage
@@ -37,9 +38,9 @@ pub(crate) async fn stat_file<
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied => {
-                debug!("Failed to stat file (metadata): {:?}", err)
+                debug!("Failed to stat file (metadata): {err:?}")
             }
-            _ => error!("Failed to stat file (metadata): {:?}", err),
+            _ => error!("Failed to stat file (metadata): {err:?}"),
         })?;
 
     let filename = match path.file_name() {
@@ -55,7 +56,7 @@ pub(crate) async fn stat_file<
             storage
                 .read_link(path.clone())
                 .await
-                .inspect_err(|err| error!("Failed to stat file (read_link): {:?}", err))?
+                .inspect_err(|err| error!("Failed to stat file (read_link): {err:?}"))?
                 .to_string_lossy()
                 .to_string(),
         );
@@ -63,7 +64,7 @@ pub(crate) async fn stat_file<
         let file = storage
             .open(&path)
             .await
-            .inspect_err(|err| error!("Failed to stat file (open): {:?}", err))?;
+            .inspect_err(|err| error!("Failed to stat file (open): {err:?}"))?;
         archive = tokio::task::spawn_blocking(move || {
             let fd: OwnedFd = file.into_std().into();
             let file = std::fs::File::from(fd);
@@ -74,9 +75,9 @@ pub(crate) async fn stat_file<
             }
         })
         .await
-        .inspect_err(|err| error!("Failed to stat file (detect): {:?}", err))
+        .inspect_err(|err| error!("Failed to stat file (detect): {err:?}"))
         .map_err(io::Error::from)?
-        .inspect_err(|err| error!("Failed to stat file (detect): {:?}", err))?;
+        .inspect_err(|err| error!("Failed to stat file (detect): {err:?}"))?;
     }
 
     let relative_path = path.join(filename.clone());

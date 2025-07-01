@@ -114,10 +114,9 @@ pub struct NetworkConfig {
 #[serde(tag = "type")]
 pub enum SSHHostKey {
     #[serde(rename = "ed25519")]
-    ED25519 { path: String },
+    Ed25519 { path: String },
     #[serde(rename = "rsa")]
-    #[allow(clippy::upper_case_acronyms)]
-    RSA { path: String },
+    Rsa { path: String },
 }
 
 impl SSHHostKey {
@@ -131,7 +130,7 @@ impl SSHHostKey {
 
         let mut buffer = Vec::new();
         Ok(match self {
-            SSHHostKey::ED25519 { path } => match File::open(path).await {
+            SSHHostKey::Ed25519 { path } => match File::open(path).await {
                 Ok(mut file) => {
                     file.read_to_end(&mut buffer).await?;
                     PrivateKey::decode_pem(&buffer)?
@@ -153,7 +152,7 @@ impl SSHHostKey {
                     return Err(err.into());
                 }
             },
-            SSHHostKey::RSA { path } => match File::open(path).await {
+            SSHHostKey::Rsa { path } => match File::open(path).await {
                 Ok(mut file) => {
                     file.read_to_end(&mut buffer).await?;
                     PrivateKey::decode_pem(&buffer)?

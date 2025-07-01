@@ -14,7 +14,6 @@ pub(crate) struct InvalidationCacheMap<T: Clone + Hash + Eq, E: Clone>(
     Duration,
 );
 
-#[allow(unused)]
 impl<T: Clone + Hash + Eq, E: Clone> InvalidationCacheMap<T, E> {
     pub(crate) fn new(invalidation: Duration) -> Self {
         Self(HashMap::new(), invalidation)

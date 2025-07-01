@@ -12,6 +12,7 @@ use std::ops::Deref;
 use tracing::{debug, error};
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn delete_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -39,8 +40,8 @@ pub(crate) async fn delete_file<
         ErrorKind::NotFound
         | ErrorKind::PermissionDenied
         | ErrorKind::IsADirectory
-        | ErrorKind::NotADirectory => debug!("Failed to delete file: {:?}", err),
-        _ => error!("Failed to delete file: {:?}", err),
+        | ErrorKind::NotADirectory => debug!("Failed to delete file: {err:?}"),
+        _ => error!("Failed to delete file: {err:?}"),
     })?;
     drop(lock);
     Ok(())

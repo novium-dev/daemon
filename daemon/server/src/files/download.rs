@@ -39,16 +39,16 @@ pub(crate) async fn download_file<
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::IsADirectory => {
-                debug!("Failed to download file: {:?}", err)
+                debug!("Failed to download file: {err:?}")
             }
-            _ => error!("Failed to download file: {:?}", err),
+            _ => error!("Failed to download file: {err:?}"),
         })?
         .into_std()
         .into();
     let metadata = storage
         .metadata(&path)
         .await
-        .inspect_err(|err| error!("Failed to download file (metadata): {:?}", err))?;
+        .inspect_err(|err| error!("Failed to download file (metadata): {err:?}"))?;
     let length = metadata.len();
     if let Some(limit) = limit {
         if length > limit {

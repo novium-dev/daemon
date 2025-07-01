@@ -24,13 +24,6 @@ impl StorageIdentifier {
             StorageIdentifier::Primary(id) => PathBuf::from(format!("primary/{}", id)),
         }
     }
-
-    #[allow(unused)]
-    pub(crate) fn as_vec(&self) -> Vec<String> {
-        match self {
-            StorageIdentifier::Primary(id) => vec!["primary".to_owned(), id.to_string()],
-        }
-    }
 }
 
 /// Cancel safe (possible subvolume without quota, should correct itself after next storage access)

@@ -28,11 +28,11 @@ impl Daemon {
             let mut server_task = self.server_task_cancellable.lock().await;
             for listener in ssh.listeners {
                 let daemon = self.clone();
-                let ssh_config = ssh_config.clone();
+                let ssh_config = Arc::clone(&ssh_config);
                 server_task.spawn(async move {
                     if let Err(err) = (crate::ssh::server::DaemonSSHServer {
                         cache_invalidation: Duration::from_millis(ssh.auth_cache_duration),
-                        state: daemon.clone(),
+                        daemon: daemon.clone(),
                     })
                     .run_on_address(ssh_config, &listener)
                     .await

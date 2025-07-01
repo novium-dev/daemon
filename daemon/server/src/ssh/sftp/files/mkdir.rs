@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error};
 
-pub(crate) async fn mkdir(
+pub async fn mkdir(
     storage: Arc<Dir>,
     path: PathBuf,
     permissions: Option<u32>,

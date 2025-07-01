@@ -2,7 +2,6 @@ use crate::Daemon;
 use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedAppendExtension;
-use crate::storage::btrfs::new_snapshot;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use chrono::Utc;
 use daemon_common::service::backup::error_backup_storage_incompatible::FromBackupStorageIncompatible;
@@ -43,8 +42,7 @@ pub(crate) async fn create_backup_order<
         .backup
         .iter()
         .map(|(name, entry)| (name.clone(), entry.order(), entry))
-        .filter(|(_, order, _)| order.is_some())
-        .map(|(name, order, entry)| (name, order.unwrap(), entry))
+        .filter_map(|(name, order, entry)| order.map(|order| (name, order, entry)))
         .collect();
     storages.sort_by_key(|storage| storage.1);
     let mut suitable = None;
@@ -54,13 +52,14 @@ pub(crate) async fn create_backup_order<
             break;
         }
     }
-    if suitable.is_none() {
-        return Err(<E as FromBackupStorageNoSuitableFound>::from());
+    match suitable {
+        None => Err(<E as FromBackupStorageNoSuitableFound>::from()),
+        Some(suitable) => {
+            let id = create_backup0::<E>(path, id, suitable, backup_exclude).await?;
+            drop(lock); // Ensure lock hasn't been unlocked until now
+            Ok(id)
+        }
     }
-
-    let id = create_backup0::<E>(path, id, suitable.unwrap(), &storage, backup_exclude).await?;
-    drop(lock);
-    Ok(id)
 }
 
 fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
@@ -72,7 +71,7 @@ fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
             true
         }
         (_, BackupEntry::Archive { .. }) => true,
-        #[allow(unreachable_patterns)]
+        #[cfg(not(feature = "btrfs"))]
         _ => false,
     }
 }
@@ -110,7 +109,7 @@ pub(crate) async fn create_backup<
         return Err(<E as FromBackupStorageIncompatible>::from());
     }
 
-    let id = create_backup0::<E>(path, id, backup, &storage, backup_exclude).await?;
+    let id = create_backup0::<E>(path, id, backup, backup_exclude).await?;
     drop(lock);
     Ok(id)
 }
@@ -120,7 +119,6 @@ async fn create_backup0<E: From<std::io::Error>>(
     path: String,
     id: StorageIdentifier,
     backup: &BackupEntry,
-    #[allow(unused)] storage: &StorageEntry,
     mut exclude: HashSet<String>,
 ) -> Result<i64, E> {
     exclude.insert(".tmp/".to_string());
@@ -154,7 +152,7 @@ async fn create_backup0<E: From<std::io::Error>>(
                 .await
                 .inspect_err(|err| debug!("Backup creation failed (open): {:?}", err))?;
 
-            new_snapshot(subvol_fd, &target_dir, &timestamp.to_string(), true)
+            super::super::btrfs::new_snapshot(subvol_fd, &target_dir, &timestamp.to_string(), true)
                 .await
                 .inspect_err(|err| debug!("Backup creation failed (snapshot): {:?}", err))?;
         }
@@ -186,7 +184,7 @@ async fn create_archive_backup(
         .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true)
         .await
         .inspect_err(|err| debug!("Backup creation failed (append_dir_all): {:?}", err))?;
-    tokio::task::spawn_blocking(move || archive.into_inner().unwrap().finish()?.flush())
+    tokio::task::spawn_blocking(move || archive.into_inner().expect("Archive should have already been finished? Bug?").finish()?.flush())
         .await
         .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {:?}", err))
         .map_err(io::Error::from)?

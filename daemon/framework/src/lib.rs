@@ -26,6 +26,7 @@ pub use url;
 pub use urlencoding;
 pub use utoipa;
 pub use utoipa_axum;
+pub use tap;
 
 use axum::body::BodyDataStream;
 use axum::extract::{FromRequest, Request};
@@ -748,16 +749,48 @@ macro_rules! define_header_variable {
 
 #[macro_export]
 macro_rules! framework_router {
-    ($base:tt $var:ident { $($tr:path),* }) => {
-        ($crate::utoipa_axum::router::OpenApiRouter::new()
-            $(
-                .merge(<$base as $tr>::routes(&$var))
-            )*,
-            $crate::utoipa_axum::router::OpenApiRouter::new()
-            $(
-                .merge(<$base as $tr>::routes_user(&$var))
-            )*
-        )
+    ($base:tt $var:ident { $($tr:path),* $( { $($feat:literal $tr2:path),* } )* }) => {
+        {
+            use $crate::tap::Pipe;
+            ($crate::utoipa_axum::router::OpenApiRouter::new()
+                $(
+                    .merge(<$base as $tr>::routes(&$var))
+                )*
+                $(
+                    $(
+                        .pipe(|router| {
+                            #[cfg(feature = $feat)]
+                            {
+                                router.merge(<$base as $tr2>::routes(&$var))
+                            }
+                            #[cfg(not(feature = $feat))]
+                            {
+                                router
+                            }
+                        })
+                    )*
+                )*,
+                $crate::utoipa_axum::router::OpenApiRouter::new()
+                $(
+                    .merge(<$base as $tr>::routes_user(&$var))
+                )*
+                $(
+                    $(
+                        .pipe(|router| {
+                            #[cfg(feature = $feat)]
+                            {
+                                router.merge(<$base as $tr2>::routes_user(&$var))
+                            }
+                            #[cfg(not(feature = $feat))]
+                            {
+                                router
+                            }
+                        })
+
+                    )*
+                )*
+            )
+        }
     };
 }
 

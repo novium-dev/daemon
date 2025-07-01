@@ -88,7 +88,7 @@ impl Database {
     }
 }
 
-pub(crate) trait DatabasePayloadFunctionExtension {
+pub(crate) trait DatabasePayloadFunctionExt {
     fn update_validated<
         E: From<sqlx::Error>
             + FromDatabaseInvalidIdentifier
@@ -114,7 +114,7 @@ pub(crate) struct DatabaseState {
     pub(crate) passwordless: HashMap<u32, DatabaseUserPermissions>,
 }
 
-impl DatabasePayloadFunctionExtension for DatabaseState {
+impl DatabasePayloadFunctionExt for DatabaseState {
     fn update_validated<
         E: From<sqlx::Error>
             + FromDatabaseInvalidIdentifier

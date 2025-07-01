@@ -164,14 +164,12 @@ fn append_dir_all<W: Write>(
     src_path: &Path,
     exclude: HashSet<String>,
 ) -> io::Result<()> {
-    #[allow(dead_code)]
     struct BuilderCopy<W: Write> {
         options: BuilderOptionsCopy,
         finished: bool,
         obj: Option<W>,
     }
     #[derive(Clone, Copy)]
-    #[allow(dead_code)]
     struct BuilderOptionsCopy {
         mode: HeaderMode,
         follow: bool,

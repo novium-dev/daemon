@@ -80,7 +80,6 @@ impl FetchedServer {
     }
 }
 
-#[allow(unused)]
 #[derive(Debug)]
 pub(crate) enum ServerStopError {
     Docker(bollard::errors::Error),

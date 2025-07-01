@@ -12,9 +12,9 @@ use bollard::models::{
 use bollard::query_parameters::{CreateContainerOptions, StartContainerOptions};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, OpenOptions};
+use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use ringbuffer::RingBuffer;
 use std::collections::HashMap;
-use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
 use std::future::Future;
 use std::io;
@@ -27,16 +27,36 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::OwnedRwLockReadGuard;
 use tracing::warn;
+use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
 
-#[allow(unused)]
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub(crate) enum ServerStartError {
-    Docker(bollard::errors::Error),
-    Storage(StorageError),
-    IO(io::Error),
+    Docker(#[from] bollard::errors::Error),
+    Storage(#[from] StorageError),
+    IO(#[from] io::Error),
+    PatchFailed,
+    QuotaReached,
     AlreadyRunning,
-    Sql(sqlx::Error), // only if queued
+    Sql(#[from] sqlx::Error), // only if queued
     NotFound,
+}
+
+impl FromStoragePatchFailed for ServerStartError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::PatchFailed
+    }
+}
+
+impl FromStorageQuotaReached for ServerStartError {
+    fn from() -> Self
+    where
+        Self: Sized
+    {
+        Self::QuotaReached
+    }
 }
 
 impl Display for ServerStartError {
@@ -45,8 +65,6 @@ impl Display for ServerStartError {
         debug_self.fmt(f)
     }
 }
-
-impl Error for ServerStartError {}
 
 impl FetchedServer {
     pub(crate) async fn start(
@@ -61,7 +79,7 @@ impl FetchedServer {
             ..
         }: StorageLockData<OwnedRwLockReadGuard<()>>,
         server_data_arc: Arc<Mutex<ServerData>>,
-        state: &Daemon,
+        daemon: &Daemon,
     ) -> Result<(), ServerStartError> {
         if !Self::state(self.id, self.locks.clone(), &docker, Some(server_data))
             .await
@@ -87,7 +105,7 @@ impl FetchedServer {
 
         let image = self
             .clone()
-            .prepare_image(state, &docker, buffer.deref_mut(), server_data)
+            .prepare_image(daemon, &docker, buffer.deref_mut(), server_data)
             .await?;
 
         let storage_path_buf = PathBuf::from(&storage_path);
@@ -115,15 +133,12 @@ impl FetchedServer {
                 .map_err(ServerStartError::IO)?;
             let fd: OwnedFd = file.into();
             let file = tokio::fs::File::from_std(std::fs::File::from(fd));
-            file_write
-                .apply::<io::Error>(file)
-                .await
-                .map_err(ServerStartError::IO)?;
+            file_write.apply::<ServerStartError>(file).await?;
         }
 
         let mut binds = Vec::with_capacity(1);
 
-        for mount in &state.config.mounts {
+        for mount in &daemon.config.mounts {
             binds.push(format!("{}:{}:{}", mount.src, mount.dest, mount.mode))
         }
 
@@ -267,8 +282,8 @@ impl FetchedServer {
                         cap_add: Some(self.cap_add.iter().cloned().collect()),
                         cap_drop: Some(self.cap_drop.iter().cloned().collect()),
 
-                        cpu_period: self.cpu.map(|_| 100000),
-                        cpu_quota: self.cpu.map(|cpu| (100000.0 * cpu) as i64),
+                        cpu_period: self.cpu.map(|_| 100_000),
+                        cpu_quota: self.cpu.map(|cpu| (100_000.0 * cpu) as i64),
                         memory: self.ram.map(utils::from_mib).map(|ram| ram as i64),
                         memory_swap: self.ram.map(|data| {
                             if let Some(swap) = self.swap {
@@ -306,18 +321,15 @@ impl FetchedServer {
             .await
             .map_err(ServerStartError::Docker)?;
 
-        let cpu_max = self.cpu.map(|cpu| cpu * 100f32).unwrap_or(-1f32);
-        let ram_max = self.ram.map(|ram| ram as i64).unwrap_or(-1);
-        let swap_max = self.swap.map(|ram| ram as i64).unwrap_or(-1);
         drop(buffer);
 
         let server_id = self.id;
         attach(
+            daemon,
             server_id,
-            state,
-            cpu_max,
-            ram_max,
-            swap_max,
+            self.cpu,
+            self.ram,
+            self.swap,
             server_data,
             server_data_arc,
             storage_lock,
@@ -329,19 +341,19 @@ impl FetchedServer {
         Ok(())
     }
 
-    pub(crate) async fn queue_start(server_id: u32, state: Daemon, duration: Duration) {
-        if let Err(err) = Self::queue_start0(server_id, state, duration).await {
+    pub(crate) async fn queue_start(daemon: Daemon, server_id: u32, duration: Duration) {
+        if let Err(err) = Self::queue_start0(daemon, server_id, duration).await {
             warn!("Failed to queue start: {:?}", err);
         }
     }
 
     #[inline(always)]
     async fn queue_start0(
+        daemon: Daemon,
         server_id: u32,
-        state: Daemon,
         duration: Duration,
     ) -> Result<(), ServerStartError> {
-        let Some((server, server_data)) = utils::server(&state.conn, &state.servers, server_id)
+        let Some((server, server_data)) = utils::server(&daemon.conn, &daemon.servers, server_id)
             .await
             .map_err(ServerStartError::Sql)?
         else {
@@ -350,20 +362,20 @@ impl FetchedServer {
         let mut server_data_locked = server_data.lock().await;
         tokio::time::sleep(duration).await;
         let storage = storage_read::<StorageError>(
-            &state.config,
-            state.conn.deref(),
-            &state.storages,
+            &daemon.config,
+            daemon.conn.deref(),
+            &daemon.storages,
             StorageIdentifier::Primary(server_id),
         )
         .await
         .map_err(ServerStartError::Storage)?;
         server
             .start_pinned(
-                state.docker.clone(),
+                daemon.docker.clone(),
                 server_data_locked.deref_mut(),
                 server_data.clone(),
                 storage,
-                &state,
+                &daemon,
             )
             .await?;
         Ok(())

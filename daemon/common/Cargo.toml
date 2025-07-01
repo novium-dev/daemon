@@ -38,7 +38,7 @@ service = [
     "dep:ed25519-dalek",
     "dep:serde_json",
     "dep:tokio",
-    "dep:serde_yaml",
+    "dep:serde_yaml_ng",
     "dep:axum",
     "dep:serde",
     "dep:crc64",
@@ -122,7 +122,7 @@ optional = true
 workspace = true
 optional = true
 
-[dependencies.serde_yaml]
+[dependencies.serde_yaml_ng]
 workspace = true
 optional = true
 

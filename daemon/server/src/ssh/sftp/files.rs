@@ -14,21 +14,21 @@ mod stat;
 mod symlink;
 mod write;
 
-pub(crate) use fsetstat::fsetstat;
-pub(crate) use fstat::fstat;
-pub(crate) use mkdir::mkdir;
-pub(crate) use open::open;
-pub(crate) use read::read;
-pub(crate) use readdir::readdir;
-pub(crate) use readlink::readlink;
-pub(crate) use realpath::realpath;
-pub(crate) use remove::remove;
-pub(crate) use rename::rename;
-pub(crate) use rmdir::rmdir;
-pub(crate) use setstat::setstat;
-pub(crate) use stat::stat;
-pub(crate) use symlink::symlink;
-pub(crate) use write::write;
+pub use fsetstat::fsetstat;
+pub use fstat::fstat;
+pub use mkdir::mkdir;
+pub use open::open;
+pub use read::read;
+pub use readdir::readdir;
+pub use readlink::readlink;
+pub use realpath::realpath;
+pub use remove::remove;
+pub use rename::rename;
+pub use rmdir::rmdir;
+pub use setstat::setstat;
+pub use stat::stat;
+pub use symlink::symlink;
+pub use write::write;
 
 use crate::ssh::sftp::{DaemonSftpSession, FileHandle};
 use crate::utils::parse_path;
@@ -40,7 +40,7 @@ use std::sync::Arc;
 use tracing::debug;
 
 impl DaemonSftpSession {
-    pub(crate) async fn resolve_path(
+    pub(crate) fn resolve_path(
         &self,
         mut path: String,
     ) -> Result<
@@ -54,7 +54,7 @@ impl DaemonSftpSession {
         debug!("Path0 {}", path);
         // Resolving ..
         let (shorten, ends_with_slash) =
-            parse_path(&mut path).map_err(|_| StatusCode::NoSuchFile)?;
+            parse_path(&mut path).map_err(|()| StatusCode::NoSuchFile)?;
 
         let mut temp_prefix = Vec::new();
         let mut temp_suffix = Vec::new();
@@ -79,18 +79,18 @@ impl DaemonSftpSession {
             temp_suffix[index] = format!("{}/", temp_suffix[index]);
         }
         Ok((
-            storage.map(|(dir, perms, _)| (dir.clone(), *perms)),
+            storage.map(|(dir, perms, _)| (Arc::clone(dir), *perms)),
             temp_prefix,
             temp_suffix,
         ))
     }
 
-    pub(crate) async fn sandboxed_path(
+    pub(crate) fn sandboxed_path(
         &self,
         path: String,
         required: BackendAuthServerPermissions,
     ) -> Result<(Arc<Dir>, PathBuf), StatusCode> {
-        let (storage, _, temp_suffix) = self.resolve_path(path).await?;
+        let (storage, _, temp_suffix) = self.resolve_path(path)?;
 
         match storage {
             None => Err(StatusCode::NoSuchFile),
@@ -109,11 +109,11 @@ impl DaemonSftpSession {
 }
 
 impl FileHandle {
-    pub(crate) fn has_permissions(&self, required: BackendAuthServerPermissions) -> bool {
+    pub(crate) const fn has_permissions(&self, required: BackendAuthServerPermissions) -> bool {
         match self {
-            FileHandle::Internal(_, _, perms)
-            | FileHandle::RegularFile(_, perms)
-            | FileHandle::RegularDir(_, _, _, perms) => perms.contains(required),
+            Self::Internal(_, _, perms)
+            | Self::RegularFile(_, perms)
+            | Self::RegularDir(_, _, _, perms) => perms.contains(required),
         }
     }
 }

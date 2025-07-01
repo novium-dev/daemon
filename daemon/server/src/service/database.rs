@@ -1,4 +1,4 @@
-use crate::database::{Database, DatabasePayloadFunctionExtension, DatabaseState, FetchedDatabase};
+use crate::database::{Database, DatabasePayloadFunctionExt as _, DatabaseState, FetchedDatabase};
 use crate::utils::database;
 use crate::{Daemon, sql};
 use async_trait::async_trait;
@@ -7,9 +7,8 @@ use daemon_common::service::database::error::{
     CreateDatabaseError, DeleteDatabaseError, UpdateDatabaseError,
 };
 use daemon_common::service::database::{DatabaseUserPayload, DatabaseUserPermissions};
-use sqlx::{Connection, query};
+use sqlx::{Connection as _, query};
 use std::collections::HashMap;
-use std::ops::Deref;
 use tracing::{debug, error};
 
 #[async_trait]
@@ -18,8 +17,8 @@ impl DatabaseService for Daemon {
         Database::validate_sql_string::<CreateDatabaseError>(&name_suffix)
             .inspect_err(|_err| debug!("Validation of name suffix failed: {:?}", name_suffix))?;
 
-        let mut conn1 = self.conn.deref().acquire().await?;
-        let mut conn2 = self.conn.deref().acquire().await?;
+        let mut conn1 = self.conn.acquire().await?;
+        let mut conn2 = self.conn.acquire().await?;
         tokio::task::spawn(async move {
             conn1
                 .transaction(move |tx| {
@@ -41,12 +40,12 @@ impl DatabaseService for Daemon {
                         .prepare(&mut *conn2)
                         .await
                         .inspect_err(|err| {
-                            error!("Unable to prepare database creation statement: {:?}", err)
+                            error!("Unable to prepare database creation statement: {:?}", err);
                         })?
                         .execute(&mut *conn2)
                         .await
                         .inspect_err(|err| {
-                            error!("Unable to execute database creation statement: {:?}", err)
+                            error!("Unable to execute database creation statement: {:?}", err);
                         })?;
 
                         Ok::<_, CreateDatabaseError>(database_id)
@@ -55,7 +54,7 @@ impl DatabaseService for Daemon {
                 .await
         })
         .await
-        .unwrap()
+        .expect("database create task paniced")
     }
 
     async fn update_database(
@@ -65,7 +64,7 @@ impl DatabaseService for Daemon {
         passwordless: HashMap<u32, DatabaseUserPermissions>,
     ) -> Result<(), UpdateDatabaseError> {
         let Some(database) =
-            database::<UpdateDatabaseError>(self.conn.deref(), database_id).await?
+            database::<UpdateDatabaseError>(&*self.conn, database_id).await?
         else {
             return Err(UpdateDatabaseError::DatabaseNotFound);
         };
@@ -86,13 +85,13 @@ impl DatabaseService for Daemon {
             Ok::<_, UpdateDatabaseError>(())
         })
         .await
-        .unwrap()?;
+        .expect("update database task paniced")?;
         Ok(())
     }
 
     async fn delete_database(&self, database_id: u32) -> Result<(), DeleteDatabaseError> {
         let Some(database) =
-            database::<DeleteDatabaseError>(self.conn.deref(), database_id).await?
+            database::<DeleteDatabaseError>(&*self.conn, database_id).await?
         else {
             return Err(DeleteDatabaseError::DatabaseNotFound);
         };
@@ -125,17 +124,17 @@ impl DatabaseService for Daemon {
                 .execute(&mut conn1, conn2)
                 .await
                 .inspect_err(|err| {
-                    error!("Unable to execute database delete statement: {:?}", err)
+                    error!("Unable to execute database delete statement: {:?}", err);
                 })?;
             Ok::<_, DeleteDatabaseError>(())
         })
         .await
-        .unwrap()?;
+        .expect("delete database task paniced")?;
         Ok(())
     }
 }
 
-pub(crate) trait FromFetchedDatabaseExtension {
+pub trait FromFetchedDatabaseExtension {
     fn from_fetched_database(value: FetchedDatabase) -> (String, Self);
 }
 
@@ -143,11 +142,11 @@ impl FromFetchedDatabaseExtension for DatabaseState {
     fn from_fetched_database(value: FetchedDatabase) -> (String, Self) {
         (
             value.name_suffix,
-            DatabaseState {
+            Self {
                 passwordless: value
                     .passwordless
                     .into_iter()
-                    .map(|(k, v)| (k, DatabaseUserPermissions::from_bits_truncate(v)))
+                    .map(|(key, value)| (key, DatabaseUserPermissions::from_bits_truncate(value)))
                     .collect(),
                 users: value
                     .users

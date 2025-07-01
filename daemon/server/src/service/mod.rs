@@ -15,7 +15,7 @@ use daemon_common::service::server::ServerService;
 use rustls::ServerConfig;
 use rustls::server::WebPkiClientVerifier;
 use std::sync::Arc;
-use std::time::Duration;
+use core::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
@@ -27,7 +27,7 @@ mod database;
 #[cfg(feature = "trace_sync")]
 mod debug;
 mod files;
-pub(crate) mod middleware;
+pub mod middleware;
 mod network;
 mod resource;
 mod schedule;
@@ -40,21 +40,12 @@ impl Daemon {
         #[openapi()]
         struct ApiDoc;
 
-        #[allow(unused_mut)]
-        let mut routes = framework_router!(Self self {
+        let router = framework_router!(Self self {
             ServerService, BackupService, FilesService, NetworkService,
-            ResourceService, DatabaseService, ScheduleService
+            ResourceService, DatabaseService, ScheduleService {"trace_sync" debug::DebugService}
         });
 
-        #[cfg(feature = "trace_sync")]
-        {
-            use crate::common::MultiRouterExtension;
-            routes = routes.merge(
-                framework_router!(Self self { daemon_common::service::debug::DebugService }),
-            );
-        }
-
-        let (routes, routes_user) = routes;
+        let (router, router_user) = router;
 
         let cors = tower_http::cors::CorsLayer::new()
             .allow_origin(tower_http::cors::AllowOrigin::exact(
@@ -63,17 +54,16 @@ impl Daemon {
             .allow_methods([axum::http::Method::GET])
             .allow_headers(tower_http::cors::AllowHeaders::any());
 
-        #[allow(unused_variables)]
         let (mut router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
-            .merge(routes.layer(axum::middleware::from_fn(middleware::middleware)))
-            .merge(routes_user.layer(cors))
+            .merge(router.layer(axum::middleware::from_fn(middleware::middleware)))
+            .merge(router_user.layer(cors))
             .split_for_parts();
 
         #[cfg(debug_assertions)]
         {
             use utoipa_swagger_ui::SwaggerUi;
             router = router.merge(SwaggerUi::new("/docs").url("/docs/openapi.json", api));
-        }
+        };
 
         router = router.layer(TraceLayer::new_for_http());
 
@@ -83,20 +73,21 @@ impl Daemon {
             router = router
                 .layer(NewSentryLayer::<Request>::new_from_top())
                 .layer(SentryHttpLayer::new().enable_transaction());
-        }
+        };
         router
     }
 
+    #[expect(clippy::significant_drop_tightening, reason = "only runs once on start")]
     pub async fn serve_http(&self) -> Result<(), anyhow::Error> {
         let mut rustls = ServerConfig::builder()
             .with_client_cert_verifier(
-                WebPkiClientVerifier::builder(self.root.cert_store.clone())
+                WebPkiClientVerifier::builder(Arc::clone(&self.root.cert_store))
                     .allow_unauthenticated()
                     .allow_unknown_revocation_status()
                     .build()?,
             )
             .with_cert_resolver(Arc::new(DaemonCertResolver(
-                self.key.clone(),
+                Arc::clone(&self.key),
                 None,
                 self.key.id,
             )));
@@ -123,7 +114,7 @@ impl Daemon {
             loop {
                 match recv.recv().await {
                     Err(RecvError::Lagged(_)) => {}
-                    Ok(_) | Err(RecvError::Closed) => {
+                    Ok(()) | Err(RecvError::Closed) => {
                         handle.graceful_shutdown(Some(Duration::from_secs(30)));
                         loop {
                             tokio::time::sleep(Duration::from_secs(1)).await;

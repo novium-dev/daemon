@@ -87,7 +87,7 @@ impl FetchedServer {
         state: &Daemon,
         docker: &Docker,
         buffer: &mut AllocRingBuffer<u8>,
-        server_data: &mut ServerData,
+        server_data: &ServerData,
     ) -> Result<String, ServerStartError> {
         let required: IndexMap<_, _> = self
             .build
@@ -219,6 +219,8 @@ impl FetchedServer {
                         if !last_progress.is_empty() {
                             Self::console(&server_data.sender, buffer, msg);
                         }
+                    } else {
+                        // No information about the progress, just do nothing
                     }
                 }
             }

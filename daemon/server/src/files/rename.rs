@@ -12,6 +12,7 @@ use std::ops::Deref;
 use tracing::{debug, error};
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn rename_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -19,13 +20,13 @@ pub(crate) async fn rename_file<
         + FromStorageMutexLocked
         + FromStorageFailure,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     from: String,
     to: String,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
     let from = path_relative(from);
     let to = path_relative(to);
     let (storage, _) = storage_path(id, &storage).await?;
@@ -36,8 +37,8 @@ pub(crate) async fn rename_file<
             ErrorKind::NotFound
             | ErrorKind::PermissionDenied
             | ErrorKind::AlreadyExists
-            | ErrorKind::QuotaExceeded => debug!("Failed to rename file: {:?}", err),
-            _ => error!("Failed to rename file: {:?}", err),
+            | ErrorKind::QuotaExceeded => debug!("Failed to rename file: {err:?}"),
+            _ => error!("Failed to rename file: {err:?}"),
         })?;
     drop(lock);
     Ok(())

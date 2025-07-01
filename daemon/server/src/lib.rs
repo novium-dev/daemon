@@ -29,9 +29,8 @@ use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
 use sqlx::{MySql, Pool};
 use std::collections::HashMap;
-use std::ops::Deref;
-use std::pin::Pin;
-use std::sync::atomic::AtomicI64;
+use core::pin::Pin;
+use core::sync::atomic::AtomicI64;
 use tokio::io::AsyncWrite;
 use tokio::task::{AbortHandle, JoinSet};
 use url::Url;
@@ -74,7 +73,7 @@ impl DaemonServicesURL for Daemon {}
 impl DaemonServicesURLWithUserKey for Daemon {}
 impl FrameworkClientImpl for Daemon {
     fn client(&self) -> &Client {
-        self.client.deref()
+        &self.client
     }
 
     fn base_url(&self) -> &Url {

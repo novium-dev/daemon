@@ -12,6 +12,7 @@ use std::ops::Deref;
 use tracing::{debug, error};
 
 /// Cancel safe
+#[inline(always)]
 pub(crate) async fn symlink_file<
     E: From<io::Error>
         + From<sqlx::Error>
@@ -19,13 +20,13 @@ pub(crate) async fn symlink_file<
         + FromStorageMutexLocked
         + FromStorageFailure,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     path: String,
     content: String,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     storage
@@ -35,8 +36,8 @@ pub(crate) async fn symlink_file<
             ErrorKind::NotFound
             | ErrorKind::PermissionDenied
             | ErrorKind::AlreadyExists
-            | ErrorKind::QuotaExceeded => debug!("Failed to create symlink: {:?}", err),
-            _ => error!("Failed to create symlink: {:?}", err),
+            | ErrorKind::QuotaExceeded => debug!("Failed to create symlink: {err:?}"),
+            _ => error!("Failed to create symlink: {err:?}"),
         })?;
     drop(lock);
     Ok(())
