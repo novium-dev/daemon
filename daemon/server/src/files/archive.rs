@@ -14,7 +14,6 @@ use serde_json::json;
 use std::collections::HashSet;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use tar::{Archive, Builder};
@@ -22,7 +21,7 @@ use tracing::{debug, error};
 
 /// Cancel safe
 #[inline(always)]
-pub(crate) async fn unpack_archive<
+pub async fn unpack_archive<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -30,13 +29,13 @@ pub(crate) async fn unpack_archive<
         + FromStorageFailure
         + FromCompressionUnsupported,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     path: String,
     dest: String,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, storage_path) = storage_path(id, &storage).await?;
     let file = storage
@@ -66,7 +65,7 @@ pub(crate) async fn unpack_archive<
                 .await
                 .inspect_err(|err| match err.kind() {
                     ErrorKind::InvalidData | ErrorKind::QuotaExceeded => {
-                        debug!("Failed to unpack archive (unpack): {err:?}")
+                        debug!("Failed to unpack archive (unpack): {err:?}");
                     }
                     _ => error!("Failed to unpack archive (unpack): {err:?}"),
                 })?;
@@ -90,7 +89,7 @@ pub(crate) async fn unpack_archive<
 }
 
 /// Cancel safe
-pub(crate) async fn create_archive<
+pub async fn create_archive<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -100,14 +99,14 @@ pub(crate) async fn create_archive<
         + Send
         + 'static,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     path: String,
     src: String,
     compression: String,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let path = path_relative(path);
 
     let compression: ArchiveCompression = serde_json::from_value(json!({

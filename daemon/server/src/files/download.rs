@@ -12,12 +12,11 @@ use daemon_common::service::files::error_file_limit_reached::FromFileLimitReache
 use daemon_common::service::{DataStream, FileResponse};
 use std::io;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use std::os::fd::OwnedFd;
 use tracing::{debug, error};
 
 /// Cancel safe
-pub(crate) async fn download_file<
+pub async fn download_file<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -25,13 +24,13 @@ pub(crate) async fn download_file<
         + FromStorageFailure
         + FromFileLimitReached,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     path: String,
     limit: Option<u64>,
 ) -> Result<FileResponse, E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let fd: OwnedFd = storage
@@ -39,7 +38,7 @@ pub(crate) async fn download_file<
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::IsADirectory => {
-                debug!("Failed to download file: {err:?}")
+                debug!("Failed to download file: {err:?}");
             }
             _ => error!("Failed to download file: {err:?}"),
         })?

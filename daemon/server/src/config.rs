@@ -112,6 +112,7 @@ pub struct TlsConfig {
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
+#[expect(clippy::empty_structs_with_brackets, reason = "not yet implemented")]
 pub struct NetworkConfig {
     // TODO: Assign dedicated ipv6 address to container, see #312
 }

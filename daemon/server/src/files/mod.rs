@@ -22,16 +22,16 @@ use daemon_common::files::FileMode;
 use daemon_common::service::files::FileEntry;
 use tracing::error;
 
-pub(crate) use archive::{create_archive, unpack_archive};
-pub(crate) use copy::copy_file;
-pub(crate) use delete::delete_file;
-pub(crate) use download::download_file;
-pub(crate) use list::list_files;
-pub(crate) use mkdir::mkdir_file;
-pub(crate) use rename::rename_file;
-pub(crate) use stat::stat_file;
-pub(crate) use symlink::symlink_file;
-pub(crate) use write::{write_file, write_file_by_template, write_file_by_url};
+pub use archive::{create_archive, unpack_archive};
+pub use copy::copy_file;
+pub use delete::delete_file;
+pub use download::download_file;
+pub use list::list_files;
+pub use mkdir::mkdir_file;
+pub use rename::rename_file;
+pub use stat::stat_file;
+pub use symlink::symlink_file;
+pub use write::{write_file, write_file_by_template, write_file_by_url};
 
 async fn storage_path(
     id: StorageIdentifier,

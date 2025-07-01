@@ -167,15 +167,17 @@ pub fn watch(daemon: &Daemon, storage_id: &str, storage_entry: &StorageEntry) {
                     continue;
                 };
                 match fs_extra::dir::get_size(path) {
-                    Ok(size) => {
-                        let size = if size > i64::MAX.unsigned_abs() {
+                    Ok(size_unsigned) => {
+                        let size = if size_unsigned > i64::MAX.unsigned_abs() {
                             -1
                         } else {
-                            size.cast_signed()
+                            size_unsigned.cast_signed()
                         };
                         data.value.0.store(size, Ordering::Relaxed);
                         let allowed = data.value.1.load(Ordering::Relaxed);
-                        let exceeded = (size / 0x0010_0000) > allowed && allowed != -1; // 0x100000 = 1024*1024
+                        let exceeded = allowed != -1
+                            && size != -1
+                            && u128::from(size_unsigned) > u128::from(allowed.unsigned_abs()); // 0x100000 = 1024*1024
                         if let Some(server_id) = *server_id {
                             if exceeded {
                                 if let Err(err) = Handle::current().block_on(query!("INSERT IGNORE INTO `server_locks` (`server`, `lock`) VALUES (?, 'storage')", server_id)

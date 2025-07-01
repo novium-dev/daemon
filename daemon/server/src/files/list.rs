@@ -10,14 +10,13 @@ use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::FileEntry;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use tracing::{debug, error};
 
 /// Cancel safe
 #[inline(always)]
-pub(crate) async fn list_files<
+pub async fn list_files<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -29,7 +28,7 @@ pub(crate) async fn list_files<
     path: String,
 ) -> Result<Vec<FileEntry>, E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let read_dir = storage
@@ -37,7 +36,7 @@ pub(crate) async fn list_files<
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::NotADirectory => {
-                debug!("Failed to list files (read_dir): {err:?}")
+                debug!("Failed to list files (read_dir): {err:?}");
             }
             _ => error!("Failed to list files (read_dir): {err:?}"),
         })?;

@@ -54,7 +54,7 @@ impl DatabaseService for Daemon {
                 .await
         })
         .await
-        .expect("database create task paniced")
+        .expect("database create task panicked")
     }
 
     async fn update_database(
@@ -84,7 +84,7 @@ impl DatabaseService for Daemon {
             Ok::<_, UpdateDatabaseError>(())
         })
         .await
-        .expect("update database task paniced")?;
+        .expect("update database task panicked")?;
         Ok(())
     }
 
@@ -127,7 +127,7 @@ impl DatabaseService for Daemon {
             Ok::<_, DeleteDatabaseError>(())
         })
         .await
-        .expect("delete database task paniced")?;
+        .expect("delete database task panicked")?;
         Ok(())
     }
 }

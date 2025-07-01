@@ -18,7 +18,7 @@ use core::pin::Pin;
 use core::time::Duration;
 use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
-use ringbuffer::RingBuffer;
+use ringbuffer::RingBuffer as _;
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
@@ -88,12 +88,12 @@ impl FetchedServer {
             return Err(ServerStartError::AlreadyRunning); // Containers are created with delete-on-exit.
         }
 
-        server_data.stop_command = self.stop_command.clone();
+        server_data.stop_command.clone_from(&self.stop_command);
 
         server_data.stopping = false;
         server_data.restart = false;
 
-        let buffer = server_data.buffer.clone();
+        let buffer = Arc::clone(&server_data.buffer);
         let mut buffer = buffer.lock().await;
         buffer.clear();
         Self::log(&server_data.sender, &mut buffer, "Preparing Server...");
@@ -111,7 +111,7 @@ impl FetchedServer {
         let _ = storage2.remove_dir_all(".tmp").await;
         if let Err(err) = tokio::task::spawn_blocking(move || storage2.create_dir(".tmp"))
             .await
-            .unwrap()
+            .expect("Temporary directory creation task panicked")
         {
             if err.kind() != ErrorKind::AlreadyExists {
                 return Err(ServerStartError::IO(err));
@@ -134,7 +134,7 @@ impl FetchedServer {
         let mut binds = Vec::with_capacity(1);
 
         for mount in &daemon.config.mounts {
-            binds.push(format!("{}:{}:{}", mount.src, mount.dest, mount.mode))
+            binds.push(format!("{}:{}:{}", mount.src, mount.dest, mount.mode));
         }
 
         let control_path = tokio::fs::canonicalize("./control.sock")
@@ -153,7 +153,7 @@ impl FetchedServer {
             } else {
                 crate::common::NETWORK_DEFAULT
             }
-            .to_string(),
+            .to_owned(),
             EndpointSettings::default(),
         );
 
@@ -192,19 +192,11 @@ impl FetchedServer {
 
         let mut ports = HashMap::new();
         for port in &self.ports {
-            let key = format!("{}/{}", port.internal_port, port.protocol);
-            if !ports.contains_key(&key) {
-                ports.insert(key.clone(), Some(Vec::new()));
-            }
-            ports
-                .get_mut(&key)
-                .unwrap()
-                .as_mut()
-                .unwrap()
-                .push(PortBinding {
-                    host_ip: Some(port.external_ip.clone()),
-                    host_port: Some(port.external_port.to_string()),
-                })
+            let key = format!("{}/{}", port.internal, port.protocol);
+            ports.entry(key).or_insert_with(Vec::new).push(PortBinding {
+                host_ip: Some(port.external_ip.clone()),
+                host_port: Some(port.external.to_string()),
+            });
         }
 
         Self::log(&server_data.sender, &mut buffer, "Creating Environment...");
@@ -214,7 +206,7 @@ impl FetchedServer {
         env.extend(self.environment.clone());
         let env = env
             .into_iter()
-            .map(|(key, value)| format!("{}={}", key, value))
+            .map(|(key, value)| format!("{key}={value}"))
             .collect();
 
         docker
@@ -245,7 +237,7 @@ impl FetchedServer {
                         endpoints_config: Some(networks),
                     }),
 
-                    stop_timeout: Some(self.stop_timeout as i64),
+                    stop_timeout: Some(i64::from(self.stop_timeout)),
 
                     exposed_ports: Some(
                         ports
@@ -260,12 +252,17 @@ impl FetchedServer {
 
                         binds: Some(binds),
 
-                        port_bindings: Some(ports),
+                        port_bindings: Some(
+                            ports
+                                .into_iter()
+                                .map(|(key, ports)| (key, Some(ports)))
+                                .collect(),
+                        ),
 
                         extra_hosts: Some(
                             crate::common::HOSTNAME
                                 .iter()
-                                .map(|hostname| format!("{}:host-gateway", hostname,))
+                                .map(|hostname| format!("{hostname}:host-gateway"))
                                 .collect(),
                         ),
 
@@ -275,13 +272,9 @@ impl FetchedServer {
                         cpu_period: self.cpu.map(|_| 100_000),
                         cpu_quota: self.cpu.map(|cpu| (100_000.0 * cpu) as i64),
                         memory: self.ram.map(utils::from_mib).map(|ram| ram as i64),
-                        memory_swap: self.ram.map(|data| {
-                            if let Some(swap) = self.swap {
-                                from_mib(data + swap) as i64
-                            } else {
-                                -1
-                            }
-                        }),
+                        memory_swap: self
+                            .ram
+                            .map(|data| self.swap.map_or(-1, |swap| from_mib(data + swap) as i64)),
 
                         #[cfg(not(feature = "no_tty_size_please"))]
                         console_size: Some(vec![
@@ -334,6 +327,10 @@ impl FetchedServer {
     }
 
     #[inline(always)]
+    #[expect(
+        clippy::significant_drop_tightening,
+        reason = "lock the server data first"
+    )]
     async fn queue_start0(
         daemon: Daemon,
         server_id: u32,
@@ -357,9 +354,9 @@ impl FetchedServer {
         .map_err(ServerStartError::Storage)?;
         server
             .start_pinned(
-                daemon.docker.clone(),
+                Arc::clone(&daemon.docker),
                 &mut server_data_locked,
-                server_data.clone(),
+                Arc::clone(&server_data),
                 storage,
                 &daemon,
             )

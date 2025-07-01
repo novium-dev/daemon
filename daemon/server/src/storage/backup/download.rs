@@ -60,7 +60,7 @@ pub async fn backup_to_stream<
     .await?;
     drop(lock);
 
-    Ok(FileResponse(Some(header), data))
+    Ok(FileResponse(header, data))
 }
 
 /// Cancel safe
@@ -70,22 +70,22 @@ async fn backup_to_stream0<E: From<io::Error>>(
     backup_id: i64,
     backup: &BackupEntry,
     #[cfg(feature = "btrfs")] exclude: HashSet<String>,
-) -> Result<(HeaderMap, DataStream), E> {
+) -> Result<(Option<HeaderMap>, DataStream), E> {
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
         BackupEntry::Archive { compression, .. } => {
             let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
-            let headers = HeaderMap::from_iter([(
-                http::header::CONTENT_DISPOSITION,
-                format!(
-                    "attachment; filename=\"{}_{}.tar{}\"",
-                    filename(id),
-                    Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
-                    compression.ext()
-                )
-                .parse()
-                .unwrap(),
-            )]);
+
+            let headers = format!(
+                "attachment; filename=\"{}_{}.tar{}\"",
+                filename(id),
+                Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
+                compression.ext()
+            )
+            .parse()
+            .map(|header| HeaderMap::from_iter([(http::header::CONTENT_DISPOSITION, header)]))
+            .ok();
+
             Ok((
                 headers,
                 DataStream::by_read(File::open(target).await.inspect_err(|err| {
@@ -102,17 +102,16 @@ async fn backup_to_stream0<E: From<io::Error>>(
             jit_compression, ..
         } => {
             let compression = *jit_compression;
-            let headers = HeaderMap::from_iter([(
-                http::header::CONTENT_DISPOSITION,
-                format!(
-                    "attachment; filename=\"{}_{}.tar{}\"",
-                    filename(id),
-                    Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
-                    compression.ext()
-                )
-                .parse()
-                .unwrap(),
-            )]);
+
+            let headers = format!(
+                "attachment; filename=\"{}_{}.tar{}\"",
+                filename(id),
+                Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
+                compression.ext()
+            )
+            .parse()
+            .map(|header| HeaderMap::from_iter([(http::header::CONTENT_DISPOSITION, header)]))
+            .ok();
             let target = target_dir.join(backup_id.to_string());
             Ok((
                 headers,
@@ -149,18 +148,16 @@ pub async fn stream_realtime<
     let data = stream_realtime0(path, backup_exclude, compression).await;
     drop(lock);
 
-    let headers = HeaderMap::from_iter([(
-        http::header::CONTENT_DISPOSITION,
-        format!(
-            "attachment; filename=\"{}.tar{}\"",
-            filename(id),
-            compression.ext()
-        )
-        .parse()
-        .unwrap(),
-    )]);
+    let headers = format!(
+        "attachment; filename=\"{}.tar{}\"",
+        filename(id),
+        compression.ext()
+    )
+    .parse()
+    .map(|header| HeaderMap::from_iter([(http::header::CONTENT_DISPOSITION, header)]))
+    .ok();
 
-    Ok(FileResponse(Some(headers), data))
+    Ok(FileResponse(headers, data))
 }
 
 fn filename(id: StorageIdentifier) -> String {
@@ -196,7 +193,7 @@ async fn stream_realtime1(
         archive.follow_symlinks(false);
         let (archive, ()) =
             archive.append_dir_all_sandboxed_blocking(&target, "", "/", exclude, (), true)?;
-        archive.into_inner().unwrap().finish()?.flush()?;
+        archive.into_inner()?.finish()?.flush()?;
         Ok::<(), io::Error>(())
     });
     DataStream::by_read(recv)

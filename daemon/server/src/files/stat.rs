@@ -11,13 +11,12 @@ use daemon_common::service::files::FileEntry;
 use daemon_common::service::files::error_file_not_found::FromFileNotFound;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use std::os::fd::OwnedFd;
 use tracing::{debug, error};
 
 /// Cancel safe
 #[inline(always)]
-pub(crate) async fn stat_file<
+pub async fn stat_file<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -30,8 +29,7 @@ pub(crate) async fn stat_file<
     path: String,
 ) -> Result<FileEntry, E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
-            .await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let metadata = storage
@@ -39,7 +37,7 @@ pub(crate) async fn stat_file<
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied => {
-                debug!("Failed to stat file (metadata): {err:?}")
+                debug!("Failed to stat file (metadata): {err:?}");
             }
             _ => error!("Failed to stat file (metadata): {err:?}"),
         })?;

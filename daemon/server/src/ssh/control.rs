@@ -7,6 +7,9 @@ use crate::sync::Mutex;
 use crate::utils::{ChannelWriteData, SyncIOBridgeExt, from_mib};
 use crate::{Daemon, ServerData, utils};
 use chrono::{TimeZone, Utc};
+use core::cmp::{max, min};
+use core::sync::atomic::{AtomicU32, Ordering};
+use core::time::Duration;
 use crossterm::terminal::ClearType;
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::service::server::ServerStats;
@@ -21,12 +24,9 @@ use ratatui::{Frame, Terminal};
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use russh::server::{Msg, Session};
 use russh::{ChannelId, ChannelStream};
-use core::cmp::{max, min};
+use std::io;
 use std::io::{ErrorKind, Write};
 use std::sync::Arc;
-use core::sync::atomic::{AtomicU32, Ordering};
-use core::time::Duration;
-use std::io;
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::error::TryRecvError;
@@ -99,34 +99,33 @@ impl DaemonSSHHandler {
                 session.channel_failure(channel_id)
             }
             Some((channel, _id, cols, rows)) => {
-                let channel = channel.take();
-                if channel.is_none() {
-                    debug!("Channel already taken");
+                let Some(channel) = channel.take() else {
+                    debug!("Channel was already taken");
                     return session.channel_failure(channel_id);
-                }
+                };
                 let cols = match cols {
                     None => {
                         debug!("Size is None on exec");
                         return session.channel_failure(channel_id);
                     }
-                    Some(cols) => cols.clone(),
+                    Some(cols) => Arc::clone(&cols),
                 };
                 let rows = match rows {
                     None => {
                         debug!("Size is None on exec");
                         return session.channel_failure(channel_id);
                     }
-                    Some(rows) => rows.clone(),
+                    Some(rows) => Arc::clone(&rows),
                 };
 
                 let daemon = self.daemon.clone();
                 tokio::task::spawn_blocking(move || {
                     new_control_session(
-                        daemon,
+                        &daemon,
                         internal_server_id,
                         server_id,
                         power,
-                        channel.unwrap().into_stream(),
+                        channel.into_stream(),
                         server_data_arc,
                         cols,
                         rows,
@@ -140,7 +139,7 @@ impl DaemonSSHHandler {
 
 #[expect(clippy::too_many_arguments)]
 fn new_control_session(
-    daemon: Daemon,
+    daemon: &Daemon,
     server_id: u32,
     name: String,
     power: bool,
@@ -363,13 +362,17 @@ fn calc_buttons(
     .enumerate()
     .map(|(pos, (label, enabled))| {
         let pos = pos as u16;
-        let natural_width = ((width - 4) / 4) - 4;
+        let natural_width = width.saturating_sub(4).saturating_div(4).saturating_sub(4);
         let width = min(54, natural_width);
-        let offset = (natural_width - width) / 2;
+        let offset = natural_width.wrapping_sub(width).saturating_div(2);
         let height = 3;
 
         let area = Rect::new(
-            2 + (pos * natural_width) + (pos * 4) + 2 + offset,
+            pos.saturating_mul(natural_width)
+                .saturating_add(2)
+                .saturating_add(pos.saturating_mul(4))
+                .saturating_add(2)
+                .saturating_add(offset),
             5,
             width,
             height,
@@ -423,7 +426,7 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
         .cpu
         .map_or_else(|| "-".to_owned(), |cpu| format!("{:.2} %", cpu * 100.0f64));
     let cpu_max_str = current_stat.cpu_max.map_or_else(
-        || "∞".to_owned(),
+        || "\u{221e}".to_owned(),
         |cpu_max| format!("{:.2} %", cpu_max * 100.0f32),
     );
     let cpu_text = Text::raw(format!("CPU: {cpu_current_str} / {cpu_max_str}"));
@@ -432,24 +435,26 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
         || "-".to_owned(),
         |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64),
     );
-    let ram_max_str = current_stat
-        .ram_max
-        .map_or_else(|| "∞".to_owned(), |ram_max| format!("{} MiB", ram_max));
+    let ram_max_str = current_stat.ram_max.map_or_else(
+        || "\u{221e}".to_owned(),
+        |ram_max| format!("{} MiB", ram_max),
+    );
     let mem_text = Text::raw(format!("RAM: {ram_current_str} / {ram_max_str}"));
 
     let swap_current_str = current_stat.swap.map_or_else(
         || "-".to_owned(),
         |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64),
     );
-    let swap_max_str = current_stat
-        .swap_max
-        .map_or_else(|| "∞".to_owned(), |swap_max| format!("{swap_max} MiB"));
-    let swap_text = Text::raw(format!("Swap: {} / {}", swap_current_str, swap_max_str));
+    let swap_max_str = current_stat.swap_max.map_or_else(
+        || "\u{221e}".to_owned(),
+        |swap_max| format!("{swap_max} MiB"),
+    );
+    let swap_text = Text::raw(format!("Swap: {swap_current_str} / {swap_max_str}"));
 
     let disk_current_str = current_stat.disk.map_or_else(
         || "-".to_owned(),
         |disk| {
-            let disk = disk as f64 / 1_048_576.0;
+            let disk = disk as f64 / 1_048_576.0f64;
             if disk > 1024.0f64 {
                 format!("{:.2} GiB", disk / 1024.0f64)
             } else {
@@ -458,7 +463,7 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
         },
     );
     let disk_max_str = current_stat.disk_max.map_or_else(
-        || "∞".to_owned(),
+        || "\u{221e}".to_owned(),
         |disk_max| {
             if disk_max > 1024u64 {
                 format!("{:.2} GiB", disk_max as f64 / 1024.0f64)
@@ -490,7 +495,12 @@ fn draw_chart_stats(
         .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(Color::White));
 
-    let stats_area = Rect::new(1, 9, width - 2, min(24, height - 10));
+    let stats_area = Rect::new(
+        1,
+        9,
+        width.saturating_sub(2),
+        min(24, height.saturating_sub(10)),
+    );
 
     let stats = Layout::new(
         Direction::Horizontal,
@@ -501,8 +511,12 @@ fn draw_chart_stats(
 
     frame.render_widget(stats_border, stats_area);
 
-    draw_cpu_chart(frame, cpu, current_stat, stats[0]);
-    draw_mem_chart(frame, ram, swap, current_stat, stats[1]);
+    if let Some(area) = stats.get(0) {
+        draw_cpu_chart(frame, cpu, current_stat, *area);
+    }
+    if let Some(area) = stats.get(1) {
+        draw_mem_chart(frame, ram, swap, current_stat, *area);
+    }
 }
 
 fn draw_cpu_chart(
@@ -513,27 +527,21 @@ fn draw_cpu_chart(
 ) {
     let cpu_peak = current_stat
         .cpu_max
-        .map(f64::from)
-        .unwrap_or(50.0f64)
-        .max(
-            cpu.iter()
-                .copied()
-                .filter_map(std::convert::identity)
-                .fold(0.0, |a, b| a.max(b)),
-        )
+        .map_or(50.0f64, f64::from)
+        .max(cpu.iter().copied().flatten().fold(0.0f64, f64::max))
         .max(50.0f64);
-    let cpu_peak_divided_by_50 = (cpu_peak / 50.0) as u16;
-    let mut cpu_peak_multiplied = cpu_peak_divided_by_50 * 50;
-    if cpu_peak > cpu_peak_multiplied as f64 {
-        cpu_peak_multiplied += 50;
+    let cpu_peak_divided_by_50 = (cpu_peak / 50.0f64) as u16;
+    let mut cpu_peak_multiplied = cpu_peak_divided_by_50 * 50u16;
+    if cpu_peak > f64::from(cpu_peak_multiplied) {
+        cpu_peak_multiplied += 50u16;
     }
 
     let cpu_data: Vec<_> = cpu
         .iter()
-        .skip(90)
+        .skip(90usize)
         .copied()
         .enumerate()
-        .map(|(index, cpu)| (index as f64, cpu.map(|cpu| cpu as f64).unwrap_or(-1f64)))
+        .map(|(index, cpu)| (index as f64, cpu.unwrap_or(-1f64)))
         .collect();
     let cpu = Chart::new(vec![
         Dataset::default()
@@ -545,7 +553,7 @@ fn draw_cpu_chart(
     .x_axis(Axis::default().bounds([0.0, 30.0]).labels(["30s", "0s"]))
     .y_axis(
         Axis::default()
-            .bounds([0.0, cpu_peak_multiplied as f64])
+            .bounds([0.0f64, f64::from(cpu_peak_multiplied)])
             .labels(["0%".into(), format!("{}%", cpu_peak_multiplied)]),
     )
     .block(
@@ -558,27 +566,35 @@ fn draw_cpu_chart(
         .cpu
         .map_or_else(|| "-".to_owned(), |cpu| format!("{:.2} %", cpu * 100.0f64));
     let cpu_max_str = current_stat.cpu_max.map_or_else(
-        || "∞".to_owned(),
+        || "\u{221e}".to_owned(),
         |cpu_max| format!("{:.2} %", cpu_max * 100.0f32),
     );
-    let cpu_text =
-        Text::raw(format!("CPU: {} / {}", cpu_current_str, cpu_max_str)).fg(Color::Yellow);
+    let cpu_text = Text::raw(format!("CPU: {cpu_current_str} / {cpu_max_str}")).fg(Color::Yellow);
     let cpu_text_block = Block::bordered().border_style(Style::new().fg(Color::White));
 
     frame.render_widget(cpu, area);
-    area.x += 1;
-    area.y += 1;
+    area.x = area.x.saturating_add(1);
+    area.y = area.y.saturating_add(1);
     area.height = 1;
 
     let cpu_text_width = cpu_text.width() as u16;
-    let cpu_text_x = (area.x + area.width) - (2 + cpu_text_width) - 2;
+    let cpu_text_x = area
+        .x
+        .saturating_add(area.width)
+        .saturating_sub(4)
+        .saturating_sub(cpu_text_width);
     frame.render_widget(
         cpu_text_block,
-        Rect::new(cpu_text_x, area.y, 2 + cpu_text_width, 3),
+        Rect::new(cpu_text_x, area.y, cpu_text_width.saturating_add(2), 3),
     );
     frame.render_widget(
         cpu_text,
-        Rect::new(cpu_text_x + 1, area.y + 1, cpu_text_width, 1),
+        Rect::new(
+            cpu_text_x.saturating_add(1),
+            area.y.saturating_add(1),
+            cpu_text_width,
+            1,
+        ),
     );
 }
 
@@ -589,23 +605,23 @@ fn draw_mem_chart(
     current_stat: &ServerStats,
     mut area: Rect,
 ) {
-    let mem_peak = (current_stat.ram_max.unwrap_or(512) as u64)
+    let mem_peak = u64::from(current_stat.ram_max.unwrap_or(512u32))
         .max(
             ram.iter()
                 .copied()
-                .filter_map(std::convert::identity)
+                .flatten()
                 .fold(0, |a, b| from_mib(a).max(b)),
         )
         .max(
             swap.iter()
                 .copied()
-                .filter_map(std::convert::identity)
+                .flatten()
                 .fold(0, |a, b| from_mib(a).max(b)),
         )
-        .max(512);
+        .max(512u64);
     let mut mem_peak_power_of_2 = 0u16;
-    while ((1 << mem_peak_power_of_2) as u64) < mem_peak {
-        mem_peak_power_of_2 += 1;
+    while u64::from(1u16 << mem_peak_power_of_2) < mem_peak {
+        mem_peak_power_of_2 = mem_peak_power_of_2.saturating_add(1);
     }
 
     let ram_color = Color::Yellow;
@@ -613,17 +629,17 @@ fn draw_mem_chart(
 
     let ram_data: Vec<_> = ram
         .iter()
-        .skip(90)
+        .skip(90usize)
         .copied()
         .enumerate()
-        .map(|(index, mem)| (index as f64, mem.map(|mem| mem as f64).unwrap_or(-1f64)))
+        .map(|(index, mem)| (index as f64, mem.map_or(-1f64, |mem| mem as f64)))
         .collect();
     let swap_data: Vec<_> = swap
         .iter()
         .skip(90)
         .copied()
         .enumerate()
-        .map(|(index, mem)| (index as f64, mem.map(|mem| mem as f64).unwrap_or(-1f64)))
+        .map(|(index, mem)| (index as f64, mem.map_or(-1f64, |mem| mem as f64)))
         .collect();
 
     let mem = Chart::new(vec![
@@ -638,11 +654,15 @@ fn draw_mem_chart(
             .marker(Marker::Braille)
             .data(&swap_data),
     ])
-    .x_axis(Axis::default().bounds([0.0, 30.0]).labels(["30s", "0s"]))
+    .x_axis(
+        Axis::default()
+            .bounds([0.0f64, 30.0f64])
+            .labels(["30s", "0s"]),
+    )
     .y_axis(
         Axis::default()
-            .bounds([0.0, (1 << mem_peak_power_of_2) as f64])
-            .labels(["0M".into(), format!("{}M", 1 << mem_peak_power_of_2)]),
+            .bounds([0.0f64, f64::from(1u16 << mem_peak_power_of_2)])
+            .labels(["0M".into(), format!("{}M", 1u16 << mem_peak_power_of_2)]),
     )
     .block(
         Block::bordered()
@@ -656,39 +676,53 @@ fn draw_mem_chart(
     );
     let ram_max_str = current_stat
         .ram_max
-        .map_or_else(|| "∞".to_owned(), |ram_max| format!("{} MiB", ram_max));
+        .map_or_else(|| "\u{221e}".to_owned(), |ram_max| format!("{ram_max} MiB"));
 
     let swap_current_str = current_stat.swap.map_or_else(
         || "-".to_owned(),
         |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64),
     );
-    let swap_max_str = current_stat
-        .swap_max
-        .map_or_else(|| "∞".to_owned(), |swap_max| format!("{swap_max} MiB"));
+    let swap_max_str = current_stat.swap_max.map_or_else(
+        || "\u{221e}".to_owned(),
+        |swap_max| format!("{swap_max} MiB"),
+    );
 
-    let ram_text = Text::raw(format!("RAM: {} / {}", ram_current_str, ram_max_str)).fg(ram_color);
-    let swap_text =
-        Text::raw(format!("SWP: {} / {}", swap_current_str, swap_max_str)).fg(swap_color);
+    let ram_text = Text::raw(format!("RAM: {ram_current_str} / {ram_max_str}")).fg(ram_color);
+    let swap_text = Text::raw(format!("SWP: {swap_current_str} / {swap_max_str}")).fg(swap_color);
     let mem_text_block = Block::bordered().border_style(Style::new().fg(Color::White));
 
     frame.render_widget(mem, area);
-    area.x += 1;
-    area.y += 1;
+    area.x = area.x.saturating_add(1);
+    area.y = area.y.saturating_add(1);
     area.height = 1;
 
     let cpu_text_width = max(ram_text.width() as u16, swap_text.width() as u16);
-    let cpu_text_x = (area.x + area.width) - (2 + cpu_text_width) - 2;
+    let cpu_text_x = area
+        .x
+        .saturating_add(area.width)
+        .saturating_sub(4)
+        .saturating_sub(cpu_text_width);
     frame.render_widget(
         mem_text_block,
-        Rect::new(cpu_text_x, area.y, 2 + cpu_text_width, 4),
+        Rect::new(cpu_text_x, area.y, cpu_text_width.saturating_add(2), 4),
     );
     frame.render_widget(
         ram_text,
-        Rect::new(cpu_text_x + 1, area.y + 1, cpu_text_width, 1),
+        Rect::new(
+            cpu_text_x.saturating_add(1),
+            area.y.saturating_add(1),
+            cpu_text_width,
+            1,
+        ),
     );
     frame.render_widget(
         swap_text,
-        Rect::new(cpu_text_x + 1, area.y + 2, cpu_text_width, 1),
+        Rect::new(
+            cpu_text_x.saturating_add(1),
+            area.y.saturating_add(2),
+            cpu_text_width,
+            1,
+        ),
     );
 }
 
@@ -769,7 +803,8 @@ impl<T: AsyncWrite + Unpin> SyncIOBridgeExt<T>
     for CustomSizedCrosstermBackendWrapper<&mut SyncIoBridge<T>>
 {
     fn inner_mut(&mut self) -> &mut T {
-        let backend_raw_copy = std::ptr::from_mut(&mut self.0).cast::<CrosstermBackendCopy<&mut SyncIoBridge<T>>>();
+        let backend_raw_copy =
+            core::ptr::from_mut(&mut self.0).cast::<CrosstermBackendCopy<&mut SyncIoBridge<T>>>();
         unsafe { &mut *backend_raw_copy }.writer.inner_mut()
     }
 }
@@ -800,13 +835,15 @@ async fn read(
     }
 
     if power {
-        let size = u8::from(start) + u8::from(stop) + u8::from(restart) + u8::from(kill);
+        let size = [start, stop, restart, kill].into_iter().map(u8::from).sum();
 
         let mut block = false;
         if *selected >= size {
             block = true;
-            while *selected >= size && size != 0 {
-                *selected -= 1;
+            while *selected >= size
+                && let Some(selected_checked) = selected.checked_sub(1)
+            {
+                *selected = selected_checked;
             }
         }
         if block {
@@ -817,8 +854,10 @@ async fn read(
         // Start - stop - restart - kill
         for event in events.drain(..) {
             match event {
-                Event::ArrowLeft if *selected > 0 => *selected -= 1,
-                Event::ArrowRight if (*selected + 1) < size => *selected += 1,
+                Event::ArrowLeft if *selected > 0 => *selected = selected.saturating_sub(1),
+                Event::ArrowRight if (selected.saturating_add(1)) < size => {
+                    *selected = selected.saturating_add(1);
+                }
                 Event::Enter if *selected < size => {
                     launch_selected(
                         daemon.clone(),
@@ -969,7 +1008,9 @@ async fn read_inner(
         if size == 0 {
             return Err(io::Error::new(ErrorKind::UnexpectedEof, "Size is zero"));
         }
-        let data = &buf[0..size];
+        let data = buf.get(0..size).ok_or_else(|| {
+            io::Error::new(ErrorKind::InvalidData, "Read size larger than buffer")
+        })?;
         for byte in data {
             ring1.push(*byte);
             ring2.push(*byte);

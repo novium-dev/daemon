@@ -8,12 +8,11 @@ use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use tracing::{debug, error};
 
 /// Cancel safe
 #[inline(always)]
-pub(crate) async fn symlink_file<
+pub async fn symlink_file<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -26,8 +25,7 @@ pub(crate) async fn symlink_file<
     content: String,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
-            .await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     storage

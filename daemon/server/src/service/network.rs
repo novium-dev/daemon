@@ -42,7 +42,7 @@ impl NetworkService for Daemon {
             Ok::<_, DeleteNetworkError>(())
         })
         .await
-        .expect("Network deletion task paniced")?;
+        .expect("Network deletion task panicked")?;
 
         Ok(())
     }

@@ -1,7 +1,7 @@
 use crate::server::start::ServerStartError;
 use crate::server::{FetchedServer, Server};
 use crate::{Daemon, ServerData};
-use async_std::stream::StreamExt;
+use async_std::stream::StreamExt as _;
 use bollard::Docker;
 use bollard::query_parameters::{BuildImageOptions, ListImagesOptions};
 use http_body_util::Full;
@@ -14,15 +14,15 @@ use termion::clear;
 use tracing::debug;
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct BuildImage {
-    pub(crate) tag: String,
-    pub(crate) dockerfile: String,
-    pub(crate) args: HashMap<String, String>,
-    pub(crate) parents: Vec<BuildImage>,
+pub struct BuildImage {
+    pub tag: String,
+    pub dockerfile: String,
+    pub args: HashMap<String, String>,
+    pub parents: Vec<BuildImage>,
 }
 
 impl Server {
-    pub(crate) async fn resolve_image(
+    pub async fn resolve_image(
         &self,
         conn: impl Executor<'_, Database = MySql> + Copy,
         id: u64,
@@ -35,10 +35,9 @@ impl Server {
         .fetch_one(conn)
         .await?;
 
-        let tag = match (tags.get(&id).cloned(), image.default_tag) {
-            (Some(tag), _) => tag,
-            (None, Some(tag)) => tag,
-            (None, None) => return Err(sqlx::Error::RowNotFound),
+        let ((Some(tag), _) | (None, Some(tag))) = (tags.get(&id).cloned(), image.default_tag)
+        else {
+            return Err(sqlx::Error::RowNotFound);
         };
         let args: HashMap<String, String> = query!(
             "SELECT `key`,`value` FROM `server_image_args` WHERE `image` = ? AND `server` = ?",
@@ -71,7 +70,7 @@ impl Server {
 }
 
 impl BuildImage {
-    pub fn required(&self) -> IndexMap<String, &BuildImage> {
+    pub fn required(&self) -> IndexMap<String, &Self> {
         let mut map = IndexMap::new();
         for parent in &self.parents {
             map.extend(parent.required());
@@ -82,7 +81,7 @@ impl BuildImage {
 }
 
 impl FetchedServer {
-    pub(crate) async fn prepare_image(
+    pub async fn prepare_image(
         &self,
         state: &Daemon,
         docker: &Docker,
@@ -135,7 +134,7 @@ impl FetchedServer {
                 let dockerfile = {
                     let dockerfile = image.dockerfile.as_bytes();
                     let mut header = Header::new_gnu();
-                    header.set_path("Dockerfile").unwrap();
+                    header.set_path("Dockerfile")?;
                     header.set_size(dockerfile.len() as u64);
                     header.set_cksum();
                     let mut ar = Builder::new(Vec::new());
@@ -147,7 +146,7 @@ impl FetchedServer {
                 let mut args = image.args.clone();
                 if args.get("BACKEND_URL").eq(&Some(&String::new())) {
                     args.insert(
-                        "BACKEND_URL".to_string(),
+                        "BACKEND_URL".to_owned(),
                         state.config.backend_url.join("/").unwrap().to_string(),
                     );
                 }
@@ -188,7 +187,8 @@ impl FetchedServer {
                             termion::cursor::Up(if last_progress.is_empty() {
                                 0
                             } else {
-                                last_progress.len() as u16 + 1
+                                u16::try_from(last_progress.len().saturating_add(1))
+                                    .unwrap_or_default()
                             })
                         );
 
@@ -196,8 +196,7 @@ impl FetchedServer {
                         for (id, (progress, status)) in sort_vec
                             .iter()
                             .map(|key| (key, progress_map.get(key)))
-                            .filter(|(_, opt)| opt.is_some())
-                            .map(|(key, opt)| (key, opt.unwrap()))
+                            .filter_map(|(key, opt)| opt.map(|opt| (key, opt)))
                         {
                             let mut msg_intermediate = String::new();
                             msg_intermediate += clear::CurrentLine.as_ref();

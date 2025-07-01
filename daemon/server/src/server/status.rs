@@ -7,11 +7,12 @@ use bollard::Docker;
 use bollard::models::HealthStatusEnum;
 use bollard::query_parameters::{InspectContainerOptions, ListContainersOptions};
 use chrono::DateTime;
+use core::fmt::{Display, Formatter};
 use daemon_common::service::server::PublicServerState;
 use serde::{Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
+use std::io;
 use std::sync::Arc;
 use tokio::sync::broadcast::Sender;
 use utoipa::openapi::{RefOr, Schema};
@@ -78,35 +79,50 @@ impl FetchedServer {
                 .map(|time| time.to_utc().timestamp_millis())
                 .unwrap_or_default();
 
-            let state = inspect.state.unwrap();
-            Ok(if !state.running.unwrap() {
+            let Some(state) = inspect.state else {
+                return Err(bollard::errors::Error::IOError {
+                    err: io::Error::other("state is missing"),
+                });
+            };
+            let Some(running) = state.running else {
+                return Err(bollard::errors::Error::IOError {
+                    err: io::Error::other("state.running is missing"),
+                });
+            };
+            Ok(if !running {
                 if locks.is_empty() {
                     InternalServerState::Stopped
                 } else {
                     InternalServerState::Locked
                 }
-            } else if server_data.map(|data| data.stopping).unwrap_or_default() {
-                if server_data.unwrap().restart {
+            } else if let Some(server_data) = server_data
+                && server_data.stopping
+            {
+                if server_data.restart {
                     InternalServerState::Restarting(created)
                 } else {
                     InternalServerState::Stopping(created)
                 }
-            } else if let Some(health) = state.health {
+            } else if let Some(mut health) = state.health {
                 let healthcheck = health
                     .log
-                    .map(|mut log| log.pop())
+                    .as_mut()
+                    .map(Vec::pop)
                     .unwrap_or_default()
                     .map(|result| result.output)
                     .unwrap_or_default();
 
-                match health.status.unwrap() {
-                    HealthStatusEnum::STARTING => {
+                match health.status {
+                    Some(HealthStatusEnum::STARTING) => {
                         InternalServerState::Starting(created, healthcheck)
                     }
-                    HealthStatusEnum::HEALTHY
-                    | HealthStatusEnum::EMPTY
-                    | HealthStatusEnum::NONE => InternalServerState::Running(created, healthcheck),
-                    HealthStatusEnum::UNHEALTHY => {
+                    Some(
+                        HealthStatusEnum::HEALTHY
+                        | HealthStatusEnum::EMPTY
+                        | HealthStatusEnum::NONE,
+                    )
+                    | None => InternalServerState::Running(created, healthcheck),
+                    Some(HealthStatusEnum::UNHEALTHY) => {
                         InternalServerState::Unhealthy(created, healthcheck)
                     }
                 }
@@ -146,11 +162,11 @@ impl ToSchema for InternalServerState {
 }
 
 impl InternalServerState {
-    pub(crate) fn start(&self) -> bool {
+    pub const fn start(&self) -> bool {
         matches!(self, InternalServerState::Stopped)
     }
 
-    pub(crate) fn stop(&self) -> bool {
+    pub const fn stop(&self) -> bool {
         !matches!(
             self,
             InternalServerState::Stopped
@@ -160,21 +176,21 @@ impl InternalServerState {
         )
     }
 
-    pub(crate) fn kill(&self) -> bool {
+    pub const fn kill(&self) -> bool {
         !matches!(
             self,
             InternalServerState::Stopped | InternalServerState::Locked
         )
     }
 
-    pub(crate) fn kill_show(&self) -> bool {
+    pub const fn kill_show(&self) -> bool {
         matches!(
             self,
             InternalServerState::Stopping(_) | InternalServerState::Restarting(_)
         )
     }
 
-    pub(crate) fn since(&self) -> Option<i64> {
+    pub const fn since(&self) -> Option<i64> {
         match self {
             InternalServerState::Restarting(time)
             | InternalServerState::Running(time, _)

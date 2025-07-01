@@ -5,7 +5,7 @@ use async_std::prelude::Stream;
 use bollard::Docker;
 use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, StartExecResults};
-use std::pin::Pin;
+use core::pin::Pin;
 use tokio::io::AsyncWrite;
 
 impl FetchedServer {

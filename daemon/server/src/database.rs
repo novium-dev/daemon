@@ -134,12 +134,7 @@ impl DatabasePayloadFunctionExt for DatabaseState {
         Ok(self.update_unvalidated(id, name_suffix, to))
     }
 
-    fn update_unvalidated(
-        &mut self,
-        id: u32,
-        name: String,
-        to: Self,
-    ) -> MultiTransactionApply {
+    fn update_unvalidated(&mut self, id: u32, name: String, to: Self) -> MultiTransactionApply {
         let mut transaction = MultiTransactionApply::default();
 
         let mut remove_server = HashSet::new();
@@ -262,7 +257,7 @@ impl DatabasePayloadFunctionExt for DatabaseState {
                     perm_name,
                     format!("server_{server}"),
                     "%",
-                ), vec![query!("UPDATE `database_passwordless` SET `permissions` = ? WHERE `database` = ? AND `server` = ?", applied.bits(), id, server)])
+                ), vec![query!("UPDATE `database_passwordless` SET `permissions` = ? WHERE `database` = ? AND `server` = ?", applied.bits(), id, server)]);
             }
             transaction.add(
                 sql::grant_proxy(format!("server_{server}"), "%", "server", "%"),

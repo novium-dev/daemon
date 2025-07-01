@@ -18,7 +18,6 @@ use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached
 use daemon_common::service::server::ServerFileWrite;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt, BufWriter};
@@ -27,7 +26,7 @@ use tracing::{debug, error, warn};
 use url::Url;
 
 /// Cancel safe
-pub(crate) async fn write_file<
+pub async fn write_file<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -43,8 +42,7 @@ pub(crate) async fn write_file<
     let _length = length.map(|header| header.0.0);
 
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
-            .await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let mut reader = stream.reader();
@@ -76,7 +74,7 @@ pub(crate) async fn write_file<
 
 /// Cancel safe
 #[inline(always)]
-pub(crate) async fn write_file_by_template<
+pub async fn write_file_by_template<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -93,8 +91,7 @@ pub(crate) async fn write_file_by_template<
     template: ServerFileWrite,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
-            .await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
 
@@ -123,7 +120,7 @@ pub(crate) async fn write_file_by_template<
 
 /// Cancel safe
 #[inline(always)]
-pub(crate) async fn write_file_by_url<
+pub async fn write_file_by_url<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -141,8 +138,7 @@ pub(crate) async fn write_file_by_url<
     url: Url,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
-            .await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     tokio::task::spawn(write_file_by_url0::<E>(daemon.clone(), storage, path, url))

@@ -2,12 +2,12 @@ use crate::server::image::BuildImage;
 use crate::server::network::{AssignedNetwork, Port};
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
+use core::fmt::{Display, Formatter};
 use daemon_common::service::server::ServerFileWrite;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::{Database, Decode, Encode, Executor, MySql, Pool, query, query_as, query_scalar};
 use std::collections::{HashMap, HashSet};
-use core::fmt::{Display, Formatter};
 use std::io;
 
 pub mod exec;
@@ -100,7 +100,7 @@ impl Server {
 
         let ports: Vec<Port> = query_as!(
             Port,
-            "SELECT `internal_port`,`external_port`,`external_ip`,`protocol` FROM `server_ports` WHERE `server` = ?",
+            "SELECT `internal_port` AS `internal`,`external_port` AS `external`,`external_ip`,`protocol` FROM `server_ports` WHERE `server` = ?",
             self.id
         )
         .fetch_all(conn)

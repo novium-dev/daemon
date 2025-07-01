@@ -39,18 +39,14 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::debug;
 
+pub struct ResolvedPath {
+    pub storage: Option<(Arc<Dir>, BackendAuthServerPermissions)>,
+    pub temp_prefix: Vec<String>,
+    pub temp_suffix: Vec<String>,
+}
+
 impl DaemonSftpSession {
-    pub(crate) fn resolve_path(
-        &self,
-        mut path: String,
-    ) -> Result<
-        (
-            Option<(Arc<Dir>, BackendAuthServerPermissions)>,
-            Vec<String>,
-            Vec<String>,
-        ),
-        StatusCode,
-    > {
+    pub(crate) fn resolve_path(&self, mut path: String) -> Result<ResolvedPath, StatusCode> {
         debug!("Path0 {}", path);
         // Resolving ..
         let (shorten, ends_with_slash) =
@@ -77,11 +73,11 @@ impl DaemonSftpSession {
         {
             last.push('/');
         }
-        Ok((
-            storage.map(|(dir, perms, _)| (Arc::clone(dir), *perms)),
+        Ok(ResolvedPath {
+            storage: storage.map(|(dir, perms, _)| (Arc::clone(dir), *perms)),
             temp_prefix,
             temp_suffix,
-        ))
+        })
     }
 
     pub(crate) fn sandboxed_path(
@@ -89,7 +85,11 @@ impl DaemonSftpSession {
         path: String,
         required: BackendAuthServerPermissions,
     ) -> Result<(Arc<Dir>, PathBuf), StatusCode> {
-        let (storage, _, temp_suffix) = self.resolve_path(path)?;
+        let ResolvedPath {
+            storage,
+            temp_suffix,
+            ..
+        } = self.resolve_path(path)?;
 
         match storage {
             None => Err(StatusCode::NoSuchFile),

@@ -61,6 +61,13 @@ pub async fn create_backup_order<
     }
 }
 
+#[cfg_attr(
+    not(feature = "btrfs"),
+    expect(
+        clippy::missing_const_for_fn,
+        reason = "non-const fn .eq used with btrfs"
+    )
+)]
 fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
     match (storage, backup) {
         #[cfg(feature = "btrfs")]

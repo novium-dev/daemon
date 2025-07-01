@@ -145,7 +145,7 @@ impl ServerService for Daemon {
                 Ok(())
             })
             .await
-            .expect("Server delete task paniced"),
+            .expect("Server delete task panicked"),
             Err(_) => {
                 debug!("Timeout using Server data lock");
                 Err(DeleteServerError::ServerMutexLocked)

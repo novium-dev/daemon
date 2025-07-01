@@ -68,7 +68,7 @@ impl ScheduleService for Daemon {
                 .schedules
                 .insert(id, handle);
             Ok(id)
-        }).await.expect("Schedule create task paniced")
+        }).await.expect("Schedule create task panicked")
     }
 
     async fn update_schedule(
@@ -142,7 +142,7 @@ impl ScheduleService for Daemon {
             drop(schedules);
 
             Ok(())
-        }).await.expect("Schedule update task paniced")
+        }).await.expect("Schedule update task panicked")
     }
 
     async fn delete_schedule(
@@ -176,6 +176,6 @@ impl ScheduleService for Daemon {
             Ok(())
         })
         .await
-        .expect("Delete schedule task paniced")
+        .expect("Delete schedule task panicked")
     }
 }

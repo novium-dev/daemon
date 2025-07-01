@@ -203,12 +203,8 @@ impl Handler for DaemonSSHHandler {
                         });
                         drop(servers);
 
-                        crate::terminal::update_size(
-                            *id,
-                            &self.daemon.docker,
-                            server_data_arc,
-                        )
-                        .await;
+                        crate::terminal::update_size(*id, &self.daemon.docker, server_data_arc)
+                            .await;
                     }
                 }
                 session.channel_success(channel_id)

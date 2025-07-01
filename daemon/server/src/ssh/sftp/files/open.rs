@@ -1,3 +1,4 @@
+use crate::ssh::sftp::files::ResolvedPath;
 use crate::ssh::sftp::{DaemonSftpSession, FileHandle, internal_directory_attributes, sftp_err};
 use cap_async_std::fs::*;
 use daemon_common::node::BackendAuthServerPermissions;
@@ -28,7 +29,11 @@ pub async fn open_handle(
     path: String,
     options: &OpenOptions,
 ) -> Result<(String, FileHandle), StatusCode> {
-    let (storage, temp_prefix, temp_suffix) = session.resolve_path(path)?;
+    let ResolvedPath {
+        storage,
+        temp_prefix,
+        temp_suffix,
+    } = session.resolve_path(path)?;
     match storage {
         None => open_internal(session, &temp_prefix),
         Some((dir, permissions)) => open_regular(dir, options, permissions, &temp_suffix).await,

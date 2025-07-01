@@ -82,7 +82,7 @@ impl<R: Read + Send + 'static> TarSandboxedUnpackExt for Archive<R> {
                 Ok(lock)
             })
             .join()
-            .expect("Archive unpack task paniced")
+            .expect("Archive unpack task panicked")
         })
         .await?
     }
@@ -154,7 +154,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
             Ok((self, lock))
         })
         .join()
-        .unwrap()
+        .expect("Archive create task panicked")
     }
 }
 
