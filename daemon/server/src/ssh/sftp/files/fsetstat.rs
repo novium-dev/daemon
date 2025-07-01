@@ -22,13 +22,13 @@ pub async fn fsetstat(
                 .into_std()
                 .into();
             fsetstat_regular(
-                &mut tokio::fs::File::from_std(std::fs::File::from(file)),
+                &tokio::fs::File::from_std(std::fs::File::from(file)),
                 permissions,
                 size,
             )
             .await
         }
-        FileHandle::Internal(..) => Ok(()),
+        FileHandle::Internal(..) | FileHandle::Empty => Ok(()),
     }
     .inspect_err(|err| error!("Failed to fsetstat: {:?}", err))
     .map_err(sftp_err)

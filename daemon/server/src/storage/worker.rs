@@ -5,15 +5,15 @@ use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
 use crate::utils::ChannelWriteData;
 use crate::{Daemon, StorageData};
+use core::sync::atomic::{AtomicI64, Ordering};
+use core::time::Duration;
 use daemon_common::service::server::ServerStats;
 use sqlx::query;
 use std::collections::HashMap;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::TryRecvError;
@@ -21,11 +21,11 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 use tracing::warn;
 
-pub(crate) async fn run(daemon: Daemon) {
+pub async fn run(daemon: Daemon) {
     for (storage_id, storage_entry) in daemon.config.storage.clone() {
         let mut server_task = daemon.server_task_cancellable.lock().await;
         let daemon = daemon.clone();
-        server_task.spawn_blocking(move || watch(daemon, storage_id, storage_entry));
+        server_task.spawn_blocking(move || watch(&daemon, &storage_id, &storage_entry));
     }
 }
 
@@ -52,7 +52,7 @@ async fn resolve(
         "SELECT `id`, `cpu`, `ram`, `swap`, `disk` FROM `servers` WHERE `storage` = ?",
         &storage_id
     )
-    .fetch_all(state.conn.deref())
+    .fetch_all(&*state.conn)
     .await
     {
         Ok(servers) => servers
@@ -76,12 +76,15 @@ async fn resolve(
         let mut storages = state.storages.lock().await; // acquire lock multiple times, because the try_exists probably takes some time
         let storage_data = storages
             .entry(identifier)
-            .or_insert(StorageData {
+            .or_insert_with(|| StorageData {
                 lock: Arc::default(),
                 stats_lock: Arc::default(),
                 value: Arc::new((
                     AtomicI64::new(-1),
-                    AtomicI64::new(disk.map(|i| i as i64).unwrap_or(-1)),
+                    AtomicI64::new(
+                        disk.filter(|i| *i <= i64::MAX.unsigned_abs())
+                            .map_or(-1, u64::cast_signed),
+                    ),
                 )),
             })
             .clone();
@@ -91,7 +94,7 @@ async fn resolve(
         drop(servers);
         let sender = match server {
             None => None,
-            Some(sender) => Some(sender.lock().await.stats_sender.clone()),
+            Some(sender) => Some(Arc::clone(&sender.lock().await.stats_sender)),
         };
         available.insert(
             identifier,
@@ -102,23 +105,25 @@ async fn resolve(
     Some(available)
 }
 
-pub(crate) fn watch(daemon: Daemon, storage_id: String, storage_entry: StorageEntry) {
+pub fn watch(daemon: &Daemon, storage_id: &str, storage_entry: &StorageEntry) {
     let mut last = SystemTime::UNIX_EPOCH;
     let mut recv = daemon.shutdown_channel.subscribe();
-    while let Err(TryRecvError::Empty) = recv.try_recv() {
+    while recv.try_recv() == Err(TryRecvError::Empty) {
         let Some(storages) =
-            Handle::current().block_on(resolve(&daemon, storage_id.clone(), &storage_entry))
+            Handle::current().block_on(resolve(daemon, storage_id.to_owned(), storage_entry))
         else {
             thread::sleep(Duration::from_secs(30));
             continue;
         };
 
+        #[cfg_attr(
+            not(feature = "btrfs"),
+            expect(unused_mut, reason = "only used currently with btrfs enabled")
+        )]
         let mut quota = false;
         #[cfg(feature = "btrfs")]
         if let StorageEntry::Btrfs {
-            quota: true,
-            ref path,
-            ..
+            quota: true, path, ..
         } = storage_entry
         {
             use std::fs::File;
@@ -163,32 +168,31 @@ pub(crate) fn watch(daemon: Daemon, storage_id: String, storage_entry: StorageEn
                 };
                 match fs_extra::dir::get_size(path) {
                     Ok(size) => {
-                        let size = if size > i64::MAX as u64 {
+                        let size = if size > i64::MAX.unsigned_abs() {
                             -1
                         } else {
-                            size as i64
+                            size.cast_signed()
                         };
                         data.value.0.store(size, Ordering::Relaxed);
                         let allowed = data.value.1.load(Ordering::Relaxed);
                         let exceeded = (size / 0x0010_0000) > allowed && allowed != -1; // 0x100000 = 1024*1024
-                        if let Some(server_id) = server_id {
+                        if let Some(server_id) = *server_id {
                             if exceeded {
                                 if let Err(err) = Handle::current().block_on(query!("INSERT IGNORE INTO `server_locks` (`server`, `lock`) VALUES (?, 'storage')", server_id)
-                                    .execute(daemon.conn.deref())) {
+                                    .execute(&*daemon.conn)) {
                                     warn!("Unable to lock server {}: {:?}", server_id, err);
                                 }
                                 let servers = daemon.servers.blocking_lock();
-                                if let Some(server) = servers.get(server_id).cloned() {
+                                if let Some(server) = servers.get(&server_id).cloned() {
                                     drop(servers);
-                                    let server_id = *server_id;
-                                    let docker = daemon.docker.clone();
+                                    let docker = Arc::clone(&daemon.docker);
                                     tokio::task::spawn(async move {
                                         let server_data = server.lock_owned().await;
                                         if let Err(err) = FetchedServer::stop(&FetchedServer {
                                             id: server_id,
                                             .. FetchedServer::default()
                                         }, &docker, server_data).await {
-                                            if let ServerStopError::NotRunning = err {
+                                            if matches!(err, ServerStopError::NotRunning) {
                                                 return;
                                             }
                                             warn!("Unable to stop server after lock {}: {:?}", server_id, err);
@@ -196,7 +200,7 @@ pub(crate) fn watch(daemon: Daemon, storage_id: String, storage_entry: StorageEn
                                     });
                                 }
                             } else if let Err(err) = Handle::current().block_on(query!("DELETE FROM `server_locks` WHERE `server` = ? AND `lock` = 'storage'", server_id)
-                                    .execute(daemon.conn.deref())) {
+                                    .execute(&*daemon.conn)) {
                                     warn!("Unable to unlock server {}: {:?}", server_id, err);
                                 } else {
                                 // Sucessfully unlocked the server
@@ -212,15 +216,15 @@ pub(crate) fn watch(daemon: Daemon, storage_id: String, storage_entry: StorageEn
 
         let mut join = JoinSet::new();
         for (_id, (server_id, _path, cpu_max, ram_max, swap_max, data, sender)) in storages {
-            let conn = daemon.conn.clone();
+            let conn = Arc::clone(&daemon.conn);
             join.spawn(async move {
                 let stats_guard = timeout(Duration::from_millis(100), data.stats_lock.lock()).await;
                 if stats_guard.is_ok() {
                     if let Some(stats_sender) = sender {
-                        if !quota && server_id.is_some() {
-                            let locks =
-                                FetchedServer::resolve_locked(server_id.unwrap(), conn.deref())
-                                    .await;
+                        if let Some(server_id) = server_id
+                            && !quota
+                        {
+                            let locks = FetchedServer::resolve_locked(server_id, &conn).await;
                             let _ =
                                 stats_sender.send(ChannelWriteData::Status(if locks.is_empty() {
                                     InternalServerState::Stopped

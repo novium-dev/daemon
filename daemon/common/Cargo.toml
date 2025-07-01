@@ -17,9 +17,9 @@ ssh = ["backend", "dep:serde"]
 docker = [
     "dep:bollard",
     "dep:lazy_static",
-    "dep:regex",
     "dep:tokio",
-    "tokio/fs"
+    "tokio/fs",
+    "dep:lazy-regex"
 ]
 keys = [
     "dep:ed25519-dalek",
@@ -86,10 +86,6 @@ workspace = true
 optional = true
 
 [dependencies.lazy_static]
-workspace = true
-optional = true
-
-[dependencies.regex]
 workspace = true
 optional = true
 
@@ -194,3 +190,8 @@ features = ["utoipa"]
 [dependencies.tokio-util]
 workspace = true
 optional = true
+
+[dependencies.lazy-regex]
+workspace = true
+optional = true
+

@@ -1,16 +1,13 @@
 use core::future::Future;
-use std::sync::Arc;
 use core::panic::Location;
+use std::sync::Arc;
 use tokio::sync::{
     OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock as TokioRwLock, RwLockReadGuard,
     RwLockWriteGuard, TryLockError,
 };
 
 pub type RwLockTraceData = Option<(&'static str, u32, u32, chrono::DateTime<chrono::Utc>, bool)>;
-pub struct TraceableRwLock<T: ?Sized>(
-    Arc<TokioRwLock<T>>,
-    std::sync::Mutex<RwLockTraceData>,
-);
+pub struct TraceableRwLock<T: ?Sized>(Arc<TokioRwLock<T>>, std::sync::Mutex<RwLockTraceData>);
 
 impl<T: ?Sized> TraceableRwLock<T> {
     pub fn new(value: T) -> Self
@@ -48,9 +45,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn read_owned(
-        self: Arc<Self>,
-    ) -> impl Future<Output = OwnedRwLockReadGuard<T>> {
+    pub(crate) fn read_owned(self: Arc<Self>) -> impl Future<Output = OwnedRwLockReadGuard<T>> {
         let location = Location::caller();
         async move {
             let guard = Arc::clone(&self.0).read_owned().await;
@@ -95,9 +90,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn write_owned(
-        self: Arc<Self>,
-    ) -> impl Future<Output = OwnedRwLockWriteGuard<T>> {
+    pub(crate) fn write_owned(self: Arc<Self>) -> impl Future<Output = OwnedRwLockWriteGuard<T>> {
         let location = Location::caller();
         async move {
             let guard = Arc::clone(&self.0).write_owned().await;

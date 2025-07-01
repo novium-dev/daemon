@@ -6,11 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error};
 
-pub async fn symlink(
-    storage: Arc<Dir>,
-    path: PathBuf,
-    content: String,
-) -> Result<(), StatusCode> {
+pub async fn symlink(storage: Arc<Dir>, path: PathBuf, content: String) -> Result<(), StatusCode> {
     let content = PathBuf::from(content);
     storage
         .symlink(content, path)

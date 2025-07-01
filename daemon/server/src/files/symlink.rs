@@ -26,7 +26,8 @@ pub(crate) async fn symlink_file<
     content: String,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
+            .await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     storage

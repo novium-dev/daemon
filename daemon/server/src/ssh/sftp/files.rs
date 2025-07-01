@@ -17,7 +17,7 @@ mod write;
 pub use fsetstat::fsetstat;
 pub use fstat::fstat;
 pub use mkdir::mkdir;
-pub use open::open;
+pub use open::{open, open_handle};
 pub use read::read;
 pub use readdir::readdir;
 pub use readlink::readlink;
@@ -71,12 +71,11 @@ impl DaemonSftpSession {
             }
         }
 
-        if !temp_suffix.is_empty()
+        if let Some(last) = temp_suffix.last_mut()
             && ends_with_slash
-            && !temp_suffix[temp_suffix.len() - 1].ends_with('/')
+            && last.ends_with('/')
         {
-            let index = temp_suffix.len() - 1;
-            temp_suffix[index] = format!("{}/", temp_suffix[index]);
+            last.push('/');
         }
         Ok((
             storage.map(|(dir, perms, _)| (Arc::clone(dir), *perms)),
@@ -114,6 +113,7 @@ impl FileHandle {
             Self::Internal(_, _, perms)
             | Self::RegularFile(_, perms)
             | Self::RegularDir(_, _, _, perms) => perms.contains(required),
+            Self::Empty => true,
         }
     }
 }

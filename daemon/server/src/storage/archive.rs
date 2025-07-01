@@ -1,9 +1,9 @@
-pub(crate) mod compression;
+pub mod compression;
 
 use std::collections::HashSet;
 use std::io::{Error, Read, Write};
 use std::path::{Path, PathBuf};
-use std::{fs, io, mem, thread};
+use std::{fs, io, thread};
 use tar::{Archive, Builder, HeaderMode};
 
 fn chroot(dest: PathBuf) -> Result<(), io::Error> {
@@ -16,7 +16,7 @@ fn chroot(dest: PathBuf) -> Result<(), io::Error> {
     Ok(())
 }
 
-pub trait TarSandboxedUnpackExtension {
+pub trait TarSandboxedUnpackExt {
     async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
         self,
         chroot_dst: P,
@@ -27,7 +27,7 @@ pub trait TarSandboxedUnpackExtension {
         Self: Sized;
 }
 
-pub trait TarSandboxedAppendExtension {
+pub trait TarSandboxedAppendExt {
     async fn append_dir_all_sandboxed<
         P: AsRef<Path>,
         F: AsRef<Path>,
@@ -63,7 +63,7 @@ pub trait TarSandboxedAppendExtension {
         Self: Sized;
 }
 
-impl<R: Read + Send + 'static> TarSandboxedUnpackExtension for Archive<R> {
+impl<R: Read + Send + 'static> TarSandboxedUnpackExt for Archive<R> {
     async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
         mut self,
         chroot_dst: P,
@@ -82,13 +82,13 @@ impl<R: Read + Send + 'static> TarSandboxedUnpackExtension for Archive<R> {
                 Ok(lock)
             })
             .join()
-            .unwrap()
+            .expect("Archive unpack task paniced")
         })
         .await?
     }
 }
 
-impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
+impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
     async fn append_dir_all_sandboxed<
         P: AsRef<Path>,
         F: AsRef<Path>,
@@ -147,7 +147,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExtension for Builder<W> {
 
         thread::spawn(move || {
             chroot(chroot_dst)?;
-            append_dir_all(&mut self, &path, &target_dst, exclude)?;
+            append_dir_all(&mut self, &path, &target_dst, &exclude)?;
             if finish {
                 self.finish()?;
             }
@@ -162,7 +162,7 @@ fn append_dir_all<W: Write>(
     archive: &mut Builder<W>,
     path: &Path,
     src_path: &Path,
-    exclude: HashSet<String>,
+    exclude: &HashSet<String>,
 ) -> io::Result<()> {
     struct BuilderCopy<W: Write> {
         options: BuilderOptionsCopy,
@@ -175,15 +175,15 @@ fn append_dir_all<W: Write>(
         follow: bool,
         sparse: bool,
     }
-    let follow_symlinks = unsafe { mem::transmute::<&tar::Builder<W>, &BuilderCopy<W>>(&*archive) }
-        .options
-        .follow;
+
+    let archive_raw_copy = core::ptr::from_ref(archive).cast::<BuilderCopy<W>>();
+    let follow_symlinks = unsafe { &*archive_raw_copy }.options.follow;
 
     let mut stack = vec![(src_path.to_path_buf(), true, false)];
     while let Some((src, is_dir, is_symlink)) = stack.pop() {
-        let dest = path.join(src.strip_prefix(src_path).unwrap());
+        let dest = path.join(src.strip_prefix(src_path).map_err(io::Error::other)?);
         let mut dest_str = dest.to_string_lossy().to_string();
-        if is_dir && !dest_str.ends_with("/") {
+        if is_dir && !dest_str.ends_with('/') {
             dest_str += "/";
         }
         if exclude.contains(&dest_str) {

@@ -5,11 +5,7 @@ use std::io::SeekFrom;
 use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 use tracing::{debug, error};
 
-pub async fn write(
-    handle: &mut FileHandle,
-    offset: u64,
-    data: Vec<u8>,
-) -> Result<(), StatusCode> {
+pub async fn write(handle: &mut FileHandle, offset: u64, data: Vec<u8>) -> Result<(), StatusCode> {
     match handle {
         FileHandle::RegularFile(file, _) => write_regular(file, offset, data).await,
         _ => {

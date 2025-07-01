@@ -2,17 +2,17 @@ use crate::ServerData;
 use crate::server::status::InternalServerState;
 use crate::server::*;
 use async_trait::async_trait;
+use core::fmt::Debug;
+use core::future::Future;
+use core::marker::PhantomData;
+use core::pin::Pin;
 use daemon_common::service::error_server_not_found::FromServerNotFound;
 use daemon_common::service::server::ServerStats;
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
-use core::fmt::Debug;
-use core::future::Future;
-use core::marker::PhantomData;
+use std::io;
 use std::path::PathBuf;
-use core::pin::Pin;
 use std::sync::Arc;
-use std::{io};
 use tokio_util::io::SyncIoBridge;
 use tracing::error;
 
@@ -49,9 +49,13 @@ pub async fn server(
     let Some(server) = generic_server_select(conn, server_id).await? else {
         return Ok(None);
     };
-    let server_data = Arc::clone(servers.lock().await
-        .entry(server_id)
-        .or_insert_with(|| Arc::new(crate::sync::Mutex::new(ServerData::default()))));
+    let server_data = Arc::clone(
+        servers
+            .lock()
+            .await
+            .entry(server_id)
+            .or_insert_with(|| Arc::new(crate::sync::Mutex::new(ServerData::default()))),
+    );
     Ok(Some((server, server_data)))
 }
 
@@ -60,7 +64,9 @@ pub async fn server_required<T: From<sqlx::Error> + FromServerNotFound>(
     servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
     server_id: u32,
 ) -> Result<(FetchedServer, Arc<crate::sync::Mutex<ServerData>>), T> {
-    server(conn, servers, server_id).await?.ok_or_else(<T as FromServerNotFound>::from)
+    server(conn, servers, server_id)
+        .await?
+        .ok_or_else(<T as FromServerNotFound>::from)
 }
 
 pub fn path_relative(str: String) -> PathBuf {

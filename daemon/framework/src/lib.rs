@@ -20,13 +20,13 @@ pub use serde;
 pub use serde_json;
 pub use serde_urlencoded;
 pub use sqlx;
+pub use tap;
 #[cfg(feature = "ts")]
 pub use ts_rs;
 pub use url;
 pub use urlencoding;
 pub use utoipa;
 pub use utoipa_axum;
-pub use tap;
 
 use axum::body::BodyDataStream;
 use axum::extract::{FromRequest, Request};

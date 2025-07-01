@@ -1,56 +1,56 @@
 use crate::server::image::BuildImage;
 use crate::server::network::{AssignedNetwork, Port};
-use base64::Engine;
+use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
 use daemon_common::service::server::ServerFileWrite;
 use sqlx::encode::IsNull;
 use sqlx::error::BoxDynError;
 use sqlx::{Database, Decode, Encode, Executor, MySql, Pool, query, query_as, query_scalar};
 use std::collections::{HashMap, HashSet};
-use std::fmt::{Display, Formatter};
+use core::fmt::{Display, Formatter};
 use std::io;
 
-pub(crate) mod exec;
-pub(crate) mod image;
-pub(crate) mod network;
-pub(crate) mod start;
-pub(crate) mod status;
-pub(crate) mod stop;
-pub(crate) mod terminal;
-pub(crate) mod watcher;
+pub mod exec;
+pub mod image;
+pub mod network;
+pub mod start;
+pub mod status;
+pub mod stop;
+pub mod terminal;
+pub mod watcher;
 
 #[derive(Debug, Clone, Default)]
-pub(crate) struct FetchedServer {
-    pub(crate) id: u32,
+pub struct FetchedServer {
+    pub id: u32,
 
-    pub(crate) build: BuildImage,
-    pub(crate) backup_exclude: HashSet<String>,
-    pub(crate) files_write: HashMap<String, ServerFileWrite>,
+    pub build: BuildImage,
+    pub backup_exclude: HashSet<String>,
+    pub files_write: HashMap<String, ServerFileWrite>,
 
-    pub(crate) cpu: Option<f32>,
-    pub(crate) ram: Option<u32>,
-    pub(crate) swap: Option<u32>,
-    pub(crate) disk: Option<u64>,
+    pub cpu: Option<f32>,
+    pub ram: Option<u32>,
+    pub swap: Option<u32>,
+    pub disk: Option<u64>,
 
-    pub(crate) cap_add: HashSet<String>,
-    pub(crate) cap_drop: HashSet<String>,
+    pub cap_add: HashSet<String>,
+    pub cap_drop: HashSet<String>,
 
-    pub(crate) environment: HashMap<String, String>,
+    pub environment: HashMap<String, String>,
 
-    pub(crate) uid: Option<u16>,
-    pub(crate) gid: Option<u16>,
+    pub uid: Option<u16>,
+    pub gid: Option<u16>,
 
-    pub(crate) stop_command: Option<String>,
-    pub(crate) stop_timeout: u16,
+    pub stop_command: Option<String>,
+    pub stop_timeout: u16,
 
-    pub(crate) locks: HashSet<String>,
-    pub(crate) ports: Vec<Port>,
-    pub(crate) storage: String,
-    pub(crate) internet: bool,
+    pub locks: HashSet<String>,
+    pub ports: Vec<Port>,
+    pub storage: String,
+    pub internet: bool,
     #[expect(dead_code, reason = "not implemented yet, but present in the db")]
-    pub(crate) ipv6_suffix: Option<u64>,
+    pub ipv6_suffix: Option<u64>,
 
-    pub(crate) networks: Vec<AssignedNetwork>,
+    pub networks: Vec<AssignedNetwork>,
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, PartialEq, Eq)]

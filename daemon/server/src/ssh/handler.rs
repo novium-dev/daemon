@@ -5,6 +5,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read_timeout};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::Dir;
+use core::sync::atomic::{AtomicU32, Ordering};
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
 use russh::keys::{HashAlg, PublicKey};
@@ -14,7 +15,6 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
-use core::sync::atomic::{AtomicU32, Ordering};
 use tracing::{debug, error};
 
 pub type DaemonChannel = (
@@ -72,7 +72,7 @@ impl Handler for DaemonSSHHandler {
         }
         match password_auth(&self.daemon, user, password)
             .await
-            .inspect_err(|err| debug!("Password authentication failed: {:?}", err))
+            .inspect_err(|err| debug!("Password authentication failed: {err:?}"))
         {
             Ok(response) => {
                 self.auth = Some(response);
@@ -82,9 +82,7 @@ impl Handler for DaemonSSHHandler {
                 proceed_with_methods: None,
                 partial_success: false,
             }),
-            Err(err) => {
-                Err(russh::Error::IO(err))
-            },
+            Err(err) => Err(russh::Error::IO(err)),
         }
     }
 
@@ -103,19 +101,22 @@ impl Handler for DaemonSSHHandler {
             .publickey_cache
             .get_resolved(&self.daemon, user, public_key)
             .await
-            .inspect_err(|err| debug!("Publickey authentication failed: {:?}", err))
+            .inspect_err(|err| debug!("Publickey authentication failed: {err:?}"))
         {
             Ok(response) => {
                 self.auth = Some(response);
                 Ok(Auth::Accept)
             }
-            Err(err) => match err {
-                err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
-                    proceed_with_methods: None,
-                    partial_success: false,
-                }),
-                err => Err(russh::Error::IO(err)),
-            },
+            Err(err) => {
+                if err.kind() == ErrorKind::PermissionDenied {
+                    Ok(Auth::Reject {
+                        proceed_with_methods: None,
+                        partial_success: false,
+                    })
+                } else {
+                    Err(russh::Error::IO(err))
+                }
+            }
         }
     }
 
@@ -134,16 +135,19 @@ impl Handler for DaemonSSHHandler {
             .publickey_cache
             .get_resolved(&self.daemon, user, public_key)
             .await
-            .inspect_err(|err| debug!("Publickey offered authentication failed: {:?}", err))
+            .inspect_err(|err| debug!("Publickey offered authentication failed: {err:?}"))
         {
             Ok(_response) => Ok(Auth::Accept),
-            Err(err) => match err {
-                err if err.kind() == ErrorKind::PermissionDenied => Ok(Auth::Reject {
-                    proceed_with_methods: None,
-                    partial_success: false,
-                }),
-                err => Err(russh::Error::IO(err)),
-            },
+            Err(err) => {
+                if err.kind() == ErrorKind::PermissionDenied {
+                    Ok(Auth::Reject {
+                        proceed_with_methods: None,
+                        partial_success: false,
+                    })
+                } else {
+                    Err(russh::Error::IO(err))
+                }
+            }
         }
     }
 
@@ -167,7 +171,7 @@ impl Handler for DaemonSSHHandler {
         if self.auth.is_none() {
             return Err(russh::Error::NotAuthenticated);
         }
-        debug!("Window size change {}x{}", col_width, row_height);
+        debug!("Window size change {col_width}x{row_height}");
         match self.channels.get_mut(&channel_id) {
             Some((_channel, id, cols, rows)) => {
                 let cols = match cols {
@@ -175,14 +179,14 @@ impl Handler for DaemonSSHHandler {
                         debug!("Size is None on window size");
                         return session.channel_failure(channel_id);
                     }
-                    Some(cols) => cols.clone(),
+                    Some(cols) => Arc::clone(cols),
                 };
                 let rows = match rows {
                     None => {
                         debug!("Size is None on window size");
                         return session.channel_failure(channel_id);
                     }
-                    Some(rows) => rows.clone(),
+                    Some(rows) => Arc::clone(rows),
                 };
                 cols.store(col_width, Ordering::Relaxed);
                 rows.store(row_height, Ordering::Relaxed);
@@ -193,22 +197,20 @@ impl Handler for DaemonSSHHandler {
                     #[cfg(not(feature = "no_tty_size_please"))]
                     Some(id) => {
                         let mut servers = self.daemon.servers.lock().await;
-                        let server_data_arc = match servers.get(id) {
-                            None => {
-                                servers.insert(*id, Arc::default());
-                                servers.get(id).unwrap()
-                            }
+                        let server_data_arc = Arc::clone(match servers.get(id) {
+                            None => servers.entry(*id).or_default(),
                             Some(server) => server,
-                        };
+                        });
+                        drop(servers);
 
                         crate::terminal::update_size(
                             *id,
                             &self.daemon.docker,
-                            server_data_arc.clone(),
+                            server_data_arc,
                         )
                         .await;
                     }
-                };
+                }
                 session.channel_success(channel_id)
             }
             None => {
@@ -230,11 +232,11 @@ impl Handler for DaemonSSHHandler {
         let server_id = String::from_utf8(data.to_vec())
             .inspect_err(|_err| debug!("Command is not utf-8 encoded"))
             .map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
-        debug!("Exec {}", server_id);
+        debug!("Exec {server_id}");
 
         if let Some(server_id) = server_id.strip_prefix("control ") {
             return self
-                .ssh_control(channel_id, session, server_id.to_string())
+                .ssh_control(channel_id, session, server_id.to_owned())
                 .await;
         }
 
@@ -293,10 +295,10 @@ impl Handler for DaemonSSHHandler {
         name: &str,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        if self.auth.is_none() {
+        let Some(auth) = self.auth.as_ref() else {
             return Err(russh::Error::NotAuthenticated);
-        }
-        debug!("Subsystem Request {}", name);
+        };
+        debug!("Subsystem Request {name}");
 
         if name == "sftp" {
             match self.channels.get_mut(&channel_id) {
@@ -305,18 +307,17 @@ impl Handler for DaemonSSHHandler {
                     session.channel_failure(channel_id)
                 }
                 Some((channel, _id, _cols, _rows)) => {
-                    let channel = channel.take();
-                    if channel.is_none() {
+                    let Some(channel) = channel.take() else {
                         debug!("Channel was already taken on subsystem request");
                         return session.channel_failure(channel_id);
-                    }
+                    };
                     let mut sftp = DaemonSftpSession {
                         access: HashMap::new(),
                         file_handles: HashMap::new(),
                         version: None,
                     };
 
-                    for server in self.auth.as_ref().unwrap() {
+                    for server in auth {
                         if server
                             .permissions
                             .contains(BackendAuthServerPermissions::FILES_READ)
@@ -337,14 +338,13 @@ impl Handler for DaemonSSHHandler {
                                     .await
                                     .inspect_err(|err| {
                                         error!(
-                                            "Failed to open storage directory: {} {:?}",
+                                            "Failed to open storage directory: {} {err:?}",
                                             base.to_string_lossy(),
-                                            err
-                                        )
+                                        );
                                     }) {
                                     Ok(storage) => {
                                         sftp.access.insert(
-                                            vec!["servers".to_string(), server.name.clone()],
+                                            vec!["servers".to_owned(), server.name.clone()],
                                             (Arc::new(storage), server.permissions, lock),
                                         );
                                     }
@@ -369,7 +369,7 @@ impl Handler for DaemonSSHHandler {
                                 {
                                     let base =
                                         PathBuf::from(backup.path()).join(identifier.as_pathbuf());
-                                    if let Ok(false) = tokio::fs::try_exists(&base).await {
+                                    if matches!(tokio::fs::try_exists(&base).await, Ok(false)) {
                                         let _ = tokio::fs::create_dir_all(&base).await;
                                     }
                                     if let Ok(storage) =
@@ -377,15 +377,14 @@ impl Handler for DaemonSSHHandler {
                                             .await
                                             .inspect_err(|err| {
                                                 error!(
-                                                    "Failed to open backup directory: {} {:?}",
+                                                    "Failed to open backup directory: {} {err:?}",
                                                     base.to_string_lossy(),
-                                                    err
-                                                )
+                                                );
                                             })
                                     {
                                         sftp.access.insert(
                                             vec![
-                                                "backups".to_string(),
+                                                "backups".to_owned(),
                                                 name.clone(),
                                                 server.name.clone(),
                                             ],
@@ -400,12 +399,12 @@ impl Handler for DaemonSSHHandler {
                             }
                         }
                     }
-                    russh_sftp::server::run(channel.unwrap().into_stream(), sftp).await;
+                    russh_sftp::server::run(channel.into_stream(), sftp).await;
                     session.channel_success(channel_id)
                 }
             }
         } else {
-            debug!("Tried to access a non existent subsystem: {:?}", name);
+            debug!("Tried to access a non existent subsystem: {name:?}");
             session.channel_failure(channel_id)
         }
     }

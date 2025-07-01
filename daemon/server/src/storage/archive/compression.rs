@@ -1,10 +1,10 @@
 use bzip2::write::BzEncoder;
+use core::cmp::PartialEq;
+use core::fmt::{Arguments, Formatter};
 use flate2::write::{GzEncoder, ZlibEncoder};
 use liblzma::write::XzEncoder;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
-use std::cmp::PartialEq;
-use std::fmt::{Arguments, Formatter};
 use std::io;
 use std::io::{IoSlice, Read, Seek, SeekFrom, Write};
 use tracing::error;
@@ -70,10 +70,10 @@ impl ArchiveCompression {
 
         // Sources: https://en.wikipedia.org/wiki/List_of_file_signatures
         let compression = match buf {
-            [0x28, 0xB5, 0x2F, 0xFD, _, _, _, _] => ArchiveCompression::Zstd {
+            [0x28, 0xB5, 0x2F, 0xFD, _, _, _, _] => Self::Zstd {
                 level: CompressionLevel::Default,
             },
-            [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, _, _] => ArchiveCompression::Xz {
+            [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, _, _] => Self::Xz {
                 level: CompressionLevel::Default,
             },
             [
@@ -85,19 +85,19 @@ impl ArchiveCompression {
                 _,
                 _,
                 _,
-            ] => ArchiveCompression::Zlib {
+            ] => Self::Zlib {
                 level: CompressionLevel::Default,
             },
-            [0x04, 0x22, 0x4D, 0x18, _, _, _, _] => ArchiveCompression::Lz4 {
+            [0x04, 0x22, 0x4D, 0x18, _, _, _, _] => Self::Lz4 {
                 level: CompressionLevel::Default,
             },
-            [0x1F, 0x8B, _, _, _, _, _, _] => ArchiveCompression::Gzip {
+            [0x1F, 0x8B, _, _, _, _, _, _] => Self::Gzip {
                 level: CompressionLevel::Default,
             },
-            [0x42, 0x5A, 0x68, _, _, _, _, _] => ArchiveCompression::Bzip2 {
+            [0x42, 0x5A, 0x68, _, _, _, _, _] => Self::Bzip2 {
                 level: CompressionLevel::Default,
             },
-            _ => ArchiveCompression::None,
+            _ => Self::None,
         };
         read.seek(SeekFrom::Start(0))?;
         let mut decoder = compression.create_decoder(&mut read)?;
@@ -115,43 +115,43 @@ impl ArchiveCompression {
 
     pub(crate) fn valid_level(&self) -> bool {
         match self {
-            ArchiveCompression::None => true,
-            ArchiveCompression::Zstd {
+            Self::Zstd {
                 level: CompressionLevel::Precise(level),
             } => zstd::compression_level_range().contains(level),
-            ArchiveCompression::Zstd {
-                level:
-                    CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
-            } => true,
-            ArchiveCompression::Xz {
+            Self::Xz {
+                level: CompressionLevel::Precise(level),
+            }
+            | Self::Zlib {
                 level: CompressionLevel::Precise(level),
             } => *level >= 0 && *level <= 9,
-            ArchiveCompression::Xz {
-                level:
-                    CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
-            } => true,
-            ArchiveCompression::Zlib {
-                level: CompressionLevel::Precise(level),
-            } => *level >= 0 && *level <= 9,
-            ArchiveCompression::Zlib {
-                level:
-                    CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
-            } => true,
-            ArchiveCompression::Lz4 {
+            Self::Lz4 {
                 level: CompressionLevel::Precise(level),
             } => *level >= 1 && *level <= 12,
-            ArchiveCompression::Lz4 {
-                level:
-                    CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
-            } => true,
-            ArchiveCompression::Gzip {
+            Self::Gzip {
                 level: CompressionLevel::Precise(level),
             } => *level >= 1 && *level <= 9,
-            ArchiveCompression::Gzip {
+            Self::Bzip2 { level } => level.bzip2().is_some(),
+            Self::None
+            | Self::Zstd {
+                level:
+                    CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
+            }
+            | Self::Xz {
+                level:
+                    CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
+            }
+            | Self::Zlib {
+                level:
+                    CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
+            }
+            | Self::Lz4 {
+                level:
+                    CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
+            }
+            | Self::Gzip {
                 level:
                     CompressionLevel::Best | CompressionLevel::Default | CompressionLevel::Fastest,
             } => true,
-            ArchiveCompression::Bzip2 { level } => level.bzip2().is_some(),
         }
     }
 
@@ -160,13 +160,13 @@ impl ArchiveCompression {
         read: R,
     ) -> Result<Box<dyn Read + Send + 'a>, io::Error> {
         Ok(match self {
-            ArchiveCompression::None => Box::new(read),
-            ArchiveCompression::Zstd { .. } => Box::new(zstd::Decoder::new(read)?),
-            ArchiveCompression::Xz { .. } => Box::new(liblzma::read::XzDecoder::new(read)),
-            ArchiveCompression::Zlib { .. } => Box::new(flate2::read::ZlibDecoder::new(read)),
-            ArchiveCompression::Lz4 { .. } => Box::new(lz4::Decoder::new(read)?),
-            ArchiveCompression::Gzip { .. } => Box::new(flate2::read::GzDecoder::new(read)),
-            ArchiveCompression::Bzip2 { .. } => Box::new(bzip2::read::BzDecoder::new(read)),
+            Self::None => Box::new(read),
+            Self::Zstd { .. } => Box::new(zstd::Decoder::new(read)?),
+            Self::Xz { .. } => Box::new(liblzma::read::XzDecoder::new(read)),
+            Self::Zlib { .. } => Box::new(flate2::read::ZlibDecoder::new(read)),
+            Self::Lz4 { .. } => Box::new(lz4::Decoder::new(read)?),
+            Self::Gzip { .. } => Box::new(flate2::read::GzDecoder::new(read)),
+            Self::Bzip2 { .. } => Box::new(bzip2::read::BzDecoder::new(read)),
         })
     }
 
@@ -179,8 +179,8 @@ impl ArchiveCompression {
             return Err(io::Error::other("Invalid compression level"));
         }
         Ok(match self {
-            ArchiveCompression::None => Box::new(PassthroughEncoder(write)),
-            ArchiveCompression::Zstd { level } => Box::new(zstd::Encoder::new(
+            Self::None => Box::new(PassthroughEncoder(write)),
+            Self::Zstd { level } => Box::new(zstd::Encoder::new(
                 write,
                 match level {
                     CompressionLevel::Fastest => *zstd::compression_level_range().start(),
@@ -189,46 +189,47 @@ impl ArchiveCompression {
                     CompressionLevel::Precise(level) => *level,
                 },
             )?),
-            ArchiveCompression::Xz { level } => Box::new(liblzma::write::XzEncoder::new(
+            Self::Xz { level } => Box::new(liblzma::write::XzEncoder::new(
                 write,
                 match level {
                     CompressionLevel::Fastest => 0,
                     CompressionLevel::Best => 9,
                     CompressionLevel::Default => 6,
-                    CompressionLevel::Precise(level) => *level as u32,
+                    CompressionLevel::Precise(level) => level.unsigned_abs(),
                 },
             )),
-            ArchiveCompression::Zlib { level } => {
+            Self::Zlib { level } => {
                 Box::new(flate2::write::ZlibEncoder::new(write, level.flate2()))
             }
-            ArchiveCompression::Lz4 { level } => Box::new(
+            Self::Lz4 { level } => Box::new(
                 lz4::EncoderBuilder::new()
                     .level(match level {
-                        CompressionLevel::Fastest => 1,
+                        CompressionLevel::Fastest | CompressionLevel::Default => 1,
                         CompressionLevel::Best => 12,
-                        CompressionLevel::Default => 1,
-                        CompressionLevel::Precise(level) => *level as u32,
+                        CompressionLevel::Precise(level) => level.unsigned_abs(),
                     })
                     .build(write)?,
             ),
-            ArchiveCompression::Gzip { level } => {
-                Box::new(flate2::write::GzEncoder::new(write, level.flate2()))
-            }
-            ArchiveCompression::Bzip2 { level } => {
-                Box::new(bzip2::write::BzEncoder::new(write, level.bzip2().unwrap()))
-            }
+            Self::Gzip { level } => Box::new(flate2::write::GzEncoder::new(write, level.flate2())),
+            Self::Bzip2 { level } => Box::new(bzip2::write::BzEncoder::new(
+                write,
+                level.bzip2().expect(
+                    "valid_level returned true, but bzip2 compression level creation failed. Bug?",
+                ),
+            )),
         })
     }
 
-    pub(crate) fn ext(&self) -> &'static str {
+    #[must_use]
+    pub const fn ext(&self) -> &'static str {
         match self {
-            ArchiveCompression::None => "",
-            ArchiveCompression::Zstd { .. } => ".zst",
-            ArchiveCompression::Xz { .. } => ".xz",
-            ArchiveCompression::Zlib { .. } => ".zz",
-            ArchiveCompression::Gzip { .. } => ".gz",
-            ArchiveCompression::Bzip2 { .. } => ".bz2",
-            ArchiveCompression::Lz4 { .. } => ".lz4",
+            Self::None => "",
+            Self::Zstd { .. } => ".zst",
+            Self::Xz { .. } => ".xz",
+            Self::Zlib { .. } => ".zz",
+            Self::Gzip { .. } => ".gz",
+            Self::Bzip2 { .. } => ".bz2",
+            Self::Lz4 { .. } => ".lz4",
         }
     }
 }
@@ -242,34 +243,38 @@ pub enum CompressionLevel {
 }
 
 impl CompressionLevel {
-    pub(crate) fn flate2(&self) -> flate2::Compression {
+    pub(crate) fn flate2(self) -> flate2::Compression {
         match self {
-            CompressionLevel::Fastest => flate2::Compression::fast(),
-            CompressionLevel::Best => flate2::Compression::best(),
-            CompressionLevel::Default => flate2::Compression::default(),
-            CompressionLevel::Precise(level) => flate2::Compression::new(*level as u32),
+            Self::Fastest => flate2::Compression::fast(),
+            Self::Best => flate2::Compression::best(),
+            Self::Default => flate2::Compression::default(),
+            Self::Precise(level) => flate2::Compression::new(level.unsigned_abs()),
         }
     }
 
-    pub(crate) fn bzip2(&self) -> Option<bzip2::Compression> {
+    pub(crate) fn bzip2(self) -> Option<bzip2::Compression> {
         match self {
-            CompressionLevel::Fastest => Some(bzip2::Compression::fast()),
-            CompressionLevel::Best => Some(bzip2::Compression::best()),
-            CompressionLevel::Default => Some(bzip2::Compression::default()),
-            CompressionLevel::Precise(level) => bzip2::Compression::try_new(*level as u32),
+            Self::Fastest => Some(bzip2::Compression::fast()),
+            Self::Best => Some(bzip2::Compression::best()),
+            Self::Default => Some(bzip2::Compression::default()),
+            Self::Precise(level) => bzip2::Compression::try_new(level.unsigned_abs()),
         }
     }
 }
 
-fn default_level() -> CompressionLevel {
+const fn default_level() -> CompressionLevel {
     CompressionLevel::Default
 }
 
+#[expect(
+    clippy::trivially_copy_pass_by_ref,
+    reason = "used by serde, reference used is not under my control"
+)]
 fn serialize_compression_level<S: Serializer>(
-    v: &CompressionLevel,
+    level: &CompressionLevel,
     serializer: S,
 ) -> Result<S::Ok, S::Error> {
-    match *v {
+    match *level {
         CompressionLevel::Fastest => serializer.serialize_str("fastest"),
         CompressionLevel::Best => serializer.serialize_str("default"),
         CompressionLevel::Default => serializer.serialize_str("best"),
@@ -285,7 +290,7 @@ where
     impl Visitor<'_> for CompressionLevelVisitor {
         type Value = CompressionLevel;
 
-        fn expecting(&self, formatter: &mut Formatter) -> std::fmt::Result {
+        fn expecting(&self, formatter: &mut Formatter) -> core::fmt::Result {
             write!(
                 formatter,
                 "an integer or \"fastest\", \"default\", \"best\""
@@ -296,14 +301,18 @@ where
         where
             E: Error,
         {
-            Ok(CompressionLevel::Precise(i32::try_from(value).map_err(E::custom)?))
+            Ok(CompressionLevel::Precise(
+                i32::try_from(value).map_err(E::custom)?,
+            ))
         }
 
         fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
         where
             E: Error,
         {
-            Ok(CompressionLevel::Precise(i32::try_from(value).map_err(E::custom)?))
+            Ok(CompressionLevel::Precise(
+                i32::try_from(value).map_err(E::custom)?,
+            ))
         }
 
         fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
@@ -377,7 +386,7 @@ impl<W: Write> CompressionEncoder<W> for ZlibEncoder<W> {
 impl<W: Write> CompressionEncoder<W> for lz4::Encoder<W> {
     fn finish(self: Box<Self>) -> Result<W, io::Error> {
         let (inner, result) = (*self).finish();
-        result.map(|_| inner)
+        result.map(|()| inner)
     }
 }
 

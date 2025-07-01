@@ -15,7 +15,7 @@ pub async fn fstat(handle: &mut FileHandle) -> Result<FileAttributes, StatusCode
             .metadata(".")
             .await
             .map(<Metadata as IntoFileAttributes>::into_fileattributes),
-        FileHandle::Internal(_, _, _) => Ok(internal_directory_attributes()),
+        FileHandle::Internal(_, _, _) | FileHandle::Empty => Ok(internal_directory_attributes()),
     }
     .inspect_err(|err| error!("Failed to fstat: {:?}", err))
     .map_err(sftp_err)

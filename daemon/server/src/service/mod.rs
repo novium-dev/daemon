@@ -4,6 +4,7 @@ use axum::Router;
 use axum::extract::Request;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use axum_server::{Handle, Server};
+use core::time::Duration;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
@@ -15,7 +16,6 @@ use daemon_common::service::server::ServerService;
 use rustls::ServerConfig;
 use rustls::server::WebPkiClientVerifier;
 use std::sync::Arc;
-use core::time::Duration;
 use tokio::sync::broadcast::error::RecvError;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
@@ -49,7 +49,7 @@ impl Daemon {
 
         let cors = tower_http::cors::CorsLayer::new()
             .allow_origin(tower_http::cors::AllowOrigin::exact(
-                axum::http::header::HeaderValue::from_str(&self.config.origin).unwrap(),
+                self.config.origin.clone(),
             ))
             .allow_methods([axum::http::Method::GET])
             .allow_headers(tower_http::cors::AllowHeaders::any());
@@ -77,7 +77,10 @@ impl Daemon {
         router
     }
 
-    #[expect(clippy::significant_drop_tightening, reason = "only runs once on start")]
+    #[expect(
+        clippy::significant_drop_tightening,
+        reason = "only runs once on start"
+    )]
     pub async fn serve_http(&self) -> Result<(), anyhow::Error> {
         let mut rustls = ServerConfig::builder()
             .with_client_cert_verifier(

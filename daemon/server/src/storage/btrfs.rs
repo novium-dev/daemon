@@ -1,12 +1,12 @@
 mod sys;
 
 use crate::utils;
+use core::mem;
 use libc::ioctl;
 use std::collections::HashMap;
+use std::io;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
-use core::mem;
-use std::io;
 use sys::*;
 use tokio::fs::File;
 

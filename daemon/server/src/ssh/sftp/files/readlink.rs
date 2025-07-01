@@ -12,9 +12,9 @@ pub async fn readlink(storage: Arc<Dir>, path: PathBuf) -> Result<String, Status
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::InvalidData => {
-                debug!("Failed to readlink: {:?}", err)
+                debug!("Failed to readlink: {err:?}");
             }
-            _ => error!("Failed to readlink: {:?}", err),
+            _ => error!("Failed to readlink: {err:?}"),
         })
         .map_err(sftp_err)
         .map(|buf| buf.to_string_lossy().to_string())

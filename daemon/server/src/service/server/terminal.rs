@@ -4,8 +4,8 @@ use crate::terminal::{TerminalData, new_session};
 use crate::utils::ChannelInterceptor;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bollard::Docker;
-use std::sync::Arc;
 use core::sync::atomic::AtomicU32;
+use std::sync::Arc;
 
 pub const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
 
@@ -66,8 +66,12 @@ pub(super) async fn terminal_websocket_handle(
                             cols2.store(new_cols, Ordering::Relaxed);
                             rows2.store(new_rows, Ordering::Relaxed);
                             tokio::task::spawn(async move {
-                                crate::terminal::update_size(id, &docker2, Arc::clone(&server_data_arc2))
-                                    .await;
+                                crate::terminal::update_size(
+                                    id,
+                                    &docker2,
+                                    Arc::clone(&server_data_arc2),
+                                )
+                                .await;
                             });
                         }
                     }

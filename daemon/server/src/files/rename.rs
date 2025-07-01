@@ -26,7 +26,8 @@ pub(crate) async fn rename_file<
     to: String,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
+            .await?;
     let from = path_relative(from);
     let to = path_relative(to);
     let (storage, _) = storage_path(id, &storage).await?;

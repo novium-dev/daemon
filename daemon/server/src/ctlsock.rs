@@ -4,7 +4,9 @@ use axum::extract::{ConnectInfo, State, connect_info};
 use axum::http::StatusCode;
 use axum::routing::get;
 use axum::serve::IncomingStream;
-use libc::umask;
+use rustix::fs::Mode;
+use rustix::process::umask;
+use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::net::{UnixListener, unix::UCred};
@@ -12,49 +14,50 @@ use tracing::{error, warn};
 
 #[derive(Clone, Debug)]
 struct UdsConnectInfo {
-    peer_addr: Arc<tokio::net::unix::SocketAddr>,
-    peer_cred: UCred,
+    peer_addr: Option<Arc<tokio::net::unix::SocketAddr>>,
+    peer_cred: Option<UCred>,
 }
 
 impl connect_info::Connected<IncomingStream<'_, UnixListener>> for UdsConnectInfo {
     fn connect_info(stream: IncomingStream<'_, UnixListener>) -> Self {
-        let peer_addr = stream.io().peer_addr().unwrap();
-        let peer_cred = stream.io().peer_cred().unwrap();
+        let peer_addr = stream.io().peer_addr().ok();
+        let peer_cred = stream.io().peer_cred().ok();
         Self {
-            peer_addr: Arc::new(peer_addr),
+            peer_addr: peer_addr.map(Arc::new),
             peer_cred,
         }
     }
 }
 
-pub(crate) async fn run(daemon: Daemon) {
+pub async fn run(daemon: Daemon) -> Result<(), io::Error> {
     let path = PathBuf::from("./control.sock");
     let _ = tokio::fs::remove_file(&path).await; // Ignore any errors
 
-    let old_umask;
-    unsafe {
-        old_umask = umask(0);
-    } // Use mode 0o777 so containers can access it
+    // Use mode 0o777 so containers can access it
+    let old_umask = umask(Mode::empty());
 
-    let listener = UnixListener::bind(&path).unwrap();
+    let listener = UnixListener::bind(&path)?;
 
-    unsafe {
-        umask(old_umask);
-    }
+    umask(old_umask);
 
     let app = Router::new()
         .route("/mark_restart", get(restart))
         .with_state(daemon)
         .into_make_service_with_connect_info::<UdsConnectInfo>();
 
-    axum::serve(listener, app).await.unwrap();
+    // It will never error according to doc?
+    axum::serve(listener, app).await
 }
 
 async fn restart(
     State(state): State<Daemon>,
     ConnectInfo(info): ConnectInfo<UdsConnectInfo>,
 ) -> Result<(), StatusCode> {
-    let Some(pid) = info.peer_cred.pid() else {
+    let Some(peer_cred) = info.peer_cred else {
+        error!("Mark restart got called without peer credentials");
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    };
+    let Some(pid) = peer_cred.pid() else {
         error!("Mark restart got called without a pid");
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     };
@@ -71,7 +74,7 @@ async fn restart(
             );
         }
         Some(server) => {
-            let server = server.clone();
+            let server = Arc::clone(server);
             drop(servers);
             server.lock().await.restart = true;
         }

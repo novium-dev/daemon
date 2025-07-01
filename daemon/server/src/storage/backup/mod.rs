@@ -9,14 +9,14 @@ use std::io;
 use std::os::fd::{AsRawFd, RawFd};
 use xattr::FileExt;
 
-pub(crate) use create::create_backup;
-pub(crate) use create::create_backup_order;
-pub(crate) use delete::delete_backup;
-pub(crate) use download::backup_to_stream;
-pub(crate) use download::stream_realtime;
-pub(crate) use list::list_backups;
-pub(crate) use name::set_backup_name;
-pub(crate) use restore::restore_backup;
+pub use create::create_backup;
+pub use create::create_backup_order;
+pub use delete::delete_backup;
+pub use download::backup_to_stream;
+pub use download::stream_realtime;
+pub use list::list_backups;
+pub use name::set_backup_name;
+pub use restore::restore_backup;
 
 struct RawFdContainer(RawFd);
 
@@ -28,15 +28,18 @@ impl AsRawFd for RawFdContainer {
 
 impl FileExt for RawFdContainer {}
 
-pub(crate) trait BackupNameExtension {
+pub trait BackupNameExt {
     /// Cancel safe
-    async fn get_backup_name(&self) -> Result<Option<String>, io::Error>;
+    fn get_backup_name(&self) -> impl Future<Output = Result<Option<String>, io::Error>> + Send;
 
     /// Cancel safe
-    async fn set_backup_name(&self, name: Option<String>) -> Result<(), io::Error>;
+    fn set_backup_name(
+        &self,
+        name: Option<String>,
+    ) -> impl Future<Output = Result<(), io::Error>> + Send;
 }
 
-impl<T: AsRawFd> BackupNameExtension for T {
+impl<T: AsRawFd + Sync> BackupNameExt for T {
     async fn get_backup_name(&self) -> Result<Option<String>, io::Error> {
         let file = RawFdContainer(self.as_raw_fd());
         tokio::task::spawn_blocking(move || {
@@ -55,10 +58,10 @@ impl<T: AsRawFd> BackupNameExtension for T {
         tokio::task::spawn_blocking(move || {
             match name {
                 Some(name) => {
-                    file.set_xattr(crate::common::DAEMON_BACKUP_NAME_XATTR, name.as_bytes())?
+                    file.set_xattr(crate::common::DAEMON_BACKUP_NAME_XATTR, name.as_bytes())?;
                 }
                 None => match file.remove_xattr(crate::common::DAEMON_BACKUP_NAME_XATTR) {
-                    Ok(_) => {}
+                    Ok(()) => {}
                     Err(err) if err.raw_os_error() == Some(libc::ENODATA) => {}
                     Err(err) => return Err(err),
                 },

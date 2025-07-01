@@ -1,24 +1,23 @@
 use crate::config::{BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
-use crate::storage::archive::TarSandboxedUnpackExtension;
+use crate::storage::archive::TarSandboxedUnpackExt as _;
 use crate::storage::sync::{StorageLockData, storage_write_timeout};
 use crate::{Daemon, storage};
+use core::sync::atomic::{AtomicI64, Ordering};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
 use tar::Archive;
 use tokio::fs::File;
 use tracing::{debug, error};
 
 /// Cancel safe
-pub(crate) async fn restore_backup<
+pub async fn restore_backup<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -40,7 +39,7 @@ pub(crate) async fn restore_backup<
         storage,
         value: storage_value,
         ..
-    } = storage_write_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+    } = storage_write_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
 
     let backup = state
         .config
@@ -57,7 +56,7 @@ pub(crate) async fn restore_backup<
         backup_id,
         backup,
         disk,
-        storage_value.clone(),
+        Arc::clone(&storage_value),
     ))
     .await
     .map_err(io::Error::from)??;
@@ -80,32 +79,32 @@ async fn restore_backup0<E: From<io::Error>>(
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
         BackupEntry::Archive { compression, .. } => {
-            let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
+            let target = target_dir.join(format!("{backup_id}.tar{}", compression.ext()));
             let file = File::open(target).await.inspect_err(|err| {
                 if err.kind() == ErrorKind::NotFound {
-                    debug!("Failed to restore backup (open): {:?}", err)
+                    debug!("Failed to restore backup (open): {err:?}");
                 } else {
-                    error!("Failed to restore backup (open): {:?}", err)
+                    error!("Failed to restore backup (open): {err:?}");
                 }
             })?;
             let decoder = compression
                 .create_decoder(file.into_std().await)
                 .inspect_err(|err| {
-                    error!("Failed to restore backup (create_decoder): {:?}", err)
+                    error!("Failed to restore backup (create_decoder): {err:?}");
                 })?;
             let archive = Archive::new(decoder);
             storage::delete(&storage, id).await.inspect_err(|err| {
-                error!("Failed to restore backup (storage_delete): {:?}", err)
+                error!("Failed to restore backup (storage_delete): {err:?}");
             })?;
-            storage::prepare(id, &storage, value, disk)
+            storage::prepare(id, &storage, &value, disk)
                 .await
                 .inspect_err(|err| {
-                    error!("Failed to restore backup (storage_prepare): {:?}", err)
+                    error!("Failed to restore backup (storage_prepare): {err:?}");
                 })?;
             archive
                 .unpack_sandboxed(&dir, "/", ())
                 .await
-                .inspect_err(|err| error!("Failed to restore backup (unpack): {:?}", err))?;
+                .inspect_err(|err| error!("Failed to restore backup (unpack): {err:?}"))?;
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
@@ -114,16 +113,17 @@ async fn restore_backup0<E: From<io::Error>>(
             let parent = dir.join("..");
             let fd = tokio::fs::File::open(&target).await.inspect_err(|err| {
                 if err.kind() == ErrorKind::NotFound {
-                    debug!("Failed to restore backup (open): {:?}", err)
+                    debug!("Failed to restore backup (open): {err:?}")
                 } else {
-                    error!("Failed to restore backup (open): {:?}", err)
+                    error!("Failed to restore backup (open): {err:?}")
                 }
             })?;
-            super::super::btrfs::remove_subvolume(&parent, dir.file_name().unwrap().to_str().unwrap())
-                .await
-                .inspect_err(|err| {
-                    error!("Failed to restore backup (delete_snapshot): {:?}", err)
-                })?;
+            super::super::btrfs::remove_subvolume(
+                &parent,
+                dir.file_name().unwrap().to_str().unwrap(),
+            )
+            .await
+            .inspect_err(|err| error!("Failed to restore backup (delete_snapshot): {err:?}"))?;
             super::super::btrfs::new_snapshot(
                 fd,
                 &parent,
@@ -131,7 +131,7 @@ async fn restore_backup0<E: From<io::Error>>(
                 false,
             )
             .await
-            .inspect_err(|err| error!("Failed to restore backup (create_snapshot): {:?}", err))?;
+            .inspect_err(|err| error!("Failed to restore backup (create_snapshot): {err:?}"))?;
         }
     }
     Ok(())

@@ -9,19 +9,18 @@ use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
 use bollard::query_parameters::{
     InspectNetworkOptions, KillContainerOptions, ListContainersOptions,
 };
+use core::mem;
+use core::time::Duration;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use ed25519_dalek::SigningKey;
+use futures_util::{FutureExt as _, TryFutureExt as _};
 use libc::{SIGINT, SIGTERM};
-use reqwest::Client;
 use signal_hook::iterator::Signals;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::query;
 use std::collections::HashMap;
 use std::io::ErrorKind;
-use std::mem;
-use std::ops::{Deref, DerefMut};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::broadcast::Sender;
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
@@ -63,8 +62,8 @@ impl Daemon {
 
         info!("Connecting to Docker...");
         let docker = bollard::Docker::connect_with_local_defaults()
-            .inspect_err(|_err| error!("Failed to connect to docker"))
-            .unwrap();
+            .inspect_err(|err| error!("Failed to connect to docker: {err:?}"))
+            .map_err(DaemonInitError::Docker)?;
 
         match docker
             .inspect_network(
@@ -77,16 +76,16 @@ impl Daemon {
             Err(bollard::errors::Error::DockerResponseServerError {
                 status_code: 404, ..
             }) => {
-                docker
+                let _ = docker
                     .create_network(NetworkCreateRequest {
-                        name: crate::common::NETWORK_DEFAULT.to_string(),
+                        name: crate::common::NETWORK_DEFAULT.to_owned(),
                         options: Some(HashMap::from([
                             (
-                                "com.docker.network.bridge.enable_icc".to_string(),
+                                "com.docker.network.bridge.enable_icc".to_owned(),
                                 false.to_string(),
                             ),
                             (
-                                "com.docker.network.bridge.enable_ip_masquerade".to_string(),
+                                "com.docker.network.bridge.enable_ip_masquerade".to_owned(),
                                 false.to_string(),
                             ),
                         ])),
@@ -94,7 +93,7 @@ impl Daemon {
                         enable_ipv6: Some(true),
                         ipam: Some(Ipam {
                             config: Some(vec![IpamConfig {
-                                subnet: Some(crate::common::BRIDGE_DEFAULT_IPV6_PREFIX.to_string()),
+                                subnet: Some(crate::common::BRIDGE_DEFAULT_IPV6_PREFIX.to_owned()),
                                 ..IpamConfig::default()
                             }]),
                             ..Ipam::default()
@@ -102,10 +101,10 @@ impl Daemon {
                         ..NetworkCreateRequest::default()
                     })
                     .await
-                    .unwrap();
+                    .inspect_err(|err| error!("Failed to create docker network: {err:?}"));
             }
             Err(err) => {
-                error!("Failed to inspect docker network: {:?}", err);
+                error!("Failed to inspect docker network: {err:?}");
                 return Err(DaemonInitError::Docker(err));
             }
         }
@@ -120,16 +119,16 @@ impl Daemon {
             Err(bollard::errors::Error::DockerResponseServerError {
                 status_code: 404, ..
             }) => {
-                docker
+                let _ = docker
                     .create_network(NetworkCreateRequest {
-                        name: crate::common::NETWORK_INTERNET.to_string(),
+                        name: crate::common::NETWORK_INTERNET.to_owned(),
                         options: Some(HashMap::from([
                             (
-                                "com.docker.network.bridge.enable_icc".to_string(),
+                                "com.docker.network.bridge.enable_icc".to_owned(),
                                 false.to_string(),
                             ),
                             (
-                                "com.docker.network.bridge.enable_ip_masquerade".to_string(),
+                                "com.docker.network.bridge.enable_ip_masquerade".to_owned(),
                                 true.to_string(),
                             ),
                         ])),
@@ -137,9 +136,7 @@ impl Daemon {
                         enable_ipv6: Some(true),
                         ipam: Some(Ipam {
                             config: Some(vec![IpamConfig {
-                                subnet: Some(
-                                    crate::common::BRIDGE_INTERNET_IPV6_PREFIX.to_string(),
-                                ),
+                                subnet: Some(crate::common::BRIDGE_INTERNET_IPV6_PREFIX.to_owned()),
                                 ..IpamConfig::default()
                             }]),
                             ..Ipam::default()
@@ -147,10 +144,12 @@ impl Daemon {
                         ..NetworkCreateRequest::default()
                     })
                     .await
-                    .unwrap();
+                    .inspect_err(|err| {
+                        error!("Failed to create docker network (internet): {err:?}");
+                    });
             }
             Err(err) => {
-                error!("Failed to inspect docker network (internet): {:?}", err);
+                error!("Failed to inspect docker network (internet): {err:?}");
                 return Err(DaemonInitError::Docker(err));
             }
         }
@@ -177,19 +176,19 @@ impl Daemon {
         };
 
         let config = Arc::new(config);
-        let daemon = Daemon {
-            config: config.clone(),
+        let daemon = Self {
+            config: Arc::clone(&config),
             servers: Arc::new(Mutex::new(servers)),
-            storages: Arc::new(Mutex::new(HashMap::new())),
+            storages: Arc::default(),
             shutdown_channel: Arc::new(Sender::new(1)),
-            server_task: Arc::new(Mutex::new(JoinSet::new())),
-            server_task_cancellable: Arc::new(Mutex::new(JoinSet::new())),
-            shutdown_task: Arc::new(Mutex::new(JoinSet::new())),
-            schedule_task: Arc::new(Mutex::new(JoinSet::new())),
-            schedules: Arc::new(Mutex::new(HashMap::new())),
+            server_task: Arc::default(),
+            server_task_cancellable: Arc::default(),
+            shutdown_task: Arc::default(),
+            schedule_task: Arc::default(),
+            schedules: Arc::default(),
             docker: Arc::new(docker),
             conn: Arc::new(conn),
-            client: Arc::new(Client::default()),
+            client: Arc::default(),
 
             root: Arc::new(root),
             key: Arc::new(key),
@@ -211,11 +210,11 @@ impl Daemon {
             .inspect_err(|err| error!("Failed to run schedules: {:?}", err))
             .map_err(DaemonInitError::Sql)?;
 
-        daemon
-            .server_task_cancellable
-            .lock()
-            .await
-            .spawn(ctlsock::run(daemon.clone()));
+        daemon.server_task_cancellable.lock().await.spawn(
+            ctlsock::run(daemon.clone())
+                .inspect_err(|err| warn!("Failed to run control socket: {err:?}"))
+                .map(|_result| ()),
+        );
 
         storage::worker::run(daemon.clone()).await;
 
@@ -234,16 +233,18 @@ impl Daemon {
         debug!("Sent shutdown signal");
         self.server_task_cancellable.lock().await.shutdown().await;
         debug!("Cancelled server tasks... (if possible)");
-        mem::take(self.server_task.lock().await.deref_mut())
+        mem::take(&mut *self.server_task.lock().await)
             .join_all()
             .await;
         debug!("Server tasks down");
+        self.schedule_task.lock().await.shutdown().await;
+        debug!("Stopped schedules");
         let servers = self.servers.lock().await;
         let mut set = JoinSet::new();
-        for (id, server) in servers.deref() {
-            let server = server.clone();
-            let docker = self.docker.clone();
-            let id = *id;
+        for (server_id, server) in &*servers {
+            let id = *server_id;
+            let server = Arc::clone(server);
+            let docker = Arc::clone(&self.docker);
             set.spawn(async move {
                 let _ = FetchedServer {
                     id,
@@ -253,8 +254,7 @@ impl Daemon {
                 .await;
             });
         }
-        self.schedule_task.lock().await.shutdown().await;
-        debug!("Stopped schedules");
+        drop(servers);
         set.join_all().await;
         debug!("Stopped servers");
 
@@ -264,12 +264,10 @@ impl Daemon {
 
     pub fn hook_signals(&self) {
         let daemon = self.clone();
-        let mut signal = Signals::new([SIGINT, SIGTERM]).unwrap();
+        let mut signal = Signals::new([SIGINT, SIGTERM]).expect("Unable to hook signals");
         tokio::task::spawn_blocking(move || {
             if signal.forever().next().is_some() {
-                daemon
-                    .shutdown_task
-                    .clone()
+                Arc::clone(&daemon.shutdown_task)
                     .blocking_lock_owned()
                     .spawn(async move { daemon.shutdown().await });
             }
@@ -279,11 +277,15 @@ impl Daemon {
     pub async fn await_shutdown(&self) {
         let mut recv = self.shutdown_channel.subscribe();
         while recv.recv().await.is_err() {}
-        mem::take(self.shutdown_task.lock().await.deref_mut())
+        mem::take(&mut *self.shutdown_task.lock().await)
             .join_all()
             .await;
     }
 
+    #[expect(
+        clippy::significant_drop_tightening,
+        reason = "only run once on startup, its better to keep the lock for all loop iterations"
+    )]
     async fn reattach_container(&self) {
         if let Ok(containers) = self
             .docker
@@ -293,7 +295,7 @@ impl Daemon {
                 warn!(
                     "Failed to scan for running containers... (assuming there are none): {:?}",
                     err
-                )
+                );
             })
         {
             let mut servers = self.servers.lock().await;
@@ -302,9 +304,9 @@ impl Daemon {
             for container in containers {
                 let names = container.names.unwrap_or_default();
                 let mut id = None::<u32>;
-                for mut name in names {
-                    if let Some(suffix) = name.strip_prefix("/") {
-                        name = suffix.to_string();
+                for mut name in names.iter().map(String::as_str) {
+                    if let Some(suffix) = name.strip_prefix('/') {
+                        name = suffix;
                     }
                     if let Some(suffix) = name.strip_prefix(crate::common::CONTAINER_PREFIX) {
                         if let Ok(container_id) = suffix.parse() {
@@ -314,8 +316,7 @@ impl Daemon {
                     }
                 }
                 if let Some(id) = id {
-                    servers.insert(id, Arc::default());
-                    let server_data_arc = servers.get(&id).unwrap().clone();
+                    let server_data_arc = Arc::clone(servers.entry(id).or_default());
 
                     match query!(
                         "SELECT `cpu`, `ram`, `swap` FROM `servers` WHERE `id` = ?",
@@ -325,7 +326,7 @@ impl Daemon {
                     .await
                     {
                         Ok(Some(row)) => {
-                            let mut server_data = server_data_arc.lock().await;
+                            let server_data = server_data_arc.lock().await;
 
                             match storage_read::<StorageError>(
                                 &self.config,
@@ -333,7 +334,8 @@ impl Daemon {
                                 &self.storages,
                                 StorageIdentifier::Primary(id),
                             )
-                            .await {
+                            .await
+                            {
                                 Ok(StorageLockData {
                                     lock: storage_lock,
                                     value: storage_value,
@@ -346,7 +348,7 @@ impl Daemon {
                                         row.cpu,
                                         row.ram,
                                         row.swap,
-                                        &mut server_data,
+                                        &server_data,
                                         Arc::clone(&server_data_arc),
                                         storage_lock,
                                         storage_value,
@@ -359,13 +361,14 @@ impl Daemon {
                                         restored = restored.saturating_add(1);
                                     }
                                 }
-                                Err(err) => warn!("Failed to read lock storage data: {id}: {err:?}"),
+                                Err(err) => {
+                                    warn!("Failed to read lock storage data: {id}: {err:?}");
+                                }
                             }
                         }
                         Ok(None) => {
                             warn!(
-                                "Found server that is missing in database: {}. Killing silently...",
-                                id
+                                "Found server that is missing in database: {id}. Killing silently..."
                             );
                             let _ = self
                                 .docker
@@ -374,13 +377,13 @@ impl Daemon {
                                     None::<KillContainerOptions>,
                                 )
                                 .await;
-                        },
+                        }
                         Err(err) => warn!("Unable to select server for reattach {id}: {err:?}"),
                     }
                 }
             }
 
-            if restored > 0 {
+            if restored > 0i32 {
                 info!("Successfully reattached to {} container", restored);
             }
         }

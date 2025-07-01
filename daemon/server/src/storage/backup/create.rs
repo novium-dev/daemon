@@ -1,7 +1,7 @@
 use crate::Daemon;
 use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
-use crate::storage::archive::TarSandboxedAppendExtension;
+use crate::storage::archive::TarSandboxedAppendExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use chrono::Utc;
 use daemon_common::service::backup::error_backup_storage_incompatible::FromBackupStorageIncompatible;
@@ -12,13 +12,12 @@ use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::collections::HashSet;
 use std::io;
-use std::io::Write;
-use std::ops::Deref;
+use std::io::Write as _;
 use std::path::PathBuf;
 use tracing::debug;
 
 /// Cancel safe
-pub(crate) async fn create_backup_order<
+pub async fn create_backup_order<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -26,7 +25,7 @@ pub(crate) async fn create_backup_order<
         + FromStorageFailure
         + FromBackupStorageNoSuitableFound,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
 ) -> Result<i64, E> {
     let StorageLockData {
@@ -35,9 +34,9 @@ pub(crate) async fn create_backup_order<
         backup_exclude,
         storage,
         ..
-    } = storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
 
-    let mut storages: Vec<(String, i8, &BackupEntry)> = state
+    let mut storages: Vec<(String, i8, &BackupEntry)> = daemon
         .config
         .backup
         .iter()
@@ -77,7 +76,7 @@ fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
 }
 
 /// Cancel safe
-pub(crate) async fn create_backup<
+pub async fn create_backup<
     E: From<std::io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -96,7 +95,7 @@ pub(crate) async fn create_backup<
         backup_exclude,
         storage,
         ..
-    } = storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+    } = storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
 
     let backup = state
         .config
@@ -121,7 +120,7 @@ async fn create_backup0<E: From<std::io::Error>>(
     backup: &BackupEntry,
     mut exclude: HashSet<String>,
 ) -> Result<i64, E> {
-    exclude.insert(".tmp/".to_string());
+    exclude.insert(".tmp/".to_owned());
 
     let dir = PathBuf::from(path);
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
@@ -180,14 +179,20 @@ async fn create_archive_backup(
         .inspect_err(|err| debug!("Backup creation failed (create_encoder): {:?}", err))?;
     let mut archive = tar::Builder::new(encoder);
     archive.follow_symlinks(false);
-    let (archive, _) = archive
+    let (archive, ()) = archive
         .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true)
         .await
         .inspect_err(|err| debug!("Backup creation failed (append_dir_all): {:?}", err))?;
-    tokio::task::spawn_blocking(move || archive.into_inner().expect("Archive should have already been finished? Bug?").finish()?.flush())
-        .await
-        .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {:?}", err))
-        .map_err(io::Error::from)?
-        .inspect_err(|err| debug!("Backup creation failed (flush): {:?}", err))?;
+    tokio::task::spawn_blocking(move || {
+        archive
+            .into_inner()
+            .expect("Archive should have already been finished? Bug?")
+            .finish()?
+            .flush()
+    })
+    .await
+    .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {:?}", err))
+    .map_err(io::Error::from)?
+    .inspect_err(|err| debug!("Backup creation failed (flush): {:?}", err))?;
     Ok(())
 }

@@ -1,5 +1,8 @@
 #![allow(clippy::disallowed_methods)]
-#![expect(clippy::future_not_send, reason = "impl Future, send is determined by T")]
+#![expect(
+    clippy::future_not_send,
+    reason = "impl Future, send is determined by T"
+)]
 
 pub use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, broadcast};
 

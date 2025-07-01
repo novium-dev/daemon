@@ -4,6 +4,7 @@ use crate::user::*;
 use crate::utils::{JsonExt as _, io_sync, io_sync_seek_truncate};
 use axum::extract::ws::Message;
 use chrono::Utc;
+use core::error::Error as _;
 use crc64::crc64;
 use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable, ts};
 use json_patch::Patch;
@@ -15,7 +16,6 @@ use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 use url::Url;
-use core::error::Error as _;
 
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),
@@ -446,7 +446,9 @@ impl ServerFileWrite {
                         .inspect_err(|err| warn!("Failed to write properties: {:?}", err)) // only warning, Potential QUOTA_EXCEEDED
                         .map_err(|err| {
                             if let Some(err) = err.source()
-                                && let Some(err) = err.downcast_ref::<io::Error>() && err.kind() == ErrorKind::QuotaExceeded {
+                                && let Some(err) = err.downcast_ref::<io::Error>()
+                                && err.kind() == ErrorKind::QuotaExceeded
+                            {
                                 <E as FromStorageQuotaReached>::from()
                             } else {
                                 <E as From<io::Error>>::from(io::Error::other(err))

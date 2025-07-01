@@ -17,8 +17,8 @@ impl ScheduleService for Daemon {
         server_id: u32,
         payload: SchedulePayload,
     ) -> Result<u32, CreateScheduleError> {
-        let _ = server_required::<CreateScheduleError>(&self.conn, &self.servers, server_id)
-            .await?;
+        let _ =
+            server_required::<CreateScheduleError>(&self.conn, &self.servers, server_id).await?;
         let mut conn = self.conn.acquire().await?;
 
         let policy = payload.policy;
@@ -77,8 +77,8 @@ impl ScheduleService for Daemon {
         schedule_id: u32,
         payload: SchedulePayload,
     ) -> Result<(), UpdateScheduleError> {
-        let _ = server_required::<UpdateScheduleError>(&self.conn, &self.servers, server_id)
-            .await?;
+        let _ =
+            server_required::<UpdateScheduleError>(&self.conn, &self.servers, server_id).await?;
         let mut conn = self.conn.acquire().await?;
 
         let policy = payload.policy;
@@ -150,8 +150,8 @@ impl ScheduleService for Daemon {
         server_id: u32,
         schedule_id: u32,
     ) -> Result<(), DeleteScheduleError> {
-        let _ = server_required::<DeleteScheduleError>(&self.conn, &self.servers, server_id)
-            .await?;
+        let _ =
+            server_required::<DeleteScheduleError>(&self.conn, &self.servers, server_id).await?;
         let mut conn = self.conn.acquire().await?;
         let daemon = self.clone();
         tokio::task::spawn(async move {

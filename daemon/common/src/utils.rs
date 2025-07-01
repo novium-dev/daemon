@@ -1,7 +1,7 @@
+use lazy_regex::regex;
 use serde_json::Map;
 use std::io;
 use std::io::{Error, SeekFrom};
-use std::sync::LazyLock;
 use tokio::fs::File;
 use tokio::io::{AsyncSeek, AsyncSeekExt as _};
 use tokio_util::io::SyncIoBridge;
@@ -16,15 +16,13 @@ pub async fn identify_container_by_pid(
     use std::io;
     use tokio::fs::File;
     use tokio::io::AsyncReadExt as _;
-    static CGROUP_REGEX: LazyLock<regex::Regex> = LazyLock::new(|| {
-        regex::Regex::new("docker-([a-z0-9]{64}).scope")
-            .expect("Unable to build cgroup regex for docker")
-    });
+
+    let regex = regex!("docker-([a-z0-9]{64}).scope");
 
     let mut file = File::open(format!("/proc/{pid}/cgroup")).await?;
     let mut buf = String::new();
     file.read_to_string(&mut buf).await?;
-    let captures = CGROUP_REGEX.captures(&buf);
+    let captures = regex.captures(&buf);
     match captures {
         None => Err(io::Error::other("Not in a docker cgroup")),
         Some(captures) => {
@@ -75,11 +73,15 @@ impl JsonExt for serde_json::Value {
             Self::Null => serde_yaml_ng::Value::Null,
             Self::Bool(value) => serde_yaml_ng::Value::Bool(value),
             Self::Number(value) => match (value.as_u64(), value.as_i64(), value.as_f64()) {
-                (Some(value), _, _) => serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(value)),
-                (_, Some(value), _) => serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(value)),
-                (_, _, value) => {
-                    serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(value.unwrap_or_default()))
+                (Some(value), _, _) => {
+                    serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(value))
                 }
+                (_, Some(value), _) => {
+                    serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(value))
+                }
+                (_, _, value) => serde_yaml_ng::Value::Number(serde_yaml_ng::Number::from(
+                    value.unwrap_or_default(),
+                )),
             },
             Self::String(value) => serde_yaml_ng::Value::String(value),
             Self::Array(value) => {

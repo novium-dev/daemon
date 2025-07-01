@@ -81,15 +81,11 @@ impl Network {
         conn: impl Executor<'_, Database = MySql>,
         id: u32,
     ) -> Result<Option<Self>, E> {
-        query_as!(
-            Self,
-            "SELECT * FROM `networks` WHERE `id` = ? LIMIT 1",
-            id
-        )
-        .fetch_optional(conn)
-        .await
-        .inspect_err(|err| error!("Failed to resolve network: {:?}", err))
-        .map_err(<E as From<sqlx::Error>>::from)
+        query_as!(Self, "SELECT * FROM `networks` WHERE `id` = ? LIMIT 1", id)
+            .fetch_optional(conn)
+            .await
+            .inspect_err(|err| error!("Failed to resolve network: {:?}", err))
+            .map_err(<E as From<sqlx::Error>>::from)
     }
 
     pub async fn delete<E: From<sqlx::Error> + FromDockerFailure>(
@@ -137,7 +133,8 @@ impl Network {
             .remove_network(&format!("{}{}", crate::common::NETWORK_PREFIX, self.id))
             .await
         {
-            Ok(()) | Err(bollard::errors::Error::DockerResponseServerError {
+            Ok(())
+            | Err(bollard::errors::Error::DockerResponseServerError {
                 status_code: 404, ..
             }) => {}
             Err(err) => {

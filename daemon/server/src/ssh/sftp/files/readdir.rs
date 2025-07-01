@@ -14,10 +14,11 @@ pub fn readdir(handle: &mut FileHandle) -> Result<Vec<File>, StatusCode> {
         }
         FileHandle::RegularDir(_, read_dir, read, _) => readdir_regular(read_dir, read),
         FileHandle::Internal(entries, read, _) => readdir_internal(entries, read),
+        FileHandle::Empty => Ok(IndexMap::new()),
     }
     .inspect_err(|err| {
         if err.kind() != ErrorKind::UnexpectedEof {
-            error!("Failed to readdir: {err:?}")
+            error!("Failed to readdir: {err:?}");
         }
     })
     .map_err(|err| {

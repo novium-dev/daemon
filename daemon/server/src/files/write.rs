@@ -43,7 +43,8 @@ pub(crate) async fn write_file<
     let _length = length.map(|header| header.0.0);
 
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
+            .await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let mut reader = stream.reader();
@@ -92,7 +93,8 @@ pub(crate) async fn write_file_by_template<
     template: ServerFileWrite,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
+            .await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
 
@@ -139,7 +141,8 @@ pub(crate) async fn write_file_by_url<
     url: Url,
 ) -> Result<(), E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
+            .await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     tokio::task::spawn(write_file_by_url0::<E>(daemon.clone(), storage, path, url))

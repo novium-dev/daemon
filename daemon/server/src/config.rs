@@ -1,17 +1,20 @@
 pub use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
+use axum::http::HeaderValue;
+use core::net::SocketAddr;
 use reqwest::Url;
 use russh::keys::PrivateKey;
 use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de, ser};
 use std::collections::{HashMap, HashSet};
-use std::net::SocketAddr;
 use std::path::PathBuf;
 
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
     pub backend_url: Url,
     pub listeners: HashSet<SocketAddr>,
-    pub origin: String,
+    #[serde(deserialize_with = "deserialize_header")]
+    #[serde(serialize_with = "serialize_header")]
+    pub origin: HeaderValue,
     pub storage: HashMap<String, StorageEntry>,
     pub backup: HashMap<String, BackupEntry>,
     pub database: String,
@@ -52,11 +55,12 @@ pub enum StorageEntry {
 }
 
 impl StorageEntry {
-    pub fn path(&self) -> &String {
+    #[must_use]
+    pub const fn path(&self) -> &String {
         match self {
-            StorageEntry::Directory { path } => path,
+            Self::Directory { path } => path,
             #[cfg(feature = "btrfs")]
-            StorageEntry::Btrfs { path, .. } => path,
+            Self::Btrfs { path, .. } => path,
         }
     }
 }
@@ -82,19 +86,21 @@ pub enum BackupEntry {
 }
 
 impl BackupEntry {
-    pub fn path(&self) -> &String {
+    #[must_use]
+    pub const fn path(&self) -> &String {
         match self {
-            BackupEntry::Archive { path, .. } => path,
+            Self::Archive { path, .. } => path,
             #[cfg(feature = "btrfs")]
-            BackupEntry::Btrfs { path, .. } => path,
+            Self::Btrfs { path, .. } => path,
         }
     }
 
-    pub fn order(&self) -> Option<i8> {
+    #[must_use]
+    pub const fn order(&self) -> Option<i8> {
         match self {
-            BackupEntry::Archive { order, .. } => *order,
+            Self::Archive { order, .. } => *order,
             #[cfg(feature = "btrfs")]
-            BackupEntry::Btrfs { order, .. } => *order,
+            Self::Btrfs { order, .. } => *order,
         }
     }
 }
@@ -123,14 +129,14 @@ impl SSHHostKey {
     pub async fn as_russh_key(&self) -> Result<PrivateKey, anyhow::Error> {
         use ed25519_dalek::ed25519::signature::rand_core::OsRng;
         use pkcs8::LineEnding;
-        use russh::keys::ssh_encoding::{DecodePem, EncodePem};
+        use russh::keys::ssh_encoding::{DecodePem as _, EncodePem as _};
         use std::io::ErrorKind;
         use tokio::fs::{File, OpenOptions};
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 
         let mut buffer = Vec::new();
         Ok(match self {
-            SSHHostKey::Ed25519 { path } => match File::open(path).await {
+            Self::Ed25519 { path } => match File::open(path).await {
                 Ok(mut file) => {
                     file.read_to_end(&mut buffer).await?;
                     PrivateKey::decode_pem(&buffer)?
@@ -152,7 +158,7 @@ impl SSHHostKey {
                     return Err(err.into());
                 }
             },
-            SSHHostKey::Rsa { path } => match File::open(path).await {
+            Self::Rsa { path } => match File::open(path).await {
                 Ok(mut file) => {
                     file.read_to_end(&mut buffer).await?;
                     PrivateKey::decode_pem(&buffer)?
@@ -174,4 +180,22 @@ impl SSHHostKey {
             },
         })
     }
+}
+
+fn deserialize_header<'de, D>(deserializer: D) -> Result<HeaderValue, D::Error>
+where
+    D: de::Deserializer<'de>,
+{
+    use de::Error as _;
+
+    let data = <&str>::deserialize(deserializer)?;
+    HeaderValue::from_str(data).map_err(D::Error::custom)
+}
+
+fn serialize_header<S>(data: &HeaderValue, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: ser::Serializer,
+{
+    use ser::Error as _;
+    serializer.serialize_str(data.to_str().map_err(S::Error::custom)?)
 }

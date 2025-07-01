@@ -1,8 +1,8 @@
 use crate::{Daemon, GIT_HASH, common};
+use core::time::Duration;
 use russh::server::*;
 use russh::*;
 use std::sync::Arc;
-use std::time::Duration;
 use tracing::error;
 
 impl Daemon {

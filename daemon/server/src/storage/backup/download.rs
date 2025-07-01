@@ -1,12 +1,12 @@
 use crate::Daemon;
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
-use crate::storage::archive::TarSandboxedAppendExtension;
+use crate::storage::archive::TarSandboxedAppendExt as _;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use axum::http;
 use axum::http::HeaderMap;
-use chrono::{TimeZone, Utc};
+use chrono::{TimeZone as _, Utc};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_compression_unsupported::FromCompressionUnsupported;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
@@ -16,8 +16,7 @@ use daemon_common::service::{DataStream, FileResponse};
 use serde_json::json;
 use std::collections::HashSet;
 use std::io;
-use std::io::{ErrorKind, Write};
-use std::ops::Deref;
+use std::io::{ErrorKind, Write as _};
 use std::path::PathBuf;
 use tar::Builder;
 use tokio::fs::File;
@@ -25,7 +24,7 @@ use tokio_util::io::SyncIoBridge;
 use tracing::{debug, error};
 
 /// Cancel safe
-pub(crate) async fn backup_to_stream<
+pub async fn backup_to_stream<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -43,7 +42,7 @@ pub(crate) async fn backup_to_stream<
         #[cfg(feature = "btrfs")]
         backup_exclude,
         ..
-    } = storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+    } = storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
     let backup = state
         .config
         .backup
@@ -91,9 +90,9 @@ async fn backup_to_stream0<E: From<io::Error>>(
                 headers,
                 DataStream::by_read(File::open(target).await.inspect_err(|err| {
                     if err.kind() == ErrorKind::NotFound {
-                        debug!("Failed to create a backup stream (open): {:?}", err)
+                        debug!("Failed to create a backup stream (open): {err:?}");
                     } else {
-                        error!("Failed to create a backup stream (open): {:?}", err)
+                        error!("Failed to create a backup stream (open): {err:?}");
                     }
                 })?),
             ))
@@ -124,7 +123,7 @@ async fn backup_to_stream0<E: From<io::Error>>(
 }
 
 /// Cancel safe
-pub(crate) async fn stream_realtime<
+pub async fn stream_realtime<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -132,7 +131,7 @@ pub(crate) async fn stream_realtime<
         + FromStorageFailure
         + FromCompressionUnsupported,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
     compression: String,
 ) -> Result<FileResponse, E> {
@@ -141,7 +140,7 @@ pub(crate) async fn stream_realtime<
         lock,
         backup_exclude,
         ..
-    } = storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let compression: ArchiveCompression = serde_json::from_value(json!({
         "type": compression
     }))
@@ -166,7 +165,7 @@ pub(crate) async fn stream_realtime<
 
 fn filename(id: StorageIdentifier) -> String {
     match id {
-        StorageIdentifier::Primary(id) => format!("server_{}", id),
+        StorageIdentifier::Primary(id) => format!("server_{id}"),
     }
 }
 
@@ -181,7 +180,10 @@ fn stream_realtime0(
 }
 
 /// Cancel safe
-#[expect(clippy::unused_async, reason = "ensure it only gets called in an async context")]
+#[expect(
+    clippy::unused_async,
+    reason = "ensure it only gets called in an async context"
+)]
 async fn stream_realtime1(
     compression: ArchiveCompression,
     target: PathBuf,
@@ -192,7 +194,7 @@ async fn stream_realtime1(
         let encoder = compression.create_encoder(SyncIoBridge::new(sender))?;
         let mut archive = Builder::new(encoder);
         archive.follow_symlinks(false);
-        let (archive, _) =
+        let (archive, ()) =
             archive.append_dir_all_sandboxed_blocking(&target, "", "/", exclude, (), true)?;
         archive.into_inner().unwrap().finish()?.flush()?;
         Ok::<(), io::Error>(())

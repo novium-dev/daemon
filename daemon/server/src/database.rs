@@ -4,14 +4,14 @@ use daemon_common::service::database::error_database_invalid_hash::FromDatabaseI
 use daemon_common::service::database::error_database_invalid_identifier::FromDatabaseInvalidIdentifier;
 use daemon_common::service::database::error_database_permissionless_entry::FromDatabasePermissionlessEntry;
 use daemon_common::service::database::{DatabaseUserPayload, DatabaseUserPermissions};
-use regex::Regex;
+use lazy_regex::regex;
 use sqlx::{Error, Executor, MySql, query, query_as};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Eq, PartialEq, sqlx::FromRow)]
-pub(crate) struct Database {
-    pub(crate) id: u32,
-    pub(crate) name_suffix: String,
+pub struct Database {
+    pub id: u32,
+    pub name_suffix: String,
 }
 
 #[derive(Clone, Default, Eq, PartialEq)]
@@ -22,11 +22,11 @@ pub struct FetchedDatabase {
 }
 
 #[derive(Clone, Eq, PartialEq, sqlx::FromRow)]
-pub(crate) struct DatabaseUser {
-    pub(crate) database: u32,
-    pub(crate) name_suffix: String,
-    pub(crate) password_hash: String,
-    pub(crate) permissions: i8,
+pub struct DatabaseUser {
+    pub database: u32,
+    pub name_suffix: String,
+    pub password_hash: String,
+    pub permissions: i8,
 }
 
 impl Database {
@@ -63,24 +63,17 @@ impl Database {
     }
 
     pub(crate) fn validate_hash<E: FromDatabaseInvalidHash>(str: &str) -> Result<(), E> {
-        if !str.len() == 41 {
-            return Err(E::from());
+        if regex!("\\*[A-Z0-9]{40}").is_match(str) {
+            Ok(())
+        } else {
+            Err(E::from())
         }
-        if !str.starts_with('*') {
-            return Err(E::from());
-        }
-        for c in str[1..].chars() {
-            if !"0123456789ABCDEF".contains(c) {
-                return Err(E::from());
-            }
-        }
-        Ok(())
     }
 
     pub(crate) fn validate_sql_string<E: FromDatabaseInvalidIdentifier>(
         str: &str,
     ) -> Result<(), E> {
-        if Regex::new("[a-zA-Z0-9_]+").unwrap().is_match(str) && str.len() <= 32 {
+        if regex!("[a-zA-Z0-9_]+").is_match(str) && str.len() <= 32 {
             Ok(())
         } else {
             Err(E::from())
@@ -88,7 +81,7 @@ impl Database {
     }
 }
 
-pub(crate) trait DatabasePayloadFunctionExt {
+pub trait DatabasePayloadFunctionExt {
     fn update_validated<
         E: From<sqlx::Error>
             + FromDatabaseInvalidIdentifier
@@ -109,9 +102,9 @@ pub(crate) trait DatabasePayloadFunctionExt {
     ) -> MultiTransactionApply;
 }
 
-pub(crate) struct DatabaseState {
-    pub(crate) users: HashMap<String, DatabaseUserPayload>,
-    pub(crate) passwordless: HashMap<u32, DatabaseUserPermissions>,
+pub struct DatabaseState {
+    pub users: HashMap<String, DatabaseUserPayload>,
+    pub passwordless: HashMap<u32, DatabaseUserPermissions>,
 }
 
 impl DatabasePayloadFunctionExt for DatabaseState {
@@ -124,7 +117,7 @@ impl DatabasePayloadFunctionExt for DatabaseState {
         &mut self,
         id: u32,
         name_suffix: String,
-        to: DatabaseState,
+        to: Self,
     ) -> Result<MultiTransactionApply, E> {
         for (user, data) in &to.users {
             Database::validate_sql_string::<E>(user)?;
@@ -145,7 +138,7 @@ impl DatabasePayloadFunctionExt for DatabaseState {
         &mut self,
         id: u32,
         name: String,
-        to: DatabaseState,
+        to: Self,
     ) -> MultiTransactionApply {
         let mut transaction = MultiTransactionApply::default();
 
@@ -216,8 +209,8 @@ impl DatabasePayloadFunctionExt for DatabaseState {
         for server in remove_server {
             transaction.add(
                 sql::revoke_all_privileges(
-                    format!("{}{}_{}", crate::common::MARIADB_DATABASE_PREFIX, id, name),
-                    format!("server_{}", server),
+                    format!("{}{id}_{name}", crate::common::MARIADB_DATABASE_PREFIX),
+                    format!("server_{server}"),
                     "%",
                 ),
                 vec![query!(
@@ -252,7 +245,7 @@ impl DatabasePayloadFunctionExt for DatabaseState {
         }
         for (server, permissions) in add_server {
             transaction.add(sql::create_user(
-                format!("server_{}", server),
+                format!("server_{server}"),
                 "%",
                 "mysql_native_password",
                 None,
@@ -265,14 +258,14 @@ impl DatabasePayloadFunctionExt for DatabaseState {
             for (perm_name, perm) in permissions.iter_names() {
                 applied |= perm;
                 transaction.add(sql::grant_privilege(
-                    format!("{}{}_{}", crate::common::MARIADB_DATABASE_PREFIX, id, name),
+                    format!("{}{id}_{name}", crate::common::MARIADB_DATABASE_PREFIX),
                     perm_name,
-                    format!("server_{}", server),
+                    format!("server_{server}"),
                     "%",
                 ), vec![query!("UPDATE `database_passwordless` SET `permissions` = ? WHERE `database` = ? AND `server` = ?", applied.bits(), id, server)])
             }
             transaction.add(
-                sql::grant_proxy(format!("server_{}", server), "%", "server", "%"),
+                sql::grant_proxy(format!("server_{server}"), "%", "server", "%"),
                 Vec::new(),
             );
         }

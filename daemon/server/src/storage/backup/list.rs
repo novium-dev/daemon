@@ -1,66 +1,69 @@
 use crate::Daemon;
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
-use crate::storage::backup::BackupNameExtension;
+use crate::storage::backup::BackupNameExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::io;
-use std::ops::Deref;
-use std::os::unix::fs::MetadataExt;
+use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::error;
 
 /// Cancel safe
-pub(crate) async fn list_backups<
+pub async fn list_backups<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
         + FromStorageMutexLocked
         + FromStorageFailure,
 >(
-    state: &Daemon,
+    daemon: &Daemon,
     id: StorageIdentifier,
 ) -> Result<Vec<BackupResponseEntry>, E> {
     let StorageLockData { lock, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let mut entries = Vec::new();
-    for (storage, backup_storage) in &state.config.backup {
+    for (storage, backup_storage) in &daemon.config.backup {
         let target_dir = PathBuf::from(backup_storage.path()).join(id.as_pathbuf());
         match backup_storage {
             BackupEntry::Archive { compression, .. } => {
                 let mut readdir = tokio::fs::read_dir(&target_dir)
                     .await
-                    .inspect_err(|err| error!("Failed to list backups (read_dir): {:?}", err))?;
+                    .inspect_err(|err| error!("Failed to list backups (read_dir): {err:?}"))?;
                 while let Some(entry) = readdir
                     .next_entry()
                     .await
-                    .inspect_err(|err| error!("Failed to list backups (next_entry): {:?}", err))?
+                    .inspect_err(|err| error!("Failed to list backups (next_entry): {err:?}"))?
                 {
                     let metadata = entry.metadata().await.inspect_err(|err| {
-                        error!("Failed to list backups (metadata): {:?}", err)
+                        error!("Failed to list backups (metadata): {err:?}");
                     })?;
 
+                    #[expect(
+                        clippy::filetype_is_file,
+                        reason = "Only list regular files here, not device files etc."
+                    )]
                     if !metadata.file_type().is_file() {
                         continue;
                     }
                     let entry_path = entry.path();
                     let size = metadata.size();
                     let filename = entry.file_name().to_string_lossy().to_string();
-                    if !filename.ends_with(&format!(".tar{}", compression.ext())) {
+                    let Some(entry) = filename.strip_suffix(&format!(".tar{}", compression.ext()))
+                    else {
                         continue;
-                    }
-                    let entry = &filename[0..filename.len() - (4 + compression.ext().len())];
+                    };
                     let entry: Result<i64, _> = entry.parse();
 
                     let file = File::open(entry_path)
                         .await
-                        .inspect_err(|err| error!("Failed to list backups (open): {:?}", err))?;
+                        .inspect_err(|err| error!("Failed to list backups (open): {err:?}"))?;
                     let name = file.get_backup_name().await.inspect_err(|err| {
-                        error!("Failed to list backups (get_name): {:?}", err)
+                        error!("Failed to list backups (get_name): {err:?}");
                     })?;
                     if let Ok(entry) = entry {
                         entries.push(BackupResponseEntry {

@@ -7,13 +7,13 @@ use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::server;
-use chrono::{TimeDelta, TimeZone, Utc};
+use chrono::{DateTime, TimeDelta, TimeZone, Utc};
+use core::time::Duration;
 use cron::Schedule;
 use daemon_common::service::schedule::{ScheduleRunPolicy, ScheduleStep};
 use sqlx::__rt::timeout;
 use std::collections::HashSet;
 use std::sync::Arc;
-use core::time::Duration;
 use tokio::io::AsyncWriteExt as _;
 use tokio::time::Instant;
 use tracing::error;
@@ -27,12 +27,10 @@ pub async fn task(
     timezone: impl TimeZone + Copy + Send + 'static,
 ) {
     drop(tokio::task::spawn(async move {
-        loop {
-            if let Some(next) = determine_next_run(&schedule, &timezone) {
-                tokio::time::sleep_until(next).await;
-                run(daemon.clone(), server_id, policy, &steps).await;
-            }
-        };
+        while let Some(next) = determine_next_run(&schedule, &timezone) {
+            tokio::time::sleep_until(next).await;
+            run(daemon.clone(), server_id, policy, &steps).await;
+        }
     }));
 }
 
@@ -41,7 +39,9 @@ fn determine_next_run(schedule: &Schedule, timezone: &(impl TimeZone + Copy)) ->
     schedule
         .upcoming(*timezone)
         .next()
-        .map(|time| time.to_utc() - Utc::now())
+        .as_ref()
+        .map(DateTime::to_utc)
+        .map(|time| time.signed_duration_since(Utc::now()))
         .as_ref()
         .map(TimeDelta::to_std)
         .map(Result::ok)
@@ -70,26 +70,30 @@ async fn run(daemon: Daemon, server_id: u32, policy: ScheduleRunPolicy, steps: &
         }
     };
     match (policy, running) {
-        (ScheduleRunPolicy::Always, _) | (ScheduleRunPolicy::Running, true) | (ScheduleRunPolicy::Stopped, false) => {}
+        (ScheduleRunPolicy::Always, _)
+        | (ScheduleRunPolicy::Running, true)
+        | (ScheduleRunPolicy::Stopped, false) => {}
         _ => return,
     }
     for step in steps {
-        if ScheduleStepResult::Interrupt == match step {
-            ScheduleStep::Start => start(daemon.clone(), server_id).await,
-            ScheduleStep::Stop => stop(daemon.clone(), server_id).await,
-            ScheduleStep::Restart => restart(daemon.clone(), server_id).await,
-            ScheduleStep::Kill => kill(daemon.clone(), server_id).await,
-            ScheduleStep::Sleep { time } => {
-                tokio::time::sleep(Duration::from_secs(*time)).await;
-                ScheduleStepResult::Continue
+        if ScheduleStepResult::Interrupt
+            == match step {
+                ScheduleStep::Start => start(daemon.clone(), server_id).await,
+                ScheduleStep::Stop => stop(daemon.clone(), server_id).await,
+                ScheduleStep::Restart => restart(daemon.clone(), server_id).await,
+                ScheduleStep::Kill => kill(daemon.clone(), server_id).await,
+                ScheduleStep::Sleep { time } => {
+                    tokio::time::sleep(Duration::from_secs(*time)).await;
+                    ScheduleStepResult::Continue
+                }
+                ScheduleStep::TerminalCommand { command } => {
+                    terminal(daemon.clone(), server_id, command).await
+                }
+                ScheduleStep::ContainerCommand { command } => {
+                    exec(daemon.clone(), server_id, command.clone()).await
+                }
             }
-            ScheduleStep::TerminalCommand { command } => {
-                terminal(daemon.clone(), server_id, command).await
-            }
-            ScheduleStep::ContainerCommand { command } => {
-                exec(daemon.clone(), server_id, command.clone()).await
-            }
-        } {
+        {
             break;
         }
     }
@@ -104,7 +108,10 @@ async fn start(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
         return ScheduleStepResult::Interrupt;
     };
     let (Ok(mut server_data_locked), storage) = tokio::join!(
-        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()),
+        timeout(
+            Duration::from_millis(100),
+            Arc::clone(&server_data).lock_owned()
+        ),
         storage_read_timeout::<StorageError>(
             &daemon.config,
             &*daemon.conn,
@@ -152,8 +159,11 @@ async fn stop(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
+    let Ok(server_data_locked) = timeout(
+        Duration::from_millis(100),
+        Arc::clone(&server_data).lock_owned(),
+    )
+    .await
     else {
         return ScheduleStepResult::Continue;
     };
@@ -178,8 +188,11 @@ async fn restart(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
+    let Ok(server_data_locked) = timeout(
+        Duration::from_millis(100),
+        Arc::clone(&server_data).lock_owned(),
+    )
+    .await
     else {
         return ScheduleStepResult::Continue;
     };
@@ -204,8 +217,11 @@ async fn kill(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
+    let Ok(server_data_locked) = timeout(
+        Duration::from_millis(100),
+        Arc::clone(&server_data).lock_owned(),
+    )
+    .await
     else {
         return ScheduleStepResult::Continue;
     };
@@ -230,8 +246,11 @@ async fn exec(daemon: Daemon, server_id: u32, command: Vec<String>) -> ScheduleS
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
+    let Ok(server_data_locked) = timeout(
+        Duration::from_millis(100),
+        Arc::clone(&server_data).lock_owned(),
+    )
+    .await
     else {
         return ScheduleStepResult::Continue;
     };
@@ -240,12 +259,7 @@ async fn exec(daemon: Daemon, server_id: u32, command: Vec<String>) -> ScheduleS
     let state = daemon.clone();
     tokio::task::spawn(async move {
         match server
-            .exec(
-                &state.docker,
-                command,
-                &server_data_locked,
-                false,
-            )
+            .exec(&state.docker, command, &server_data_locked, false)
             .await
         {
             Ok(_) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
@@ -264,8 +278,11 @@ async fn terminal(daemon: Daemon, server_id: u32, command: &str) -> ScheduleStep
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) =
-        timeout(Duration::from_millis(100), Arc::clone(&server_data).lock_owned()).await
+    let Ok(server_data_locked) = timeout(
+        Duration::from_millis(100),
+        Arc::clone(&server_data).lock_owned(),
+    )
+    .await
     else {
         return ScheduleStepResult::Continue;
     };

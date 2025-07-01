@@ -13,9 +13,9 @@ pub async fn stat(storage: Arc<Dir>, path: PathBuf) -> Result<FileAttributes, St
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied => {
-                debug!("Failed to stat file: {:?}", err)
+                debug!("Failed to stat file: {err:?}");
             }
-            _ => error!("Failed to stat file: {:?}", err),
+            _ => error!("Failed to stat file: {err:?}"),
         })
         .map_err(sftp_err)
         .map(<Metadata as IntoFileAttributes>::into_fileattributes)

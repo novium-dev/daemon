@@ -18,6 +18,8 @@ use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
+use core::sync::atomic::{AtomicU32, Ordering};
+use core::time::Duration;
 use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::server::error::{
@@ -36,8 +38,6 @@ use daemon_common::user::UserSignature;
 use sqlx::{Connection as _, MySql, Transaction, query, query_scalar};
 use std::collections::HashSet;
 use std::sync::Arc;
-use core::sync::atomic::{AtomicU32, Ordering};
-use core::time::Duration;
 use tokio::time::timeout;
 use tracing::{debug, error, warn};
 
@@ -95,8 +95,7 @@ impl ServerService for Daemon {
 
     async fn delete_server(&self, server_id: u32) -> Result<(), DeleteServerError> {
         let (server, server_data) =
-            server_required::<DeleteServerError>(&self.conn, &self.servers, server_id)
-                .await?;
+            server_required::<DeleteServerError>(&self.conn, &self.servers, server_id).await?;
 
         let daemon = self.clone();
         match timeout(Duration::from_secs(10), server_data.lock_owned()).await {
@@ -160,10 +159,12 @@ impl ServerService for Daemon {
         precise: Option<bool>,
     ) -> Result<PublicServerState, ServerStatusError> {
         let (server, server_data) =
-            server_required::<ServerStatusError>(&self.conn, &self.servers, server_id)
-                .await?;
+            server_required::<ServerStatusError>(&self.conn, &self.servers, server_id).await?;
 
-        #[expect(clippy::if_then_some_else_none, reason = "await is used, there is no then_async yet")]
+        #[expect(
+            clippy::if_then_some_else_none,
+            reason = "await is used, there is no then_async yet"
+        )]
         let server_data = if precise.unwrap_or(true) {
             let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
             Some(server_data.map_err(|_elapsed| ServerStatusError::ServerMutexLocked)?)
@@ -188,8 +189,7 @@ impl ServerService for Daemon {
 
     async fn start_server(&self, server_id: u32) -> Result<(), StartServerError> {
         let (server, server_data) =
-            server_required::<StartServerError>(&self.conn, &self.servers, server_id)
-                .await?;
+            server_required::<StartServerError>(&self.conn, &self.servers, server_id).await?;
 
         debug!("Starting Server {:?}", server);
 
@@ -274,8 +274,7 @@ impl ServerService for Daemon {
 
     async fn restart_server(&self, server_id: u32) -> Result<(), RestartServerError> {
         let (server, server_data) =
-            server_required::<RestartServerError>(&self.conn, &self.servers, server_id)
-                .await?;
+            server_required::<RestartServerError>(&self.conn, &self.servers, server_id).await?;
 
         let state = self.clone();
         tokio::task::spawn(async move {
@@ -298,10 +297,7 @@ impl ServerService for Daemon {
         tokio::task::spawn(async move {
             let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
             if let Ok(server_data) = server_data {
-                if let Err(err) = server
-                    .exec(&state.docker, cmd, &server_data, false)
-                    .await
-                {
+                if let Err(err) = server.exec(&state.docker, cmd, &server_data, false).await {
                     warn!("Failed to execute command in server: {:?}", err);
                 }
             }
@@ -351,8 +347,7 @@ impl ServerService for Daemon {
         )?;
 
         let (_, server_data) =
-            server_required::<ServerTerminalError>(&self.conn, &self.servers, server_id)
-                .await?;
+            server_required::<ServerTerminalError>(&self.conn, &self.servers, server_id).await?;
         let docker = Arc::clone(&self.docker);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
             terminal_websocket_handle(
@@ -386,8 +381,7 @@ impl ServerService for Daemon {
         )?;
 
         let (_, server_data) =
-            server_required::<ServerStatsError>(&self.conn, &self.servers, server_id)
-                .await?;
+            server_required::<ServerStatsError>(&self.conn, &self.servers, server_id).await?;
         let conn = Arc::clone(&self.conn);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
             stats_websocket_handle(server_id, conn, server_data, socket)
@@ -412,12 +406,9 @@ impl ServerService for Daemon {
             &command,
         )?;
 
-        let (server, server_data) = server_required::<ExecServerInteractiveError>(
-            &self.conn,
-            &self.servers,
-            server_id,
-        )
-        .await?;
+        let (server, server_data) =
+            server_required::<ExecServerInteractiveError>(&self.conn, &self.servers, server_id)
+                .await?;
 
         let docker = Arc::clone(&self.docker);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {

@@ -1,7 +1,7 @@
 use crate::Daemon;
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
-use crate::storage::backup::BackupNameExtension;
+use crate::storage::backup::BackupNameExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
@@ -9,13 +9,12 @@ use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::Deref;
 use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::{debug, error};
 
 /// Cancel safe
-pub(crate) async fn set_backup_name<
+pub async fn set_backup_name<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -30,32 +29,32 @@ pub(crate) async fn set_backup_name<
     name: Option<String>,
 ) -> Result<(), E> {
     let StorageLockData { lock, .. } =
-        storage_read_timeout::<E>(&state.config, state.conn.deref(), &state.storages, id).await?;
+        storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
     let backup = state
         .config
         .backup
         .get(backup_storage)
         .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
-        .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
+        .inspect_err(|_err| debug!("Backup storage does not exist: {backup_storage}"))?;
 
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     let target = match backup {
         BackupEntry::Archive { compression, .. } => {
-            target_dir.join(format!("{}.tar{}", backup_id, compression.ext()))
+            target_dir.join(format!("{backup_id}.tar{}", compression.ext()))
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => target_dir.join(backup_id.to_string()),
     };
     let file = File::open(target).await.inspect_err(|err| {
         if err.kind() == ErrorKind::NotFound {
-            debug!("Failed to set backup name (open): {:?}", err)
+            debug!("Failed to set backup name (open): {err:?}");
         } else {
-            error!("Failed to set backup name (open): {:?}", err)
+            error!("Failed to set backup name (open): {err:?}");
         }
     })?;
     file.set_backup_name(name)
         .await
-        .inspect_err(|err| error!("Failed to set backup name (set): {:?}", err))?;
+        .inspect_err(|err| error!("Failed to set backup name (set): {err:?}"))?;
 
     drop(lock);
 

@@ -30,12 +30,12 @@ pub struct DaemonSftpSession {
 impl DaemonSftpSession {
     fn handle(
         &mut self,
-        handle: String,
+        handle: &String,
         permissions: BackendAuthServerPermissions,
     ) -> Result<&mut FileHandle, StatusCode> {
-        match self.file_handles.get_mut(&handle) {
+        match self.file_handles.get_mut(handle) {
             None => {
-                debug!("File handle does not exist: {:?}", handle);
+                debug!("File handle does not exist: {handle:?}");
                 Err(StatusCode::NoSuchFile)
             }
             Some(handle) => {
@@ -50,7 +50,7 @@ impl DaemonSftpSession {
 }
 
 #[derive(Debug)]
-pub(crate) enum FileHandle {
+pub enum FileHandle {
     RegularFile(File, BackendAuthServerPermissions),
     RegularDir(
         Dir,
@@ -63,9 +63,14 @@ pub(crate) enum FileHandle {
         bool,
         BackendAuthServerPermissions,
     ),
+    Empty,
 }
 
-pub(crate) fn sftp_err(err: io::Error) -> StatusCode {
+#[expect(
+    clippy::needless_pass_by_value,
+    reason = "this function should be used with .map_err, if the first argument is a reference, then it wouldn't be possible"
+)]
+pub fn sftp_err(err: io::Error) -> StatusCode {
     match err.kind() {
         ErrorKind::NotFound => StatusCode::NoSuchFile,
         ErrorKind::PermissionDenied => StatusCode::PermissionDenied,
@@ -73,10 +78,10 @@ pub(crate) fn sftp_err(err: io::Error) -> StatusCode {
     }
 }
 
-pub(crate) fn internal_directory_attributes() -> FileAttributes {
+pub fn internal_directory_attributes() -> FileAttributes {
     FileAttributes {
-        uid: Some(crate::common::CONTAINER_DEFAULT_UID as u32),
-        gid: Some(crate::common::CONTAINER_DEFAULT_GID as u32),
+        uid: Some(u32::from(crate::common::CONTAINER_DEFAULT_UID)),
+        gid: Some(u32::from(crate::common::CONTAINER_DEFAULT_GID)),
         size: Some(0),
         user: None,
         group: None,

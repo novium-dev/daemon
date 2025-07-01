@@ -2,14 +2,10 @@ use crate::ssh::sftp::FileHandle;
 use russh_sftp::protocol::StatusCode;
 use std::io;
 use std::io::{ErrorKind, SeekFrom};
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _};
 use tracing::{debug, error};
 
-pub async fn read(
-    handle: &mut FileHandle,
-    offset: u64,
-    len: u32,
-) -> Result<Vec<u8>, StatusCode> {
+pub async fn read(handle: &mut FileHandle, offset: u64, len: u32) -> Result<Vec<u8>, StatusCode> {
     match handle {
         FileHandle::RegularFile(file, _) => read_regular(file, offset, len).await,
         _ => {
@@ -18,7 +14,13 @@ pub async fn read(
         }
     }
     .inspect_err(|err| error!("Failed to read file: {:?}", err))
-    .map_err(|err| if err.kind() == ErrorKind::UnexpectedEof { StatusCode::Eof } else { StatusCode::Failure })
+    .map_err(|err| {
+        if err.kind() == ErrorKind::UnexpectedEof {
+            StatusCode::Eof
+        } else {
+            StatusCode::Failure
+        }
+    })
 }
 
 #[inline(always)]

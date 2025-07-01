@@ -12,9 +12,9 @@ pub async fn remove(storage: Arc<Dir>, path: PathBuf) -> Result<(), StatusCode> 
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied | ErrorKind::IsADirectory => {
-                debug!("Failed to remove file: {:?}", err)
+                debug!("Failed to remove file: {err:?}");
             }
-            _ => error!("Failed to remove file: {:?}", err),
+            _ => error!("Failed to remove file: {err:?}"),
         })
         .map_err(sftp_err)
 }

@@ -6,10 +6,10 @@ use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};
 use bollard::Docker;
-use ringbuffer::RingBuffer as _;
-use std::sync::Arc;
 use core::sync::atomic::AtomicU32;
 use core::time::Duration;
+use ringbuffer::RingBuffer as _;
+use std::sync::Arc;
 use tokio::io::AsyncWriteExt as _;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::RecvError;
@@ -61,11 +61,14 @@ pub async fn new_session<
         drop(server_data);
         let mut sessions = sessions_arc.lock().await;
         let session_id = uuid::Uuid::new_v4();
-        sessions.insert(session_id, TerminalSession {
-            time: Instant::now(),
-            cols: Arc::clone(&cols),
-            rows: Arc::clone(&rows),
-        });
+        sessions.insert(
+            session_id,
+            TerminalSession {
+                time: Instant::now(),
+                cols: Arc::clone(&cols),
+                rows: Arc::clone(&rows),
+            },
+        );
         drop(sessions);
         update_size(id, &docker, Arc::clone(&server_data_arc)).await;
         (sessions_arc, session_id)
@@ -103,7 +106,10 @@ pub async fn new_session<
             ping_sent = true;
             last_sent = Instant::now();
         }
-        #[expect(clippy::integer_division_remainder_used, reason = "probably caused by tokio macro")]
+        #[expect(
+            clippy::integer_division_remainder_used,
+            reason = "probably caused by tokio macro"
+        )]
         {
             tokio::select! {
                 stdout = recv.recv() => {

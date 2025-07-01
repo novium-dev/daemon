@@ -28,8 +28,7 @@ impl NetworkService for Daemon {
     }
 
     async fn delete_network(&self, network_id: u32) -> Result<(), DeleteNetworkError> {
-        let Some(network) =
-            Network::resolve::<DeleteNetworkError>(&*self.conn, network_id).await?
+        let Some(network) = Network::resolve::<DeleteNetworkError>(&*self.conn, network_id).await?
         else {
             return Err(DeleteNetworkError::NetworkNotFound);
         };

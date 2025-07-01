@@ -2,16 +2,16 @@ use crate::ssh::handler::DaemonSSHHandler;
 use crate::terminal::{TerminalData, new_session};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
+use core::time::Duration;
 use daemon_common::node::BackendAuthServerPermissions;
+use daemon_common::ssh::DaemonBackendAuthServer;
 use russh::server::{Msg, Session};
 use russh::{ChannelId, ChannelStream};
 use sqlx::__rt::timeout;
 use std::io::{self, ErrorKind};
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tracing::debug;
-use daemon_common::ssh::DaemonBackendAuthServer;
 
 impl DaemonSSHHandler {
     pub(crate) async fn ssh_terminal(
@@ -42,12 +42,19 @@ impl DaemonSSHHandler {
             }
         };
 
-        let server_data_arc = Arc::clone(self.daemon.servers.lock().await.entry(internal_server_id).or_default());
+        let server_data_arc = Arc::clone(
+            self.daemon
+                .servers
+                .lock()
+                .await
+                .entry(internal_server_id)
+                .or_default(),
+        );
         let server = timeout(Duration::from_millis(100), server_data_arc.lock()).await;
         match server {
             Ok(server_data) => {
-                let sender = server_data.sender.clone();
-                let attach_write = server_data.attach_write.clone();
+                let sender = Arc::clone(&server_data.sender);
+                let attach_write = Arc::clone(&server_data.attach_write);
 
                 match self.channels.get_mut(&channel_id) {
                     None => {
@@ -56,29 +63,28 @@ impl DaemonSSHHandler {
                     }
                     Some((channel, id, cols, rows)) => {
                         *id = Some(internal_server_id);
-                        let channel = channel.take();
-                        if channel.is_none() {
+                        let Some(channel) = channel.take() else {
                             debug!("Channel already taken");
                             return session.channel_failure(channel_id);
-                        }
+                        };
                         let cols = match cols {
                             None => {
                                 debug!("Size is None on exec");
                                 return session.channel_failure(channel_id);
                             }
-                            Some(cols) => cols.clone(),
+                            Some(cols) => Arc::clone(cols),
                         };
                         let rows = match rows {
                             None => {
                                 debug!("Size is None on exec");
                                 return session.channel_failure(channel_id);
                             }
-                            Some(rows) => rows.clone(),
+                            Some(rows) => Arc::clone(rows),
                         };
                         drop(server_data);
                         tokio::task::spawn(new_session(
                             internal_server_id,
-                            (channel.unwrap().into_stream(), [0u8; 2048]),
+                            (channel.into_stream(), [0u8; 2048]),
                             TerminalData {
                                 sender,
                                 attach_write,
@@ -86,8 +92,8 @@ impl DaemonSSHHandler {
                                 rows,
                                 write,
                             },
-                            self.daemon.docker.clone(),
-                            server_data_arc.clone(),
+                            Arc::clone(&self.daemon.docker),
+                            Arc::clone(&server_data_arc),
                         ));
                         session.channel_success(channel_id)
                     }
@@ -117,7 +123,11 @@ impl ChannelAdapter<Result<usize, io::Error>, Result<(), io::Error>, Result<(), 
         Self: Sized,
     {
         match data {
-            Ok(size) => Ok(self.1[0..size].to_vec()),
+            Ok(size) => Ok(self
+                .1
+                .get(0..size)
+                .ok_or_else(|| ChannelError::IO(io::Error::other("Bug: Size larger than buffer")))?
+                .to_vec()),
             Err(err) if err.kind() == ErrorKind::UnexpectedEof => Err(ChannelError::Closed),
             Err(err) => Err(ChannelError::IO(err)),
         }

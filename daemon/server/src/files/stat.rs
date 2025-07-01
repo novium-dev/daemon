@@ -30,7 +30,8 @@ pub(crate) async fn stat_file<
     path: String,
 ) -> Result<FileEntry, E> {
     let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id).await?;
+        storage_read_timeout::<E>(&daemon.config, daemon.conn.deref(), &daemon.storages, id)
+            .await?;
     let path = path_relative(path);
     let (storage, _) = storage_path(id, &storage).await?;
     let metadata = storage

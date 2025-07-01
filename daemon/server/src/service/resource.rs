@@ -1,5 +1,6 @@
 use crate::Daemon;
 use async_trait::async_trait;
+use core::time::Duration;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::resource::error::ResourceInfoError;
 use daemon_common::service::resource::{ResourceDisk, ResourceResponse};
@@ -7,7 +8,6 @@ use num_traits::ToPrimitive as _;
 use sqlx::query_as;
 use sqlx::types::BigDecimal;
 use std::thread;
-use core::time::Duration;
 use tracing::{debug, error};
 
 #[async_trait]

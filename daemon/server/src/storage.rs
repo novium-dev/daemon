@@ -1,36 +1,35 @@
-pub(crate) mod archive;
-pub(crate) mod backup;
+pub mod archive;
+pub mod backup;
 #[cfg(feature = "btrfs")]
-pub(crate) mod btrfs;
-pub(crate) mod sync;
-pub(crate) mod worker;
+pub mod btrfs;
+pub mod sync;
+pub mod worker;
 
 use crate::config::StorageEntry;
+use core::sync::atomic::{AtomicI64, Ordering};
 use std::io;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
 use tokio::fs;
 use tracing::error;
 
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
-pub(crate) enum StorageIdentifier {
+pub enum StorageIdentifier {
     Primary(u32),
 }
 
 impl StorageIdentifier {
-    pub(crate) fn as_pathbuf(&self) -> PathBuf {
+    pub fn as_pathbuf(self) -> PathBuf {
         match self {
-            StorageIdentifier::Primary(id) => PathBuf::from(format!("primary/{}", id)),
+            Self::Primary(id) => PathBuf::from(format!("primary/{id}")),
         }
     }
 }
 
 /// Cancel safe (possible subvolume without quota, should correct itself after next storage access)
-pub(crate) async fn prepare(
+pub async fn prepare(
     id: StorageIdentifier,
     storage: &StorageEntry,
-    value: Arc<(AtomicI64, AtomicI64)>,
+    value: &(AtomicI64, AtomicI64),
     disk: Option<u64>,
 ) -> Result<String, io::Error> {
     let base = PathBuf::from(storage.path());
@@ -69,9 +68,11 @@ pub(crate) async fn prepare(
     if let StorageEntry::Btrfs { quota: true, .. } = &storage {
         btrfs::apply_qgroup_limit(&dir, disk).await?;
     }
-    value
-        .1
-        .store(disk.map(|i| i as i64).unwrap_or(-1), Ordering::Relaxed);
+    value.1.store(
+        disk.filter(|value| *value <= i64::MAX.unsigned_abs())
+            .map_or(-1, u64::cast_signed),
+        Ordering::Relaxed,
+    );
 
     Ok(fs::canonicalize(dir)
         .await
@@ -81,7 +82,7 @@ pub(crate) async fn prepare(
 }
 
 /// Cancel safe
-pub(crate) async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(), io::Error> {
+pub async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(), io::Error> {
     let base = PathBuf::from(storage.path());
     let dir = base.join(id.as_pathbuf());
 

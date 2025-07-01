@@ -63,8 +63,7 @@ impl DatabaseService for Daemon {
         users: HashMap<String, DatabaseUserPayload>,
         passwordless: HashMap<u32, DatabaseUserPermissions>,
     ) -> Result<(), UpdateDatabaseError> {
-        let Some(database) =
-            database::<UpdateDatabaseError>(&*self.conn, database_id).await?
+        let Some(database) = database::<UpdateDatabaseError>(&*self.conn, database_id).await?
         else {
             return Err(UpdateDatabaseError::DatabaseNotFound);
         };
@@ -90,8 +89,7 @@ impl DatabaseService for Daemon {
     }
 
     async fn delete_database(&self, database_id: u32) -> Result<(), DeleteDatabaseError> {
-        let Some(database) =
-            database::<DeleteDatabaseError>(&*self.conn, database_id).await?
+        let Some(database) = database::<DeleteDatabaseError>(&*self.conn, database_id).await?
         else {
             return Err(DeleteDatabaseError::DatabaseNotFound);
         };

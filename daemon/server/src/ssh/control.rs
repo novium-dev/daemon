@@ -21,12 +21,12 @@ use ratatui::{Frame, Terminal};
 use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
 use russh::server::{Msg, Session};
 use russh::{ChannelId, ChannelStream};
-use std::cmp::{max, min};
+use core::cmp::{max, min};
 use std::io::{ErrorKind, Write};
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
-use std::{io, mem};
+use core::sync::atomic::{AtomicU32, Ordering};
+use core::time::Duration;
+use std::io;
 use tokio::io::{AsyncReadExt, AsyncWrite};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::error::TryRecvError;
@@ -419,33 +419,54 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
 
     frame.render_widget(stats_border, stats_area);
 
-    let cpu_current_str = current_stat.cpu.map_or_else(|| "-".to_owned(), |cpu| format!("{:.2} %", cpu * 100.0f64));
-    let cpu_max_str = current_stat.cpu_max.map_or_else(|| "∞".to_owned(), |cpu_max| format!("{:.2} %", cpu_max * 100.0f32));
+    let cpu_current_str = current_stat
+        .cpu
+        .map_or_else(|| "-".to_owned(), |cpu| format!("{:.2} %", cpu * 100.0f64));
+    let cpu_max_str = current_stat.cpu_max.map_or_else(
+        || "∞".to_owned(),
+        |cpu_max| format!("{:.2} %", cpu_max * 100.0f32),
+    );
     let cpu_text = Text::raw(format!("CPU: {cpu_current_str} / {cpu_max_str}"));
 
-    let ram_current_str = current_stat.ram.map_or_else(|| "-".to_owned(), |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64));
-    let ram_max_str = current_stat.ram_max.map_or_else(|| "∞".to_owned(), |ram_max| format!("{} MiB", ram_max));
+    let ram_current_str = current_stat.ram.map_or_else(
+        || "-".to_owned(),
+        |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64),
+    );
+    let ram_max_str = current_stat
+        .ram_max
+        .map_or_else(|| "∞".to_owned(), |ram_max| format!("{} MiB", ram_max));
     let mem_text = Text::raw(format!("RAM: {ram_current_str} / {ram_max_str}"));
 
-    let swap_current_str = current_stat.swap.map_or_else(|| "-".to_owned(), |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64));
-    let swap_max_str = current_stat.swap_max.map_or_else(|| "∞".to_owned(), |swap_max| format!("{swap_max} MiB"));
+    let swap_current_str = current_stat.swap.map_or_else(
+        || "-".to_owned(),
+        |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64),
+    );
+    let swap_max_str = current_stat
+        .swap_max
+        .map_or_else(|| "∞".to_owned(), |swap_max| format!("{swap_max} MiB"));
     let swap_text = Text::raw(format!("Swap: {} / {}", swap_current_str, swap_max_str));
 
-    let disk_current_str = current_stat.disk.map_or_else(|| "-".to_owned(), |disk| {
-        let disk = disk as f64 / 1_048_576.0;
-        if disk > 1024.0f64 {
-            format!("{:.2} GiB", disk / 1024.0f64)
-        } else {
-            format!("{disk:.2} MiB")
-        }
-    });
-    let disk_max_str = current_stat.disk_max.map_or_else(|| "∞".to_owned(), |disk_max| {
-        if disk_max > 1024u64 {
-            format!("{:.2} GiB", disk_max as f64 / 1024.0f64)
-        } else {
-            format!("{disk_max:.2} MiB")
-        }
-    });
+    let disk_current_str = current_stat.disk.map_or_else(
+        || "-".to_owned(),
+        |disk| {
+            let disk = disk as f64 / 1_048_576.0;
+            if disk > 1024.0f64 {
+                format!("{:.2} GiB", disk / 1024.0f64)
+            } else {
+                format!("{disk:.2} MiB")
+            }
+        },
+    );
+    let disk_max_str = current_stat.disk_max.map_or_else(
+        || "∞".to_owned(),
+        |disk_max| {
+            if disk_max > 1024u64 {
+                format!("{:.2} GiB", disk_max as f64 / 1024.0f64)
+            } else {
+                format!("{disk_max:.2} MiB")
+            }
+        },
+    );
     let disk_text = Text::raw(format!("Disk: {disk_current_str} / {disk_max_str}"));
 
     frame.render_widget(cpu_text, stats[0]);
@@ -533,8 +554,13 @@ fn draw_cpu_chart(
             .border_type(BorderType::Plain)
             .border_style(Style::new().fg(Color::White)),
     );
-    let cpu_current_str = current_stat.cpu.map_or_else(|| "-".to_owned(), |cpu| format!("{:.2} %", cpu * 100.0f64));
-    let cpu_max_str = current_stat.cpu_max.map_or_else(|| "∞".to_owned(), |cpu_max| format!("{:.2} %", cpu_max * 100.0f32));
+    let cpu_current_str = current_stat
+        .cpu
+        .map_or_else(|| "-".to_owned(), |cpu| format!("{:.2} %", cpu * 100.0f64));
+    let cpu_max_str = current_stat.cpu_max.map_or_else(
+        || "∞".to_owned(),
+        |cpu_max| format!("{:.2} %", cpu_max * 100.0f32),
+    );
     let cpu_text =
         Text::raw(format!("CPU: {} / {}", cpu_current_str, cpu_max_str)).fg(Color::Yellow);
     let cpu_text_block = Block::bordered().border_style(Style::new().fg(Color::White));
@@ -624,11 +650,21 @@ fn draw_mem_chart(
             .border_type(BorderType::Plain)
             .border_style(Style::new().fg(Color::White)),
     );
-    let ram_current_str = current_stat.ram.map_or_else(|| "-".to_owned(), |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64));
-    let ram_max_str = current_stat.ram_max.map_or_else(|| "∞".to_owned(), |ram_max| format!("{} MiB", ram_max));
+    let ram_current_str = current_stat.ram.map_or_else(
+        || "-".to_owned(),
+        |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64),
+    );
+    let ram_max_str = current_stat
+        .ram_max
+        .map_or_else(|| "∞".to_owned(), |ram_max| format!("{} MiB", ram_max));
 
-    let swap_current_str = current_stat.swap.map_or_else(|| "-".to_owned(), |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64));
-    let swap_max_str = current_stat.swap_max.map_or_else(|| "∞".to_owned(), |swap_max| format!("{swap_max} MiB"));
+    let swap_current_str = current_stat.swap.map_or_else(
+        || "-".to_owned(),
+        |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64),
+    );
+    let swap_max_str = current_stat
+        .swap_max
+        .map_or_else(|| "∞".to_owned(), |swap_max| format!("{swap_max} MiB"));
 
     let ram_text = Text::raw(format!("RAM: {} / {}", ram_current_str, ram_max_str)).fg(ram_color);
     let swap_text =
@@ -733,9 +769,8 @@ impl<T: AsyncWrite + Unpin> SyncIOBridgeExt<T>
     for CustomSizedCrosstermBackendWrapper<&mut SyncIoBridge<T>>
 {
     fn inner_mut(&mut self) -> &mut T {
-        let r: &mut CrosstermBackendCopy<&mut SyncIoBridge<T>> =
-            unsafe { mem::transmute(&mut self.0) };
-        r.writer.inner_mut()
+        let backend_raw_copy = std::ptr::from_mut(&mut self.0).cast::<CrosstermBackendCopy<&mut SyncIoBridge<T>>>();
+        unsafe { &mut *backend_raw_copy }.writer.inner_mut()
     }
 }
 
@@ -765,7 +800,7 @@ async fn read(
     }
 
     if power {
-        let size = start as u8 + stop as u8 + restart as u8 + kill as u8;
+        let size = u8::from(start) + u8::from(stop) + u8::from(restart) + u8::from(kill);
 
         let mut block = false;
         if *selected >= size {
@@ -852,7 +887,8 @@ async fn launch_selected(
         255
     };
 
-    let (server, server_data) = match utils::server(&daemon.conn, &daemon.servers, server_id).await {
+    let (server, server_data) = match utils::server(&daemon.conn, &daemon.servers, server_id).await
+    {
         Ok(Some((server, server_data))) => (server, server_data),
         Ok(None) => {
             warn!(
@@ -867,7 +903,7 @@ async fn launch_selected(
         }
     };
     tokio::task::spawn(async move {
-        let server_data_arc = server_data.clone();
+        let server_data_arc = Arc::clone(&server_data);
         let Ok(mut server_data) =
             tokio::time::timeout(Duration::from_millis(100), server_data.lock_owned()).await
         else {

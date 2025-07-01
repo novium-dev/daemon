@@ -12,25 +12,24 @@ use bollard::models::{
 use bollard::query_parameters::{CreateContainerOptions, StartContainerOptions};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, OpenOptions};
+use core::fmt::{Debug, Display, Formatter};
+use core::future::Future;
+use core::pin::Pin;
+use core::time::Duration;
 use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
+use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
 use ringbuffer::RingBuffer;
 use std::collections::HashMap;
-use std::fmt::{Debug, Display, Formatter};
-use std::future::Future;
 use std::io;
 use std::io::ErrorKind;
-use std::ops::{Deref, DerefMut};
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
-use std::pin::Pin;
 use std::sync::Arc;
-use std::time::Duration;
 use tokio::sync::OwnedRwLockReadGuard;
 use tracing::warn;
-use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
 
 #[derive(Debug, thiserror::Error)]
-pub(crate) enum ServerStartError {
+pub enum ServerStartError {
     Docker(#[from] bollard::errors::Error),
     Storage(#[from] StorageError),
     IO(#[from] io::Error),
@@ -53,16 +52,16 @@ impl FromStoragePatchFailed for ServerStartError {
 impl FromStorageQuotaReached for ServerStartError {
     fn from() -> Self
     where
-        Self: Sized
+        Self: Sized,
     {
         Self::QuotaReached
     }
 }
 
 impl Display for ServerStartError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
         let debug_self: &dyn Debug = self; // ensure it's not recursively calling itself
-        debug_self.fmt(f)
+        debug_self.fmt(formatter)
     }
 }
 
@@ -97,15 +96,11 @@ impl FetchedServer {
         let buffer = server_data.buffer.clone();
         let mut buffer = buffer.lock().await;
         buffer.clear();
-        Self::log(
-            &server_data.sender,
-            buffer.deref_mut(),
-            "Preparing Server...",
-        );
+        Self::log(&server_data.sender, &mut buffer, "Preparing Server...");
 
         let image = self
             .clone()
-            .prepare_image(daemon, &docker, buffer.deref_mut(), server_data)
+            .prepare_image(daemon, &docker, &mut buffer, server_data)
             .await?;
 
         let storage_path_buf = PathBuf::from(&storage_path);
@@ -148,7 +143,7 @@ impl FetchedServer {
 
         binds.push(format!("{}:/control.sock", control_path.to_string_lossy()));
 
-        binds.push(format!("{}:/work", storage_path));
+        binds.push(format!("{storage_path}:/work"));
 
         let mut networks = HashMap::with_capacity(1);
 
@@ -163,33 +158,32 @@ impl FetchedServer {
         );
 
         for network in &self.networks {
-            let ipv4_1 = (network.network_ipv4 >> 8) as u8;
+            let ipv4_1 = (network.network_ipv4 >> 8u16) as u8;
+            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
             let ipv4_2 = network.network_ipv4 as u8 | network.server_ipv4;
 
-            let ipv6_1 = (network.server_ipv6 >> 12) as u16;
-            let ipv6_2 = (network.server_ipv6 >> 8) as u16;
-            let ipv6_3 = (network.server_ipv6 >> 4) as u16;
+            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
+            let ipv6_1 = (network.server_ipv6 >> 12u64) as u16;
+            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
+            let ipv6_2 = (network.server_ipv6 >> 8u64) as u16;
+            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
+            let ipv6_3 = (network.server_ipv6 >> 4u64) as u16;
+            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
             let ipv6_4 = network.server_ipv6 as u16;
             networks.insert(
                 format!("{}{}", crate::common::NETWORK_PREFIX, network.network_id),
                 EndpointSettings {
                     ip_address: Some(format!(
-                        "{}.{}.{}.{}",
+                        "{}.{}.{ipv4_1}.{ipv4_2}",
                         crate::common::IPV4_PREFIX[0],
                         crate::common::IPV4_PREFIX[1],
-                        ipv4_1,
-                        ipv4_2
                     )),
                     global_ipv6_address: Some(format!(
-                        "{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}:{:x}",
+                        "{:x}:{:x}:{:x}:{:x}:{ipv6_1:x}:{ipv6_2:x}:{ipv6_3:x}:{ipv6_4:x}",
                         crate::common::IPV6_PREFIX[0],
                         crate::common::IPV6_PREFIX[1],
                         crate::common::IPV6_PREFIX[2],
                         network.network_ipv6,
-                        ipv6_1,
-                        ipv6_2,
-                        ipv6_3,
-                        ipv6_4
                     )),
                     ..EndpointSettings::default()
                 },
@@ -213,11 +207,7 @@ impl FetchedServer {
                 })
         }
 
-        Self::log(
-            &server_data.sender,
-            buffer.deref_mut(),
-            "Creating Environment...",
-        );
+        Self::log(&server_data.sender, &mut buffer, "Creating Environment...");
 
         let mut env: HashMap<String, String> =
             HashMap::from_iter([("TERM".to_owned(), "xterm-256color".to_owned())]);
@@ -307,11 +297,7 @@ impl FetchedServer {
             .await
             .map_err(ServerStartError::Docker)?;
 
-        Self::log(
-            &server_data.sender,
-            buffer.deref_mut(),
-            "Starting Server...",
-        );
+        Self::log(&server_data.sender, &mut buffer, "Starting Server...");
 
         docker
             .start_container(
@@ -363,7 +349,7 @@ impl FetchedServer {
         tokio::time::sleep(duration).await;
         let storage = storage_read::<StorageError>(
             &daemon.config,
-            daemon.conn.deref(),
+            &*daemon.conn,
             &daemon.storages,
             StorageIdentifier::Primary(server_id),
         )
@@ -372,7 +358,7 @@ impl FetchedServer {
         server
             .start_pinned(
                 daemon.docker.clone(),
-                server_data_locked.deref_mut(),
+                &mut server_data_locked,
                 server_data.clone(),
                 storage,
                 &daemon,

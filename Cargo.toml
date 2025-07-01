@@ -183,7 +183,6 @@ little_endian_bytes = "deny"
 [workspace.dependencies]
 libc = "0.2"
 bollard = "0.19.1"
-regex = "1.11.1"
 toml = "0.8.23"
 base64 = "0.22.1"
 rand = "0.9.1"
@@ -212,6 +211,7 @@ no-panic = "0.1.35"
 itertools = "0.14.0"
 arc-swap = "1.7.1"
 thiserror = "2.0.12"
+lazy-regex = "3.4.1"
 
 [workspace.dependencies.daemon_common]
 path = "daemon/common"

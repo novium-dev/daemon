@@ -2,7 +2,7 @@ use crate::Daemon;
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
-use crate::storage::archive::{TarSandboxedAppendExtension, TarSandboxedUnpackExtension};
+use crate::storage::archive::{TarSandboxedAppendExt, TarSandboxedUnpackExt};
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
 use cap_async_std::fs::{Dir, OpenOptions};

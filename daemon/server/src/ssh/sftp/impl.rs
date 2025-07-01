@@ -1,14 +1,15 @@
-use crate::ssh::sftp::{DaemonSftpSession, FileHandle};
+use crate::ssh::sftp::DaemonSftpSession;
 use cap_async_std::fs::{OpenOptions, OpenOptionsExt as _};
 use daemon_common::node::BackendAuthServerPermissions;
-use indexmap::IndexMap;
 use russh_sftp::protocol::*;
 use std::collections::HashMap;
 use tracing::*;
 
 impl DaemonSftpSession {
-
-    #[expect(clippy::unnecessary_wraps, reason = "The Result removes boilerplate code")]
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "The Result removes boilerplate code"
+    )]
     fn success(id: u32) -> Result<Status, StatusCode> {
         Ok(Status {
             id,
@@ -38,18 +39,14 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
         self.version = Some(version);
 
-        let handle =
-            FileHandle::Internal(IndexMap::new(), false, BackendAuthServerPermissions::all());
-        let empty = "empty".to_owned();
-        self.file_handles.insert(empty, handle);
-
         debug!("version: {:?}, extensions: {:?}", self.version, extensions);
         Ok(Version::new())
     }
 
     async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
-        debug!("Close {} {}", id, handle);
-        self.file_handles.remove(&handle)
+        debug!("Close {id} {handle}");
+        self.file_handles
+            .remove(&handle)
             .map_or(Err(StatusCode::NoSuchFile), |_handle| Self::success(id))
     }
 
@@ -60,7 +57,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         pflags: OpenFlags,
         attrs: FileAttributes,
     ) -> Result<Handle, Self::Error> {
-        debug!("Open {} {} {}", id, filename, pflags.bits());
+        debug!("Open {id} {filename} {}", pflags.bits());
 
         let mut options = OpenOptions::new();
         let mut options = options
@@ -76,27 +73,27 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         }
 
         let handle = super::files::open(self, filename, options).await?;
-        debug!("Handle: {}", handle);
+        debug!("Handle: {handle}");
         Ok(Handle { id, handle })
     }
 
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
-        debug!("Realpath {} {}", id, path);
+        debug!("Realpath {id} {path}");
         super::files::realpath(path)
             .await
             .map(|files| Name { id, files })
     }
 
     async fn opendir(&mut self, id: u32, path: String) -> Result<Handle, Self::Error> {
-        debug!("OpenDir {} {}", id, path);
+        debug!("OpenDir {id} {path}");
         let handle = super::files::open(self, path, &OpenOptions::new()).await?;
-        debug!("Handle: {}", handle);
+        debug!("Handle: {handle}");
         Ok(Handle { id, handle })
     }
 
     async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
-        debug!("ReadDir {} {}", id, handle);
-        let handle = self.handle(handle, BackendAuthServerPermissions::FILES_READ)?;
+        debug!("ReadDir {id} {handle}");
+        let handle = self.handle(&handle, BackendAuthServerPermissions::FILES_READ)?;
         Ok(Name {
             id,
             files: super::files::readdir(handle)?,
@@ -110,8 +107,8 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
-        debug!("Read {} {}", id, handle);
-        let handle = self.handle(handle, BackendAuthServerPermissions::FILES_READ)?;
+        debug!("Read {id} {handle}");
+        let handle = self.handle(&handle, BackendAuthServerPermissions::FILES_READ)?;
         super::files::read(handle, offset, len)
             .await
             .map(|buf| Data { id, data: buf })
@@ -125,14 +122,14 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
         debug!("Write {} {}", id, handle);
-        let handle = self.handle(handle, BackendAuthServerPermissions::FILES_WRITE)?;
+        let handle = self.handle(&handle, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::write(handle, offset, data).await?;
         Self::success(id)
     }
 
     async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
         debug!("Fstat {} {}", id, handle);
-        let handle = self.handle(handle, BackendAuthServerPermissions::FILES_READ)?;
+        let handle = self.handle(&handle, BackendAuthServerPermissions::FILES_READ)?;
         super::files::fstat(handle)
             .await
             .map(|attrs| Attrs { id, attrs })
@@ -145,15 +142,15 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         debug!("Fsetstat {} {}", id, handle);
-        let handle = self.handle(handle, BackendAuthServerPermissions::FILES_WRITE)?;
+        let handle = self.handle(&handle, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::fsetstat(handle, attrs.permissions, attrs.size).await?;
         Self::success(id)
     }
 
     async fn lstat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Lstat {} {}", id, path);
-        let handle = super::files::open(self, path, OpenOptions::new().read(true)).await?;
-        let mut handle = self.file_handles.remove(&handle).unwrap();
+        let (_, mut handle) =
+            super::files::open_handle(self, path, OpenOptions::new().read(true)).await?;
         super::files::fstat(&mut handle)
             .await
             .map(|attrs| Attrs { id, attrs })
@@ -166,16 +163,16 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         debug!("Mkdir {} {}", id, path);
-        let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
+        let (storage, path) =
+            self.sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::mkdir(storage, path, attrs.permissions).await?;
         Self::success(id)
     }
 
     async fn stat(&mut self, id: u32, path: String) -> Result<Attrs, Self::Error> {
         debug!("Stat {} {}", id, path);
-        let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_READ)?;
+        let (storage, path) =
+            self.sandboxed_path(path, BackendAuthServerPermissions::FILES_READ)?;
         super::files::stat(storage, path)
             .await
             .map(|attrs| Attrs { id, attrs })
@@ -188,8 +185,8 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
         debug!("Setstat {} {}", id, path);
-        let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
+        let (storage, path) =
+            self.sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::setstat(storage, path, attrs.permissions, attrs.size).await?;
         Self::success(id)
     }
@@ -201,26 +198,26 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         newpath: String,
     ) -> Result<Status, Self::Error> {
         debug!("Rename {} {} to {}", id, oldpath, newpath);
-        let (old_storage, old_path) = self
-            .sandboxed_path(oldpath, BackendAuthServerPermissions::FILES_WRITE)?;
-        let (new_storage, new_path) = self
-            .sandboxed_path(newpath, BackendAuthServerPermissions::FILES_WRITE)?;
+        let (old_storage, old_path) =
+            self.sandboxed_path(oldpath, BackendAuthServerPermissions::FILES_WRITE)?;
+        let (new_storage, new_path) =
+            self.sandboxed_path(newpath, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::rename(old_storage, old_path, new_storage, new_path).await?;
         Self::success(id)
     }
 
     async fn remove(&mut self, id: u32, filename: String) -> Result<Status, Self::Error> {
         debug!("Remove {} {}", id, filename);
-        let (storage, path) = self
-            .sandboxed_path(filename, BackendAuthServerPermissions::FILES_WRITE)?;
+        let (storage, path) =
+            self.sandboxed_path(filename, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::remove(storage, path).await?;
         Self::success(id)
     }
 
     async fn rmdir(&mut self, id: u32, path: String) -> Result<Status, Self::Error> {
         debug!("rmdir {} {}", id, path);
-        let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
+        let (storage, path) =
+            self.sandboxed_path(path, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::rmdir(storage, path).await?;
         Self::success(id)
     }
@@ -232,23 +229,23 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         targetpath: String,
     ) -> Result<Status, Self::Error> {
         debug!("Symlink {} {} {}", id, linkpath, targetpath);
-        let (storage, path) = self
-            .sandboxed_path(linkpath, BackendAuthServerPermissions::FILES_WRITE)?;
+        let (storage, path) =
+            self.sandboxed_path(linkpath, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::symlink(storage, path, targetpath).await?;
         Self::success(id)
     }
 
     async fn readlink(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         debug!("Readlink {} {}", id, path);
-        let (storage, path) = self
-            .sandboxed_path(path, BackendAuthServerPermissions::FILES_READ)?;
+        let (storage, path) =
+            self.sandboxed_path(path, BackendAuthServerPermissions::FILES_READ)?;
         super::files::readlink(storage, path)
             .await
             .map(|filename| Name {
                 id,
                 files: vec![File {
                     filename,
-                    longname: "".to_string(),
+                    longname: String::new(),
                     attrs: FileAttributes::default(),
                 }],
             })
