@@ -4,7 +4,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::sync::Mutex;
 use crate::utils::from_mib;
-use crate::{Daemon, ServerData, utils};
+use crate::{Daemon, DaemonExtra, ServerData, utils};
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, EndpointSettings, HostConfig, NetworkingConfig, PortBinding,
@@ -18,6 +18,7 @@ use core::pin::Pin;
 use core::time::Duration;
 use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
+use num_traits::cast::FromPrimitive as _;
 use ringbuffer::RingBuffer as _;
 use std::collections::HashMap;
 use std::io;
@@ -38,6 +39,7 @@ pub enum ServerStartError {
     AlreadyRunning,
     Sql(#[from] sqlx::Error), // only if queued
     NotFound,
+    MathError,
 }
 
 impl FromStoragePatchFailed for ServerStartError {
@@ -78,7 +80,7 @@ impl FetchedServer {
             ..
         }: StorageLockData<OwnedRwLockReadGuard<()>>,
         server_data_arc: Arc<Mutex<ServerData>>,
-        daemon: &Daemon,
+        daemon: &Daemon<impl DaemonExtra>,
     ) -> Result<(), ServerStartError> {
         if !Self::state(self.id, self.locks.clone(), &docker, Some(server_data))
             .await
@@ -209,6 +211,11 @@ impl FetchedServer {
             .map(|(key, value)| format!("{key}={value}"))
             .collect();
 
+        let memory = self
+            .ram
+            .map(from_mib)
+            .map(|ram| i64::try_from(ram).unwrap_or(i64::MAX));
+
         docker
             .create_container(
                 Some(CreateContainerOptions {
@@ -239,6 +246,7 @@ impl FetchedServer {
 
                     stop_timeout: Some(i64::from(self.stop_timeout)),
 
+                    #[expect(clippy::zero_sized_map_values, reason = "needed because of struct value")]
                     exposed_ports: Some(
                         ports
                             .keys()
@@ -269,12 +277,25 @@ impl FetchedServer {
                         cap_add: Some(self.cap_add.iter().cloned().collect()),
                         cap_drop: Some(self.cap_drop.iter().cloned().collect()),
 
-                        cpu_period: self.cpu.map(|_| 100_000),
-                        cpu_quota: self.cpu.map(|cpu| (100_000.0 * cpu) as i64),
-                        memory: self.ram.map(utils::from_mib).map(|ram| ram as i64),
-                        memory_swap: self
-                            .ram
-                            .map(|data| self.swap.map_or(-1, |swap| from_mib(data + swap) as i64)),
+                        cpu_period: self.cpu.map(|_| 100_000i64),
+                        cpu_quota: if let Some(cpu) = self.cpu {
+                            Some(
+                                i64::from_f64((f64::from(cpu) * 100_000.0f64).round())
+                                    .ok_or(ServerStartError::MathError)?,
+                            )
+                        } else {
+                            None
+                        },
+                        memory,
+                        memory_swap: memory
+                            .map(|memory| {
+                                self.swap.map(from_mib).map(|swap| {
+                                    i64::try_from(swap)
+                                        .unwrap_or(i64::MAX)
+                                        .saturating_add(memory)
+                                })
+                            })
+                            .unwrap_or_default(),
 
                         #[cfg(not(feature = "no_tty_size_please"))]
                         console_size: Some(vec![
@@ -320,7 +341,11 @@ impl FetchedServer {
         Ok(())
     }
 
-    pub(crate) async fn queue_start(daemon: Daemon, server_id: u32, duration: Duration) {
+    pub(crate) async fn queue_start(
+        daemon: Daemon<impl DaemonExtra>,
+        server_id: u32,
+        duration: Duration,
+    ) {
         if let Err(err) = Self::queue_start0(daemon, server_id, duration).await {
             warn!("Failed to queue start: {:?}", err);
         }
@@ -332,7 +357,7 @@ impl FetchedServer {
         reason = "lock the server data first"
     )]
     async fn queue_start0(
-        daemon: Daemon,
+        daemon: Daemon<impl DaemonExtra>,
         server_id: u32,
         duration: Duration,
     ) -> Result<(), ServerStartError> {
@@ -371,9 +396,9 @@ impl FetchedServer {
         server_data: &'a mut ServerData,
         server_data_arc: Arc<Mutex<ServerData>>,
         storage: StorageLockData<OwnedRwLockReadGuard<()>>,
-        state: &'a Daemon,
+        daemon: &'a Daemon<impl DaemonExtra>,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
-        Box::pin(self.start(docker, server_data, storage, server_data_arc, state))
+        Box::pin(self.start(docker, server_data, storage, server_data_arc, daemon))
         // It needs to be pinned to be called recursively
     }
 }

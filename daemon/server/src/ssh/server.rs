@@ -1,6 +1,6 @@
-use crate::Daemon;
 use crate::ssh::auth::InvalidationCacheMap;
 use crate::ssh::handler::DaemonSSHHandler;
+use crate::{Daemon, DaemonExtra};
 use core::net::SocketAddr;
 use core::time::Duration;
 use russh::server::{Handler, Server};
@@ -9,13 +9,13 @@ use std::io::ErrorKind;
 use tracing::debug;
 
 #[derive(Clone)]
-pub struct DaemonSSHServer {
-    pub(crate) daemon: Daemon,
+pub struct DaemonSSHServer<T: DaemonExtra> {
+    pub(crate) daemon: Daemon<T>,
     pub(crate) cache_invalidation: Duration,
 }
 
-impl Server for DaemonSSHServer {
-    type Handler = DaemonSSHHandler;
+impl<T: DaemonExtra> Server for DaemonSSHServer<T> {
+    type Handler = DaemonSSHHandler<T>;
 
     fn new_client(&mut self, _peer_addr: Option<SocketAddr>) -> Self::Handler {
         DaemonSSHHandler {

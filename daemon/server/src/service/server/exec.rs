@@ -22,8 +22,8 @@ pub(super) async fn exec_websocket_handle(
     docker: Arc<Docker>,
     command: Vec<String>,
     socket: WebSocket,
-    #[cfg(not(feature = "no_tty_size_please"))] cols: u32,
-    #[cfg(not(feature = "no_tty_size_please"))] rows: u32,
+    #[cfg(not(feature = "no_tty_size_please"))] cols: u16,
+    #[cfg(not(feature = "no_tty_size_please"))] rows: u16,
 ) {
     let server_data = server_data_arc.lock().await;
     if let Ok(Some((id, output, input))) = server.exec(&docker, command, &server_data, true).await {

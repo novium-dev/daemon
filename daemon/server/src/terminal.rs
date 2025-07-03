@@ -6,7 +6,7 @@ use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};
 use bollard::Docker;
-use core::sync::atomic::AtomicU32;
+use core::sync::atomic::AtomicU16;
 use core::time::Duration;
 use ringbuffer::RingBuffer as _;
 use std::sync::Arc;
@@ -19,17 +19,17 @@ use tracing::{debug, error, warn};
 #[cfg(not(feature = "no_tty_size_please"))]
 pub struct TerminalSession {
     pub time: Instant,
-    pub cols: Arc<AtomicU32>,
-    pub rows: Arc<AtomicU32>,
+    pub cols: Arc<AtomicU16>,
+    pub rows: Arc<AtomicU16>,
 }
 
 pub struct TerminalData {
     pub sender: Arc<Sender<ChannelWriteData>>,
     pub attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     #[cfg(not(feature = "no_tty_size_please"))]
-    pub cols: Arc<AtomicU32>,
+    pub cols: Arc<AtomicU16>,
     #[cfg(not(feature = "no_tty_size_please"))]
-    pub rows: Arc<AtomicU32>,
+    pub rows: Arc<AtomicU16>,
     pub write: bool,
 }
 

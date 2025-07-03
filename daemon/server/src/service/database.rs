@@ -1,6 +1,6 @@
 use crate::database::{Database, DatabasePayloadFunctionExt as _, DatabaseState, FetchedDatabase};
 use crate::utils::database;
-use crate::{Daemon, sql};
+use crate::{Daemon, DaemonExtra, sql};
 use async_trait::async_trait;
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::database::error::{
@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use tracing::{debug, error};
 
 #[async_trait]
-impl DatabaseService for Daemon {
+impl<T: DaemonExtra> DatabaseService for Daemon<T> {
     async fn create_database(&self, name_suffix: String) -> Result<u32, CreateDatabaseError> {
         Database::validate_sql_string::<CreateDatabaseError>(&name_suffix)
             .inspect_err(|_err| debug!("Validation of name suffix failed: {:?}", name_suffix))?;

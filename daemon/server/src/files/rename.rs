@@ -1,8 +1,8 @@
-use crate::Daemon;
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
+use crate::{Daemon, DaemonExtra};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
@@ -19,7 +19,7 @@ pub async fn rename_file<
         + FromStorageMutexLocked
         + FromStorageFailure,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     from: String,
     to: String,

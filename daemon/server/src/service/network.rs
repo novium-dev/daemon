@@ -1,5 +1,5 @@
-use crate::Daemon;
 use crate::network::Network;
+use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use daemon_common::service::network::NetworkService;
 use daemon_common::service::network::error::{CreateNetworkError, DeleteNetworkError};
@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tracing::error;
 
 #[async_trait]
-impl NetworkService for Daemon {
+impl<T: DaemonExtra> NetworkService for Daemon<T> {
     async fn create_network(&self, ipv4: u16, ipv6: u16) -> Result<u32, CreateNetworkError> {
         let mut conn = self.conn.acquire().await?;
         let docker = Arc::clone(&self.docker);

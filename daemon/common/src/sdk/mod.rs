@@ -22,7 +22,6 @@ use reqwest::{Client, ResolveServerName, Url};
 use rustls::pki_types::{DnsName, ServerName};
 use uuid::Uuid;
 
-#[expect(private_bounds, reason = "trait should be sealed")]
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}
 pub(crate) trait DaemonSdkSealed {}
 impl DaemonSDKExtra for () {}

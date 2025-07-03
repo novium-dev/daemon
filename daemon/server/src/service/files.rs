@@ -1,9 +1,9 @@
-use crate::Daemon;
 use crate::files::{
     copy_file, create_archive, delete_file, download_file, list_files, mkdir_file, rename_file,
     stat_file, symlink_file, unpack_archive, write_file, write_file_by_template, write_file_by_url,
 };
 use crate::storage::StorageIdentifier;
+use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use axum_extra::TypedHeader;
 use axum_extra::headers::ContentLength;
@@ -22,7 +22,7 @@ use daemon_common::user::UserSignature;
 use url::Url;
 
 #[async_trait]
-impl FilesService for Daemon {
+impl<T: DaemonExtra> FilesService for Daemon<T> {
     async fn server_list_files(
         &self,
         server_id: u32,

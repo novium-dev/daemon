@@ -4,7 +4,7 @@ use crate::server::status::InternalServerState;
 use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
 use crate::utils::ChannelWriteData;
-use crate::{Daemon, StorageData};
+use crate::{Daemon, DaemonExtra, StorageData};
 use core::sync::atomic::{AtomicI64, Ordering};
 use core::time::Duration;
 use daemon_common::service::server::ServerStats;
@@ -21,7 +21,7 @@ use tokio::task::JoinSet;
 use tokio::time::timeout;
 use tracing::warn;
 
-pub async fn run(daemon: Daemon) {
+pub async fn run(daemon: Daemon<impl DaemonExtra>) {
     for (storage_id, storage_entry) in daemon.config.storage.clone() {
         let mut server_task = daemon.server_task_cancellable.lock().await;
         let daemon = daemon.clone();
@@ -30,7 +30,7 @@ pub async fn run(daemon: Daemon) {
 }
 
 async fn resolve(
-    state: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     storage_id: String,
     storage_entry: &StorageEntry,
 ) -> Option<
@@ -52,7 +52,7 @@ async fn resolve(
         "SELECT `id`, `cpu`, `ram`, `swap`, `disk` FROM `servers` WHERE `storage` = ?",
         &storage_id
     )
-    .fetch_all(&*state.conn)
+    .fetch_all(&*daemon.conn)
     .await
     {
         Ok(servers) => servers
@@ -73,7 +73,7 @@ async fn resolve(
         if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
             continue;
         }
-        let mut storages = state.storages.lock().await; // acquire lock multiple times, because the try_exists probably takes some time
+        let mut storages = daemon.storages.lock().await; // acquire lock multiple times, because the try_exists probably takes some time
         let storage_data = storages
             .entry(identifier)
             .or_insert_with(|| StorageData {
@@ -89,7 +89,7 @@ async fn resolve(
             })
             .clone();
         drop(storages);
-        let servers = state.servers.lock().await;
+        let servers = daemon.servers.lock().await;
         let server = servers.get(&id).cloned();
         drop(servers);
         let sender = match server {
@@ -105,7 +105,7 @@ async fn resolve(
     Some(available)
 }
 
-pub fn watch(daemon: &Daemon, storage_id: &str, storage_entry: &StorageEntry) {
+pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry: &StorageEntry) {
     let mut last = SystemTime::UNIX_EPOCH;
     let mut recv = daemon.shutdown_channel.subscribe();
     while recv.try_recv() == Err(TryRecvError::Empty) {
@@ -132,30 +132,23 @@ pub fn watch(daemon: &Daemon, storage_id: &str, storage_entry: &StorageEntry) {
 
             let mut quotas = HashMap::new();
             if let Err(err) = super::btrfs::search_quotas(File::open(path), &mut quotas) {
-                error!(
-                    "Unable to retrieve quotas: {:?}. Ensure quotas are enabled",
-                    err
-                );
+                error!("Unable to retrieve quotas: {err:?}. Ensure quotas are enabled");
             }
 
             for (id, (_server_id, path, _, _, _, data, _)) in &storages {
                 let subvol = match super::btrfs::get_subvol_id(File::open(path)) {
                     Ok(id) => id,
                     Err(err) => {
-                        warn!("Unable to get subvolume id of {:?}: {:?}", id, err);
+                        warn!("Unable to get subvolume id of {id:?}: {err:?}");
                         continue;
                     }
                 };
                 let Some(size) = quotas.get(&subvol) else {
-                    warn!("Quota missing for {:?} (subvolid {})", id, subvol);
-                    warn!("Retrived quotas: {:?}", quotas);
+                    warn!("Quota missing for {id:?} (subvolid {subvol})");
+                    warn!("Retrived quotas: {quotas:?}");
                     continue;
                 };
-                let size = if *size > i64::MAX as u64 {
-                    -1
-                } else {
-                    *size as i64
-                };
+                let size = i64::try_from(*size).unwrap_or(-1);
                 data.value.0.store(size, Ordering::Relaxed);
             }
         }
@@ -182,7 +175,7 @@ pub fn watch(daemon: &Daemon, storage_id: &str, storage_entry: &StorageEntry) {
                             if exceeded {
                                 if let Err(err) = Handle::current().block_on(query!("INSERT IGNORE INTO `server_locks` (`server`, `lock`) VALUES (?, 'storage')", server_id)
                                     .execute(&*daemon.conn)) {
-                                    warn!("Unable to lock server {}: {:?}", server_id, err);
+                                    warn!("Unable to lock server {server_id}: {err:?}");
                                 }
                                 let servers = daemon.servers.blocking_lock();
                                 if let Some(server) = servers.get(&server_id).cloned() {
@@ -197,20 +190,20 @@ pub fn watch(daemon: &Daemon, storage_id: &str, storage_entry: &StorageEntry) {
                                             if matches!(err, ServerStopError::NotRunning) {
                                                 return;
                                             }
-                                            warn!("Unable to stop server after lock {}: {:?}", server_id, err);
+                                            warn!("Unable to stop server after lock {server_id}: {err:?}");
                                         }
                                     });
                                 }
                             } else if let Err(err) = Handle::current().block_on(query!("DELETE FROM `server_locks` WHERE `server` = ? AND `lock` = 'storage'", server_id)
                                     .execute(&*daemon.conn)) {
-                                    warn!("Unable to unlock server {}: {:?}", server_id, err);
+                                    warn!("Unable to unlock server {server_id}: {err:?}");
                                 } else {
                                 // Sucessfully unlocked the server
                             }
                         }
                     }
                     Err(err) => {
-                        warn!("Failed to scan directory size for {:?}: {:?}", id, err);
+                        warn!("Failed to scan directory size for {id:?}: {err:?}");
                     }
                 }
             }

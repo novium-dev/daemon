@@ -1,5 +1,5 @@
-use crate::Daemon;
 use crate::key::{DaemonCertResolver, TlsAcceptor};
+use crate::{Daemon, DaemonExtra};
 use axum::Router;
 use axum::extract::Request;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
@@ -34,7 +34,7 @@ mod schedule;
 mod server;
 mod setup;
 
-impl Daemon {
+impl<T: DaemonExtra> Daemon<T> {
     pub fn router(&self) -> Router {
         #[derive(OpenApi)]
         #[openapi()]

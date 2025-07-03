@@ -1,11 +1,11 @@
-use crate::Daemon;
 use crate::ssh::auth::{InvalidationCacheMap, password_auth};
 use crate::ssh::sftp::DaemonSftpSession;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read_timeout};
+use crate::{Daemon, DaemonExtra};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::Dir;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU16, Ordering};
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
 use russh::keys::{HashAlg, PublicKey};
@@ -17,15 +17,16 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tracing::{debug, error};
 
-pub type DaemonChannel = (
-    Option<Channel<Msg>>,
-    Option<u32>,
-    Option<Arc<AtomicU32>>,
-    Option<Arc<AtomicU32>>,
-);
+#[derive(Default)]
+pub struct DaemonChannel {
+    pub channel: Option<Channel<Msg>>,
+    pub server_id: Option<u32>,
+    pub cols: Option<Arc<AtomicU16>>,
+    pub rows: Option<Arc<AtomicU16>>,
+}
 
-pub struct DaemonSSHHandler {
-    pub daemon: Daemon,
+pub struct DaemonSSHHandler<T: DaemonExtra> {
+    pub daemon: Daemon<T>,
     pub channels: HashMap<ChannelId, DaemonChannel>,
     pub publickey_cache: InvalidationCacheMap<
         (String, [u8; HashAlg::Sha512.digest_size()]),
@@ -34,7 +35,7 @@ pub struct DaemonSSHHandler {
     pub auth: Option<DaemonBackendAuthResponse>,
 }
 
-impl Handler for DaemonSSHHandler {
+impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
     type Error = russh::Error;
 
     async fn auth_password(&mut self, user: &str, password: &str) -> Result<Auth, Self::Error> {
@@ -70,7 +71,10 @@ impl Handler for DaemonSSHHandler {
                 return Ok(Auth::Accept);
             }
         }
-        match password_auth(&self.daemon, user, password)
+        let Some(ssh) = &self.daemon.config.ssh else {
+            return Err(russh::Error::Inconsistent);
+        };
+        match password_auth(&self.daemon, ssh, user, password)
             .await
             .inspect_err(|err| debug!("Password authentication failed: {err:?}"))
         {
@@ -97,9 +101,12 @@ impl Handler for DaemonSSHHandler {
                 return Ok(Auth::UnsupportedMethod);
             }
         }
+        let Some(ssh) = &self.daemon.config.ssh else {
+            return Err(russh::Error::Inconsistent);
+        };
         match self
             .publickey_cache
-            .get_resolved(&self.daemon, user, public_key)
+            .get_resolved(&self.daemon, ssh, user, public_key)
             .await
             .inspect_err(|err| debug!("Publickey authentication failed: {err:?}"))
         {
@@ -131,9 +138,12 @@ impl Handler for DaemonSSHHandler {
                 return Ok(Auth::UnsupportedMethod);
             }
         }
+        let Some(ssh) = &self.daemon.config.ssh else {
+            return Err(russh::Error::Inconsistent);
+        };
         match self
             .publickey_cache
-            .get_resolved(&self.daemon, user, public_key)
+            .get_resolved(&self.daemon, ssh, user, public_key)
             .await
             .inspect_err(|err| debug!("Publickey offered authentication failed: {err:?}"))
         {
@@ -172,8 +182,23 @@ impl Handler for DaemonSSHHandler {
             return Err(russh::Error::NotAuthenticated);
         }
         debug!("Window size change {col_width}x{row_height}");
+
+        let Ok(col_width) = u16::try_from(col_width) else {
+            debug!("The column size is larger than u16::MAX");
+            return session.channel_failure(channel_id);
+        };
+        let Ok(row_height) = u16::try_from(row_height) else {
+            debug!("The row size is larger than u16::MAX");
+            return session.channel_failure(channel_id);
+        };
+
         match self.channels.get_mut(&channel_id) {
-            Some((_channel, id, cols, rows)) => {
+            Some(DaemonChannel {
+                server_id,
+                cols,
+                rows,
+                ..
+            }) => {
                 let cols = match cols {
                     None => {
                         debug!("Size is None on window size");
@@ -190,7 +215,7 @@ impl Handler for DaemonSSHHandler {
                 };
                 cols.store(col_width, Ordering::Relaxed);
                 rows.store(row_height, Ordering::Relaxed);
-                match id {
+                match server_id {
                     None => {}
                     #[cfg(feature = "no_tty_size_please")]
                     Some(_) => {}
@@ -222,7 +247,7 @@ impl Handler for DaemonSSHHandler {
         data: &[u8],
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let Some(auth) = self.auth.as_ref() else {
+        let Some(auth) = &self.auth else {
             return Err(russh::Error::NotAuthenticated);
         };
         let server_id = String::from_utf8(data.to_vec())
@@ -256,16 +281,26 @@ impl Handler for DaemonSSHHandler {
             return Err(russh::Error::NotAuthenticated);
         }
         debug!("PTY Request");
-        if let Some((_channel, _id, cols, rows)) = self.channels.get_mut(&channel_id) {
+
+        let Ok(col_width) = u16::try_from(col_width) else {
+            debug!("The column size is larger than u16::MAX");
+            return session.channel_failure(channel_id);
+        };
+        let Ok(row_height) = u16::try_from(row_height) else {
+            debug!("The row size is larger than u16::MAX");
+            return session.channel_failure(channel_id);
+        };
+
+        if let Some(DaemonChannel { cols, rows, .. }) = self.channels.get_mut(&channel_id) {
             match cols {
-                None => *cols = Some(Arc::new(AtomicU32::new(col_width))),
+                None => *cols = Some(Arc::new(AtomicU16::new(col_width))),
                 Some(_) => {
                     debug!("Size is Some on pty");
                     return session.channel_failure(channel_id);
                 }
             }
             match rows {
-                None => *rows = Some(Arc::new(AtomicU32::new(row_height))),
+                None => *rows = Some(Arc::new(AtomicU16::new(row_height))),
                 Some(_) => {
                     debug!("Size is Some on pty");
                     return session.channel_failure(channel_id);
@@ -280,8 +315,13 @@ impl Handler for DaemonSSHHandler {
         channel: Channel<Msg>,
         _session: &mut Session,
     ) -> Result<bool, Self::Error> {
-        self.channels
-            .insert(channel.id(), (Some(channel), None, None, None));
+        self.channels.insert(
+            channel.id(),
+            DaemonChannel {
+                channel: Some(channel),
+                ..DaemonChannel::default()
+            },
+        );
         Ok(true)
     }
 
@@ -291,7 +331,7 @@ impl Handler for DaemonSSHHandler {
         name: &str,
         session: &mut Session,
     ) -> Result<(), Self::Error> {
-        let Some(auth) = self.auth.as_ref() else {
+        let Some(auth) = &self.auth else {
             return Err(russh::Error::NotAuthenticated);
         };
         debug!("Subsystem Request {name}");
@@ -302,7 +342,7 @@ impl Handler for DaemonSSHHandler {
                     debug!("Channel invalid on subsystem request");
                     session.channel_failure(channel_id)
                 }
-                Some((channel, _id, _cols, _rows)) => {
+                Some(DaemonChannel { channel, .. }) => {
                     let Some(channel) = channel.take() else {
                         debug!("Channel was already taken on subsystem request");
                         return session.channel_failure(channel_id);
@@ -406,7 +446,7 @@ impl Handler for DaemonSSHHandler {
     }
 }
 
-impl DaemonSSHHandler {
+impl<T: DaemonExtra> DaemonSSHHandler<T> {
     pub(crate) fn find_server(
         auth: &DaemonBackendAuthResponse,
         id: &str,

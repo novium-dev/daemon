@@ -1,5 +1,5 @@
-use crate::Daemon;
 use crate::schedule::worker::task;
+use crate::{Daemon, DaemonExtra};
 use chrono_tz::Tz;
 use core::str::FromStr as _;
 use cron::Schedule;
@@ -16,7 +16,7 @@ pub enum ScheduleStepResult {
     Interrupt,
 }
 
-pub async fn init(state: &Daemon) -> Result<(), sqlx::Error> {
+pub async fn init(state: &Daemon<impl DaemonExtra>) -> Result<(), sqlx::Error> {
     let mut conn = state.conn.acquire().await?;
 
     let mut set = state.schedule_task.lock().await;

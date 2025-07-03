@@ -1,4 +1,3 @@
-use crate::Daemon;
 use crate::schedule::ScheduleStepResult;
 use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
@@ -7,6 +6,7 @@ use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::server;
+use crate::{Daemon, DaemonExtra};
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use core::time::Duration;
 use cron::Schedule;
@@ -20,7 +20,7 @@ use tracing::error;
 
 pub async fn task(
     server_id: u32,
-    daemon: Daemon,
+    daemon: Daemon<impl DaemonExtra>,
     policy: ScheduleRunPolicy,
     steps: Vec<ScheduleStep>,
     schedule: Schedule,
@@ -51,7 +51,12 @@ fn determine_next_run(schedule: &Schedule, timezone: &(impl TimeZone + Copy)) ->
 }
 
 // Ensure this function is cancel-safe
-async fn run(daemon: Daemon, server_id: u32, policy: ScheduleRunPolicy, steps: &Vec<ScheduleStep>) {
+async fn run(
+    daemon: Daemon<impl DaemonExtra>,
+    server_id: u32,
+    policy: ScheduleRunPolicy,
+    steps: &Vec<ScheduleStep>,
+) {
     let running = match FetchedServer::state(server_id, HashSet::new(), &daemon.docker, None).await {
         Ok(
             InternalServerState::Running(_, _)
@@ -100,7 +105,7 @@ async fn run(daemon: Daemon, server_id: u32, policy: ScheduleRunPolicy, steps: &
 }
 
 #[inline(always)]
-async fn start(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
+async fn start(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -152,7 +157,7 @@ async fn start(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn stop(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
+async fn stop(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -181,7 +186,7 @@ async fn stop(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn restart(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
+async fn restart(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -210,7 +215,7 @@ async fn restart(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn kill(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
+async fn kill(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -239,7 +244,11 @@ async fn kill(daemon: Daemon, server_id: u32) -> ScheduleStepResult {
 }
 
 #[inline(always)]
-async fn exec(daemon: Daemon, server_id: u32, command: Vec<String>) -> ScheduleStepResult {
+async fn exec(
+    daemon: Daemon<impl DaemonExtra>,
+    server_id: u32,
+    command: Vec<String>,
+) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
@@ -271,7 +280,11 @@ async fn exec(daemon: Daemon, server_id: u32, command: Vec<String>) -> ScheduleS
 }
 
 #[inline(always)]
-async fn terminal(daemon: Daemon, server_id: u32, command: &str) -> ScheduleStepResult {
+async fn terminal(
+    daemon: Daemon<impl DaemonExtra>,
+    server_id: u32,
+    command: &str,
+) -> ScheduleStepResult {
     let Ok(Some((_, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
         .inspect_err(|err| error!("Unable to fetch server: {:?}", err))

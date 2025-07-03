@@ -1,6 +1,6 @@
-use crate::Daemon;
 use crate::schedule::worker::task;
 use crate::utils::server_required;
+use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::schedule::error::{
@@ -11,7 +11,7 @@ use sqlx::{Connection as _, query, query_scalar};
 use tracing::error;
 
 #[async_trait]
-impl ScheduleService for Daemon {
+impl<T: DaemonExtra> ScheduleService for Daemon<T> {
     async fn create_schedule(
         &self,
         server_id: u32,

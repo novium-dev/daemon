@@ -156,33 +156,6 @@ pub async fn storage_read<'a, E: From<sqlx::Error> + FromStorageNotFound + FromS
 }
 
 /// Cancel safe
-pub async fn storage_write<'a, E: From<sqlx::Error> + FromStorageNotFound + FromStorageFailure>(
-    config: &DaemonConfig,
-    conn: impl Executor<'_, Database = MySql> + Copy,
-    storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
-    storage: StorageIdentifier,
-) -> Result<StorageLockData<OwnedRwLockWriteGuard<()>>, E> {
-    let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
-        storage_lock(config, conn, storages, storage).await?
-    else {
-        return Err(<E as FromStorageNotFound>::from());
-    };
-    let guard = lock.write_owned().await;
-    let path = prepare(storage, &entry, &value, disk)
-        .await
-        .map_err(|_err| <E as FromStorageFailure>::from())?;
-    Ok(StorageLockData {
-        path,
-        lock: guard,
-        backup_exclude,
-        storage: entry,
-        value,
-        stats_lock,
-        disk,
-    })
-}
-
-/// Cancel safe
 pub async fn storage_write_timeout<
     'a,
     E: From<sqlx::Error> + FromStorageNotFound + FromStorageMutexLocked + FromStorageFailure,

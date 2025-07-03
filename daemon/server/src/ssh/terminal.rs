@@ -1,4 +1,5 @@
-use crate::ssh::handler::DaemonSSHHandler;
+use crate::DaemonExtra;
+use crate::ssh::handler::{DaemonChannel, DaemonSSHHandler};
 use crate::terminal::{TerminalData, new_session};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
@@ -13,7 +14,7 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tracing::debug;
 
-impl DaemonSSHHandler {
+impl<T: DaemonExtra> DaemonSSHHandler<T> {
     pub(crate) async fn ssh_terminal(
         &mut self,
         channel_id: ChannelId,
@@ -61,8 +62,13 @@ impl DaemonSSHHandler {
                         debug!("Tried to access a non existent channel");
                         session.channel_failure(channel_id)
                     }
-                    Some((channel, id, cols, rows)) => {
-                        *id = Some(internal_server_id);
+                    Some(DaemonChannel {
+                        channel,
+                        server_id,
+                        cols,
+                        rows,
+                    }) => {
+                        *server_id = Some(internal_server_id);
                         let Some(channel) = channel.take() else {
                             debug!("Channel already taken");
                             return session.channel_failure(channel_id);

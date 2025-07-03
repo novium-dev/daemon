@@ -4,7 +4,7 @@ use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::sync::Mutex;
-use crate::{Daemon, ctlsock, schedule, sql, storage};
+use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, schedule, sql, storage};
 use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
 use bollard::query_parameters::{
     InspectNetworkOptions, KillContainerOptions, ListContainersOptions,
@@ -32,22 +32,17 @@ pub enum DaemonInitError {
     Docker(bollard::errors::Error),
 }
 
-impl Daemon {
+impl Daemon<()> {
     pub async fn init(
         config: DaemonConfig,
         root: DaemonRootKey,
         key: DaemonKey,
     ) -> Result<Self, DaemonInitError> {
-        Self::init_embedded(
-            config,
-            root,
-            key,
-            Url::parse("http://localhost:3000/").unwrap(),
-            SigningKey::from_bytes(&[0; 32]),
-        )
-        .await
+        Self::init_internal(config, root, key, ()).await
     }
+}
 
+impl Daemon<WithUserKey> {
     pub async fn init_embedded(
         config: DaemonConfig,
         root: DaemonRootKey,
@@ -57,7 +52,17 @@ impl Daemon {
         user_key: SigningKey,
     ) -> Result<Self, DaemonInitError> {
         crate::common::utils::base_url(&mut base_url);
+        Self::init_internal(config, root, key, WithUserKey { base_url, user_key }).await
+    }
+}
 
+impl<T: DaemonExtra> Daemon<T> {
+    async fn init_internal(
+        config: DaemonConfig,
+        root: DaemonRootKey,
+        key: DaemonKey,
+        extra: T,
+    ) -> Result<Self, DaemonInitError> {
         let servers = HashMap::new();
 
         info!("Connecting to Docker...");
@@ -189,12 +194,10 @@ impl Daemon {
             docker: Arc::new(docker),
             conn: Arc::new(conn),
             client: Arc::default(),
+            extra: Arc::new(extra),
 
             root: Arc::new(root),
             key: Arc::new(key),
-
-            base_url,
-            user_key,
         };
         sql::init(&daemon.conn)
             .await

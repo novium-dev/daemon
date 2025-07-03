@@ -1,40 +1,42 @@
 use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
-use crate::ssh::handler::DaemonSSHHandler;
+use crate::ssh::handler::{DaemonChannel, DaemonSSHHandler};
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, storage_read};
 use crate::sync::Mutex;
 use crate::utils::{ChannelWriteData, SyncIOBridgeExt, from_mib};
-use crate::{Daemon, ServerData, utils};
-use chrono::{TimeZone, Utc};
+use crate::{Daemon, DaemonExtra, ServerData, utils};
+use chrono::{TimeZone as _, Utc};
 use core::cmp::{max, min};
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU16, Ordering};
 use core::time::Duration;
 use crossterm::terminal::ClearType;
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::service::server::ServerStats;
+use num_traits::{FromPrimitive as _, ToPrimitive as _};
 use ratatui::backend::{Backend, CrosstermBackend, WindowSize};
 use ratatui::buffer::Cell;
 use ratatui::layout::{Constraint, Direction, Flex, Layout, Margin, Position, Rect, Size};
-use ratatui::style::{Color, Style, Stylize};
+use ratatui::style::{Color, Style, Stylize as _};
 use ratatui::symbols::Marker;
 use ratatui::text::Text;
 use ratatui::widgets::{Axis, Block, BorderType, Borders, Chart, Dataset, GraphType};
 use ratatui::{Frame, Terminal};
-use ringbuffer::{ConstGenericRingBuffer, RingBuffer};
+use ringbuffer::{ConstGenericRingBuffer, RingBuffer as _};
 use russh::server::{Msg, Session};
 use russh::{ChannelId, ChannelStream};
 use std::io;
 use std::io::{ErrorKind, Write};
+use core::fmt::Write as _;
 use std::sync::Arc;
-use tokio::io::{AsyncReadExt, AsyncWrite};
+use tokio::io::{AsyncReadExt as _, AsyncWrite};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::error::TryRecvError;
 use tokio_util::io::SyncIoBridge;
 use tracing::{debug, error, warn};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
-pub(crate) enum Event {
+pub enum Event {
     ArrowLeft,
     ArrowRight,
     ArrowUp,
@@ -48,14 +50,16 @@ pub(crate) enum Event {
     },
 }
 
-impl DaemonSSHHandler {
+impl<T: DaemonExtra> DaemonSSHHandler<T> {
     pub(crate) async fn ssh_control(
         &mut self,
         channel_id: ChannelId,
         session: &mut Session,
         server_id: String,
     ) -> Result<(), russh::Error> {
-        let auth = self.auth.as_ref().unwrap();
+        let Some(auth) = &self.auth else {
+            return Err(russh::Error::NotAuthenticated);
+        };
 
         let server = Self::find_server(auth, &server_id);
         let (internal_server_id, power) = match server {
@@ -80,17 +84,14 @@ impl DaemonSSHHandler {
             }
         };
         let mut servers = self.daemon.servers.lock().await;
-        let server_data_arc = match servers.get(&internal_server_id) {
+        let server_data_arc = Arc::clone(match servers.get(&internal_server_id) {
             None => {
-                servers.insert(
+                servers.entry(
                     internal_server_id,
-                    Arc::new(Mutex::new(ServerData::default())),
-                );
-                servers.get(&internal_server_id).unwrap()
+                ).or_default()
             }
             Some(server) => server,
-        }
-        .clone();
+        });
         drop(servers);
 
         match self.channels.get_mut(&channel_id) {
@@ -98,7 +99,12 @@ impl DaemonSSHHandler {
                 debug!("Tried to access a non existent channel");
                 session.channel_failure(channel_id)
             }
-            Some((channel, _id, cols, rows)) => {
+            Some(DaemonChannel {
+                channel,
+                cols,
+                rows,
+                ..
+            }) => {
                 let Some(channel) = channel.take() else {
                     debug!("Channel was already taken");
                     return session.channel_failure(channel_id);
@@ -108,14 +114,14 @@ impl DaemonSSHHandler {
                         debug!("Size is None on exec");
                         return session.channel_failure(channel_id);
                     }
-                    Some(cols) => Arc::clone(&cols),
+                    Some(cols) => Arc::clone(cols),
                 };
                 let rows = match rows {
                     None => {
                         debug!("Size is None on exec");
                         return session.channel_failure(channel_id);
                     }
-                    Some(rows) => Arc::clone(&rows),
+                    Some(rows) => Arc::clone(rows),
                 };
 
                 let daemon = self.daemon.clone();
@@ -123,13 +129,13 @@ impl DaemonSSHHandler {
                     new_control_session(
                         &daemon,
                         internal_server_id,
-                        server_id,
+                        &server_id,
                         power,
                         channel.into_stream(),
-                        server_data_arc,
-                        cols,
-                        rows,
-                    )
+                        &server_data_arc,
+                        &cols,
+                        &rows,
+                    );
                 });
                 session.channel_success(channel_id)
             }
@@ -139,14 +145,14 @@ impl DaemonSSHHandler {
 
 #[expect(clippy::too_many_arguments)]
 fn new_control_session(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     server_id: u32,
-    name: String,
+    name: &str,
     power: bool,
     mut stream: ChannelStream<Msg>,
-    arc: Arc<Mutex<ServerData>>,
-    cols: Arc<AtomicU32>,
-    rows: Arc<AtomicU32>,
+    server_data: &Mutex<ServerData>,
+    cols: &AtomicU16,
+    rows: &AtomicU16,
 ) {
     let mut cpu = ConstGenericRingBuffer::<Option<f64>, 120>::new();
     let mut ram = ConstGenericRingBuffer::<Option<u64>, 120>::new();
@@ -167,7 +173,7 @@ fn new_control_session(
 
     let mut selected = 0u8;
 
-    let conn = daemon.conn.clone();
+    let conn = Arc::clone(&daemon.conn);
     let mut server_state: InternalServerState = if Handle::current()
         .block_on(async move { FetchedServer::resolve_locked(server_id, &conn).await })
         .is_empty()
@@ -183,11 +189,11 @@ fn new_control_session(
     let Ok(mut terminal) = Terminal::new(backend) else {
         return;
     };
-    let mut last_cols = u32::MAX;
-    let mut last_rows = u32::MAX;
+    let mut last_cols = u16::MAX;
+    let mut last_rows = u16::MAX;
 
     let mut recv = {
-        let data = arc.blocking_lock();
+        let data = server_data.blocking_lock();
         data.stats_sender.subscribe()
     };
 
@@ -197,18 +203,12 @@ fn new_control_session(
     loop {
         let cols = cols.load(Ordering::Relaxed);
         let rows = rows.load(Ordering::Relaxed);
-        if cols > u16::MAX as u32 {
-            continue;
-        }
-        if rows > u16::MAX as u32 {
-            continue;
-        }
 
         if last_cols != cols || last_rows != rows {
-            terminal.backend_mut().1 = cols as u16;
-            terminal.backend_mut().2 = rows as u16;
+            terminal.backend_mut().1 = cols;
+            terminal.backend_mut().2 = rows;
 
-            let _ = terminal.resize(Rect::new(0, 0, cols as u16, rows as u16));
+            let _ = terminal.resize(Rect::new(0, 0, cols, rows));
             last_cols = cols;
             last_rows = rows;
             let _ = terminal.backend_mut().0.write_all(
@@ -220,20 +220,19 @@ fn new_control_session(
 
         let state2 = server_state.clone();
 
-        let width = cols as u16;
-        let height = rows as u16;
-        let name = name.clone();
+        let name = name.to_owned();
 
         let cpu2 = cpu.clone();
         let ram2 = ram.clone();
         let swap2 = swap.clone();
 
+        #[expect(clippy::arithmetic_side_effects, reason = "there are proper bounds checks, overflow/underflow should never occur")]
         let _ = terminal.draw(move |frame| {
-            if width < 32 || height < 12 {
+            if cols < 32u16 || rows < 12u16 {
                 return;
             }
 
-            frame.render_widget(Text::raw(&name).centered(), Rect::new(0, 0, width, 1));
+            frame.render_widget(Text::raw(&name).centered(), Rect::new(0u16, 0u16, cols, 1u16));
 
             let state_border = Block::new()
                 .borders(Borders::ALL)
@@ -245,26 +244,27 @@ fn new_control_session(
             if let Some(time) = state2.since() {
                 let time = Utc.timestamp_millis_opt(time).unwrap();
                 let duration = Utc::now().signed_duration_since(time);
-                state_text += &format!(
+                let _ = write!(
+                    &mut state_text,
                     " ({:02}:{:02}:{:02}:{:02})",
                     duration.num_days(),
-                    duration.num_hours() - (duration.num_days() * 24),
-                    duration.num_minutes() - (duration.num_hours() * 60),
-                    duration.num_seconds() - (duration.num_minutes() * 60)
+                    duration.num_hours() - duration.num_days().saturating_mul(24i64),
+                    duration.num_minutes() - duration.num_hours().saturating_mul(60i64),
+                    duration.num_seconds() - duration.num_minutes().saturating_mul(60i64)
                 );
             }
 
-            frame.render_widget(state_text, Rect::new(2, 2, width - 4, 1));
-            frame.render_widget(state_border, Rect::new(1, 1, width - 2, 3));
+            frame.render_widget(state_text, Rect::new(2u16, 2u16, cols - 4u16, 1u16));
+            frame.render_widget(state_border, Rect::new(1u16, 1u16, cols - 2u16, 3u16));
 
             let power_border = Block::new()
                 .borders(Borders::ALL)
                 .title_top("Power")
                 .border_type(BorderType::Rounded)
                 .border_style(Style::new().fg(Color::White));
-            frame.render_widget(power_border, Rect::new(1, 4, width - 2, 5));
+            frame.render_widget(power_border, Rect::new(1u16, 4u16, cols - 2u16, 5u16));
 
-            for (pos, index, label, enabled, area) in calc_buttons(state2, power, width) {
+            for (pos, index, label, enabled, area) in calc_buttons(&state2, power, cols) {
                 let style = match (pos, enabled, selected == index) {
                     (0, true, true) => Style::new().fg(Color::Green),
 
@@ -284,10 +284,10 @@ fn new_control_session(
                 let text = Text::raw(label).style(style).centered();
 
                 frame.render_widget(border, area);
-                frame.render_widget(text, area.inner(Margin::new(1, 1)));
+                frame.render_widget(text, area.inner(Margin::new(1u16, 1u16)));
             }
 
-            draw_stats(frame, width, height, &cpu2, &ram2, &swap2, &current_stat);
+            draw_stats(frame, cols, rows, &cpu2, &ram2, &swap2, &current_stat);
         });
 
         if Handle::current().block_on(read(
@@ -307,7 +307,7 @@ fn new_control_session(
                 server_state.stop(),
                 server_state.kill_show(),
             ),
-            width,
+            cols,
         )) {
             break;
         }
@@ -347,11 +347,11 @@ fn new_control_session(
 }
 
 fn calc_buttons(
-    state: InternalServerState,
+    state: &InternalServerState,
     power: bool,
     width: u16,
 ) -> Vec<(u16, u8, &'static str, bool, Rect)> {
-    let mut index = 0;
+    let mut index = 0u8;
     [
         ("Start", state.start() && power),
         ("Stop", state.stop() && power),
@@ -360,8 +360,8 @@ fn calc_buttons(
     ]
     .into_iter()
     .enumerate()
+    .filter_map(|(pos, (label, enabled))| u8::try_from(pos).map(|pos| (u16::from(pos), (label, enabled))).ok())
     .map(|(pos, (label, enabled))| {
-        let pos = pos as u16;
         let natural_width = width.saturating_sub(4).saturating_div(4).saturating_sub(4);
         let width = min(54, natural_width);
         let offset = natural_width.wrapping_sub(width).saturating_div(2);
@@ -377,12 +377,14 @@ fn calc_buttons(
             width,
             height,
         );
-        index += u8::from(enabled);
-        (pos, index - u8::from(enabled), label, enabled, area)
+        let old_index = index;
+        index = index.saturating_add(u8::from(enabled));
+        (pos, old_index, label, enabled, area)
     })
     .collect()
 }
 
+#[inline(always)]
 fn draw_stats(
     frame: &mut Frame,
     width: u16,
@@ -392,6 +394,8 @@ fn draw_stats(
     swap: &ConstGenericRingBuffer<Option<u64>, 120>,
     current_stat: &ServerStats,
 ) {
+    debug_assert!(width >= 32);
+    debug_assert!(height >= 12);
     if height >= 20 {
         draw_chart_stats(frame, width, height, cpu, ram, swap, current_stat);
     } else {
@@ -399,14 +403,18 @@ fn draw_stats(
     }
 }
 
+#[inline(always)]
+#[expect(clippy::arithmetic_side_effects, reason = "width is bounds checked")]
 fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats) {
+    debug_assert!(width >= 32);
+
     let stats_border = Block::new()
         .borders(Borders::ALL)
         .title_top("Stats")
         .border_type(BorderType::Rounded)
         .border_style(Style::new().fg(Color::White));
 
-    let stats_area = Rect::new(1, 9, width - 2, 3);
+    let stats_area = Rect::new(1u16, 9u16, width - 2u16, 3u16);
 
     let stats = Layout::new(
         Direction::Horizontal,
@@ -418,7 +426,8 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
         ],
     )
     .flex(Flex::SpaceAround)
-    .split(stats_area.inner(Margin::new(1, 1)));
+    .split(stats_area.inner(Margin::new(1u16, 1u16)));
+    let mut stats = stats.iter();
 
     frame.render_widget(stats_border, stats_area);
 
@@ -431,19 +440,27 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
     );
     let cpu_text = Text::raw(format!("CPU: {cpu_current_str} / {cpu_max_str}"));
 
-    let ram_current_str = current_stat.ram.map_or_else(
+    let ram_current_str = current_stat.ram
+        .as_ref()
+        .map(u64::to_f64)
+        .unwrap_or_default()
+        .map_or_else(
         || "-".to_owned(),
-        |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64),
+        |ram| format!("{:.2} MiB", ram / 1_048_576f64),
     );
     let ram_max_str = current_stat.ram_max.map_or_else(
         || "\u{221e}".to_owned(),
-        |ram_max| format!("{} MiB", ram_max),
+        |ram_max| format!("{ram_max} MiB"),
     );
     let mem_text = Text::raw(format!("RAM: {ram_current_str} / {ram_max_str}"));
 
-    let swap_current_str = current_stat.swap.map_or_else(
+    let swap_current_str = current_stat.swap
+        .as_ref()
+        .map(u64::to_f64)
+        .unwrap_or_default()
+        .map_or_else(
         || "-".to_owned(),
-        |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64),
+        |swap| format!("{:.2} MiB", swap / 1_048_576f64),
     );
     let swap_max_str = current_stat.swap_max.map_or_else(
         || "\u{221e}".to_owned(),
@@ -451,10 +468,14 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
     );
     let swap_text = Text::raw(format!("Swap: {swap_current_str} / {swap_max_str}"));
 
-    let disk_current_str = current_stat.disk.map_or_else(
+    let disk_current_str = current_stat.disk
+        .as_ref()
+        .map(u64::to_f64)
+        .unwrap_or_default()
+        .map_or_else(
         || "-".to_owned(),
         |disk| {
-            let disk = disk as f64 / 1_048_576.0f64;
+            let disk = disk / 1_048_576.0f64;
             if disk > 1024.0f64 {
                 format!("{:.2} GiB", disk / 1024.0f64)
             } else {
@@ -466,7 +487,7 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
         || "\u{221e}".to_owned(),
         |disk_max| {
             if disk_max > 1024u64 {
-                format!("{:.2} GiB", disk_max as f64 / 1024.0f64)
+                disk_max.to_f64().map_or_else(|| "-".to_owned(), |disk_max| format!("{:.2} GiB", disk_max / 1024.0f64))
             } else {
                 format!("{disk_max:.2} MiB")
             }
@@ -474,12 +495,21 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
     );
     let disk_text = Text::raw(format!("Disk: {disk_current_str} / {disk_max_str}"));
 
-    frame.render_widget(cpu_text, stats[0]);
-    frame.render_widget(mem_text, stats[1]);
-    frame.render_widget(swap_text, stats[2]);
-    frame.render_widget(disk_text, stats[3]);
+    if let Some(area) = stats.next() {
+         frame.render_widget(cpu_text, *area);
+    }
+    if let Some(area) = stats.next() {
+         frame.render_widget(mem_text, *area);
+    }
+    if let Some(area) = stats.next() {
+         frame.render_widget(swap_text, *area);
+    }
+    if let Some(area) = stats.next() {
+         frame.render_widget(disk_text, *area);
+    }
 }
 
+#[inline(always)]
 fn draw_chart_stats(
     frame: &mut Frame,
     width: u16,
@@ -489,6 +519,8 @@ fn draw_chart_stats(
     swap: &ConstGenericRingBuffer<Option<u64>, 120>,
     current_stat: &ServerStats,
 ) {
+    debug_assert!(width >= 32);
+    debug_assert!(height >= 20);
     let stats_border = Block::new()
         .borders(Borders::ALL)
         .title_top("Stats")
@@ -508,17 +540,19 @@ fn draw_chart_stats(
     )
     .flex(Flex::SpaceAround)
     .split(stats_area.inner(Margin::new(1, 1)));
+    let mut stats = stats.iter();
 
     frame.render_widget(stats_border, stats_area);
 
-    if let Some(area) = stats.get(0) {
+    if let Some(area) = stats.next() {
         draw_cpu_chart(frame, cpu, current_stat, *area);
     }
-    if let Some(area) = stats.get(1) {
+    if let Some(area) = stats.next() {
         draw_mem_chart(frame, ram, swap, current_stat, *area);
     }
 }
 
+#[inline(always)]
 fn draw_cpu_chart(
     frame: &mut Frame,
     cpu: &ConstGenericRingBuffer<Option<f64>, 120>,
@@ -530,10 +564,10 @@ fn draw_cpu_chart(
         .map_or(50.0f64, f64::from)
         .max(cpu.iter().copied().flatten().fold(0.0f64, f64::max))
         .max(50.0f64);
-    let cpu_peak_divided_by_50 = (cpu_peak / 50.0f64) as u16;
-    let mut cpu_peak_multiplied = cpu_peak_divided_by_50 * 50u16;
+    let cpu_peak_divided_by_50 = u16::from_f64(cpu_peak * 0.02f64).unwrap_or(2);
+    let mut cpu_peak_multiplied = cpu_peak_divided_by_50.saturating_mul(50u16);
     if cpu_peak > f64::from(cpu_peak_multiplied) {
-        cpu_peak_multiplied += 50u16;
+        cpu_peak_multiplied = cpu_peak_multiplied.saturating_add(50u16);
     }
 
     let cpu_data: Vec<_> = cpu
@@ -541,7 +575,8 @@ fn draw_cpu_chart(
         .skip(90usize)
         .copied()
         .enumerate()
-        .map(|(index, cpu)| (index as f64, cpu.unwrap_or(-1f64)))
+        .filter_map(|(index, mem)| index.to_f64().map(|index| (index, mem)))
+        .map(|(index, cpu)| (index, cpu.unwrap_or(-1f64)))
         .collect();
     let cpu = Chart::new(vec![
         Dataset::default()
@@ -550,11 +585,15 @@ fn draw_cpu_chart(
             .marker(Marker::Braille)
             .data(&cpu_data),
     ])
-    .x_axis(Axis::default().bounds([0.0, 30.0]).labels(["30s", "0s"]))
+    .x_axis(
+        Axis::default()
+            .bounds([0.0f64, 30.0f64])
+            .labels(["30s", "0s"]),
+    )
     .y_axis(
         Axis::default()
             .bounds([0.0f64, f64::from(cpu_peak_multiplied)])
-            .labels(["0%".into(), format!("{}%", cpu_peak_multiplied)]),
+            .labels(["0%".into(), format!("{cpu_peak_multiplied}%")]),
     )
     .block(
         Block::bordered()
@@ -598,6 +637,7 @@ fn draw_cpu_chart(
     );
 }
 
+#[inline(always)]
 fn draw_mem_chart(
     frame: &mut Frame,
     ram: &ConstGenericRingBuffer<Option<u64>, 120>,
@@ -623,6 +663,7 @@ fn draw_mem_chart(
     while u64::from(1u16 << mem_peak_power_of_2) < mem_peak {
         mem_peak_power_of_2 = mem_peak_power_of_2.saturating_add(1);
     }
+    let peak = f64::from(1u16 << mem_peak_power_of_2);
 
     let ram_color = Color::Yellow;
     let swap_color = Color::Magenta;
@@ -632,14 +673,16 @@ fn draw_mem_chart(
         .skip(90usize)
         .copied()
         .enumerate()
-        .map(|(index, mem)| (index as f64, mem.map_or(-1f64, |mem| mem as f64)))
+        .filter_map(|(index, mem)| index.to_f64().map(|index| (index, mem)))
+        .map(|(index, mem)| (index, mem.map_or(-1f64, |mem| mem.to_f64().unwrap_or(peak))))
         .collect();
     let swap_data: Vec<_> = swap
         .iter()
         .skip(90)
         .copied()
         .enumerate()
-        .map(|(index, mem)| (index as f64, mem.map_or(-1f64, |mem| mem as f64)))
+        .filter_map(|(index, mem)| index.to_f64().map(|index| (index, mem)))
+        .map(|(index, mem)| (index, mem.map_or(-1f64, |mem| mem.to_f64().unwrap_or(peak))))
         .collect();
 
     let mem = Chart::new(vec![
@@ -661,7 +704,7 @@ fn draw_mem_chart(
     )
     .y_axis(
         Axis::default()
-            .bounds([0.0f64, f64::from(1u16 << mem_peak_power_of_2)])
+            .bounds([0.0f64, peak])
             .labels(["0M".into(), format!("{}M", 1u16 << mem_peak_power_of_2)]),
     )
     .block(
@@ -670,17 +713,25 @@ fn draw_mem_chart(
             .border_type(BorderType::Plain)
             .border_style(Style::new().fg(Color::White)),
     );
-    let ram_current_str = current_stat.ram.map_or_else(
+    let ram_current_str = current_stat.ram
+        .as_ref()
+        .map(u64::to_f64)
+        .unwrap_or_default()
+        .map_or_else(
         || "-".to_owned(),
-        |ram| format!("{:.2} MiB", (ram as f64) / 1_048_576f64),
+        |ram| format!("{:.2} MiB", ram / 1_048_576f64),
     );
     let ram_max_str = current_stat
         .ram_max
         .map_or_else(|| "\u{221e}".to_owned(), |ram_max| format!("{ram_max} MiB"));
 
-    let swap_current_str = current_stat.swap.map_or_else(
+    let swap_current_str = current_stat.swap
+        .as_ref()
+        .map(u64::to_f64)
+        .unwrap_or_default()
+        .map_or_else(
         || "-".to_owned(),
-        |swap| format!("{:.2} MiB", (swap as f64) / 1_048_576f64),
+        |swap| format!("{:.2} MiB", swap / 1_048_576f64),
     );
     let swap_max_str = current_stat.swap_max.map_or_else(
         || "\u{221e}".to_owned(),
@@ -805,13 +856,14 @@ impl<T: AsyncWrite + Unpin> SyncIOBridgeExt<T>
     fn inner_mut(&mut self) -> &mut T {
         let backend_raw_copy =
             core::ptr::from_mut(&mut self.0).cast::<CrosstermBackendCopy<&mut SyncIoBridge<T>>>();
+        // SAFETY: As long as the struct matches if the upstream version, there is no undefined behaviour
         unsafe { &mut *backend_raw_copy }.writer.inner_mut()
     }
 }
 
 #[expect(clippy::too_many_arguments)]
 async fn read(
-    daemon: Daemon,
+    daemon: Daemon<impl DaemonExtra>,
     server_id: u32,
     server_state: InternalServerState,
     stream: &mut ChannelStream<Msg>,
@@ -874,7 +926,7 @@ async fn read(
                     y,
                 } => {
                     for (_, index, _, enabled, area) in
-                        calc_buttons(server_state.clone(), power, width)
+                        calc_buttons(&server_state, power, width)
                     {
                         if area.contains(Position::new(x, y)) && enabled {
                             launch_selected(
@@ -899,7 +951,7 @@ async fn read(
 }
 
 async fn launch_selected(
-    daemon: Daemon,
+    daemon: Daemon<impl DaemonExtra>,
     server_id: u32,
     selected: u8,
     (start, stop, restart, kill): (bool, bool, bool, bool),
@@ -907,20 +959,16 @@ async fn launch_selected(
     // Determine the index of the buttons
     // (normal addition with overflow does result in a panic in debug builds)
     let start = if start { 0u8 } else { 255 };
-    let stop = if stop {
-        start.overflowing_add(1).0
-    } else {
-        255
-    };
+    let stop = if stop { start.wrapping_add(1) } else { 255 };
     let restart = if restart {
-        max(start.overflowing_add(1).0, stop.overflowing_add(1).0)
+        max(start.wrapping_add(1), stop.wrapping_add(1))
     } else {
         255
     };
     let kill = if kill {
         max(
-            max(start.overflowing_add(1).0, stop.overflowing_add(1).0),
-            restart.overflowing_add(1).0,
+            max(start.wrapping_add(1), stop.wrapping_add(1)),
+            restart.wrapping_add(1),
         )
     } else {
         255

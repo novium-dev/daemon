@@ -1,4 +1,4 @@
-use crate::Daemon;
+use crate::{Daemon, DaemonExtra};
 use axum::Router;
 use axum::extract::{ConnectInfo, State, connect_info};
 use axum::http::StatusCode;
@@ -14,22 +14,19 @@ use tracing::{error, warn};
 
 #[derive(Clone, Debug)]
 struct UdsConnectInfo {
-    peer_addr: Option<Arc<tokio::net::unix::SocketAddr>>,
     peer_cred: Option<UCred>,
 }
 
 impl connect_info::Connected<IncomingStream<'_, UnixListener>> for UdsConnectInfo {
     fn connect_info(stream: IncomingStream<'_, UnixListener>) -> Self {
-        let peer_addr = stream.io().peer_addr().ok();
         let peer_cred = stream.io().peer_cred().ok();
         Self {
-            peer_addr: peer_addr.map(Arc::new),
             peer_cred,
         }
     }
 }
 
-pub async fn run(daemon: Daemon) -> Result<(), io::Error> {
+pub async fn run(daemon: Daemon<impl DaemonExtra>) -> Result<(), io::Error> {
     let path = PathBuf::from("./control.sock");
     let _ = tokio::fs::remove_file(&path).await; // Ignore any errors
 
@@ -50,7 +47,7 @@ pub async fn run(daemon: Daemon) -> Result<(), io::Error> {
 }
 
 async fn restart(
-    State(state): State<Daemon>,
+    State(state): State<Daemon<impl DaemonExtra>>,
     ConnectInfo(info): ConnectInfo<UdsConnectInfo>,
 ) -> Result<(), StatusCode> {
     let Some(peer_cred) = info.peer_cred else {

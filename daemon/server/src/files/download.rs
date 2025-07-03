@@ -1,8 +1,8 @@
-use crate::Daemon;
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
+use crate::{Daemon, DaemonExtra};
 use axum::http;
 use axum::http::{HeaderMap, HeaderValue};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
@@ -24,7 +24,7 @@ pub async fn download_file<
         + FromStorageFailure
         + FromFileLimitReached,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
     limit: Option<u64>,
@@ -57,13 +57,10 @@ pub async fn download_file<
 
     let mut headers =
         HeaderMap::from_iter([(http::header::CONTENT_LENGTH, HeaderValue::from(length))]);
-    if let Some(filename) = path.file_name().map(|str| str.to_string_lossy()) {
-        headers.insert(
-            http::header::CONTENT_DISPOSITION,
-            format!("attachment; filename=\"{}\"", filename)
-                .parse()
-                .unwrap(),
-        );
+    if let Some(filename) = path.file_name().map(|str| str.to_string_lossy())
+        && let Ok(filename) = format!("attachment; filename=\"{filename}\"").parse()
+    {
+        headers.insert(http::header::CONTENT_DISPOSITION, filename);
     }
     let fd = tokio::fs::File::from_std(std::fs::File::from(fd));
     drop(lock);

@@ -1,9 +1,9 @@
-use crate::Daemon;
-use crate::files::{IntoFileEntry, storage_path};
+use crate::files::{IntoFileEntry as _, storage_path};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
+use crate::{Daemon, DaemonExtra};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
@@ -23,7 +23,7 @@ pub async fn list_files<
         + FromStorageMutexLocked
         + FromStorageFailure,
 >(
-    state: &Daemon,
+    state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
 ) -> Result<Vec<FileEntry>, E> {

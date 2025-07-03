@@ -109,8 +109,8 @@ pub trait ServerService {
     async fn server_terminal(
         &self,
         server_id: u32,
-        cols: Option<u32>,
-        rows: Option<u32>,
+        cols: Option<u16>,
+        rows: Option<u16>,
         write: bool,
         timestamp: i64,
         verify: UserSignature,
@@ -132,8 +132,8 @@ pub trait ServerService {
     async fn exec_server_interactive(
         &self,
         server_id: u32,
-        cols: Option<u32>,
-        rows: Option<u32>,
+        cols: Option<u16>,
+        rows: Option<u16>,
         command: JsonVec<String>,
         timestamp: i64,
         verify: UserSignature,
@@ -144,8 +144,8 @@ pub trait ServerServiceUserKeyExtension {
     fn server_terminal_url_signed(
         &self,
         server_id: u32,
-        cols: Option<u32>,
-        rows: Option<u32>,
+        cols: Option<u16>,
+        rows: Option<u16>,
         write: bool,
     ) -> Url;
 
@@ -154,8 +154,8 @@ pub trait ServerServiceUserKeyExtension {
     fn exec_server_interactive_url_signed(
         &self,
         server_id: u32,
-        cols: Option<u32>,
-        rows: Option<u32>,
+        cols: Option<u16>,
+        rows: Option<u16>,
         command: JsonVec<String>,
     ) -> Url;
 
@@ -167,8 +167,8 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
     fn server_terminal_url_signed(
         &self,
         server_id: u32,
-        cols: Option<u32>,
-        rows: Option<u32>,
+        cols: Option<u16>,
+        rows: Option<u16>,
         write: bool,
     ) -> Url {
         let timestamp = Utc::now().timestamp();
@@ -186,8 +186,8 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
     fn exec_server_interactive_url_signed(
         &self,
         server_id: u32,
-        cols: Option<u32>,
-        rows: Option<u32>,
+        cols: Option<u16>,
+        rows: Option<u16>,
         command: JsonVec<String>,
     ) -> Url {
         let timestamp = Utc::now().timestamp();
@@ -200,8 +200,8 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
     fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor) {
         visitor.visit_start(true, "serverTerminalUrlSigned");
         visitor.visit_argument::<u32>("serverId");
-        visitor.visit_argument::<Option<u32>>("cols");
-        visitor.visit_argument::<Option<u32>>("rows");
+        visitor.visit_argument::<Option<u16>>("cols");
+        visitor.visit_argument::<Option<u16>>("rows");
         visitor.visit_argument::<bool>("write");
         visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newTerminalAsync(this.userKey, timestamp, this.identifier, serverId, write);
@@ -215,8 +215,8 @@ return this.serverStatsUrl(serverId, timestamp, signature);", "URL");
 
         visitor.visit_start(true, "execServerInteractiveUrlSigned");
         visitor.visit_argument::<u32>("serverId");
-        visitor.visit_argument::<Option<u32>>("cols");
-        visitor.visit_argument::<Option<u32>>("rows");
+        visitor.visit_argument::<Option<u16>>("cols");
+        visitor.visit_argument::<Option<u16>>("rows");
         visitor.visit_argument::<JsonVec<String>>("command");
         visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newExecAsync(this.userKey, timestamp, this.identifier, serverId, command);

@@ -1,7 +1,7 @@
-use crate::Daemon;
 use crate::storage::StorageIdentifier;
 use crate::sync::mutex::TraceableMutex;
 use crate::sync::rwlock::TraceableRwLock;
+use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use daemon_common::service::BlankError;
 use daemon_common::service::debug::{
@@ -11,7 +11,7 @@ use daemon_common::service::debug::{
 use std::ops::Deref;
 
 #[async_trait]
-impl DebugService for Daemon {
+impl<T: DaemonExtra> DebugService for Daemon<T> {
     async fn debug_trace_daemon(&self) -> Result<DaemonTraceResult, BlankError> {
         Ok(DaemonTraceResult {
             servers: generic_mutex_trace(self.servers.deref()),

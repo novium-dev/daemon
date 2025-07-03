@@ -1,6 +1,6 @@
 use crate::server::start::ServerStartError;
 use crate::server::{FetchedServer, Server};
-use crate::{Daemon, ServerData};
+use crate::{Daemon, DaemonExtra, ServerData};
 use async_std::stream::StreamExt as _;
 use bollard::Docker;
 use bollard::query_parameters::{BuildImageOptions, ListImagesOptions};
@@ -83,7 +83,7 @@ impl BuildImage {
 impl FetchedServer {
     pub async fn prepare_image(
         &self,
-        state: &Daemon,
+        state: &Daemon<impl DaemonExtra>,
         docker: &Docker,
         buffer: &mut AllocRingBuffer<u8>,
         server_data: &ServerData,
@@ -144,11 +144,10 @@ impl FetchedServer {
                     ar.into_inner().map_err(ServerStartError::IO)?
                 };
                 let mut args = image.args.clone();
-                if args.get("BACKEND_URL").eq(&Some(&String::new())) {
-                    args.insert(
-                        "BACKEND_URL".to_owned(),
-                        state.config.backend_url.join("/").unwrap().to_string(),
-                    );
+                if args.get("BACKEND_URL").eq(&Some(&String::new()))
+                    && let Ok(backend_url) = state.config.backend_url.join("/")
+                {
+                    args.insert("BACKEND_URL".to_owned(), backend_url.to_string());
                 }
 
                 let mut image = docker.build_image(

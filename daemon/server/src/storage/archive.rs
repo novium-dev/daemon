@@ -164,12 +164,14 @@ fn append_dir_all<W: Write>(
     src_path: &Path,
     exclude: &HashSet<String>,
 ) -> io::Result<()> {
+    #[expect(dead_code, reason = "this is an exact copy of Builder from upstream")]
     struct BuilderCopy<W: Write> {
         options: BuilderOptionsCopy,
         finished: bool,
         obj: Option<W>,
     }
     #[derive(Clone, Copy)]
+    #[expect(dead_code, reason = "this is an exact copy of BuilderOptions from upstream")]
     struct BuilderOptionsCopy {
         mode: HeaderMode,
         follow: bool,
@@ -177,6 +179,8 @@ fn append_dir_all<W: Write>(
     }
 
     let archive_raw_copy = core::ptr::from_ref(archive).cast::<BuilderCopy<W>>();
+
+    // SAFETY: As long as the struct matches if the upstream version, there is no undefined behaviour
     let follow_symlinks = unsafe { &*archive_raw_copy }.options.follow;
 
     let mut stack = vec![(src_path.to_path_buf(), true, false)];

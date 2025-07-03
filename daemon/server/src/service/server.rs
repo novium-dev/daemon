@@ -13,12 +13,12 @@ use crate::storage::sync::{
     StorageError, StorageLockData, storage_read_timeout, storage_write_timeout,
 };
 use crate::utils::server_required;
-use crate::{Daemon, sql, storage};
+use crate::{Daemon, DaemonExtra, sql, storage};
 use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicU16, Ordering};
 use core::time::Duration;
 use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
@@ -42,7 +42,7 @@ use tokio::time::timeout;
 use tracing::{debug, error, warn};
 
 #[async_trait]
-impl ServerService for Daemon {
+impl<T: DaemonExtra> ServerService for Daemon<T> {
     async fn create_server(
         &self,
         storage: String,
@@ -332,8 +332,8 @@ impl ServerService for Daemon {
         &self,
         ws: WebSocketUpgrade,
         server_id: u32,
-        cols: Option<u32>,
-        rows: Option<u32>,
+        cols: Option<u16>,
+        rows: Option<u16>,
         write: bool,
         timestamp: i64,
         verify: UserSignature,
@@ -358,9 +358,9 @@ impl ServerService for Daemon {
                 server_data,
                 socket,
                 #[cfg(not(feature = "no_tty_size_please"))]
-                Arc::new(AtomicU32::new(cols.unwrap_or_default())),
+                Arc::new(AtomicU16::new(cols.unwrap_or_default())),
                 #[cfg(not(feature = "no_tty_size_please"))]
-                Arc::new(AtomicU32::new(rows.unwrap_or_default())),
+                Arc::new(AtomicU16::new(rows.unwrap_or_default())),
                 write,
             )
         })))
@@ -392,8 +392,8 @@ impl ServerService for Daemon {
         &self,
         ws: WebSocketUpgrade,
         server_id: u32,
-        cols: Option<u32>,
-        rows: Option<u32>,
+        cols: Option<u16>,
+        rows: Option<u16>,
         command: JsonVec<String>,
         timestamp: i64,
         verify: UserSignature,

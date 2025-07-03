@@ -2,7 +2,7 @@ use crate::config::{BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedUnpackExt as _;
 use crate::storage::sync::{StorageLockData, storage_write_timeout};
-use crate::{Daemon, storage};
+use crate::{Daemon, DaemonExtra, storage};
 use core::sync::atomic::{AtomicI64, Ordering};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
@@ -27,7 +27,7 @@ pub async fn restore_backup<
         + Send
         + 'static,
 >(
-    state: &Daemon,
+    state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,
@@ -113,21 +113,29 @@ async fn restore_backup0<E: From<io::Error>>(
             let parent = dir.join("..");
             let fd = tokio::fs::File::open(&target).await.inspect_err(|err| {
                 if err.kind() == ErrorKind::NotFound {
-                    debug!("Failed to restore backup (open): {err:?}")
+                    debug!("Failed to restore backup (open): {err:?}");
                 } else {
-                    error!("Failed to restore backup (open): {err:?}")
+                    error!("Failed to restore backup (open): {err:?}");
                 }
             })?;
+            let Some(filename) = dir.file_name() else {
+                error!("Missing final component in storage path");
+                return Err(E::from(io::Error::new(ErrorKind::InvalidData, "No final component in storage path")));
+            };
+            let Some(filename) = filename.to_str() else {
+                error!("Final component in storage path is not utf8");
+                return Err(E::from(io::Error::new(ErrorKind::InvalidData, "Final component in storage path is not utf8")));
+            };
             super::super::btrfs::remove_subvolume(
                 &parent,
-                dir.file_name().unwrap().to_str().unwrap(),
+                filename,
             )
             .await
             .inspect_err(|err| error!("Failed to restore backup (delete_snapshot): {err:?}"))?;
             super::super::btrfs::new_snapshot(
                 fd,
                 &parent,
-                dir.file_name().unwrap().to_str().unwrap(),
+                filename,
                 false,
             )
             .await

@@ -1,8 +1,8 @@
-use crate::Daemon;
 use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedAppendExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::{Daemon, DaemonExtra};
 use chrono::Utc;
 use daemon_common::service::backup::error_backup_storage_incompatible::FromBackupStorageIncompatible;
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
@@ -25,7 +25,7 @@ pub async fn create_backup_order<
         + FromStorageFailure
         + FromBackupStorageNoSuitableFound,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
 ) -> Result<i64, E> {
     let StorageLockData {
@@ -77,7 +77,7 @@ fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
             true
         }
         (_, BackupEntry::Archive { .. }) => true,
-        #[cfg(not(feature = "btrfs"))]
+        #[cfg(feature = "btrfs")]
         _ => false,
     }
 }
@@ -92,7 +92,7 @@ pub async fn create_backup<
         + FromBackupStorageIncompatible
         + FromBackupStorageLocationNotFound,
 >(
-    state: &Daemon,
+    state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     backup_storage: &String,
 ) -> Result<i64, E> {

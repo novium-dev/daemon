@@ -1,8 +1,8 @@
-use crate::Daemon;
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::backup::BackupNameExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::{Daemon, DaemonExtra};
 use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -21,7 +21,7 @@ pub async fn list_backups<
         + FromStorageMutexLocked
         + FromStorageFailure,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
 ) -> Result<Vec<BackupResponseEntry>, E> {
     let StorageLockData { lock, .. } =
@@ -88,25 +88,24 @@ pub async fn list_backups<
                             &mut quotas,
                         ) {
                             error!(
-                                "Unable to retrieve quotas: {:?}. Ensure quotas are enabled",
-                                err
+                                "Unable to retrieve quotas: {err:?}. Ensure quotas are enabled"
                             );
                         }
                         quotas
                     })
                     .await
                     .inspect_err(|err| {
-                        error!("Failed to list backups (retrieve quotas): {:?}", err)
+                        error!("Failed to list backups (retrieve quotas): {err:?}");
                     })
                     .map_err(io::Error::from)?;
                 }
                 while let Some(entry) = readdir
                     .next_entry()
                     .await
-                    .inspect_err(|err| error!("Failed to list backups (next_entry): {:?}", err))?
+                    .inspect_err(|err| error!("Failed to list backups (next_entry): {err:?}"))?
                 {
                     let metadata = entry.metadata().await.inspect_err(|err| {
-                        error!("Failed to list backups (metadata): {:?}", err)
+                        error!("Failed to list backups (metadata): {err:?}");
                     })?;
                     if !metadata.file_type().is_dir() {
                         continue;
@@ -117,9 +116,9 @@ pub async fn list_backups<
 
                     let file = File::open(&entry_path)
                         .await
-                        .inspect_err(|err| error!("Failed to list backups (open): {:?}", err))?;
+                        .inspect_err(|err| error!("Failed to list backups (open): {err:?}"))?;
                     let name = file.get_backup_name().await.inspect_err(|err| {
-                        error!("Failed to list backups (get_name): {:?}", err)
+                        error!("Failed to list backups (get_name): {err:?}");
                     })?;
                     let size = if *quota {
                         match tokio::task::spawn_blocking(move || {
@@ -127,15 +126,14 @@ pub async fn list_backups<
                         })
                         .await
                         .inspect_err(|err| {
-                            error!("Failed to list backups (get_subvol_id): {:?}", err)
+                            error!("Failed to list backups (get_subvol_id): {err:?}");
                         })
                         .map_err(io::Error::from)?
                         {
                             Ok(subvol) => quotas.get(&subvol).copied(),
                             Err(err) => {
                                 error!(
-                                    "Unable to retrieve subvolume id: {:?} in {:?}. Ensure this backup is a subvolume and not a directory!",
-                                    err,
+                                    "Unable to retrieve subvolume id: {err:?} in {:?}. Ensure this backup is a subvolume and not a directory!",
                                     entry_path.to_string_lossy(),
                                 );
                                 None

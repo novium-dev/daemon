@@ -1,4 +1,4 @@
-use crate::Daemon;
+use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use core::time::Duration;
 use daemon_common::service::resource::ResourceService;
@@ -11,7 +11,7 @@ use std::thread;
 use tracing::{debug, error};
 
 #[async_trait]
-impl ResourceService for Daemon {
+impl<T: DaemonExtra> ResourceService for Daemon<T> {
     async fn resource_info(&self) -> Result<ResourceResponse, ResourceInfoError> {
         #[derive(sqlx::FromRow)]
         struct ResourceSummary {

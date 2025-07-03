@@ -15,7 +15,7 @@ pub mod key;
 mod network;
 mod schedule;
 mod service;
-mod sync;
+pub mod sync;
 mod terminal;
 mod utils;
 mod websocket;
@@ -48,7 +48,10 @@ use uuid::Uuid;
 
 pub const GIT_HASH: &str = env!("GIT_HASH");
 #[derive(Clone)]
-pub struct Daemon {
+pub struct Daemon<T = ()>
+where
+    T: DaemonExtra,
+{
     pub(crate) config: Arc<DaemonConfig>,
     pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
     pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, StorageData>>>,
@@ -61,32 +64,42 @@ pub struct Daemon {
     pub(crate) docker: Arc<Docker>,
     pub(crate) conn: Arc<Pool<MySql>>,
     pub(crate) client: Arc<Client>,
-    pub(crate) base_url: Url,
-    pub(crate) user_key: SigningKey,
+    pub(crate) extra: Arc<T>,
 
     pub(crate) root: Arc<DaemonRootKey>,
     pub(crate) key: Arc<DaemonKey>,
 }
 
-impl DaemonServices for Daemon {}
-impl DaemonServicesURL for Daemon {}
-impl DaemonServicesURLWithUserKey for Daemon {}
-impl FrameworkClientImpl for Daemon {
+#[derive(Clone)]
+pub struct WithUserKey {
+    pub(crate) base_url: Url,
+    pub(crate) user_key: SigningKey,
+}
+
+pub(crate) trait DaemonExtra: Clone + Send + Sync + 'static {}
+
+impl DaemonExtra for () {}
+impl DaemonExtra for WithUserKey {}
+
+impl<T: DaemonExtra> DaemonServices for Daemon<T> {}
+impl DaemonServicesURL for Daemon<WithUserKey> {}
+impl DaemonServicesURLWithUserKey for Daemon<WithUserKey> {}
+impl FrameworkClientImpl for Daemon<WithUserKey> {
     fn client(&self) -> &Client {
         &self.client
     }
 
     fn base_url(&self) -> &Url {
-        &self.base_url
+        &self.extra.base_url
     }
 }
-impl UserKeyProvider for Daemon {
+impl UserKeyProvider for Daemon<WithUserKey> {
     fn node_id(&self) -> &Uuid {
         &self.key.id
     }
 
     fn key(&self) -> &SigningKey {
-        &self.user_key
+        &self.extra.user_key
     }
 }
 
@@ -103,7 +116,7 @@ pub(crate) struct ServerData {
     pub(crate) restart: bool,
     pub(crate) stopping: bool,
     #[cfg(not(feature = "no_tty_size_please"))]
-    pub(crate) size: (u32, u32),
+    pub(crate) size: (u16, u16),
     pub(crate) buffer: Arc<Mutex<AllocRingBuffer<u8>>>,
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,

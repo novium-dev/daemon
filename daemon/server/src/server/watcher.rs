@@ -2,28 +2,28 @@ use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
 use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
-use crate::{Daemon, ServerData};
+use crate::{Daemon, DaemonExtra, ServerData};
 use async_std::prelude::Stream;
-use async_std::stream::StreamExt;
+use async_std::stream::StreamExt as _;
 use bollard::container::LogOutput;
 use bollard::errors::Error;
 use bollard::models::ContainerStatsResponse;
 use bollard::query_parameters::{AttachContainerOptions, InspectContainerOptions, StatsOptions};
+use core::ops::Add as _;
+use core::pin::Pin;
+use core::sync::atomic::{AtomicI64, Ordering};
+use core::time::Duration;
 use daemon_common::service::server::ServerStats;
 use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
-use std::ops::{Add, Deref, DerefMut};
-use std::pin::Pin;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicI64, Ordering};
-use std::time::Duration;
 use tokio::sync::OwnedRwLockReadGuard;
 use tokio::sync::broadcast::Sender;
 use tokio::time::Instant;
 
 #[expect(clippy::too_many_arguments)]
-pub(crate) async fn attach(
-    daemon: &Daemon,
+pub async fn attach(
+    daemon: &Daemon<impl DaemonExtra>,
     server_id: u32,
     cpu_max: Option<f32>,
     ram_max: Option<u32>,
@@ -59,9 +59,9 @@ pub(crate) async fn attach(
         }),
     );
 
-    let sender = server_data.sender.deref().clone();
-    let stats_sender = server_data.stats_sender.deref().clone();
-    let buffer = server_data.buffer.clone();
+    let sender = (*server_data.sender).clone();
+    let stats_sender = (*server_data.stats_sender).clone();
+    let buffer = Arc::clone(&server_data.buffer);
     let daemon = daemon.clone();
 
     tokio::task::spawn(watch(
@@ -84,8 +84,8 @@ pub(crate) async fn attach(
 }
 
 #[expect(clippy::too_many_arguments)]
-pub(crate) async fn watch(
-    daemon: Daemon,
+pub async fn watch(
+    daemon: Daemon<impl DaemonExtra>,
     server_id: u32,
     mut output: Pin<Box<dyn Stream<Item = Result<LogOutput, Error>> + Send>>,
     sender: Sender<ChannelWriteData>,
@@ -112,6 +112,7 @@ pub(crate) async fn watch(
         if start.elapsed() > Duration::from_secs(60) && !reset_counter {
             let mut server_data = server_data_arc.lock().await;
             server_data.failure_counter = 0;
+            drop(server_data);
             reset_counter = true;
         }
         tokio::select! {
@@ -119,7 +120,7 @@ pub(crate) async fn watch(
                 match log {
                     Some(Ok(log)) => {
                         let mut buffer = buffer.lock().await;
-                        FetchedServer::console(&sender, buffer.deref_mut(), log.to_string())
+                        FetchedServer::console(&sender, &mut buffer, log.to_string());
                     },
                     Some(Err(_err)) => return,
                     None => break,
@@ -135,8 +136,8 @@ pub(crate) async fn watch(
             _elapsed = tokio::time::sleep_until(next) => {
                 next = Instant::now().add(Duration::from_millis(500));
                 let stats_sender = stats_sender.clone();
-                let docker = daemon.docker.clone();
-                let server_data_arc = server_data_arc.clone();
+                let docker = Arc::clone(&daemon.docker);
+                let server_data_arc = Arc::clone(&server_data_arc);
                 tokio::task::spawn(async move {
                     FetchedServer::update_status(server_id, HashSet::new(), &stats_sender, &docker, &server_data_arc).await;
                 });
@@ -156,8 +157,7 @@ pub(crate) async fn watch(
             .state
             .unwrap_or_default()
             .exit_code
-            .map(|code| code != 0)
-            .unwrap_or_default()
+            .is_some_and(|code| code != 0)
     } else {
         false
     };
@@ -167,7 +167,7 @@ pub(crate) async fn watch(
 
     let mut failure_exceeded = false;
     if !server_data.restart && failure && start.elapsed() <= Duration::from_secs(60) {
-        server_data.failure_counter += 1;
+        server_data.failure_counter = server_data.failure_counter.saturating_add(1);
         if server_data.failure_counter >= 3 {
             failure = false;
             failure_exceeded = true;
@@ -186,12 +186,12 @@ pub(crate) async fn watch(
         ));
     }
     let mut buffer = buffer.lock().await;
-    FetchedServer::console(&server_data.sender, buffer.deref_mut(), "\n".to_owned());
-    FetchedServer::log(&server_data.sender, buffer.deref_mut(), "Server stopped!");
+    FetchedServer::console(&server_data.sender, &mut buffer, "\n".to_owned());
+    FetchedServer::log(&server_data.sender, &mut buffer, "Server stopped!");
     if failure_exceeded {
         FetchedServer::log(
             &server_data.sender,
-            buffer.deref_mut(),
+            &mut buffer,
             "Server crashed 3 times in a row. Server will not restart",
         );
     }
@@ -227,4 +227,5 @@ pub(crate) async fn watch(
         )
         .await;
     }
+    drop(server_data);
 }

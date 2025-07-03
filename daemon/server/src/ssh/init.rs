@@ -1,11 +1,11 @@
-use crate::{Daemon, GIT_HASH, common};
+use crate::{Daemon, DaemonExtra, GIT_HASH, common};
 use core::time::Duration;
 use russh::server::*;
 use russh::*;
 use std::sync::Arc;
 use tracing::error;
 
-impl Daemon {
+impl<T: DaemonExtra> Daemon<T> {
     pub async fn serve_ssh(&self) -> Result<(), anyhow::Error> {
         if let Some(ssh) = self.config.ssh.clone() {
             let mut keys = Vec::with_capacity(ssh.host_key.len());

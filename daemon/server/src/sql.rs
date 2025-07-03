@@ -2,14 +2,14 @@ use sqlx::migrate::Migrator;
 use sqlx::mysql::MySqlArguments;
 use sqlx::pool::PoolConnection;
 use sqlx::query::Query;
-use sqlx::{Connection, Executor, MySql, Pool, query, raw_sql};
+use sqlx::{Connection as _, Executor, MySql, Pool, query, raw_sql};
 
 static MIGRATOR: Migrator = sqlx::migrate!();
 
-pub(crate) struct PreparedQuery(Query<'static, MySql, MySqlArguments>);
+pub struct PreparedQuery(Query<'static, MySql, MySqlArguments>);
 
 impl PreparedQuery {
-    pub(crate) async fn prepare<'a, E: Executor<'a, Database = MySql>>(
+    pub async fn prepare<'a, E: Executor<'a, Database = MySql>>(
         self,
         executor: E,
     ) -> Result<ExecuteQuery, sqlx::Error> {
@@ -18,11 +18,11 @@ impl PreparedQuery {
     }
 }
 
-pub(crate) struct ExecuteQuery;
+pub struct ExecuteQuery;
 
 impl ExecuteQuery {
     /// Definitely not cancel safe
-    pub(crate) async fn execute<'a, E: Executor<'a, Database = MySql>>(
+    pub async fn execute<'a, E: Executor<'a, Database = MySql>>(
         self,
         executor: E,
     ) -> Result<(), sqlx::Error> {
@@ -36,12 +36,12 @@ impl ExecuteQuery {
 }
 
 #[derive(Default)]
-pub(crate) struct MultiTransactionApply(
+pub struct MultiTransactionApply(
     Vec<(PreparedQuery, Vec<Query<'static, MySql, MySqlArguments>>)>,
 );
 
 impl MultiTransactionApply {
-    pub(crate) fn add(
+    pub fn add(
         &mut self,
         main: PreparedQuery,
         transaction_query: Vec<Query<'static, MySql, MySqlArguments>>,
@@ -49,7 +49,7 @@ impl MultiTransactionApply {
         self.0.push((main, transaction_query));
     }
 
-    pub(crate) async fn execute(
+    pub async fn execute(
         self,
         transaction_conn: &mut PoolConnection<MySql>,
         mut raw_conn: PoolConnection<MySql>,
@@ -75,13 +75,13 @@ impl MultiTransactionApply {
     }
 }
 
-pub(crate) async fn init(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
+pub async fn init(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
     MIGRATOR.run(pool).await?;
 
     Ok(())
 }
 
-pub(crate) fn create_user(
+pub fn create_user(
     user: impl Into<String>,
     host: impl Into<String>,
     plugin: impl Into<String>,
@@ -124,14 +124,14 @@ pub(crate) fn create_user(
     })
 }
 
-pub(crate) fn proxy_user() -> PreparedQuery {
+pub fn proxy_user() -> PreparedQuery {
     PreparedQuery(query!(
         "SET @STATEMENT = CONCAT('CREATE USER IF NOT EXISTS ''server''@''%'' IDENTIFIED WITH ', QUOTE(?))",
         crate::common::MARIADB_PLUGIN_NAME
     ))
 }
 
-pub(crate) fn drop_user(user: impl Into<String>, host: impl Into<String>) -> PreparedQuery {
+pub fn drop_user(user: impl Into<String>, host: impl Into<String>) -> PreparedQuery {
     PreparedQuery(query!(
         "SET @STATEMENT = CONCAT('DROP USER IF EXISTS ', QUOTE(?), '@', QUOTE(?))",
         user.into(),
@@ -139,7 +139,7 @@ pub(crate) fn drop_user(user: impl Into<String>, host: impl Into<String>) -> Pre
     ))
 }
 
-pub(crate) fn grant_privilege(
+pub fn grant_privilege(
     table: impl Into<String>,
     privilege: impl Into<String>,
     user: impl Into<String>,
@@ -154,7 +154,7 @@ pub(crate) fn grant_privilege(
     ))
 }
 
-pub(crate) fn revoke_all_privileges(
+pub fn revoke_all_privileges(
     table: impl Into<String>,
     user: impl Into<String>,
     host: impl Into<String>,
@@ -167,7 +167,7 @@ pub(crate) fn revoke_all_privileges(
     ))
 }
 
-pub(crate) fn grant_proxy(
+pub fn grant_proxy(
     user: impl Into<String>,
     host: impl Into<String>,
     proxy_user: impl Into<String>,
@@ -182,20 +182,20 @@ pub(crate) fn grant_proxy(
     ))
 }
 
-pub(crate) fn create_database(name: impl Into<String>) -> PreparedQuery {
+pub fn create_database(name: impl Into<String>) -> PreparedQuery {
     PreparedQuery(query!(
         "SET @STATEMENT = CONCAT('CREATE DATABASE ', ?)",
         name.into()
     ))
 }
 
-pub(crate) fn drop_database(name: impl Into<String>) -> PreparedQuery {
+pub fn drop_database(name: impl Into<String>) -> PreparedQuery {
     PreparedQuery(query!(
         "SET @STATEMENT = CONCAT('DROP DATABASE ', ?)",
         name.into()
     ))
 }
 
-pub(crate) fn flush_privileges() -> PreparedQuery {
+pub fn flush_privileges() -> PreparedQuery {
     PreparedQuery(query!("SET @STATEMENT = 'FLUSH PRIVILEGES'"))
 }

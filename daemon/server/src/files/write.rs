@@ -1,8 +1,8 @@
-use crate::Daemon;
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
+use crate::{Daemon, DaemonExtra};
 use axum_extra::TypedHeader;
 use axum_extra::headers::ContentLength;
 use cap_async_std::fs::{Dir, OpenOptions};
@@ -20,7 +20,7 @@ use std::io;
 use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
-use tokio::io::{AsyncWriteExt, BufWriter};
+use tokio::io::{AsyncWriteExt as _, BufWriter};
 use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 use url::Url;
@@ -33,7 +33,7 @@ pub async fn write_file<
         + FromStorageMutexLocked
         + FromStorageFailure,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
     length: Option<TypedHeader<ContentLength>>,
@@ -85,7 +85,7 @@ pub async fn write_file_by_template<
         + Send
         + 'static,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
     template: ServerFileWrite,
@@ -103,7 +103,7 @@ pub async fn write_file_by_template<
             | ErrorKind::PermissionDenied
             | ErrorKind::IsADirectory
             | ErrorKind::QuotaExceeded => {
-                debug!("Failed to write file by template (open): {err:?}")
+                debug!("Failed to write file by template (open): {err:?}");
             }
             _ => error!("Failed to write file by template (open): {err:?}"),
         })?
@@ -132,7 +132,7 @@ pub async fn write_file_by_url<
         + Send
         + 'static,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
     url: Url,
@@ -152,7 +152,7 @@ pub async fn write_file_by_url<
 async fn write_file_by_url0<
     E: From<io::Error> + FromHttpRequestFailed + FromHttpRequestNotSuccess + FromHttpRequestReadFailed,
 >(
-    daemon: Daemon,
+    daemon: Daemon<impl DaemonExtra>,
     storage: Dir,
     path: PathBuf,
     url: Url,

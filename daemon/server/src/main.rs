@@ -7,10 +7,10 @@ use clap::*;
 use daemon::*;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use tokio::fs::{self, File};
-use tokio::io::AsyncReadExt;
-use tracing::{error, info};
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
+use tokio::io::AsyncReadExt as _;
+use tracing::info;
+use tracing_subscriber::layer::SubscriberExt as _;
+use tracing_subscriber::util::SubscriberInitExt as _;
 
 fn main() {
     let matches = command!()
@@ -81,7 +81,7 @@ fn main() {
 
     rustls::crypto::aws_lc_rs::default_provider()
         .install_default()
-        .unwrap();
+        .expect("Unable to set aws_lc_sys as default crypto provider");
 
     let reg = tracing_subscriber::registry()
         .with(tracing_subscriber::filter::LevelFilter::from_level(
@@ -125,7 +125,7 @@ async fn main0(matches: ArgMatches) {
     match (matches.subcommand(), config_exists) {
         (Some(("setup", _)), _) | (_, false) => {
             tokio::task::spawn_blocking(move || {
-                let setup_matches = matches.subcommand_matches("setup").unwrap();
+                let setup_matches = matches.subcommand_matches("setup").expect("Unable to get matches for subcommand setup");
                 let backend = setup_matches.get_one("backend");
                 let code = setup_matches.get_one("code");
                 let skip_mariadb_plugin = setup_matches.get_flag("skip-mariadb-plugin");
@@ -144,34 +144,32 @@ async fn run() {
     let mut config_buffer = String::new();
     File::open("config.toml")
         .await
-        .inspect_err(|_err| error!("Failed to open config file"))
-        .unwrap()
+        .expect("Failed to open config file")
         .read_to_string(&mut config_buffer)
         .await
-        .unwrap();
+        .expect("Unable to read config file");
     let config: DaemonConfig = toml::from_str(&config_buffer)
-        .inspect_err(|_err| error!("Failed to read config file"))
-        .unwrap();
+        .expect("Failed to parse config file");
 
     let mut root = Vec::new();
     let mut key = Vec::new();
     {
-        let mut root_file = File::open("daemon_root.pem").await.unwrap();
-        root_file.read_to_end(&mut root).await.unwrap();
+        let mut root_file = File::open("daemon_root.pem").await.expect("Unable to open daemon root key (daemon_root.pem)");
+        root_file.read_to_end(&mut root).await.expect("Unable to read daemon root key (daemon_root.pem)");
 
-        let mut key_file = File::open("daemon.pem").await.unwrap();
-        key_file.read_to_end(&mut key).await.unwrap();
-    }
-    let root = DaemonRootKey::parse(&root).unwrap().0;
-    let key = DaemonKey::parse(&root, &key).unwrap();
+        let mut key_file = File::open("daemon.pem").await.expect("Unable to open daemon key (daemon.pem)");
+        key_file.read_to_end(&mut key).await.expect("Unable to read daemon key (daemon.pem)");
+    };
+    let root = DaemonRootKey::parse(&root).expect("Unable to parse daemon root key (daemon_root.pem)").0;
+    let key = DaemonKey::parse(&root, &key).expect("Unable to parse daemon key (daemon.pem)");
 
-    info!("Starting Daemon on version {}", GIT_HASH);
+    info!("Starting Daemon on version {GIT_HASH}");
 
-    let daemon = Daemon::init(config, root, key).await.unwrap();
+    let daemon = Daemon::init(config, root, key).await.expect("Unable to initialize daemon");
 
     info!("Starting Webserver...");
 
-    daemon.serve_all().await.unwrap();
+    daemon.serve_all().await.expect("Unable to serve all services");
 
     daemon.hook_signals();
 
@@ -181,8 +179,8 @@ async fn run() {
 fn cap_setup() {
     #[cfg(target_os = "linux")]
     {
-        use std::os::unix::fs::MetadataExt;
-        if std::fs::metadata("/proc/self/").unwrap().uid() != 0 {
+        use std::os::unix::fs::MetadataExt as _;
+        if std::fs::metadata("/proc/self/").expect("Unable to retrieve uid of /proc/self/").uid() != 0 {
             return;
         }
         capctl::prctl::set_keepcaps(true).expect("Unable to keep capabilities after setuid");
@@ -199,13 +197,13 @@ fn cap_setup() {
             .expect("Unable to set permitted capabilities");
 
         capctl::cap_set_ids(
-            Some(crate::common::CONTAINER_DEFAULT_UID as u32),
-            Some(crate::common::CONTAINER_DEFAULT_GID as u32),
+            Some(u32::from(common::CONTAINER_DEFAULT_UID)),
+            Some(u32::from(common::CONTAINER_DEFAULT_GID)),
             None,
         )
         .expect("Unable to setuid current process");
 
-        let mut capstate = capctl::CapState::get_current().unwrap();
+        let mut capstate = capctl::CapState::get_current().expect("Unable to retrieve current capabilities");
         capstate.effective.add(capctl::Cap::NET_BIND_SERVICE);
         capstate.effective.add(capctl::Cap::DAC_OVERRIDE);
         capstate.effective.add(capctl::Cap::FOWNER);

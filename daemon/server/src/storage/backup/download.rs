@@ -1,9 +1,9 @@
-use crate::Daemon;
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedAppendExt as _;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::{Daemon, DaemonExtra};
 use axum::http;
 use axum::http::HeaderMap;
 use chrono::{TimeZone as _, Utc};
@@ -32,7 +32,7 @@ pub async fn backup_to_stream<
         + FromStorageFailure
         + FromBackupStorageLocationNotFound,
 >(
-    state: &Daemon,
+    state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,
@@ -130,7 +130,7 @@ pub async fn stream_realtime<
         + FromStorageFailure
         + FromCompressionUnsupported,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     compression: String,
 ) -> Result<FileResponse, E> {

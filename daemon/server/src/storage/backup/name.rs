@@ -1,8 +1,8 @@
-use crate::Daemon;
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::backup::BackupNameExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::{Daemon, DaemonExtra};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -22,7 +22,7 @@ pub async fn set_backup_name<
         + FromStorageFailure
         + FromBackupStorageLocationNotFound,
 >(
-    state: &Daemon,
+    state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,

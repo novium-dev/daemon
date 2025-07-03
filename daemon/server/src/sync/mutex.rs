@@ -19,7 +19,7 @@ impl<T: ?Sized> TraceableMutex<T> {
         )
     }
 
-    pub(crate) fn last_trace(&self) -> MutexTraceData {
+    pub fn last_trace(&self) -> MutexTraceData {
         *self.1.lock().unwrap()
     }
 
@@ -32,7 +32,7 @@ impl<T: ?Sized> TraceableMutex<T> {
     }
 
     #[track_caller]
-    pub(crate) fn lock(&self) -> impl Future<Output = MutexGuard<'_, T>> {
+    pub fn lock(&self) -> impl Future<Output = MutexGuard<'_, T>> {
         let location = std::panic::Location::caller();
         async move {
             let guard = self.0.lock().await;
@@ -42,7 +42,7 @@ impl<T: ?Sized> TraceableMutex<T> {
     }
 
     #[track_caller]
-    pub(crate) fn lock_owned(
+    pub fn lock_owned(
         self: std::sync::Arc<Self>,
     ) -> impl Future<Output = OwnedMutexGuard<T>> {
         let location = std::panic::Location::caller();
@@ -54,21 +54,21 @@ impl<T: ?Sized> TraceableMutex<T> {
     }
 
     #[track_caller]
-    pub(crate) fn blocking_lock(&self) -> MutexGuard<'_, T> {
+    pub fn blocking_lock(&self) -> MutexGuard<'_, T> {
         let guard = self.0.blocking_lock();
         self.__trace(std::panic::Location::caller());
         guard
     }
 
     #[track_caller]
-    pub(crate) fn blocking_lock_owned(self: std::sync::Arc<Self>) -> OwnedMutexGuard<T> {
+    pub fn blocking_lock_owned(self: std::sync::Arc<Self>) -> OwnedMutexGuard<T> {
         let guard = self.0.clone().blocking_lock_owned();
         self.__trace(std::panic::Location::caller());
         guard
     }
 
     #[track_caller]
-    pub(crate) fn try_lock(&self) -> Result<MutexGuard<'_, T>, TryLockError> {
+    pub fn try_lock(&self) -> Result<MutexGuard<'_, T>, TryLockError> {
         let guard = self.0.try_lock();
         if guard.is_ok() {
             self.__trace(std::panic::Location::caller());
@@ -76,12 +76,12 @@ impl<T: ?Sized> TraceableMutex<T> {
         guard
     }
 
-    pub(crate) fn try_lock_hidden(&self) -> Result<MutexGuard<'_, T>, TryLockError> {
+    pub fn try_lock_hidden(&self) -> Result<MutexGuard<'_, T>, TryLockError> {
         self.0.try_lock()
     }
 
     #[track_caller]
-    pub(crate) fn try_lock_owned(
+    pub fn try_lock_owned(
         self: std::sync::Arc<Self>,
     ) -> Result<OwnedMutexGuard<T>, TryLockError> {
         let guard = self.0.clone().try_lock_owned();

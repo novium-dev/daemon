@@ -1,7 +1,7 @@
-use crate::Daemon;
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::{Daemon, DaemonExtra};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -20,7 +20,7 @@ pub async fn delete_backup<
         + FromStorageFailure
         + FromBackupStorageLocationNotFound,
 >(
-    state: &Daemon,
+    state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     backup_id: i64,
     backup_storage: &String,
@@ -52,9 +52,9 @@ pub async fn delete_backup<
                 .await
                 .inspect_err(|err| {
                     if err.kind() == ErrorKind::NotFound {
-                        debug!("Failed to delete a backup (delete_subvolume): {:?}", err)
+                        debug!("Failed to delete a backup (delete_subvolume): {err:?}");
                     } else {
-                        error!("Failed to delete a backup (delete_subvolume): {:?}", err)
+                        error!("Failed to delete a backup (delete_subvolume): {err:?}");
                     }
                 })?;
         }

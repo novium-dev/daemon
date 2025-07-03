@@ -163,40 +163,31 @@ impl ToSchema for InternalServerState {
 
 impl InternalServerState {
     pub const fn start(&self) -> bool {
-        matches!(self, InternalServerState::Stopped)
+        matches!(self, Self::Stopped)
     }
 
     pub const fn stop(&self) -> bool {
         !matches!(
             self,
-            InternalServerState::Stopped
-                | InternalServerState::Stopping(_)
-                | InternalServerState::Restarting(_)
-                | InternalServerState::Locked
+            Self::Stopped | Self::Stopping(_) | Self::Restarting(_) | Self::Locked
         )
     }
 
     pub const fn kill(&self) -> bool {
-        !matches!(
-            self,
-            InternalServerState::Stopped | InternalServerState::Locked
-        )
+        !matches!(self, Self::Stopped | Self::Locked)
     }
 
     pub const fn kill_show(&self) -> bool {
-        matches!(
-            self,
-            InternalServerState::Stopping(_) | InternalServerState::Restarting(_)
-        )
+        matches!(self, Self::Stopping(_) | Self::Restarting(_))
     }
 
     pub const fn since(&self) -> Option<i64> {
         match self {
-            InternalServerState::Restarting(time)
-            | InternalServerState::Running(time, _)
-            | InternalServerState::Starting(time, _)
-            | InternalServerState::Stopping(time)
-            | InternalServerState::Unhealthy(time, _) => Some(*time),
+            Self::Restarting(time)
+            | Self::Running(time, _)
+            | Self::Starting(time, _)
+            | Self::Stopping(time)
+            | Self::Unhealthy(time, _) => Some(*time),
             _ => None,
         }
     }
@@ -205,9 +196,9 @@ impl InternalServerState {
         PublicServerState {
             label: self.to_string(),
             healthcheck: match self {
-                InternalServerState::Starting(_, healthcheck)
-                | InternalServerState::Unhealthy(_, healthcheck)
-                | InternalServerState::Running(_, healthcheck) => healthcheck,
+                Self::Starting(_, healthcheck)
+                | Self::Unhealthy(_, healthcheck)
+                | Self::Running(_, healthcheck) => healthcheck,
                 _ => &None,
             }
             .clone(),
@@ -220,22 +211,22 @@ impl InternalServerState {
 }
 
 impl Display for InternalServerState {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str(match self {
-            InternalServerState::Stopped => "Stopped",
-            InternalServerState::Starting(_, _) => "Starting",
-            InternalServerState::Unhealthy(_, _) => "Unhealthy",
-            InternalServerState::Running(_, _) => "Running",
-            InternalServerState::Stopping(_) => "Stopping",
-            InternalServerState::Restarting(_) => "Restarting",
-            InternalServerState::Locked => "Locked",
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str(match self {
+            Self::Stopped => "Stopped",
+            Self::Starting(_, _) => "Starting",
+            Self::Unhealthy(_, _) => "Unhealthy",
+            Self::Running(_, _) => "Running",
+            Self::Stopping(_) => "Stopping",
+            Self::Restarting(_) => "Restarting",
+            Self::Locked => "Locked",
         })
     }
 }
 
 impl InternalServerState {
     pub fn as_websocket_message(&self) -> Message {
-        Message::Text(serde_json::to_string(self).unwrap().into())
+        Message::Text(serde_json::to_string(self).unwrap_or_default().into())
     }
 }
 

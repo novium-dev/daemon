@@ -1,10 +1,10 @@
-use crate::Daemon;
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
-use crate::storage::archive::{TarSandboxedAppendExt, TarSandboxedUnpackExt};
+use crate::storage::archive::{TarSandboxedAppendExt as _, TarSandboxedUnpackExt as _};
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::path_relative;
+use crate::{Daemon, DaemonExtra};
 use cap_async_std::fs::{Dir, OpenOptions};
 use daemon_common::service::error_compression_unsupported::FromCompressionUnsupported;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
@@ -29,7 +29,7 @@ pub async fn unpack_archive<
         + FromStorageFailure
         + FromCompressionUnsupported,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
     dest: String,
@@ -77,7 +77,7 @@ pub async fn unpack_archive<
         Err(err) => {
             match err.kind() {
                 ErrorKind::IsADirectory | ErrorKind::NotADirectory | ErrorKind::InvalidData => {
-                    debug!("Failed to unpack archive (detect): {err:?}")
+                    debug!("Failed to unpack archive (detect): {err:?}");
                 }
                 _ => error!("Failed to unpack archive (detect): {err:?}"),
             }
@@ -99,7 +99,7 @@ pub async fn create_archive<
         + Send
         + 'static,
 >(
-    daemon: &Daemon,
+    daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
     src: String,
@@ -157,7 +157,7 @@ async fn create_archive0<E: From<io::Error>>(
             .create_encoder(file)
             .inspect_err(|err| error!("Failed to create archive (create_encoder): {err:?}"))?,
     );
-    let (archive, _) = archive
+    let (archive, ()) = archive
         .append_dir_all_sandboxed(storage_path, "", src, HashSet::new(), (), true)
         .await
         .inspect_err(|err| match err.kind() {
@@ -166,8 +166,8 @@ async fn create_archive0<E: From<io::Error>>(
         })?;
 
     tokio::task::spawn_blocking(move || {
-        use std::io::Write;
-        archive.into_inner().unwrap().finish()?.flush()
+        use std::io::Write as _;
+        archive.into_inner()?.finish()?.flush()
     })
     .await
     .inspect_err(|err| error!("Failed to create archive (flush): {err:?}"))

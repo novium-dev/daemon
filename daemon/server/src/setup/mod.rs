@@ -1,3 +1,21 @@
+#![expect(clippy::unwrap_used, reason = "this is a garbage implementation")]
+#![expect(clippy::print_stdout, reason = "this is a garbage implementation")]
+#![expect(clippy::single_char_pattern, reason = "this is a garbage implementation")]
+#![expect(clippy::uninlined_format_args, reason = "this is a garbage implementation")]
+#![expect(clippy::map_unwrap_or, reason = "this is a garbage implementation")]
+#![expect(clippy::str_to_string, reason = "this is a garbage implementation")]
+#![expect(clippy::redundant_clone, reason = "this is a garbage implementation")]
+#![expect(clippy::needless_pass_by_value, reason = "this is a garbage implementation")]
+#![expect(clippy::verbose_file_reads, reason = "this is a garbage implementation")]
+#![expect(clippy::semicolon_outside_block, reason = "this is a garbage implementation")]
+#![expect(clippy::indexing_slicing, reason = "this is a garbage implementation")]
+#![expect(clippy::clone_on_ref_ptr, reason = "this is a garbage implementation")]
+#![expect(clippy::unnecessary_to_owned, reason = "this is a garbage implementation")]
+#![expect(clippy::redundant_pub_crate, reason = "this is a garbage implementation")]
+#![expect(clippy::semicolon_if_nothing_returned, reason = "this is a garbage implementation")]
+#![expect(clippy::std_instead_of_core, reason = "this is a garbage implementation")]
+#![expect(clippy::unused_trait_names, reason = "this is a garbage implementation")]
+
 use crate::config::{ArchiveCompression, CompressionLevel};
 use crate::config::{BackupEntry, DaemonConfig, MountPoint, NetworkConfig, StorageEntry};
 use async_trait::async_trait;
@@ -16,7 +34,6 @@ use daemon_common::service::setup::error::ConnectionTestError;
 use inquire::autocompletion::Replacement;
 use inquire::validator::{ErrorMessage, StringValidator, Validation};
 use inquire::{Autocomplete, CustomUserError, Text};
-use regex::Regex;
 use reqwest::blocking::Client;
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, CertificateSigningRequestDer};
@@ -28,11 +45,13 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
-use std::process::{Stdio, exit};
+use std::process::Stdio;
 use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, thread};
+use axum::http::HeaderValue;
+use lazy_regex::{regex, Regex};
 use tokio::runtime::Handle;
 use tracing::info;
 use url::Host;
@@ -50,7 +69,7 @@ struct URLValidator<const SECURE: bool>;
 struct HostPortValidator;
 
 #[derive(Clone)]
-struct RegexValidator(Regex);
+struct RegexValidator(&'static Regex);
 
 pub(crate) fn setup(backend_url: Option<Url>, code: Option<String>, skip_mariadb_plugin: bool) {
     info!("Starting Setup Wizard...");
@@ -61,7 +80,7 @@ pub(crate) fn setup(backend_url: Option<Url>, code: Option<String>, skip_mariadb
                 "\nThere already is an existing configuration for the daemon? Do you want to apply config updates or start a new setup?"
             );
             if Text::new(" ")
-                .with_validator(RegexValidator(Regex::new("Update|New").unwrap()))
+                .with_validator(RegexValidator(regex!("Update|New")))
                 .with_autocomplete(VecAutoComplete(&["Update", "New"]))
                 .prompt()
                 .unwrap()
@@ -136,8 +155,6 @@ pub(crate) fn update(mut file: File, backend_url: Option<Url>, code: Option<Stri
         .unwrap();
 
     println!("Done");
-
-    exit(0);
 }
 
 fn test_host(config: &DaemonConfig, root: Arc<DaemonRootKey>, key: Arc<DaemonKey>, uuid: Uuid) {
@@ -164,10 +181,10 @@ fn test_host(config: &DaemonConfig, root: Arc<DaemonRootKey>, key: Arc<DaemonKey
     let rustls = RustlsConfig::from_config(Arc::new(rustls));
 
     for listener in config.listeners.clone() {
-        let (routes, _) =
+        let (router, _) =
             framework_router!(ConnectionTestWrapper ConnectionTestWrapper { SetupService });
         let router = OpenApiRouter::new()
-            .merge(routes)
+            .merge(router)
             .layer(axum::middleware::from_fn(middleware));
         let (router, _) = router.split_for_parts();
 
@@ -185,7 +202,9 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
     let (backend, code) = default(backend_url, code);
 
     println!("Retrieving daemon root key...");
-    let (root, rsa) = read_root_key(backend.clone(), code.clone()).unwrap();
+    let Some((root, rsa)) = read_root_key(backend.clone(), code.clone()).unwrap() else {
+        return;
+    };
     let root = Arc::new(root);
 
     let mut mounts = Vec::new();
@@ -222,7 +241,7 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
             SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 3000),
         ]),
         backend_url: backend.join("/").unwrap(),
-        origin: backend.join("/").unwrap().to_string(),
+        origin: HeaderValue::from_str(&backend.join("/").unwrap().to_string()).unwrap(),
         tls: None,
         ssh: Some(crate::config::SSHConfig {
             listeners: HashSet::from([
@@ -328,8 +347,6 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
     }
 
     println!("Done");
-
-    exit(0);
 }
 
 #[inline(always)]
@@ -489,19 +506,18 @@ fn hostname() -> String {
         .unwrap_or_default()
 }
 
-fn read_root_key(url: Url, code: String) -> Result<(DaemonRootKey, bool), anyhow::Error> {
+fn read_root_key(url: Url, code: String) -> Result<Option<(DaemonRootKey, bool)>, anyhow::Error> {
     let response = Client::default()
         .get(url.join("/api/internal/daemon/root_key").unwrap())
         .bearer_auth(code)
         .send()?;
     if response.status() == axum::http::StatusCode::UNAUTHORIZED {
         println!("Code is invalid");
-        exit(0);
+        return Ok(None);
     }
     let rsa = response.headers().contains_key("X-Prefer-RSA-Key");
     let str: String = response.json().map_err(io::Error::other)?;
-    println!("{}", str);
-    Ok((DaemonRootKey::parse(str)?.0, rsa))
+    Ok(Some((DaemonRootKey::parse(str)?.0, rsa)))
 }
 
 impl StringValidator for MySQLValidator {
@@ -551,8 +567,7 @@ fn parse_addr(input: impl Into<String>) -> Option<(Host, Option<u16>)> {
 impl StringValidator for HostPortValidator {
     fn validate(&self, input: &str) -> Result<Validation, CustomUserError> {
         Ok(parse_addr(input)
-            .map(|_| Validation::Valid)
-            .unwrap_or(Validation::Invalid(ErrorMessage::Default)))
+            .map_or(Validation::Invalid(ErrorMessage::Default), |_| Validation::Valid))
     }
 }
 

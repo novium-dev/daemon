@@ -1,5 +1,3 @@
-#![deny(clippy::inline_always, reason = "here are many single call methods")]
-
 mod archive;
 mod copy;
 mod delete;
@@ -17,7 +15,7 @@ use std::path::PathBuf;
 use crate::config::StorageEntry;
 use crate::storage::StorageIdentifier;
 use cap_async_std::ambient_authority;
-use cap_async_std::fs::{Dir, FileTypeExt, Metadata, MetadataExt};
+use cap_async_std::fs::{Dir, FileTypeExt as _, Metadata, MetadataExt as _};
 use daemon_common::files::FileMode;
 use daemon_common::service::files::FileEntry;
 use tracing::error;

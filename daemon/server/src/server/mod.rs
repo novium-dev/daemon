@@ -54,18 +54,18 @@ pub struct FetchedServer {
 }
 
 #[derive(Debug, Copy, Clone, Ord, PartialOrd, PartialEq, Eq)]
-pub(crate) enum ServerLock {
+pub enum ServerLock {
     Storage,
 }
 
 impl Server {
-    pub(crate) async fn fetched(
+    pub async fn fetched(
         self,
         conn: impl Executor<'_, Database = MySql> + Copy,
     ) -> Result<FetchedServer, sqlx::Error> {
         let Some(image) = self.image else {
             return Err(sqlx::Error::ColumnDecode {
-                index: "image".to_string(),
+                index: "image".to_owned(),
                 source: io::Error::other("image is null").into(),
             });
         };
@@ -145,16 +145,11 @@ impl Server {
         for entry in files_write_entries {
             match entry.filetype.as_str() {
                 "properties" => {
-                    if !files_write.contains_key(&entry.file) {
-                        files_write.insert(
-                            entry.file.clone(),
-                            ServerFileWrite::JavaProperties {
-                                content: HashMap::new(),
-                            },
-                        );
-                    }
-                    if let ServerFileWrite::JavaProperties { content } =
-                        files_write.get_mut(&entry.file).unwrap()
+                    if let ServerFileWrite::JavaProperties { content } = files_write
+                        .entry(entry.file.clone())
+                        .or_insert_with(|| ServerFileWrite::JavaProperties {
+                            content: HashMap::new(),
+                        })
                     {
                         content.insert(
                             entry
@@ -178,13 +173,9 @@ impl Server {
                     );
                 }
                 "json" => {
-                    if !files_write.contains_key(&entry.file) {
-                        files_write.insert(
-                            entry.file.clone(),
-                            ServerFileWrite::Json { set: Vec::new() },
-                        );
-                    }
-                    if let ServerFileWrite::Json { set } = files_write.get_mut(&entry.file).unwrap()
+                    if let ServerFileWrite::Json { set } = files_write
+                        .entry(entry.file.clone())
+                        .or_insert_with(|| ServerFileWrite::Json { set: Vec::new() })
                     {
                         set.push(
                             serde_json::from_str(&entry.value)
@@ -193,13 +184,9 @@ impl Server {
                     }
                 }
                 "yaml" => {
-                    if !files_write.contains_key(&entry.file) {
-                        files_write.insert(
-                            entry.file.clone(),
-                            ServerFileWrite::Yaml { set: Vec::new() },
-                        );
-                    }
-                    if let ServerFileWrite::Yaml { set } = files_write.get_mut(&entry.file).unwrap()
+                    if let ServerFileWrite::Yaml { set } = files_write
+                        .entry(entry.file.clone())
+                        .or_insert_with(|| ServerFileWrite::Yaml { set: Vec::new() })
                     {
                         set.push(
                             serde_json::from_str(&entry.value)
@@ -251,33 +238,33 @@ impl Server {
 }
 
 #[derive(sqlx::FromRow)]
-pub(crate) struct Server {
-    pub(crate) id: u32,
+pub struct Server {
+    pub id: u32,
 
-    pub(crate) image: Option<u64>,
+    pub image: Option<u64>,
 
-    pub(crate) cpu: Option<f32>,  // in Threads
-    pub(crate) ram: Option<u32>,  // in MiB
-    pub(crate) swap: Option<u32>, // in MiB
-    pub(crate) disk: Option<u64>, // in MiB
+    pub cpu: Option<f32>,  // in Threads
+    pub ram: Option<u32>,  // in MiB
+    pub swap: Option<u32>, // in MiB
+    pub disk: Option<u64>, // in MiB
 
-    pub(crate) storage: String,
-    pub(crate) internet: bool,
-    pub(crate) ipv6_suffix: Option<u64>,
+    pub storage: String,
+    pub internet: bool,
+    pub ipv6_suffix: Option<u64>,
 
-    pub(crate) uid: Option<u16>,
-    pub(crate) gid: Option<u16>,
+    pub uid: Option<u16>,
+    pub gid: Option<u16>,
 
-    pub(crate) stop_command: Option<String>,
-    pub(crate) stop_timeout: u16,
+    pub stop_command: Option<String>,
+    pub stop_timeout: u16,
 }
 
 impl FetchedServer {
-    pub(crate) fn container_name(id: u32) -> String {
+    pub fn container_name(id: u32) -> String {
         format!("{}{}", crate::common::CONTAINER_PREFIX, id)
     }
 
-    pub(crate) async fn resolve_locked(id: u32, conn: &Pool<MySql>) -> HashSet<String> {
+    pub async fn resolve_locked(id: u32, conn: &Pool<MySql>) -> HashSet<String> {
         if let Ok(value) = query_scalar!("SELECT `lock` FROM `server_locks` WHERE `server` = ?", id)
             .fetch_all(conn)
             .await
@@ -318,19 +305,19 @@ impl<'q> sqlx::Encode<'q, MySql> for ServerLock {
 
 impl<'r> sqlx::Decode<'r, MySql> for ServerLock {
     fn decode(value: <MySql as Database>::ValueRef<'r>) -> Result<Self, BoxDynError> {
-        let v = <&str as Decode<'r, MySql>>::decode(value)?;
-        Ok(ServerLock::by_name(String::from(v)))
+        let value = <&str as Decode<'r, MySql>>::decode(value)?;
+        Ok(Self::by_name(String::from(value)))
     }
 }
 
 impl ServerLock {
     pub fn by_name(_str: String) -> Self {
-        ServerLock::Storage
+        Self::Storage
     }
 }
 
 impl Display for ServerLock {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.write_str("storage")
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
+        formatter.write_str("storage")
     }
 }

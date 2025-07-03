@@ -2,14 +2,13 @@ use crate::ServerData;
 use crate::server::FetchedServer;
 use bollard::Docker;
 use bollard::query_parameters::{KillContainerOptions, StopContainerOptions};
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
-use std::ops::DerefMut;
-use tokio::io::AsyncWriteExt;
+use core::error::Error;
+use core::fmt::{Debug, Display, Formatter};
+use tokio::io::AsyncWriteExt as _;
 use tokio::sync::OwnedMutexGuard;
 
 impl FetchedServer {
-    pub(crate) async fn stop(
+    pub async fn stop(
         &self,
         docker: &Docker,
         mut server_data: OwnedMutexGuard<ServerData>,
@@ -23,7 +22,7 @@ impl FetchedServer {
         }
         server_data.stopping = true;
         if let Some(stop_command) = &server_data.stop_command {
-            match server_data.attach_write.lock().await.deref_mut() {
+            match &mut *server_data.attach_write.lock().await {
                 None => {}
                 Some(write) => {
                     let mut content = "\x08".repeat(4096);
@@ -43,7 +42,7 @@ impl FetchedServer {
         Ok(())
     }
 
-    pub(crate) async fn kill(
+    pub async fn kill(
         &self,
         docker: &Docker,
         server_data: OwnedMutexGuard<ServerData>,
@@ -63,7 +62,7 @@ impl FetchedServer {
         Ok(())
     }
 
-    pub(crate) async fn restart(
+    pub async fn restart(
         &self,
         docker: &Docker,
         mut server_data: OwnedMutexGuard<ServerData>,
@@ -81,15 +80,15 @@ impl FetchedServer {
 }
 
 #[derive(Debug)]
-pub(crate) enum ServerStopError {
+pub enum ServerStopError {
     Docker(bollard::errors::Error),
     NotRunning,
 }
 
 impl Display for ServerStopError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
         let debug_self: &dyn Debug = self; // ensure it's not recursively calling itself
-        debug_self.fmt(f)
+        debug_self.fmt(formatter)
     }
 }
 

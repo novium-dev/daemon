@@ -15,12 +15,12 @@ impl<T: ?Sized> TraceableRwLock<T> {
         T: Sized,
     {
         Self(
-            std::sync::Arc::new(tokio::sync::RwLock::new(value)),
+            Arc::new(tokio::sync::RwLock::new(value)),
             std::sync::Mutex::default(),
         )
     }
 
-    pub(crate) fn last_trace(&self) -> RwLockTraceData {
+    pub fn last_trace(&self) -> RwLockTraceData {
         self.1.lock().map(|guard| *guard).unwrap_or_default()
     }
 
@@ -35,7 +35,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn read(&self) -> impl Future<Output = RwLockReadGuard<'_, T>> {
+    pub fn read(&self) -> impl Future<Output = RwLockReadGuard<'_, T>> {
         let location = Location::caller();
         async move {
             let guard = self.0.read().await;
@@ -45,7 +45,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn read_owned(self: Arc<Self>) -> impl Future<Output = OwnedRwLockReadGuard<T>> {
+    pub fn read_owned(self: Arc<Self>) -> impl Future<Output = OwnedRwLockReadGuard<T>> {
         let location = Location::caller();
         async move {
             let guard = Arc::clone(&self.0).read_owned().await;
@@ -55,14 +55,14 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn blocking_read(&self) -> RwLockReadGuard<'_, T> {
+    pub fn blocking_read(&self) -> RwLockReadGuard<'_, T> {
         let guard = self.0.blocking_read();
         self.__trace(Location::caller(), false);
         guard
     }
 
     #[track_caller]
-    pub(crate) fn try_read(&self) -> Result<RwLockReadGuard<'_, T>, TryLockError> {
+    pub fn try_read(&self) -> Result<RwLockReadGuard<'_, T>, TryLockError> {
         let guard = self.0.try_read();
         if guard.is_ok() {
             self.__trace(Location::caller(), false);
@@ -71,7 +71,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn try_read_owned(self: Arc<Self>) -> Result<OwnedRwLockReadGuard<T>, TryLockError> {
+    pub fn try_read_owned(self: Arc<Self>) -> Result<OwnedRwLockReadGuard<T>, TryLockError> {
         let guard = Arc::clone(&self.0).try_read_owned();
         if guard.is_ok() {
             self.__trace(Location::caller(), false);
@@ -80,7 +80,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn write(&self) -> impl Future<Output = RwLockWriteGuard<'_, T>> {
+    pub fn write(&self) -> impl Future<Output = RwLockWriteGuard<'_, T>> {
         let location = Location::caller();
         async move {
             let guard = self.0.write().await;
@@ -90,7 +90,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn write_owned(self: Arc<Self>) -> impl Future<Output = OwnedRwLockWriteGuard<T>> {
+    pub fn write_owned(self: Arc<Self>) -> impl Future<Output = OwnedRwLockWriteGuard<T>> {
         let location = Location::caller();
         async move {
             let guard = Arc::clone(&self.0).write_owned().await;
@@ -100,14 +100,14 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn blocking_write(&self) -> RwLockWriteGuard<'_, T> {
+    pub fn blocking_write(&self) -> RwLockWriteGuard<'_, T> {
         let guard = self.0.blocking_write();
         self.__trace(Location::caller(), true);
         guard
     }
 
     #[track_caller]
-    pub(crate) fn try_write(&self) -> Result<RwLockWriteGuard<'_, T>, TryLockError> {
+    pub fn try_write(&self) -> Result<RwLockWriteGuard<'_, T>, TryLockError> {
         let guard = self.0.try_write();
         if guard.is_ok() {
             self.__trace(Location::caller(), true);
@@ -116,7 +116,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub(crate) fn try_write_owned(
+    pub fn try_write_owned(
         self: Arc<Self>,
     ) -> Result<OwnedRwLockWriteGuard<T>, TryLockError> {
         let guard = Arc::clone(&self.0).try_write_owned();
@@ -126,11 +126,11 @@ impl<T: ?Sized> TraceableRwLock<T> {
         guard
     }
 
-    pub(crate) fn try_read_hidden(&self) -> Result<RwLockReadGuard<'_, T>, TryLockError> {
+    pub fn try_read_hidden(&self) -> Result<RwLockReadGuard<'_, T>, TryLockError> {
         self.0.try_read()
     }
 
-    pub(crate) fn try_write_hidden(&self) -> Result<RwLockWriteGuard<'_, T>, TryLockError> {
+    pub fn try_write_hidden(&self) -> Result<RwLockWriteGuard<'_, T>, TryLockError> {
         self.0.try_write()
     }
 }

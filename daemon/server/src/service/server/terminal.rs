@@ -4,7 +4,7 @@ use crate::terminal::{TerminalData, new_session};
 use crate::utils::ChannelInterceptor;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bollard::Docker;
-use core::sync::atomic::AtomicU32;
+use core::sync::atomic::AtomicU16;
 use std::sync::Arc;
 
 pub const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
@@ -14,8 +14,8 @@ pub(super) async fn terminal_websocket_handle(
     #[cfg(not(feature = "no_tty_size_please"))] docker: Arc<Docker>,
     server_data_arc: Arc<Mutex<ServerData>>,
     socket: WebSocket,
-    #[cfg(not(feature = "no_tty_size_please"))] cols: Arc<AtomicU32>,
-    #[cfg(not(feature = "no_tty_size_please"))] rows: Arc<AtomicU32>,
+    #[cfg(not(feature = "no_tty_size_please"))] cols: Arc<AtomicU16>,
+    #[cfg(not(feature = "no_tty_size_please"))] rows: Arc<AtomicU16>,
     write: bool,
 ) {
     let server_data = server_data_arc.lock().await;

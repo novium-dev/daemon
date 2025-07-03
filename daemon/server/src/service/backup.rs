@@ -1,5 +1,5 @@
 use crate::storage::StorageIdentifier;
-use crate::{Daemon, storage};
+use crate::{Daemon, DaemonExtra, storage};
 use async_trait::async_trait;
 use daemon_common::service::FileResponse;
 use daemon_common::service::backup::BackupResponseEntry;
@@ -13,7 +13,7 @@ use daemon_common::service::backup::error::{
 use daemon_common::user::UserSignature;
 
 #[async_trait]
-impl BackupService for Daemon {
+impl<T: DaemonExtra> BackupService for Daemon<T> {
     async fn server_list_backups(
         &self,
         server_id: u32,

@@ -8,6 +8,7 @@ pub mod worker;
 use crate::config::StorageEntry;
 use core::sync::atomic::{AtomicI64, Ordering};
 use std::io;
+use std::io::ErrorKind;
 use std::path::PathBuf;
 use tokio::fs;
 use tracing::error;
@@ -53,12 +54,20 @@ pub async fn prepare(
                     return Err(io::Error::other("Invalid path: No parent"));
                 };
                 fs::create_dir_all(parent).await.inspect_err(|err| {
-                    error!("Unable to create parents of storage directory: {:?}", err)
+                    error!("Unable to create parents of storage directory: {:?}", err);
                 })?;
-                btrfs::new_subvolume(parent, dir.file_name().unwrap().to_str().unwrap())
+                let Some(filename) = dir.file_name() else {
+                    error!("Missing final component in storage path");
+                    return Err(io::Error::new(ErrorKind::InvalidData, "No final component in storage path"));
+                };
+                let Some(filename) = filename.to_str() else {
+                    error!("Final component in storage path is not utf8");
+                    return Err(io::Error::new(ErrorKind::InvalidData, "Final component in storage path is not utf8"));
+                };
+                btrfs::new_subvolume(parent, filename)
                     .await
                     .inspect_err(|err| {
-                        error!("Unable to create subvolume of storage directory: {:?}", err)
+                        error!("Unable to create subvolume of storage directory: {:?}", err);
                     })?;
             }
         }
@@ -96,22 +105,30 @@ pub async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(),
                 error!("Got path without parent: {:?}", dir.to_string_lossy());
                 return Err(io::Error::other("Invalid path: No parent"));
             };
-            btrfs::remove_subvolume(parent, dir.file_name().unwrap().to_str().unwrap())
+            let Some(filename) = dir.file_name() else {
+                error!("Missing final component in storage path");
+                return Err(io::Error::new(ErrorKind::InvalidData, "No final component in storage path"));
+            };
+            let Some(filename) = filename.to_str() else {
+                error!("Final component in storage path is not utf8");
+                return Err(io::Error::new(ErrorKind::InvalidData, "Final component in storage path is not utf8"));
+            };
+            btrfs::remove_subvolume(parent, filename)
                 .await
                 .inspect_err(|err| {
-                    error!("Unable to remove subvolume of storage directory: {:?}", err)
+                    error!("Unable to remove subvolume of storage directory: {err:?}");
                 })?;
         }
     }
     if dir
         .try_exists()
-        .inspect_err(|err| error!("Unable to check if storage directory exists: {:?}", err))?
+        .inspect_err(|err| error!("Unable to check if storage directory exists: {err:?}"))?
     {
         tokio::task::spawn(fs::remove_dir_all(dir))
             .await
-            .inspect_err(|err| error!("Unable to remove storage directory: {:?}", err))
+            .inspect_err(|err| error!("Unable to remove storage directory: {err:?}"))
             .map_err(io::Error::from)?
-            .inspect_err(|err| error!("Unable to remove storage directory: {:?}", err))?;
+            .inspect_err(|err| error!("Unable to remove storage directory: {err:?}"))?;
     }
     Ok(())
 }

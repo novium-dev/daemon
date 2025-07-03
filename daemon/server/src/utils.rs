@@ -232,6 +232,7 @@ impl<
 }
 
 #[derive(Debug)]
+#[expect(dead_code, reason = "this is an exact copy of SyncIoBridge from upstream")]
 struct SyncIoBridgeCopy<T> {
     src: T,
     rt: tokio::runtime::Handle,
