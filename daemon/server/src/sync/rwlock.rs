@@ -116,9 +116,7 @@ impl<T: ?Sized> TraceableRwLock<T> {
     }
 
     #[track_caller]
-    pub fn try_write_owned(
-        self: Arc<Self>,
-    ) -> Result<OwnedRwLockWriteGuard<T>, TryLockError> {
+    pub fn try_write_owned(self: Arc<Self>) -> Result<OwnedRwLockWriteGuard<T>, TryLockError> {
         let guard = Arc::clone(&self.0).try_write_owned();
         if guard.is_ok() {
             self.__trace(Location::caller(), true);

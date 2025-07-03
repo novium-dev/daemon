@@ -125,7 +125,9 @@ async fn main0(matches: ArgMatches) {
     match (matches.subcommand(), config_exists) {
         (Some(("setup", _)), _) | (_, false) => {
             tokio::task::spawn_blocking(move || {
-                let setup_matches = matches.subcommand_matches("setup").expect("Unable to get matches for subcommand setup");
+                let setup_matches = matches
+                    .subcommand_matches("setup")
+                    .expect("Unable to get matches for subcommand setup");
                 let backend = setup_matches.get_one("backend");
                 let code = setup_matches.get_one("code");
                 let skip_mariadb_plugin = setup_matches.get_flag("skip-mariadb-plugin");
@@ -148,28 +150,44 @@ async fn run() {
         .read_to_string(&mut config_buffer)
         .await
         .expect("Unable to read config file");
-    let config: DaemonConfig = toml::from_str(&config_buffer)
-        .expect("Failed to parse config file");
+    let config: DaemonConfig = toml::from_str(&config_buffer).expect("Failed to parse config file");
 
     let mut root = Vec::new();
     let mut key = Vec::new();
     {
-        let mut root_file = File::open("daemon_root.pem").await.expect("Unable to open daemon root key (daemon_root.pem)");
-        root_file.read_to_end(&mut root).await.expect("Unable to read daemon root key (daemon_root.pem)");
+        let mut root_file = File::open("daemon_root.pem")
+            .await
+            .expect("Unable to open daemon root key (daemon_root.pem)");
+        root_file
+            .read_to_end(&mut root)
+            .await
+            .expect("Unable to read daemon root key (daemon_root.pem)");
 
-        let mut key_file = File::open("daemon.pem").await.expect("Unable to open daemon key (daemon.pem)");
-        key_file.read_to_end(&mut key).await.expect("Unable to read daemon key (daemon.pem)");
+        let mut key_file = File::open("daemon.pem")
+            .await
+            .expect("Unable to open daemon key (daemon.pem)");
+        key_file
+            .read_to_end(&mut key)
+            .await
+            .expect("Unable to read daemon key (daemon.pem)");
     };
-    let root = DaemonRootKey::parse(&root).expect("Unable to parse daemon root key (daemon_root.pem)").0;
+    let root = DaemonRootKey::parse(&root)
+        .expect("Unable to parse daemon root key (daemon_root.pem)")
+        .0;
     let key = DaemonKey::parse(&root, &key).expect("Unable to parse daemon key (daemon.pem)");
 
     info!("Starting Daemon on version {GIT_HASH}");
 
-    let daemon = Daemon::init(config, root, key).await.expect("Unable to initialize daemon");
+    let daemon = Daemon::init(config, root, key)
+        .await
+        .expect("Unable to initialize daemon");
 
     info!("Starting Webserver...");
 
-    daemon.serve_all().await.expect("Unable to serve all services");
+    daemon
+        .serve_all()
+        .await
+        .expect("Unable to serve all services");
 
     daemon.hook_signals();
 
@@ -180,7 +198,11 @@ fn cap_setup() {
     #[cfg(target_os = "linux")]
     {
         use std::os::unix::fs::MetadataExt as _;
-        if std::fs::metadata("/proc/self/").expect("Unable to retrieve uid of /proc/self/").uid() != 0 {
+        if std::fs::metadata("/proc/self/")
+            .expect("Unable to retrieve uid of /proc/self/")
+            .uid()
+            != 0
+        {
             return;
         }
         capctl::prctl::set_keepcaps(true).expect("Unable to keep capabilities after setuid");
@@ -203,7 +225,8 @@ fn cap_setup() {
         )
         .expect("Unable to setuid current process");
 
-        let mut capstate = capctl::CapState::get_current().expect("Unable to retrieve current capabilities");
+        let mut capstate =
+            capctl::CapState::get_current().expect("Unable to retrieve current capabilities");
         capstate.effective.add(capctl::Cap::NET_BIND_SERVICE);
         capstate.effective.add(capctl::Cap::DAC_OVERRIDE);
         capstate.effective.add(capctl::Cap::FOWNER);

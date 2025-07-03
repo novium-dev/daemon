@@ -67,10 +67,15 @@ pub fn search_quotas(
                 offset: 0,
             };
             let Some(sh) = args.buf.get_struct::<btrfs_ioctl_search_header>(off) else {
-                return Err(io::Error::new(ErrorKind::InvalidData, "Buffer out of range"));
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Buffer out of range",
+                ));
             };
 
-            off = off.checked_add(size_of::<btrfs_ioctl_search_header>()).ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Offset overflowed"))?;
+            off = off
+                .checked_add(size_of::<btrfs_ioctl_search_header>())
+                .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Offset overflowed"))?;
 
             key.objectid = sh.objectid;
             key.type_ = sh.type_ as u8;
@@ -83,7 +88,10 @@ pub fn search_quotas(
                     | BTRFS_QGROUP_RELATION_KEY => {}
                     BTRFS_QGROUP_INFO_KEY => {
                         let Some(info) = args.buf.get_struct::<btrfs_qgroup_info_item>(off) else {
-                            return Err(io::Error::new(ErrorKind::InvalidData, "Buffer out of range"));
+                            return Err(io::Error::new(
+                                ErrorKind::InvalidData,
+                                "Buffer out of range",
+                            ));
                         };
                         let rfer_cmpr = info.referenced_compressed;
                         let qgroupid = key.offset;
@@ -99,7 +107,9 @@ pub fn search_quotas(
                 }
             }
 
-            off = off.checked_add(usize::try_from(sh.len).map_err(io::Error::other)?).ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Offset overflowed"))?;
+            off = off
+                .checked_add(usize::try_from(sh.len).map_err(io::Error::other)?)
+                .ok_or_else(|| io::Error::new(ErrorKind::InvalidData, "Offset overflowed"))?;
 
             sk.min_objectid = key.objectid;
             sk.min_type = u32::from(key.type_);
@@ -120,9 +130,11 @@ pub async fn apply_qgroup_limit(dir: &PathBuf, disk: Option<u64>) -> Result<(), 
     let args = btrfs_ioctl_qgroup_limit_args {
         qgroupid: 0,
         lim: btrfs_qgroup_limit {
-            flags: u64::from(BTRFS_QGROUP_LIMIT_RFER_CMPR
-                | BTRFS_QGROUP_LIMIT_EXCL_CMPR
-                | BTRFS_QGROUP_LIMIT_MAX_RFER),
+            flags: u64::from(
+                BTRFS_QGROUP_LIMIT_RFER_CMPR
+                    | BTRFS_QGROUP_LIMIT_EXCL_CMPR
+                    | BTRFS_QGROUP_LIMIT_MAX_RFER,
+            ),
             max_referenced: disk.map_or(u64::MAX, utils::from_mib), // This is the value for no limit
 
             rsv_exclusive: 0,
@@ -251,16 +263,13 @@ pub async fn new_snapshot(
 // Helper methods
 
 trait BufferExt {
-
     fn get_struct<T: Zeroable>(&self, offset: usize) -> Option<&T>;
-
 }
 
 impl BufferExt for [i8] {
-
     fn get_struct<T: Zeroable>(&self, offset: usize) -> Option<&T> {
-        let ptr = core::ptr::from_ref(self.get(offset..offset.checked_add(size_of::<T>())?)?)
-            .cast::<T>();
+        let ptr =
+            core::ptr::from_ref(self.get(offset..offset.checked_add(size_of::<T>())?)?).cast::<T>();
         // SAFETY: If T implements Zeroable, it doesn't contain any pointers and is therefore safe
         Some(unsafe { &*ptr })
     }

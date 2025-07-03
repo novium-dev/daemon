@@ -246,7 +246,10 @@ impl FetchedServer {
 
                     stop_timeout: Some(i64::from(self.stop_timeout)),
 
-                    #[expect(clippy::zero_sized_map_values, reason = "needed because of struct value")]
+                    #[expect(
+                        clippy::zero_sized_map_values,
+                        reason = "needed because of struct value"
+                    )]
                     exposed_ports: Some(
                         ports
                             .keys()

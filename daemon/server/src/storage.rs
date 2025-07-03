@@ -8,7 +8,6 @@ pub mod worker;
 use crate::config::StorageEntry;
 use core::sync::atomic::{AtomicI64, Ordering};
 use std::io;
-use std::io::ErrorKind;
 use std::path::PathBuf;
 use tokio::fs;
 use tracing::error;
@@ -38,36 +37,44 @@ pub async fn prepare(
 
     if !dir
         .try_exists()
-        .inspect_err(|err| error!("Unable to check existence of storage directory: {:?}", err))?
+        .inspect_err(|err| error!("Unable to check existence of storage directory: {err:?}"))?
     {
         match &storage {
             StorageEntry::Directory { .. } => {
                 fs::create_dir_all(&dir)
                     .await
-                    .inspect_err(|err| error!("Unable to create storage directory: {:?}", err))?;
+                    .inspect_err(|err| error!("Unable to create storage directory: {err:?}"))?;
             }
             #[cfg(feature = "btrfs")]
             StorageEntry::Btrfs { .. } => {
+                use std::io::ErrorKind;
+
                 let dir = dir.clone();
                 let Some(parent) = dir.parent() else {
                     error!("Got path without parent: {:?}", dir.to_string_lossy());
                     return Err(io::Error::other("Invalid path: No parent"));
                 };
                 fs::create_dir_all(parent).await.inspect_err(|err| {
-                    error!("Unable to create parents of storage directory: {:?}", err);
+                    error!("Unable to create parents of storage directory: {err:?}");
                 })?;
                 let Some(filename) = dir.file_name() else {
                     error!("Missing final component in storage path");
-                    return Err(io::Error::new(ErrorKind::InvalidData, "No final component in storage path"));
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "No final component in storage path",
+                    ));
                 };
                 let Some(filename) = filename.to_str() else {
                     error!("Final component in storage path is not utf8");
-                    return Err(io::Error::new(ErrorKind::InvalidData, "Final component in storage path is not utf8"));
+                    return Err(io::Error::new(
+                        ErrorKind::InvalidData,
+                        "Final component in storage path is not utf8",
+                    ));
                 };
                 btrfs::new_subvolume(parent, filename)
                     .await
                     .inspect_err(|err| {
-                        error!("Unable to create subvolume of storage directory: {:?}", err);
+                        error!("Unable to create subvolume of storage directory: {err:?}");
                     })?;
             }
         }
@@ -85,7 +92,7 @@ pub async fn prepare(
 
     Ok(fs::canonicalize(dir)
         .await
-        .inspect_err(|err| error!("Unable to canonicalize storage directory: {:?}", err))?
+        .inspect_err(|err| error!("Unable to canonicalize storage directory: {err:?}"))?
         .to_string_lossy()
         .to_string())
 }
@@ -98,20 +105,27 @@ pub async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(),
     #[cfg(feature = "btrfs")]
     if dir
         .try_exists()
-        .inspect_err(|err| error!("Unable to check if storage directory exists: {:?}", err))?
+        .inspect_err(|err| error!("Unable to check if storage directory exists: {err:?}"))?
     {
         if let StorageEntry::Btrfs { .. } = storage {
+            use std::io::ErrorKind;
             let Some(parent) = dir.parent() else {
                 error!("Got path without parent: {:?}", dir.to_string_lossy());
                 return Err(io::Error::other("Invalid path: No parent"));
             };
             let Some(filename) = dir.file_name() else {
                 error!("Missing final component in storage path");
-                return Err(io::Error::new(ErrorKind::InvalidData, "No final component in storage path"));
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "No final component in storage path",
+                ));
             };
             let Some(filename) = filename.to_str() else {
                 error!("Final component in storage path is not utf8");
-                return Err(io::Error::new(ErrorKind::InvalidData, "Final component in storage path is not utf8"));
+                return Err(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Final component in storage path is not utf8",
+                ));
             };
             btrfs::remove_subvolume(parent, filename)
                 .await

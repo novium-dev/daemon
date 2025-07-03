@@ -87,9 +87,7 @@ pub async fn list_backups<
                             std::fs::File::open(target_dir),
                             &mut quotas,
                         ) {
-                            error!(
-                                "Unable to retrieve quotas: {err:?}. Ensure quotas are enabled"
-                            );
+                            error!("Unable to retrieve quotas: {err:?}. Ensure quotas are enabled");
                         }
                         quotas
                     })

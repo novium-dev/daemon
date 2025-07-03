@@ -36,9 +36,7 @@ impl ExecuteQuery {
 }
 
 #[derive(Default)]
-pub struct MultiTransactionApply(
-    Vec<(PreparedQuery, Vec<Query<'static, MySql, MySqlArguments>>)>,
-);
+pub struct MultiTransactionApply(Vec<(PreparedQuery, Vec<Query<'static, MySql, MySqlArguments>>)>);
 
 impl MultiTransactionApply {
     pub fn add(

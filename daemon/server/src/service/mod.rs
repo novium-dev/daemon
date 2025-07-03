@@ -1,7 +1,6 @@
 use crate::key::{DaemonCertResolver, TlsAcceptor};
 use crate::{Daemon, DaemonExtra};
 use axum::Router;
-use axum::extract::Request;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use axum_server::{Handle, Server};
 use core::time::Duration;
@@ -42,7 +41,7 @@ impl<T: DaemonExtra> Daemon<T> {
 
         let router = framework_router!(Self self {
             ServerService, BackupService, FilesService, NetworkService,
-            ResourceService, DatabaseService, ScheduleService {"trace_sync" debug::DebugService}
+            ResourceService, DatabaseService, ScheduleService {"trace_sync" daemon_common::service::debug::DebugService}
         });
 
         let (router, router_user) = router;
@@ -71,7 +70,7 @@ impl<T: DaemonExtra> Daemon<T> {
         {
             use sentry::integrations::tower::{NewSentryLayer, SentryHttpLayer};
             router = router
-                .layer(NewSentryLayer::<Request>::new_from_top())
+                .layer(NewSentryLayer::<axum::extract::Request>::new_from_top())
                 .layer(SentryHttpLayer::new().enable_transaction());
         };
         router

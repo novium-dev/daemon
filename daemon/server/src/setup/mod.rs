@@ -1,24 +1,55 @@
 #![expect(clippy::unwrap_used, reason = "this is a garbage implementation")]
 #![expect(clippy::print_stdout, reason = "this is a garbage implementation")]
-#![expect(clippy::single_char_pattern, reason = "this is a garbage implementation")]
-#![expect(clippy::uninlined_format_args, reason = "this is a garbage implementation")]
+#![expect(
+    clippy::single_char_pattern,
+    reason = "this is a garbage implementation"
+)]
+#![expect(
+    clippy::uninlined_format_args,
+    reason = "this is a garbage implementation"
+)]
 #![expect(clippy::map_unwrap_or, reason = "this is a garbage implementation")]
 #![expect(clippy::str_to_string, reason = "this is a garbage implementation")]
 #![expect(clippy::redundant_clone, reason = "this is a garbage implementation")]
-#![expect(clippy::needless_pass_by_value, reason = "this is a garbage implementation")]
-#![expect(clippy::verbose_file_reads, reason = "this is a garbage implementation")]
-#![expect(clippy::semicolon_outside_block, reason = "this is a garbage implementation")]
+#![expect(
+    clippy::needless_pass_by_value,
+    reason = "this is a garbage implementation"
+)]
+#![expect(
+    clippy::verbose_file_reads,
+    reason = "this is a garbage implementation"
+)]
+#![expect(
+    clippy::semicolon_outside_block,
+    reason = "this is a garbage implementation"
+)]
 #![expect(clippy::indexing_slicing, reason = "this is a garbage implementation")]
 #![expect(clippy::clone_on_ref_ptr, reason = "this is a garbage implementation")]
-#![expect(clippy::unnecessary_to_owned, reason = "this is a garbage implementation")]
-#![expect(clippy::redundant_pub_crate, reason = "this is a garbage implementation")]
-#![expect(clippy::semicolon_if_nothing_returned, reason = "this is a garbage implementation")]
-#![expect(clippy::std_instead_of_core, reason = "this is a garbage implementation")]
-#![expect(clippy::unused_trait_names, reason = "this is a garbage implementation")]
+#![expect(
+    clippy::unnecessary_to_owned,
+    reason = "this is a garbage implementation"
+)]
+#![expect(
+    clippy::redundant_pub_crate,
+    reason = "this is a garbage implementation"
+)]
+#![expect(
+    clippy::semicolon_if_nothing_returned,
+    reason = "this is a garbage implementation"
+)]
+#![expect(
+    clippy::std_instead_of_core,
+    reason = "this is a garbage implementation"
+)]
+#![expect(
+    clippy::unused_trait_names,
+    reason = "this is a garbage implementation"
+)]
 
 use crate::config::{ArchiveCompression, CompressionLevel};
 use crate::config::{BackupEntry, DaemonConfig, MountPoint, NetworkConfig, StorageEntry};
 use async_trait::async_trait;
+use axum::http::HeaderValue;
 use axum_server::Server;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use daemon::internal::middleware;
@@ -34,6 +65,7 @@ use daemon_common::service::setup::error::ConnectionTestError;
 use inquire::autocompletion::Replacement;
 use inquire::validator::{ErrorMessage, StringValidator, Validation};
 use inquire::{Autocomplete, CustomUserError, Text};
+use lazy_regex::{Regex, regex};
 use reqwest::blocking::Client;
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, CertificateSigningRequestDer};
@@ -50,8 +82,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use std::time::Duration;
 use std::{io, thread};
-use axum::http::HeaderValue;
-use lazy_regex::{regex, Regex};
 use tokio::runtime::Handle;
 use tracing::info;
 use url::Host;
@@ -566,8 +596,11 @@ fn parse_addr(input: impl Into<String>) -> Option<(Host, Option<u16>)> {
 
 impl StringValidator for HostPortValidator {
     fn validate(&self, input: &str) -> Result<Validation, CustomUserError> {
-        Ok(parse_addr(input)
-            .map_or(Validation::Invalid(ErrorMessage::Default), |_| Validation::Valid))
+        Ok(
+            parse_addr(input).map_or(Validation::Invalid(ErrorMessage::Default), |_| {
+                Validation::Valid
+            }),
+        )
     }
 }
 

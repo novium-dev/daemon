@@ -171,7 +171,10 @@ fn append_dir_all<W: Write>(
         obj: Option<W>,
     }
     #[derive(Clone, Copy)]
-    #[expect(dead_code, reason = "this is an exact copy of BuilderOptions from upstream")]
+    #[expect(
+        dead_code,
+        reason = "this is an exact copy of BuilderOptions from upstream"
+    )]
     struct BuilderOptionsCopy {
         mode: HeaderMode,
         follow: bool,

@@ -43,10 +43,9 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
         {
             use sqlx::query_scalar;
             if cfg!(feature = "ssh_debug_auth_bypass") {
-                let conn = self.state.conn.clone();
                 let servers: Result<Vec<u32>, sqlx::Error> =
                     query_scalar!("SELECT `id` FROM `servers`")
-                        .fetch_all(conn.deref())
+                        .fetch_all(&*self.daemon.conn)
                         .await;
                 let mut auth =
                     Vec::with_capacity(servers.as_ref().map(Vec::len).unwrap_or_default());
@@ -62,8 +61,8 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                         }
                     }
                     Err(err) => {
-                        debug!("Failed to complete authentication: {:?}", err);
-                        return Err(russh::Error::IO(std::io::Error::new(ErrorKind::Other, err)));
+                        debug!("Failed to complete authentication: {err:?}");
+                        return Err(russh::Error::IO(std::io::Error::other(err)));
                     }
                 }
 

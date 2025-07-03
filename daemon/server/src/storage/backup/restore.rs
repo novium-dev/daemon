@@ -120,26 +120,24 @@ async fn restore_backup0<E: From<io::Error>>(
             })?;
             let Some(filename) = dir.file_name() else {
                 error!("Missing final component in storage path");
-                return Err(E::from(io::Error::new(ErrorKind::InvalidData, "No final component in storage path")));
+                return Err(E::from(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "No final component in storage path",
+                )));
             };
             let Some(filename) = filename.to_str() else {
                 error!("Final component in storage path is not utf8");
-                return Err(E::from(io::Error::new(ErrorKind::InvalidData, "Final component in storage path is not utf8")));
+                return Err(E::from(io::Error::new(
+                    ErrorKind::InvalidData,
+                    "Final component in storage path is not utf8",
+                )));
             };
-            super::super::btrfs::remove_subvolume(
-                &parent,
-                filename,
-            )
-            .await
-            .inspect_err(|err| error!("Failed to restore backup (delete_snapshot): {err:?}"))?;
-            super::super::btrfs::new_snapshot(
-                fd,
-                &parent,
-                filename,
-                false,
-            )
-            .await
-            .inspect_err(|err| error!("Failed to restore backup (create_snapshot): {err:?}"))?;
+            super::super::btrfs::remove_subvolume(&parent, filename)
+                .await
+                .inspect_err(|err| error!("Failed to restore backup (delete_snapshot): {err:?}"))?;
+            super::super::btrfs::new_snapshot(fd, &parent, filename, false)
+                .await
+                .inspect_err(|err| error!("Failed to restore backup (create_snapshot): {err:?}"))?;
         }
     }
     Ok(())

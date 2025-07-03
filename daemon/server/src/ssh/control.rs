@@ -8,6 +8,7 @@ use crate::utils::{ChannelWriteData, SyncIOBridgeExt, from_mib};
 use crate::{Daemon, DaemonExtra, ServerData, utils};
 use chrono::{TimeZone as _, Utc};
 use core::cmp::{max, min};
+use core::fmt::Write as _;
 use core::sync::atomic::{AtomicU16, Ordering};
 use core::time::Duration;
 use crossterm::terminal::ClearType;
@@ -27,7 +28,6 @@ use russh::server::{Msg, Session};
 use russh::{ChannelId, ChannelStream};
 use std::io;
 use std::io::{ErrorKind, Write};
-use core::fmt::Write as _;
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt as _, AsyncWrite};
 use tokio::runtime::Handle;
@@ -85,11 +85,7 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
         };
         let mut servers = self.daemon.servers.lock().await;
         let server_data_arc = Arc::clone(match servers.get(&internal_server_id) {
-            None => {
-                servers.entry(
-                    internal_server_id,
-                ).or_default()
-            }
+            None => servers.entry(internal_server_id).or_default(),
             Some(server) => server,
         });
         drop(servers);
@@ -226,13 +222,19 @@ fn new_control_session(
         let ram2 = ram.clone();
         let swap2 = swap.clone();
 
-        #[expect(clippy::arithmetic_side_effects, reason = "there are proper bounds checks, overflow/underflow should never occur")]
+        #[expect(
+            clippy::arithmetic_side_effects,
+            reason = "there are proper bounds checks, overflow/underflow should never occur"
+        )]
         let _ = terminal.draw(move |frame| {
             if cols < 32u16 || rows < 12u16 {
                 return;
             }
 
-            frame.render_widget(Text::raw(&name).centered(), Rect::new(0u16, 0u16, cols, 1u16));
+            frame.render_widget(
+                Text::raw(&name).centered(),
+                Rect::new(0u16, 0u16, cols, 1u16),
+            );
 
             let state_border = Block::new()
                 .borders(Borders::ALL)
@@ -360,7 +362,11 @@ fn calc_buttons(
     ]
     .into_iter()
     .enumerate()
-    .filter_map(|(pos, (label, enabled))| u8::try_from(pos).map(|pos| (u16::from(pos), (label, enabled))).ok())
+    .filter_map(|(pos, (label, enabled))| {
+        u8::try_from(pos)
+            .map(|pos| (u16::from(pos), (label, enabled)))
+            .ok()
+    })
     .map(|(pos, (label, enabled))| {
         let natural_width = width.saturating_sub(4).saturating_div(4).saturating_sub(4);
         let width = min(54, natural_width);
@@ -440,54 +446,59 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
     );
     let cpu_text = Text::raw(format!("CPU: {cpu_current_str} / {cpu_max_str}"));
 
-    let ram_current_str = current_stat.ram
+    let ram_current_str = current_stat
+        .ram
         .as_ref()
         .map(u64::to_f64)
         .unwrap_or_default()
         .map_or_else(
-        || "-".to_owned(),
-        |ram| format!("{:.2} MiB", ram / 1_048_576f64),
-    );
-    let ram_max_str = current_stat.ram_max.map_or_else(
-        || "\u{221e}".to_owned(),
-        |ram_max| format!("{ram_max} MiB"),
-    );
+            || "-".to_owned(),
+            |ram| format!("{:.2} MiB", ram / 1_048_576f64),
+        );
+    let ram_max_str = current_stat
+        .ram_max
+        .map_or_else(|| "\u{221e}".to_owned(), |ram_max| format!("{ram_max} MiB"));
     let mem_text = Text::raw(format!("RAM: {ram_current_str} / {ram_max_str}"));
 
-    let swap_current_str = current_stat.swap
+    let swap_current_str = current_stat
+        .swap
         .as_ref()
         .map(u64::to_f64)
         .unwrap_or_default()
         .map_or_else(
-        || "-".to_owned(),
-        |swap| format!("{:.2} MiB", swap / 1_048_576f64),
-    );
+            || "-".to_owned(),
+            |swap| format!("{:.2} MiB", swap / 1_048_576f64),
+        );
     let swap_max_str = current_stat.swap_max.map_or_else(
         || "\u{221e}".to_owned(),
         |swap_max| format!("{swap_max} MiB"),
     );
     let swap_text = Text::raw(format!("Swap: {swap_current_str} / {swap_max_str}"));
 
-    let disk_current_str = current_stat.disk
+    let disk_current_str = current_stat
+        .disk
         .as_ref()
         .map(u64::to_f64)
         .unwrap_or_default()
         .map_or_else(
-        || "-".to_owned(),
-        |disk| {
-            let disk = disk / 1_048_576.0f64;
-            if disk > 1024.0f64 {
-                format!("{:.2} GiB", disk / 1024.0f64)
-            } else {
-                format!("{disk:.2} MiB")
-            }
-        },
-    );
+            || "-".to_owned(),
+            |disk| {
+                let disk = disk / 1_048_576.0f64;
+                if disk > 1024.0f64 {
+                    format!("{:.2} GiB", disk / 1024.0f64)
+                } else {
+                    format!("{disk:.2} MiB")
+                }
+            },
+        );
     let disk_max_str = current_stat.disk_max.map_or_else(
         || "\u{221e}".to_owned(),
         |disk_max| {
             if disk_max > 1024u64 {
-                disk_max.to_f64().map_or_else(|| "-".to_owned(), |disk_max| format!("{:.2} GiB", disk_max / 1024.0f64))
+                disk_max.to_f64().map_or_else(
+                    || "-".to_owned(),
+                    |disk_max| format!("{:.2} GiB", disk_max / 1024.0f64),
+                )
             } else {
                 format!("{disk_max:.2} MiB")
             }
@@ -496,16 +507,16 @@ fn draw_compact_stats(frame: &mut Frame, width: u16, current_stat: &ServerStats)
     let disk_text = Text::raw(format!("Disk: {disk_current_str} / {disk_max_str}"));
 
     if let Some(area) = stats.next() {
-         frame.render_widget(cpu_text, *area);
+        frame.render_widget(cpu_text, *area);
     }
     if let Some(area) = stats.next() {
-         frame.render_widget(mem_text, *area);
+        frame.render_widget(mem_text, *area);
     }
     if let Some(area) = stats.next() {
-         frame.render_widget(swap_text, *area);
+        frame.render_widget(swap_text, *area);
     }
     if let Some(area) = stats.next() {
-         frame.render_widget(disk_text, *area);
+        frame.render_widget(disk_text, *area);
     }
 }
 
@@ -713,26 +724,28 @@ fn draw_mem_chart(
             .border_type(BorderType::Plain)
             .border_style(Style::new().fg(Color::White)),
     );
-    let ram_current_str = current_stat.ram
+    let ram_current_str = current_stat
+        .ram
         .as_ref()
         .map(u64::to_f64)
         .unwrap_or_default()
         .map_or_else(
-        || "-".to_owned(),
-        |ram| format!("{:.2} MiB", ram / 1_048_576f64),
-    );
+            || "-".to_owned(),
+            |ram| format!("{:.2} MiB", ram / 1_048_576f64),
+        );
     let ram_max_str = current_stat
         .ram_max
         .map_or_else(|| "\u{221e}".to_owned(), |ram_max| format!("{ram_max} MiB"));
 
-    let swap_current_str = current_stat.swap
+    let swap_current_str = current_stat
+        .swap
         .as_ref()
         .map(u64::to_f64)
         .unwrap_or_default()
         .map_or_else(
-        || "-".to_owned(),
-        |swap| format!("{:.2} MiB", swap / 1_048_576f64),
-    );
+            || "-".to_owned(),
+            |swap| format!("{:.2} MiB", swap / 1_048_576f64),
+        );
     let swap_max_str = current_stat.swap_max.map_or_else(
         || "\u{221e}".to_owned(),
         |swap_max| format!("{swap_max} MiB"),
@@ -925,9 +938,7 @@ async fn read(
                     x,
                     y,
                 } => {
-                    for (_, index, _, enabled, area) in
-                        calc_buttons(&server_state, power, width)
-                    {
+                    for (_, index, _, enabled, area) in calc_buttons(&server_state, power, width) {
                         if area.contains(Position::new(x, y)) && enabled {
                             launch_selected(
                                 daemon.clone(),

@@ -20,9 +20,7 @@ struct UdsConnectInfo {
 impl connect_info::Connected<IncomingStream<'_, UnixListener>> for UdsConnectInfo {
     fn connect_info(stream: IncomingStream<'_, UnixListener>) -> Self {
         let peer_cred = stream.io().peer_cred().ok();
-        Self {
-            peer_cred,
-        }
+        Self { peer_cred }
     }
 }
 

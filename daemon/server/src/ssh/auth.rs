@@ -1,20 +1,17 @@
+use crate::config::SSHConfig;
 use crate::{Daemon, DaemonExtra};
 use axum::http;
+use core::hash::Hash;
+use core::time::Duration;
 use daemon_common::ssh::DaemonBackendAuthResponse;
 use russh::keys::{HashAlg, PublicKey};
 use std::collections::HashMap;
-use core::hash::Hash;
 use std::io;
 use std::io::ErrorKind;
-use core::time::Duration;
 use std::time::Instant;
 use tracing::debug;
-use crate::config::SSHConfig;
 
-pub struct InvalidationCacheMap<T: Clone + Hash + Eq, E: Clone>(
-    HashMap<T, (Instant, E)>,
-    Duration,
-);
+pub struct InvalidationCacheMap<T: Clone + Hash + Eq, E: Clone>(HashMap<T, (Instant, E)>, Duration);
 
 impl<T: Clone + Hash + Eq, E: Clone> InvalidationCacheMap<T, E> {
     pub fn new(invalidation: Duration) -> Self {
@@ -122,7 +119,10 @@ impl
     ) -> Result<DaemonBackendAuthResponse, io::Error> {
         let key = (
             user.to_owned(),
-            #[warn(clippy::unwrap_used, reason = "will be fixed, when upstream ssh-key 0.7 releases")]
+            #[warn(
+                clippy::unwrap_used,
+                reason = "will be fixed, when upstream ssh-key 0.7 releases"
+            )]
             public_key.fingerprint(HashAlg::Sha512).sha512().unwrap(), // TODO: Replace key to (String, Fingerprint), already merged in ssh-key but not released and thus not included in internal-russh-forked-ssh-key
         );
         match self.get(&key) {
@@ -130,7 +130,7 @@ impl
                 let response = publickey_auth(daemon, ssh, user, public_key).await?;
                 self.insert(key, response.clone());
                 Ok(response)
-            },
+            }
             Some(response) => Ok(response.clone()),
         }
     }
