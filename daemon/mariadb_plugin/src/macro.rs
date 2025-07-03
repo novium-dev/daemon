@@ -2,10 +2,10 @@
 macro_rules! mysql_declare_plugin {
     ($( $plugin:expr ),+ $(,)?) => {
         #[unsafe(no_mangle)]
-        pub static _maria_plugin_interface_version_: i32 = $crate::constants::MARIA_PLUGIN_INTERFACE_VERSION;
+        pub static _maria_plugin_interface_version_: u32 = $crate::constants::MARIA_PLUGIN_INTERFACE_VERSION;
 
         #[unsafe(no_mangle)]
-        pub static _maria_sizeof_struct_st_plugin_: i32 = std::mem::size_of::<$crate::types::Plugin>() as i32;
+        pub static _maria_sizeof_struct_st_plugin_: u32 = core::mem::size_of::<$crate::types::Plugin>() as u32;
 
         #[unsafe(no_mangle)]
         pub static _maria_plugin_declarations_: [

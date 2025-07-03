@@ -5,38 +5,38 @@ use crate::types::{AuthStatus, PluginVIO, PluginVIOInfoProtocol, ServerAuthInfo}
 use bollard::Docker;
 
 use bollard::query_parameters::InspectNetworkOptions;
-use lazy_static::lazy_static;
 use libc::{SO_PEERCRED, socklen_t, ucred};
-use std::error::Error;
-use std::ffi::{CString, c_char, c_uchar, c_void};
+use core::error::Error;
+use core::ffi::c_uchar;
+use std::ffi::CString;
 use std::io;
-use std::mem::{MaybeUninit, size_of};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, TcpStream};
-use std::os::fd::{FromRawFd, IntoRawFd};
-use std::str::FromStr;
+use core::mem::{MaybeUninit, size_of, ManuallyDrop};
+use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::TcpStream;
+use std::os::fd::{FromRawFd as _, IntoRawFd as _};
+use core::str::FromStr as _;
+use std::sync::LazyLock;
 use tokio::runtime::Runtime;
 
-lazy_static! {
-    static ref DOCKER: Result<Docker, bollard::errors::Error> =
-        Docker::connect_with_unix_defaults();
-    static ref RUNTIME: Result<Runtime, io::Error> = tokio::runtime::Builder::new_multi_thread()
+static DOCKER: LazyLock<Result<Docker, bollard::errors::Error>> = LazyLock::new(Docker::connect_with_unix_defaults);
+static RUNTIME: LazyLock<Result<Runtime, io::Error>> = LazyLock::new(|| tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build();
-}
+        .build());
 
 pub fn init() -> Result<(), i32> {
-    DOCKER.as_ref().map_err(|_err| -1)?;
-    RUNTIME.as_ref().map_err(|_err| -1)?;
+    DOCKER.as_ref().map_err(|_err| -1i32)?;
+    RUNTIME.as_ref().map_err(|_err| -1i32)?;
     Ok(())
 }
 
-pub fn deinit() -> Result<(), i32> {
+#[expect(clippy::unnecessary_wraps, reason = "mariadb needs an ok or errorcode")]
+pub const fn deinit() -> Result<(), i32> {
     Ok(())
 }
 
 pub fn authenticate(vio: &mut PluginVIO, info: &mut ServerAuthInfo) -> AuthStatus {
     let mut pkt: MaybeUninit<*mut c_uchar> = MaybeUninit::uninit();
-    if info.user_name.is_null() && vio.read_packet(&mut pkt) < 0 {
+    if info.user_name.is_null() && vio.read_packet(&mut pkt) < 0i32 {
         return AuthStatus::Error;
     }
 
@@ -46,42 +46,47 @@ pub fn authenticate(vio: &mut PluginVIO, info: &mut ServerAuthInfo) -> AuthStatu
 pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
     let mut vio_info = MaybeUninit::uninit();
     vio.info(&mut vio_info);
+    // SAFETY: Passed by mariadb, so should be safe
     let vio_info = unsafe { vio_info.assume_init() };
     match vio_info.protocol {
         PluginVIOInfoProtocol::MYSQL_VIO_TCP => {
-            let tcp = unsafe { TcpStream::from_raw_fd(vio_info.socket) };
+            // SAFETY: Passed by mariadb, so should be safe
+            let tcp = ManuallyDrop::new(unsafe { TcpStream::from_raw_fd(vio_info.socket) });
             let addr = match tcp.peer_addr() {
                 Ok(addr) => addr,
                 Err(err) => return Err(err.into()),
             };
-            let _ = tcp.into_raw_fd();
+            let _ = ManuallyDrop::<TcpStream>::into_inner(tcp).into_raw_fd();
             RUNTIME.as_ref()?.block_on(identify_tcp(addr))
         }
         PluginVIOInfoProtocol::MYSQL_VIO_SOCKET => {
             let mut cred: MaybeUninit<ucred> = MaybeUninit::uninit();
             let mut cred_len = size_of::<ucred>() as socklen_t;
+            // SAFETY: Executing syscall. Should be safe
             unsafe {
                 if libc::getsockopt(
                     vio_info.socket,
                     libc::SOL_SOCKET,
                     SO_PEERCRED,
-                    cred.as_mut_ptr() as *mut c_void,
-                    &mut cred_len,
+                    cred.as_mut_ptr().cast(),
+                    &raw mut cred_len,
                 ) < 0
                 {
                     return Err(io::Error::other("Unable to read pid").into());
                 }
-
-                RUNTIME
-                    .as_ref()?
-                    .block_on(identify_unix(cred.assume_init()))
             }
+            RUNTIME
+                .as_ref()?
+                .block_on(identify_unix(
+                    // SAFETY: If the syscall succeeded, it should have initialized the reference
+                    unsafe { cred.assume_init() }
+                ))
         }
         _ => Err(io::Error::other("Unsupported connection protocol").into()),
     }
 }
 
-pub(crate) fn authenticate_as(
+pub fn authenticate_as(
     info: &mut ServerAuthInfo,
     username: String,
     external: bool,
@@ -90,11 +95,9 @@ pub(crate) fn authenticate_as(
         Ok(str) => str,
         Err(_err) => return AuthStatus::Error,
     };
-    for (pos, byte) in cstr.as_bytes_with_nul().iter().enumerate() {
-        info.authenticated_as[pos] = *byte as c_char;
-        if external {
-            info.external_user[pos] = *byte as c_char;
-        }
+    info.authenticated_as.copy_from_slice(cstr.as_bytes_with_nul());
+    if external {
+        info.external_user.copy_from_slice(cstr.as_bytes_with_nul());
     }
     AuthStatus::Ok
 }
@@ -102,8 +105,8 @@ pub(crate) fn authenticate_as(
 async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
     #[cfg(debug_assertions)]
     {
-        println!("Connection through TCP: {}", peer_addr);
-    }
+        println!("Connection through TCP: {peer_addr}");
+    };
 
     let mut matching = None;
 
@@ -116,7 +119,7 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
             match peer_addr.ip() {
                 IpAddr::V4(addr) => {
                     if let Some(ref ipv4) = network.ipv4_address {
-                        let ipv4 = ipv4.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv4);
+                        let ipv4 = ipv4.split_once('/').map_or(ipv4.as_str(), |(ip, _)| ip);
                         let docker_ipv4 = Ipv4Addr::from_str(ipv4);
 
                         if docker_ipv4.eq(&Ok(addr)) {
@@ -127,7 +130,7 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
                 }
                 IpAddr::V6(addr) => {
                     if let Some(ref ipv6) = network.ipv6_address {
-                        let ipv6 = ipv6.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv6);
+                        let ipv6 = ipv6.split_once('/').map_or(ipv6.as_str(), |(ip, _)| ip);
                         let docker_ipv6 = Ipv6Addr::from_str(ipv6);
 
                         if docker_ipv6.eq(&Ok(addr)) {
@@ -154,7 +157,7 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
                 match peer_addr.ip() {
                     IpAddr::V4(addr) => {
                         if let Some(ref ipv4) = network.ipv4_address {
-                            let ipv4 = ipv4.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv4);
+                            let ipv4 = ipv4.split_once('/').map_or(ipv4.as_str(), |(ip, _)| ip);
                             let docker_ipv4 = Ipv4Addr::from_str(ipv4);
 
                             if docker_ipv4.eq(&Ok(addr)) {
@@ -165,7 +168,7 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
                     }
                     IpAddr::V6(addr) => {
                         if let Some(ref ipv6) = network.ipv6_address {
-                            let ipv6 = ipv6.split_once("/").map(|(ip, _)| ip).unwrap_or(ipv6);
+                            let ipv6 = ipv6.split_once('/').map_or(ipv6.as_str(), |(ip, _)| ip);
                             let docker_ipv6 = Ipv6Addr::from_str(ipv6);
 
                             if docker_ipv6.eq(&Ok(addr)) {
@@ -183,34 +186,31 @@ async fn identify_tcp(peer_addr: SocketAddr) -> Result<u32, Box<dyn Error>> {
             }
         }
     }
-    match matching {
+    match matching.as_deref() {
         None => Err(io::Error::other("No matching container was found.").into()),
-        Some(name) => {
-            let mut name: &str = &name;
-            if name.starts_with("/") {
-                name = &name[1..];
+        Some(mut name) => {
+            if let Some(name_stripped) = name.strip_prefix('/') {
+                name = name_stripped;
             }
-            if !name.starts_with(crate::CONTAINER_PREFIX) {
+            let Some(name) = name.strip_prefix(crate::CONTAINER_PREFIX) else {
                 return Err(io::Error::other(
                     "Container name does not start with hardcoded prefix.",
                 )
                 .into());
-            }
-            let str = &name[crate::CONTAINER_PREFIX.len()..];
-            str.parse()
+            };
+            name.parse()
                 .map_err(|_err| io::Error::other("Unable to parse server id").into())
         }
     }
 }
 
-#[allow(static_mut_refs)]
-async unsafe fn identify_unix(cred: ucred) -> Result<u32, Box<dyn Error>> {
+async fn identify_unix(cred: ucred) -> Result<u32, Box<dyn Error>> {
     let pid = cred.pid;
     #[cfg(debug_assertions)]
     {
-        println!("Connection through pid: {}", pid);
-    }
+        println!("Connection through pid: {pid}");
+    };
     daemon_common::utils::identify_container_by_pid(DOCKER.as_ref()?, pid)
         .await
-        .map_err(|err| err.into())
+        .map_err(Into::into)
 }

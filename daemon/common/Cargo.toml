@@ -16,7 +16,6 @@ btrfs = []
 ssh = ["backend", "dep:serde"]
 docker = [
     "dep:bollard",
-    "dep:lazy_static",
     "dep:tokio",
     "tokio/fs",
     "dep:lazy-regex"
@@ -82,10 +81,6 @@ optional = true
 version = "0.7.1"
 
 [dependencies.bollard]
-workspace = true
-optional = true
-
-[dependencies.lazy_static]
 workspace = true
 optional = true
 

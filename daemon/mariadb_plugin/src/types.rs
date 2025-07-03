@@ -1,10 +1,11 @@
 use crate::constants::MARIA_PLUGIN_MATURITY_STABLE;
-use std::ffi::{c_char, c_int, c_uchar, c_uint, c_ulong, c_void};
-use std::mem::MaybeUninit;
+use core::ffi::{c_char, c_int, c_uchar, c_uint, c_ulong, c_void};
+use core::mem::MaybeUninit;
+use libc::size_t;
 
 #[non_exhaustive]
 #[repr(i32)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "this is a wrapper implementation, implement every variant there is")]
 pub enum PluginType {
     /// User-Defined Function.
     Udf = 0,
@@ -17,7 +18,7 @@ pub enum PluginType {
 
 /// The license under which the plugin is being published.
 #[repr(i32)]
-#[allow(dead_code)]
+#[expect(dead_code, reason = "this is a wrapper implementation, implement every variant there is")]
 pub enum License {
     /// A proprietary license.
     Proprietary = 0,
@@ -61,10 +62,8 @@ pub struct Plugin {
     /// Version number of the plugin.
     pub version: c_uint,
 
-    /// TODO: SHOW STATUS Server status variable
     pub status_vars: *const c_void,
 
-    /// TODO: Definition of system vars structure for access their information in the plugin
     pub system_vars: *const c_void,
 
     /// Flags for the plugin.
@@ -73,6 +72,7 @@ pub struct Plugin {
     pub maturity: c_uint,
 }
 
+// SAFETY: It can be shared between threads
 unsafe impl Sync for Plugin {}
 
 impl Plugin {
@@ -80,17 +80,17 @@ impl Plugin {
     pub const fn zero() -> Self {
         Self {
             plugin_type: PluginType::Udf,
-            info: std::ptr::null_mut(),
-            name: std::ptr::null(),
-            author: std::ptr::null(),
-            descr: std::ptr::null(),
+            info: core::ptr::null_mut(),
+            name: core::ptr::null(),
+            author: core::ptr::null(),
+            descr: core::ptr::null(),
             license: License::Proprietary,
-            init: std::ptr::null(),
-            deinit: std::ptr::null(),
+            init: core::ptr::null(),
+            deinit: core::ptr::null(),
             version: 0,
-            status_vars: std::ptr::null(),
-            system_vars: std::ptr::null(),
-            version_info: std::ptr::null(),
+            status_vars: core::ptr::null(),
+            system_vars: core::ptr::null(),
+            version_info: core::ptr::null(),
             maturity: MARIA_PLUGIN_MATURITY_STABLE,
         }
     }
@@ -102,10 +102,8 @@ pub type InitFunc = extern "C" fn(*mut c_void) -> i32;
 /// Function to invoke when plugin is unloaded.
 pub type DeinitFunc = extern "C" fn(*mut c_void) -> i32;
 
-#[allow(non_camel_case_types)]
-pub type size_t = usize;
 pub type AuthenticateFunc =
-    extern "C" fn(vio: *mut PluginVIOInfo, info: *mut ServerAuthInfo) -> AuthStatus;
+    extern "C" fn(vio: *mut PluginVIO, info: *mut ServerAuthInfo) -> AuthStatus;
 pub type HashPasswordFunc = extern "C" fn(
     password: *const char,
     password_length: *const size_t,
@@ -121,7 +119,7 @@ pub type PreProcessHashFunc = extern "C" fn(
 
 #[repr(C)]
 pub struct AuthHandler {
-    pub interface_version: i32,
+    pub interface_version: u32,
     pub client_auth_plugin: *const c_char,
     pub authenticate_user: *const AuthenticateFunc,
     pub hash_password: *const HashPasswordFunc,
@@ -129,15 +127,14 @@ pub struct AuthHandler {
 }
 
 #[repr(i32)]
-#[allow(non_camel_case_types)]
 pub enum AuthStatus {
     Error = 0,
     Ok = -1,
 }
 
 #[repr(C)]
-#[allow(non_camel_case_types)]
-#[allow(dead_code)]
+#[expect(non_camel_case_types, reason = "from mariadb header files")]
+#[expect(dead_code, reason = "this is a wrapper implementation, implement every variant there is")]
 pub enum PluginVIOInfoProtocol {
     MYSQL_VIO_INVALID,
     MYSQL_VIO_TCP,
@@ -158,23 +155,23 @@ pub type VIOInfoFunc = extern "C" fn(*mut PluginVIO, *mut PluginVIOInfo);
 
 #[repr(C)]
 pub struct PluginVIO {
-    pub read_packet: Option<ReadPacketFunc>,
-    pub write_packet: Option<WritePacketFunc>,
-    pub info: Option<VIOInfoFunc>,
+    pub read_packet: ReadPacketFunc,
+    pub write_packet: WritePacketFunc,
+    pub info: VIOInfoFunc,
 }
 
+#[expect(dead_code, reason = "this is a wrapper implementation, implement every function there is")]
 impl PluginVIO {
     pub fn read_packet(&mut self, buf: &mut MaybeUninit<*mut c_uchar>) -> c_int {
-        (self.read_packet.as_ref().unwrap())(self, buf.as_mut_ptr())
+        (self.read_packet)(self, buf.as_mut_ptr())
     }
 
-    #[allow(unused)]
     pub fn write_packet(&mut self, packet: &c_uchar, packet_len: c_int) -> c_int {
-        (self.write_packet.as_ref().unwrap())(self, packet, packet_len)
+        (self.write_packet)(self, packet, packet_len)
     }
 
     pub fn info(&mut self, info: &mut MaybeUninit<PluginVIOInfo>) {
-        (self.info.as_ref().unwrap())(self, info.as_mut_ptr())
+        (self.info)(self, info.as_mut_ptr());
     }
 }
 
@@ -188,8 +185,8 @@ pub struct ServerAuthInfo {
     pub user_name_length: c_uint,
     pub auth_string: *const c_char,
     pub auth_string_length: c_ulong,
-    pub authenticated_as: [c_char; MYSQL_USERNAME_LENGTH + 1],
-    pub external_user: [c_char; MYSQL_USERNAME_LENGTH + 1],
+    pub authenticated_as: [u8; MYSQL_USERNAME_LENGTH + 1],
+    pub external_user: [u8; MYSQL_USERNAME_LENGTH + 1],
     pub password_used: c_int,
     pub host_or_ip: *const c_char,
     pub host_or_ip_length: c_uint,

@@ -1,9 +1,7 @@
 use lazy_regex::regex;
-use serde_json::Map;
+#[cfg(feature = "service")]
 use std::io;
-use std::io::{Error, SeekFrom};
-use tokio::fs::File;
-use tokio::io::{AsyncSeek, AsyncSeekExt as _};
+#[cfg(feature = "service")]
 use tokio_util::io::SyncIoBridge;
 use url::Url;
 
@@ -59,14 +57,17 @@ pub fn base_url(url: &mut Url) {
     }
 }
 
+#[cfg(feature = "service")]
 pub trait JsonExt {
     fn to_yaml(self) -> serde_yaml_ng::Value;
 
     fn from_yaml(yaml: serde_yaml_ng::Value) -> Self;
 }
 
+#[cfg(feature = "service")]
 const JSON_MAGIC: &str = "{DAEMON_JSON_MAGIC}!";
 
+#[cfg(feature = "service")]
 impl JsonExt for serde_json::Value {
     fn to_yaml(self) -> serde_yaml_ng::Value {
         match self {
@@ -149,7 +150,7 @@ impl JsonExt for serde_json::Value {
                     .collect(),
             ),
             Value::Tagged(tagged) => {
-                let mut obj = Map::with_capacity(2);
+                let mut obj = serde_json::Map::with_capacity(2);
                 obj.insert(
                     format!("{JSON_MAGIC}_tag"),
                     Self::String(tagged.tag.to_string()),
@@ -185,12 +186,13 @@ pub(crate) async fn io_sync_seek_truncate<
     F: FnOnce(&mut SyncIoBridge<R>) -> Result<V, E> + Send + 'static,
     V: Send + 'static,
     E: Send + From<io::Error> + 'static,
-    R: AsyncSeek + Truncate + Unpin + Send + 'static,
+    R: tokio::io::AsyncSeek + Truncate + Unpin + Send + 'static,
 >(
     func: F,
     mut io: R,
 ) -> Result<(R, V), E> {
-    io.seek(SeekFrom::Start(0)).await?;
+    use tokio::io::AsyncSeekExt as _;
+    io.seek(io::SeekFrom::Start(0)).await?;
     io.truncate().await?;
     tokio::task::spawn_blocking(move || {
         let mut read = SyncIoBridge::new(io);
@@ -207,8 +209,8 @@ pub(crate) trait Truncate {
 }
 
 #[cfg(feature = "service")]
-impl Truncate for File {
-    async fn truncate(&self) -> Result<(), Error> {
+impl Truncate for tokio::fs::File {
+    async fn truncate(&self) -> Result<(), io::Error> {
         self.set_len(0).await
     }
 }

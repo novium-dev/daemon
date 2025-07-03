@@ -12,7 +12,7 @@ multiple-versions = "warn"
 
 deny = [
     # We want rustls
-    { name = "openssl-sys" }
+    { name = "openssl-sys" },
 ]
 
 [sources]
@@ -21,7 +21,9 @@ unknown-git = "deny"
 
 allow-git = [
   "https://github.com/MarkusTieger/reqwest.git?branch=testing",
-  "https://github.com/MarkusTieger/hyper-rustls.git"
+  "https://github.com/MarkusTieger/hyper-rustls.git",
+  "https://github.com/MarkusTieger/serde-yaml-ng.git",
+  "https://github.com/qu0b/json-patch.git?rev=4eca239"
 ]
 
 [licenses]
