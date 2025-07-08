@@ -1,6 +1,5 @@
 [workspace]
 members = [
-    "backend/*",
     "daemon/*",
     "daemon/framework/macros"
 ]
@@ -142,7 +141,7 @@ non_zero_suggestions = "deny"
 panic = "deny"
 panic_in_result_fn = "deny"
 pathbuf_init_then_push = "deny"
-pointer_format = "deny"
+# pointer_format = "deny" # Not found by clippy?
 precedence_bits = "deny"
 print_stderr = "deny"
 print_stdout = "deny"
