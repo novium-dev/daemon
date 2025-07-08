@@ -1,6 +1,6 @@
 #!/bin/sh
 
-mkdir ./migrations && cp daemon/server/migrations/*.sql ./migrations
+mkdir ./migrations && cp daemon/migrations/*.sql ./migrations
 
 "$(realpath "$(dirname "$0")")/setup_db.sh"
 
