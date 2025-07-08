@@ -1,4 +1,3 @@
-use lazy_regex::regex;
 #[cfg(feature = "service")]
 use std::io;
 #[cfg(feature = "service")]
@@ -15,7 +14,7 @@ pub async fn identify_container_by_pid(
     use tokio::fs::File;
     use tokio::io::AsyncReadExt as _;
 
-    let regex = regex!("docker-([a-z0-9]{64}).scope");
+    let regex = lazy_regex::regex!("docker-([a-z0-9]{64}).scope");
 
     let mut file = File::open(format!("/proc/{pid}/cgroup")).await?;
     let mut buf = String::new();
@@ -102,8 +101,9 @@ impl JsonExt for serde_json::Value {
                     let mut map = serde_yaml_ng::Mapping::with_capacity(value.len());
                     for (key, val) in value {
                         let val = val.to_yaml();
-                        if let Some(key) = key.strip_prefix(JSON_MAGIC) {
-                            let Ok(key_json) = serde_json::from_str::<Self>(key) else {
+                        if let Some(stripped_key) = key.strip_prefix(JSON_MAGIC) {
+                            let Ok(key_json) = serde_json::from_str::<Self>(stripped_key) else {
+                                map.insert(serde_yaml_ng::Value::String(key), val);
                                 continue;
                             };
                             let key = key_json.to_yaml();

@@ -5,23 +5,26 @@ use crate::types::{AuthStatus, PluginVIO, PluginVIOInfoProtocol, ServerAuthInfo}
 use bollard::Docker;
 
 use bollard::query_parameters::InspectNetworkOptions;
-use libc::{SO_PEERCRED, socklen_t, ucred};
 use core::error::Error;
 use core::ffi::c_uchar;
+use core::mem::{ManuallyDrop, MaybeUninit, size_of};
+use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use core::str::FromStr as _;
+use libc::{SO_PEERCRED, socklen_t, ucred};
 use std::ffi::CString;
 use std::io;
-use core::mem::{MaybeUninit, size_of, ManuallyDrop};
-use core::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
 use std::net::TcpStream;
 use std::os::fd::{FromRawFd as _, IntoRawFd as _};
-use core::str::FromStr as _;
 use std::sync::LazyLock;
 use tokio::runtime::Runtime;
 
-static DOCKER: LazyLock<Result<Docker, bollard::errors::Error>> = LazyLock::new(Docker::connect_with_unix_defaults);
-static RUNTIME: LazyLock<Result<Runtime, io::Error>> = LazyLock::new(|| tokio::runtime::Builder::new_multi_thread()
+static DOCKER: LazyLock<Result<Docker, bollard::errors::Error>> =
+    LazyLock::new(Docker::connect_with_unix_defaults);
+static RUNTIME: LazyLock<Result<Runtime, io::Error>> = LazyLock::new(|| {
+    tokio::runtime::Builder::new_multi_thread()
         .enable_all()
-        .build());
+        .build()
+});
 
 pub fn init() -> Result<(), i32> {
     DOCKER.as_ref().map_err(|_err| -1i32)?;
@@ -75,27 +78,22 @@ pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
                     return Err(io::Error::other("Unable to read pid").into());
                 }
             }
-            RUNTIME
-                .as_ref()?
-                .block_on(identify_unix(
-                    // SAFETY: If the syscall succeeded, it should have initialized the reference
-                    unsafe { cred.assume_init() }
-                ))
+            RUNTIME.as_ref()?.block_on(identify_unix(
+                // SAFETY: If the syscall succeeded, it should have initialized the reference
+                unsafe { cred.assume_init() },
+            ))
         }
         _ => Err(io::Error::other("Unsupported connection protocol").into()),
     }
 }
 
-pub fn authenticate_as(
-    info: &mut ServerAuthInfo,
-    username: String,
-    external: bool,
-) -> AuthStatus {
+pub fn authenticate_as(info: &mut ServerAuthInfo, username: String, external: bool) -> AuthStatus {
     let cstr = match CString::new(username) {
         Ok(str) => str,
         Err(_err) => return AuthStatus::Error,
     };
-    info.authenticated_as.copy_from_slice(cstr.as_bytes_with_nul());
+    info.authenticated_as
+        .copy_from_slice(cstr.as_bytes_with_nul());
     if external {
         info.external_user.copy_from_slice(cstr.as_bytes_with_nul());
     }

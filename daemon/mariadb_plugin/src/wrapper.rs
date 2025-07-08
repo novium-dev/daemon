@@ -26,7 +26,8 @@ extern "C" fn authenticate_user(vio: *mut PluginVIO, info: *mut ServerAuthInfo) 
         // SAFETY: Passed by mariadb, so should be safe
         unsafe { &mut *vio },
         // SAFETY: Passed by mariadb, so should be safe
-        unsafe { &mut *info })
+        unsafe { &mut *info },
+    )
 }
 
 pub const AUTHENTICATION_HANDLER: AuthHandler = AuthHandler {

@@ -5,7 +5,10 @@ use libc::size_t;
 
 #[non_exhaustive]
 #[repr(i32)]
-#[expect(dead_code, reason = "this is a wrapper implementation, implement every variant there is")]
+#[expect(
+    dead_code,
+    reason = "this is a wrapper implementation, implement every variant there is"
+)]
 pub enum PluginType {
     /// User-Defined Function.
     Udf = 0,
@@ -18,7 +21,10 @@ pub enum PluginType {
 
 /// The license under which the plugin is being published.
 #[repr(i32)]
-#[expect(dead_code, reason = "this is a wrapper implementation, implement every variant there is")]
+#[expect(
+    dead_code,
+    reason = "this is a wrapper implementation, implement every variant there is"
+)]
 pub enum License {
     /// A proprietary license.
     Proprietary = 0,
@@ -134,7 +140,10 @@ pub enum AuthStatus {
 
 #[repr(C)]
 #[expect(non_camel_case_types, reason = "from mariadb header files")]
-#[expect(dead_code, reason = "this is a wrapper implementation, implement every variant there is")]
+#[expect(
+    dead_code,
+    reason = "this is a wrapper implementation, implement every variant there is"
+)]
 pub enum PluginVIOInfoProtocol {
     MYSQL_VIO_INVALID,
     MYSQL_VIO_TCP,
@@ -160,7 +169,10 @@ pub struct PluginVIO {
     pub info: VIOInfoFunc,
 }
 
-#[expect(dead_code, reason = "this is a wrapper implementation, implement every function there is")]
+#[expect(
+    dead_code,
+    reason = "this is a wrapper implementation, implement every function there is"
+)]
 impl PluginVIO {
     pub fn read_packet(&mut self, buf: &mut MaybeUninit<*mut c_uchar>) -> c_int {
         (self.read_packet)(self, buf.as_mut_ptr())

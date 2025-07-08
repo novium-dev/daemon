@@ -1,10 +1,7 @@
 use crate::plugin::{authenticate_as, identify};
 use crate::types::{AuthStatus, PASSWORD_USED_NO_MENTION, PluginVIO, ServerAuthInfo};
 
-pub fn authenticate_proxy_mode(
-    vio: &mut PluginVIO,
-    info: &mut ServerAuthInfo,
-) -> AuthStatus {
+pub fn authenticate_proxy_mode(vio: &mut PluginVIO, info: &mut ServerAuthInfo) -> AuthStatus {
     info.password_used = PASSWORD_USED_NO_MENTION;
 
     match identify(vio) {
