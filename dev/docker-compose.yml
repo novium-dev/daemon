@@ -8,12 +8,3 @@ services:
     volumes:
     - ../mariadb/sockets:/var/run/mysqld
     - ../mariadb/data:/var/lib/mysql
-  valkey:
-    image: valkey/valkey
-    container_name: daemon_valkey
-    network_mode: 'none'
-    command: valkey-server /valkey.conf --save 60 1 --loglevel warning
-    volumes:
-    - ../valkey/data:/data
-    - ../valkey/sockets:/var/run/valkey
-    - ../valkey/valkey.conf:/valkey.conf:ro
