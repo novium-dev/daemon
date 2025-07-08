@@ -21,7 +21,7 @@ fn main() {
             if let Ok(path) = PathBuf::from(
                 std::env::var_os("CARGO_MANIFEST_DIR").expect("Manifest directory isn't present"),
             )
-            .join("../../mariadb/sockets/mysqld.sock")
+            .join("../mariadb/sockets/mysqld.sock")
             .canonicalize()
             {
                 println!(

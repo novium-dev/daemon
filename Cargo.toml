@@ -1,7 +1,10 @@
 [workspace]
 members = [
-    "daemon/*",
-    "daemon/framework/macros"
+    "daemon",
+    "daemon_common",
+    "daemon_framework",
+    "daemon_framework_macros",
+    "daemon_mariadb_plugin"
 ]
 resolver = "3"
 
@@ -215,17 +218,14 @@ thiserror = "2.0.12"
 lazy-regex = "3.4.1"
 
 [workspace.dependencies.daemon_common]
-path = "daemon/common"
+path = "daemon_common"
 default-features = false
 
 [workspace.dependencies.daemon_framework]
-path = "daemon/framework"
+path = "daemon_framework"
 
 [workspace.dependencies.daemon_framework_macros]
-path = "daemon/framework/macros"
-
-[workspace.dependencies.backend]
-path = "backend/core"
+path = "daemon_framework_macros"
 
 [workspace.dependencies.rustls]
 version = "0.23.28"

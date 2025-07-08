@@ -16,7 +16,7 @@ pub mod ssh;
 pub mod user;
 pub mod utils;
 
-include!("../../../config.rs");
+include!("../../config.rs");
 
 #[cfg(feature = "ts")]
 #[test]
