@@ -12,7 +12,6 @@ pub const CONTAINER_DEFAULT_GID: u16 = CONTAINER_DEFAULT_UID;
 pub const MARIADB_PLUGIN_NAME: &str = "novium_daemon_auth";
 pub const MARIADB_DATABASE_PREFIX: &str = "db_";
 pub const MARIADB_USER_PREFIX: &str = "user_";
-pub const CACHE_KEY_PREFIX: &str = "novium:";
 
 pub const NETWORK_DEFAULT: &str = "novium_daemon_bridge_default";
 pub const NETWORK_INTERNET: &str = "novium_daemon_bridge_internet";
