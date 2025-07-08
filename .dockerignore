@@ -5,8 +5,8 @@ workdir/
 storage/*
 storages/*
 valkey/*
-mysql/data/
-mysql/sockets/
+mariadb/data/
+mariadb/sockets/
 build/
 
 # Don't leak information
