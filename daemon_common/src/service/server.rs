@@ -7,7 +7,7 @@ use chrono::Utc;
 use core::error::Error as _;
 use crc64::crc64;
 use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable, ts};
-use json_patch::Patch;
+pub use json_patch::Patch;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
@@ -368,8 +368,8 @@ pub struct PatchSet {
       | { op: 'copy', from: string, path: string }
       | { op: 'test', path: string, value: any }
     ) []"#)]
-    condition: Patch,
-    patch: PatchEntry,
+    pub condition: Patch,
+    pub patch: PatchEntry,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
