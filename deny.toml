@@ -43,9 +43,6 @@ allow = [
   "OpenSSL"
 ]
 
-[licenses.private]
-ignore = true
-
 [advisories]
 unmaintained = "workspace"
 ignore = [
