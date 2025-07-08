@@ -13,7 +13,6 @@ stages:
   image: rust:alpine
   parallel:
   variables:
-    BACKEND_DATABASE_URL: 'mysql://root@db/backend'
     DAEMON_DATABASE_URL: 'mysql://root@db/daemon'
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
@@ -27,9 +26,7 @@ stages:
     - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli
     - until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
     - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
-    - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/server/migrations"
-    - cargo sqlx database create --database-url "$BACKEND_DATABASE_URL"
-    - mkdir backend_migrations && cp backend/*/migrations/* backend_migrations && cargo sqlx migrate run --database-url "$BACKEND_DATABASE_URL" --source "backend_migrations"
+    - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
   services:
     - name: mariadb:latest
       alias: db
@@ -46,8 +43,6 @@ clippy:
         - .cargo_home/
         - .gradle_user/
         - target/
-        - backend/minecraft/agent/.gradle/
-        - backend/minecraft/agent/build/
       policy: pull-push
   script:
     - rustup component add clippy
