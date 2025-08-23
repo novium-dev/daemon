@@ -62,21 +62,15 @@ fn filter_stream(
             )));
             continue;
         }
-        if let TokenTree::Punct(punct) = &token {
-            if punct.as_char() == '#' {
-                let next = iter.next();
-                if let Some(next) = next {
-                    if let TokenTree::Group(group) = &next {
-                        if let Some(TokenTree::Ident(i)) = group.stream().into_iter().next() {
-                            if i.to_string().eq("ts") {
-                                continue;
-                            }
-                        }
-                    }
-                    out.push(token);
-                    out.push(next);
+        if let TokenTree::Punct(punct) = &token && punct.as_char() == '#' {
+            let next = iter.next();
+            if let Some(next) = next && let TokenTree::Group(group) = &next {
+                if let Some(TokenTree::Ident(i)) = group.stream().into_iter().next() && i.to_string().eq("ts") {
                     continue;
                 }
+                out.push(token);
+                out.push(next);
+                continue;
             }
         }
         out.push(token);

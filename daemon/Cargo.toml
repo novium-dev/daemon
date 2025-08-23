@@ -73,12 +73,12 @@ tokio-rustls.workspace = true
 thiserror.workspace = true
 http-body-util = "0.1.3"
 
-sysinfo = "0.35.2"
+sysinfo = "0.37.0"
 inquire = "0.7.5"
 num-traits = "0.2.19"
-ringbuffer = "0.15.0"
+ringbuffer = "0.16.0"
 fs_extra = "1.3.0"
-xattr = "1.5.0"
+xattr = "1.5.1"
 bytes.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
@@ -91,7 +91,7 @@ workspace = true
 features = ["full"]
 
 [dependencies.anyhow]
-version = "1.0.98"
+version = "1.0.99"
 features = ["std"]
 
 [dependencies.sentry]
@@ -107,7 +107,7 @@ version = "3.4.4"
 features = ["tokio1"]
 
 [dependencies.async-std]
-version = "1.13.1"
+version = "1.13.2"
 features = ["tokio1"]
 
 [dependencies.daemon_common]
@@ -126,7 +126,7 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.52.1"
+version = "0.54.3"
 
 [dependencies.russh-sftp]
 version = "2.1.1"
@@ -140,7 +140,7 @@ version = "0.29.0"
 features = ["event-stream", "events"]
 
 [dependencies.rustix]
-version = "1.0.7"
+version = "1.0.8"
 features = ["thread"]
 
 [dependencies.zstd]
@@ -152,17 +152,17 @@ version = "1.1.2"
 features = ["zlib"]
 
 [dependencies.bzip2]
-version = "0.5.2"
+version = "0.6.0"
 
 [dependencies.liblzma]
-version = "0.4.2"
+version = "0.4.3"
 features = []
 
 [dependencies.lz4]
 version = "1.28.1"
 
 [build-dependencies.bindgen]
-version = "0.71.1"
+version = "0.72.0"
 default-features = false
 features = ["logging", "prettyplease"]
 

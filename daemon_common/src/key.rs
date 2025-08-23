@@ -671,12 +671,51 @@ impl ServerCertVerifier for DaemonKeyVerifier {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use crate::key::{BackendKey, DaemonKey, DaemonRootKey};
     use ed25519_dalek::SigningKey;
     use ed25519_dalek::ed25519::signature::rand_core::OsRng;
     use rcgen::{CertificateSigningRequestParams, KeyPair};
     use rustls::pki_types::PrivateKeyDer;
     use uuid::Uuid;
+
+    #[test]
+    fn generate_keys() {
+        rustls::crypto::aws_lc_rs::default_provider()
+            .install_default()
+            .unwrap();
+
+        let ca = KeyPair::generate().unwrap();
+
+        let user_key = SigningKey::generate(&mut OsRng);
+        let public_user_key = user_key.verifying_key();
+
+        let root = DaemonRootKey::new(&ca, Some(public_user_key)).unwrap();
+        fs::write("daemon_root_priv.pem", root.dump(Some(&ca), Some(&user_key))).unwrap();
+        fs::write("daemon_root_pub.pem", root.dump(None, None)).unwrap();
+
+        // Backend key
+        let backend_keypair = KeyPair::generate().unwrap();
+        let backend_key = root.new_backend_key(&ca, &backend_keypair).unwrap();
+        fs::write("backend.pem", backend_key.dump()).unwrap();
+
+        // Daemon key
+        let node_id = Uuid::new_v4();
+
+        let node_keypair = KeyPair::generate().unwrap();
+        let node_req = DaemonKey::new_request(&node_keypair).unwrap();
+
+        let node_req = CertificateSigningRequestParams::from_der(&node_req).unwrap();
+
+        let node_cert = root
+            .sign_daemon_key(&ca, node_req.public_key, node_id)
+            .unwrap();
+        let node_privkey = PrivateKeyDer::try_from(node_keypair.serialize_der()).unwrap();
+
+        let node_key = DaemonKey::new(&root, node_cert, node_privkey).unwrap();
+
+        fs::write("daemon.pem", node_key.dump()).unwrap();
+    }
 
     #[test]
     fn keys() {

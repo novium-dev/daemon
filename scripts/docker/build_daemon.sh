@@ -9,8 +9,10 @@ cargo sqlx migrate run --database-url "mysql://root@localhost/daemon?socket=/run
 
 export DAEMON_DATABASE_URL="mysql://root@localhost/daemon?socket=/run/mysqld/mysqld.sock"
 
-echo '#!/bin/ash' > /llvm-config-static.sh && echo 'if [ "$1" = "--libs" ]; then echo "$(/usr/bin/llvm-config "$@" "--link-static") -lzstd"; else /usr/bin/llvm-config "$@"; fi' >> /llvm-config-static.sh && chmod +x /llvm-config-static.sh
+echo '#!/bin/ash' > /llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-20 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-20 "$@"; fi' >> /llvm-config-static.sh && chmod +x /llvm-config-static.sh
+
+cat "/llvm-config-static.sh"
 
 LLVM_CONFIG_PATH="/llvm-config-static.sh" cargo build --target x86_64-unknown-linux-musl --release -p daemon --no-default-features --features "$FEATURES"
 
-llvm-strip target/x86_64-unknown-linux-musl/release/daemon
+# llvm-strip target/x86_64-unknown-linux-musl/release/daemon

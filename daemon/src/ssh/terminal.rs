@@ -87,6 +87,7 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
                             debug!("Channel already taken");
                             return session.channel_failure(channel_id);
                         };
+                        #[cfg_attr(feature = "no_tty_size_please", expect(unused_variables))]
                         let cols = match cols {
                             None => {
                                 debug!("Size is None on exec");
@@ -94,6 +95,7 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
                             }
                             Some(cols) => Arc::clone(cols),
                         };
+                        #[cfg_attr(feature = "no_tty_size_please", expect(unused_variables))]
                         let rows = match rows {
                             None => {
                                 debug!("Size is None on exec");
@@ -103,15 +105,19 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
                         };
                         drop(server_data);
                         tokio::task::spawn(new_session(
+                            #[cfg(not(feature = "no_tty_size_please"))]
                             internal_server_id,
                             (channel.into_stream(), [0u8; 2048]),
                             TerminalData {
                                 sender,
                                 attach_write,
+                                #[cfg(not(feature = "no_tty_size_please"))]
                                 cols,
+                                #[cfg(not(feature = "no_tty_size_please"))]
                                 rows,
                                 write,
                             },
+                            #[cfg(not(feature = "no_tty_size_please"))]
                             Arc::clone(&self.daemon.docker),
                             Arc::clone(&server_data_arc),
                         ));

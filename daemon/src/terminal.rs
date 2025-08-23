@@ -19,7 +19,9 @@ use crate::server::stop::ServerStopError;
 use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};
+#[cfg(not(feature = "no_tty_size_please"))]
 use bollard::Docker;
+#[cfg(not(feature = "no_tty_size_please"))]
 use core::sync::atomic::AtomicU16;
 use core::time::Duration;
 use ringbuffer::RingBuffer as _;
@@ -90,7 +92,7 @@ pub async fn new_session<
     #[cfg(feature = "no_tty_size_please")]
     {
         drop(server_data);
-    }
+    };
 
     let buffer = buffer.lock().await;
     state
