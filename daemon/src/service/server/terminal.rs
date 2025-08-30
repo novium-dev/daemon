@@ -25,11 +25,11 @@ pub const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
 
 pub(super) async fn terminal_websocket_handle(
     id: u32,
-    #[cfg(not(feature = "no_tty_size_please"))] docker: Arc<Docker>,
+    docker: Arc<Docker>,
     server_data_arc: Arc<Mutex<ServerData>>,
     socket: WebSocket,
-    #[cfg(not(feature = "no_tty_size_please"))] cols: Arc<AtomicU16>,
-    #[cfg(not(feature = "no_tty_size_please"))] rows: Arc<AtomicU16>,
+    cols: Arc<AtomicU16>,
+    rows: Arc<AtomicU16>,
     write: bool,
 ) {
     let server_data = server_data_arc.lock().await;
@@ -45,7 +45,6 @@ pub(super) async fn terminal_websocket_handle(
     let cols2 = Arc::clone(&cols);
     #[cfg(not(feature = "no_tty_size_please"))]
     let rows2 = Arc::clone(&rows);
-    #[cfg(not(feature = "no_tty_size_please"))]
     tokio::task::spawn(new_session(
         id,
         ChannelInterceptor::new(socket, move |_socket, mut message| {

@@ -36,16 +36,23 @@ pub(super) async fn exec_websocket_handle(
     docker: Arc<Docker>,
     command: Vec<String>,
     socket: WebSocket,
-    #[cfg(not(feature = "no_tty_size_please"))] cols: u16,
-    #[cfg(not(feature = "no_tty_size_please"))] rows: u16,
+    cols: u16,
+    rows: u16,
 ) {
+    #[cfg(feature = "no_tty_size_please")]
+    let _ = (cols, rows);
+
     let server_data = server_data_arc.lock().await;
     if let Ok(Some((id, output, input))) = server.exec(&docker, command, &server_data, true).await {
         drop(server_data);
 
+        #[cfg(feature = "no_tty_size_please")]
+        let _ = id;
+
         #[cfg(not(feature = "no_tty_size_please"))]
         let _ = FetchedServer::update_exec_tty_size(id.clone(), &docker, cols, rows).await;
 
+        #[cfg(not(feature = "no_tty_size_please"))]
         let docker2 = Arc::clone(&docker);
         tokio::task::spawn(new_exec_session(
             ChannelInterceptor::new(socket, move |_socket, mut message| {

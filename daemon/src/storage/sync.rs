@@ -265,6 +265,7 @@ impl Display for StorageError {
     }
 }
 
+#[expect(dead_code, reason = "maybe needed later, 30.08.2025")]
 pub struct MapStorageNotFoundIsFailure<T: FromStorageFailure>(T);
 
 impl<T: FromStorageFailure> FromStorageNotFound for MapStorageNotFoundIsFailure<T> {

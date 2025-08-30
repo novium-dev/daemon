@@ -57,7 +57,7 @@ pub struct FetchedServer {
     pub stop_command: Option<String>,
     pub stop_timeout: u16,
 
-    pub locks: HashSet<String>,
+    pub locks: HashSet<ServerLock>,
     pub ports: Vec<Port>,
     pub storage: String,
     pub internet: bool,
@@ -67,7 +67,7 @@ pub struct FetchedServer {
     pub networks: Vec<AssignedNetwork>,
 }
 
-#[derive(Debug, Copy, Clone, Ord, PartialOrd, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum ServerLock {
     Storage,
 }
@@ -94,8 +94,8 @@ impl Server {
         .collect();
         let build = self.resolve_image(conn, image, &tags).await?;
 
-        let locks: HashSet<String> = query_scalar!(
-            "SELECT `lock` FROM `server_locks` WHERE `server` = ?",
+        let locks: HashSet<ServerLock> = query_scalar!(
+            "SELECT `lock` AS `lock: ServerLock` FROM `server_locks` WHERE `server` = ?",
             self.id
         )
         .fetch_all(conn)
@@ -278,8 +278,8 @@ impl FetchedServer {
         format!("{}{}", crate::common::CONTAINER_PREFIX, id)
     }
 
-    pub async fn resolve_locked(id: u32, conn: &Pool<MySql>) -> HashSet<String> {
-        if let Ok(value) = query_scalar!("SELECT `lock` FROM `server_locks` WHERE `server` = ?", id)
+    pub async fn resolve_locked(id: u32, conn: &Pool<MySql>) -> HashSet<ServerLock> {
+        if let Ok(value) = query_scalar!("SELECT `lock` AS `lock: ServerLock` FROM `server_locks` WHERE `server` = ?", id)
             .fetch_all(conn)
             .await
         {

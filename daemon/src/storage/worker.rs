@@ -228,8 +228,7 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
             let conn = Arc::clone(&daemon.conn);
             join.spawn(async move {
                 let stats_guard = timeout(Duration::from_millis(100), data.stats_lock.lock()).await;
-                if stats_guard.is_ok() {
-                    if let Some(stats_sender) = sender {
+                if stats_guard.is_ok() && let Some(stats_sender) = sender {
                         if let Some(server_id) = server_id
                             && !quota
                         {
@@ -253,7 +252,6 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
                                     (disk_max == -1).then(|| disk_max.unsigned_abs()),
                                 ),
                         ));
-                    }
                 }
             });
         }

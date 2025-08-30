@@ -127,11 +127,9 @@ impl FetchedServer {
         let _ = storage2.remove_dir_all(".tmp").await;
         if let Err(err) = tokio::task::spawn_blocking(move || storage2.create_dir(".tmp"))
             .await
-            .expect("Temporary directory creation task panicked")
+            .expect("Temporary directory creation task panicked") && err.kind() != ErrorKind::AlreadyExists
         {
-            if err.kind() != ErrorKind::AlreadyExists {
-                return Err(ServerStartError::IO(err));
-            }
+            return Err(ServerStartError::IO(err));
         }
 
         for (file_path, file_write) in &self.files_write {

@@ -120,8 +120,8 @@ pub async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(),
     if dir
         .try_exists()
         .inspect_err(|err| error!("Unable to check if storage directory exists: {err:?}"))?
+        && let StorageEntry::Btrfs { .. } = storage
     {
-        if let StorageEntry::Btrfs { .. } = storage {
             use std::io::ErrorKind;
             let Some(parent) = dir.parent() else {
                 error!("Got path without parent: {:?}", dir.to_string_lossy());
@@ -146,7 +146,6 @@ pub async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(),
                 .inspect_err(|err| {
                     error!("Unable to remove subvolume of storage directory: {err:?}");
                 })?;
-        }
     }
     if dir
         .try_exists()

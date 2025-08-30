@@ -48,6 +48,7 @@ mod server;
 mod setup;
 
 impl<T: DaemonExtra> Daemon<T> {
+    #[expect(clippy::needless_for_each, reason = "caused by OpenApi derive macro")]
     pub fn router(&self) -> Router {
         #[derive(OpenApi)]
         #[openapi()]
@@ -77,6 +78,8 @@ impl<T: DaemonExtra> Daemon<T> {
             use utoipa_swagger_ui::SwaggerUi;
             router = router.merge(SwaggerUi::new("/docs").url("/docs/openapi.json", api));
         };
+        #[cfg(not(debug_assertions))]
+        let _ = api;
 
         router = router.layer(TraceLayer::new_for_http());
 

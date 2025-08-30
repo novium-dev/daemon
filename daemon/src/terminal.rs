@@ -40,9 +40,7 @@ pub struct TerminalSession {
 pub struct TerminalData {
     pub sender: Arc<Sender<ChannelWriteData>>,
     pub attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
-    #[cfg(not(feature = "no_tty_size_please"))]
     pub cols: Arc<AtomicU16>,
-    #[cfg(not(feature = "no_tty_size_please"))]
     pub rows: Arc<AtomicU16>,
     pub write: bool,
 }
@@ -53,20 +51,21 @@ pub async fn new_session<
     J: Send + 'static,
     Q: Send + 'static,
 >(
-    #[cfg(not(feature = "no_tty_size_please"))] id: u32,
+    id: u32,
     mut state: A,
     TerminalData {
         sender,
         attach_write,
-        #[cfg(not(feature = "no_tty_size_please"))]
         rows,
-        #[cfg(not(feature = "no_tty_size_please"))]
         cols,
         write,
     }: TerminalData,
-    #[cfg(not(feature = "no_tty_size_please"))] docker: Arc<Docker>,
+    docker: Arc<Docker>,
     server_data_arc: Arc<Mutex<ServerData>>,
 ) {
+    #[cfg(feature = "no_tty_size_please")]
+    let _ = (id, cols, rows, docker);
+
     let server_data = server_data_arc.lock().await;
     let buffer = Arc::clone(&server_data.buffer);
     #[cfg(not(feature = "no_tty_size_please"))]
@@ -90,7 +89,7 @@ pub async fn new_session<
     #[cfg(feature = "no_tty_size_please")]
     {
         drop(server_data);
-    }
+    };
 
     let buffer = buffer.lock().await;
     state
@@ -215,15 +214,12 @@ pub async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex<Server
         }
 
         drop(sessions);
-        if server_data.size.0 != cols || server_data.size.1 != rows {
-            if let Err(err) =
-                FetchedServer::update_tty_size(id, docker, &mut server_data, cols, rows).await
-            {
-                if matches!(err, ServerStopError::NotRunning) {
-                    return;
-                }
-                warn!("Failed to resize tty to {},{}: {:?}", cols, rows, err);
+        if (server_data.size.0 != cols || server_data.size.1 != rows) && let Err(err) =
+                FetchedServer::update_tty_size(id, docker, &mut server_data, cols, rows).await {
+            if matches!(err, ServerStopError::NotRunning) {
+                return;
             }
+            warn!("Failed to resize tty to {cols},{rows}: {err:?}");
         }
         drop(server_data);
         break;

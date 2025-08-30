@@ -63,10 +63,8 @@ pub async fn download_file<
         .await
         .inspect_err(|err| error!("Failed to download file (metadata): {err:?}"))?;
     let length = metadata.len();
-    if let Some(limit) = limit {
-        if length > limit {
-            return Err(<E as FromFileLimitReached>::from());
-        }
+    if let Some(limit) = limit && length > limit {
+        return Err(<E as FromFileLimitReached>::from());
     }
 
     let mut headers =

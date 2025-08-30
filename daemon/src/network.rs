@@ -41,12 +41,10 @@ impl Network {
         .execute(&mut **tx)
         .await
         .inspect_err(|err| {
-            if let Error::Database(db) = &err {
-                if db.is_unique_violation() || db.is_check_violation() {
-                    return;
-                }
+            if let Error::Database(db) = &err && (db.is_unique_violation() || db.is_check_violation()) {
+                return;
             }
-            error!("Failed to insert network: {:?}", err);
+            error!("Failed to insert network: {err:?}");
         })?
         .last_insert_id() as u32;
 

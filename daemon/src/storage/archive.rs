@@ -23,7 +23,8 @@ use tar::{Archive, Builder, HeaderMode};
 fn chroot(dest: PathBuf) -> Result<(), io::Error> {
     use rustix::thread::*;
 
-    unshare(UnshareFlags::FS)?;
+    // SAFETY: Not using UnshareFlags::Files, so should be safe
+    unsafe { unshare_unsafe(UnshareFlags::FS)? };
     std::os::unix::fs::chroot(dest)?;
     std::env::set_current_dir("/")?;
 

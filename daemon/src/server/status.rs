@@ -13,7 +13,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::ServerData;
-use crate::server::FetchedServer;
+use crate::server::{FetchedServer, ServerLock};
 use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
 use axum::extract::ws::Message;
@@ -35,7 +35,7 @@ use utoipa::{PartialSchema, ToSchema};
 impl FetchedServer {
     pub(crate) async fn update_status(
         id: u32,
-        locks: HashSet<String>,
+        locks: HashSet<ServerLock>,
         stats_sender: &Sender<ChannelWriteData>,
         docker: &Docker,
         server_data_arc: &Arc<Mutex<ServerData>>,
@@ -49,7 +49,7 @@ impl FetchedServer {
 
     pub(crate) async fn update_status0(
         id: u32,
-        locks: HashSet<String>,
+        locks: HashSet<ServerLock>,
         docker: &Docker,
         server_data: &ServerData,
     ) {
@@ -62,7 +62,7 @@ impl FetchedServer {
 
     pub(crate) async fn state(
         id: u32,
-        locks: HashSet<String>,
+        locks: HashSet<ServerLock>,
         docker: &Docker,
         server_data: Option<&ServerData>,
     ) -> Result<InternalServerState, bollard::errors::Error> {
