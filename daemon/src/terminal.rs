@@ -130,8 +130,8 @@ pub async fn new_session<
                         Ok(data) => {
                             let result = state.write(data).await;
                             if let Err(err) = state.write_transform(result) {
-                                if let ChannelError::IO(ref io) = err {
-                                    warn!("Channel disconnected with error: {:?}", io);
+                                if let ChannelError::IO(ref err) = err {
+                                    warn!("Channel disconnected with error: {err:?}");
                                 }
                                 drop(err);
                                 state.close().await;

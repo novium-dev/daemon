@@ -17,6 +17,10 @@
     clippy::cast_lossless,
     reason = "ioctl can differ on different platform, for example u64 on glibc and i32 on musl"
 )]
+#![allow(
+    clippy::cast_possible_wrap,
+    reason = "ioctl can differ on different platform, for example u64 on glibc and i32 on musl"
+)]
 mod sys;
 
 use crate::utils;

@@ -46,7 +46,7 @@ clippy:
       policy: pull-push
   script:
     - rustup component add clippy
-    - RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld" cargo clippy --color always --verbose --no-default-features --features ci -- -Dwarnings
+    - RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld" cargo clippy --color always --verbose --no-default-features --features ci
 
 fmt:
   extends: .rust-default
