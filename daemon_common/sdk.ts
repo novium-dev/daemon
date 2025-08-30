@@ -1,9 +1,26 @@
+/*
+ * Copyright (C) 2025 Markus Probst
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU Affero General Public License as published by
+ * the Free Software Foundation, version 3.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU Affero General Public License for more details.
+ *
+ * You should have received a copy of the GNU Affero General Public License
+ * along with this program. If not, see <https://www.gnu.org/licenses/>.
+ */
+
 import * as ed from '@noble/ed25519';
 import { Client as UndiciClient } from 'undici';
 import * as crypto from 'node:crypto';
 import { Readable } from 'node:stream';
 import * as forge from 'node-forge';
 
+export type ServerResourcePayload = { cpu: number | null, ram: number | null, swap: number | null, disk: bigint | null, };
+export type ServerPortEntryPayload = { internal_port: number, external_port: number, external_ip: string, protocol: string, };
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;
 export type PatchEntry = { "patchtype": "normal", patch: (
       { op: 'add', path: string, value: any }
@@ -24,8 +41,6 @@ export type PatchSet = { condition: (
 export type ServerFileWrite = { "filetype": "write", data: Array<number>, } | { "filetype": "java_properties", content: { [key in string]?: string }, } | { "filetype": "json", set: Array<PatchSet>, } | { "filetype": "yaml", set: Array<PatchSet>, };
 export type ServerBuildImage = { dockerfile: string, default_tag: string | null, tag: string | null, args: { [key in string]?: string }, parents: Array<ServerBuildImage>, base: number | null, };
 export type ServerBuildPayload = { image: ServerBuildImage, backup_exclude: Array<string>, files_write: { [key in string]?: ServerFileWrite }, cap_add: Array<string>, cap_drop: Array<string>, environment: { [key in string]?: string }, uid: number | null, gid: number | null, stop_command: string | null, stop_timeout: number, };
-export type ServerResourcePayload = { cpu: number | null, ram: number | null, swap: number | null, disk: bigint | null, };
-export type ServerPortEntryPayload = { internal_port: number, external_port: number, external_ip: string, protocol: string, };
 export type NetworkAttachment = { network: number, ipv4: number, ipv6: bigint, };
 export type ServerNetworkPayload = { internet_access: boolean, networks: Array<NetworkAttachment>, };
 export type CreateServerError = { "Communication": any } | "auth/invalid" | "server/image_different" | "server/image_missing_tag" | "storage/location_not_found" | "sql/failure";
@@ -76,8 +91,8 @@ export type DatabaseUserPermissions = number;
 export type DatabaseUserPayload = { password_hash: string, permissions: number, };
 export type UpdateDatabaseError = { "Communication": any } | "auth/invalid" | "database/not_found" | "database/invalid_identifier" | "database/invalid_hash" | "database/permissionless_entry" | "sql/failure";
 export type DeleteDatabaseError = { "Communication": any } | "auth/invalid" | "database/not_found" | "sql/failure";
-export type ScheduleRunPolicy = "always" | "running" | "stopped";
 export type ScheduleStep = { "type": "start" } | { "type": "stop" } | { "type": "restart" } | { "type": "kill" } | { "type": "sleep", time: bigint, } | { "type": "terminal", command: string, } | { "type": "container", command: Array<string>, };
+export type ScheduleRunPolicy = "always" | "running" | "stopped";
 export type SchedulePayload = { policy: ScheduleRunPolicy, schedule: string, timezone: string, steps: Array<ScheduleStep>, };
 export type CreateScheduleError = { "Communication": any } | "auth/invalid" | "server/not_found" | "sql/failure";
 export type UpdateScheduleError = { "Communication": any } | "auth/invalid" | "server/not_found" | "schedule/not_found" | "sql/failure";
