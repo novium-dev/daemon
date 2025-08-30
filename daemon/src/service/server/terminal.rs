@@ -16,11 +16,8 @@ use crate::ServerData;
 use crate::sync::Mutex;
 use crate::terminal::{TerminalData, new_session};
 use crate::utils::ChannelInterceptor;
-use axum::extract::ws::{Message, Utf8Bytes};
-use axum::extract::ws::WebSocket;
-#[cfg(not(feature = "no_tty_size_please"))]
+use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bollard::Docker;
-#[cfg(not(feature = "no_tty_size_please"))]
 use core::sync::atomic::AtomicU16;
 use std::sync::Arc;
 
@@ -28,8 +25,7 @@ pub const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
 
 pub(super) async fn terminal_websocket_handle(
     id: u32,
-    #[cfg(not(feature = "no_tty_size_please"))]
-    docker: Arc<Docker>,
+    #[cfg(not(feature = "no_tty_size_please"))] docker: Arc<Docker>,
     server_data_arc: Arc<Mutex<ServerData>>,
     socket: WebSocket,
     #[cfg(not(feature = "no_tty_size_please"))] cols: Arc<AtomicU16>,
@@ -40,8 +36,6 @@ pub(super) async fn terminal_websocket_handle(
     let sender = Arc::clone(&server_data.sender);
     let attach_write = Arc::clone(&server_data.attach_write);
     drop(server_data);
-    #[cfg(feature = "no_tty_size_please")]
-    let _ = id;
 
     #[cfg(not(feature = "no_tty_size_please"))]
     let server_data_arc2 = Arc::clone(&server_data_arc);
@@ -51,8 +45,8 @@ pub(super) async fn terminal_websocket_handle(
     let cols2 = Arc::clone(&cols);
     #[cfg(not(feature = "no_tty_size_please"))]
     let rows2 = Arc::clone(&rows);
+    #[cfg(not(feature = "no_tty_size_please"))]
     tokio::task::spawn(new_session(
-        #[cfg(not(feature = "no_tty_size_please"))]
         id,
         ChannelInterceptor::new(socket, move |_socket, mut message| {
             #[cfg(not(feature = "no_tty_size_please"))]
@@ -102,13 +96,10 @@ pub(super) async fn terminal_websocket_handle(
         TerminalData {
             sender,
             attach_write,
-            #[cfg(not(feature = "no_tty_size_please"))]
             cols,
-            #[cfg(not(feature = "no_tty_size_please"))]
             rows,
             write,
         },
-        #[cfg(not(feature = "no_tty_size_please"))]
         docker,
         server_data_arc,
     ));

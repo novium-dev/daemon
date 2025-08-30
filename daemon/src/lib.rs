@@ -14,8 +14,6 @@
  */
 #![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
-// Temp
-#![allow(dead_code)]
 pub mod config;
 mod database;
 mod server;

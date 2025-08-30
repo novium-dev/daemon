@@ -1,7 +1,9 @@
 FROM rust:alpine AS build
 
 RUN apk add --no-cache ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev git mariadb mariadb-client musl-dev llvm20 clang20 clang20-static lld20 curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
-RUN apk upgrade --no-cache gcc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+
+COPY . /work
+WORKDIR /work
 
 ARG FEATURES="ci"
 
@@ -9,10 +11,7 @@ ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C linker-plugin-lto
 
 RUN RUSTFLAGS="-C opt-level=0" cargo install sqlx-cli --debug --no-default-features --features mysql,rustls
 
-ENV RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld -C link-args=-lzstd $FLAGS"
-
-COPY . /work
-WORKDIR /work
+ENV RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld $FLAGS"
 
 # build
 RUN FEATURES="$FEATURES" ./scripts/docker/build_daemon.sh

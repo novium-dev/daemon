@@ -32,9 +32,7 @@ use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
-#[cfg(not(feature = "no_tty_size_please"))]
-use core::sync::atomic::AtomicU16;
-use core::sync::atomic::Ordering;
+use core::sync::atomic::{AtomicU16, Ordering};
 use core::time::Duration;
 use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
@@ -354,9 +352,6 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         timestamp: i64,
         verify: UserSignature,
     ) -> Result<WebsocketResponse, ServerTerminalError> {
-        #[cfg(feature = "no_tty_size_please")]
-        let _ = (cols, rows);
-
         verify.verify_terminal::<ServerTerminalError>(
             self.root.user_key.as_ref(),
             timestamp,
@@ -367,13 +362,13 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
 
         let (_, server_data) =
             server_required::<ServerTerminalError>(&self.conn, &self.servers, server_id).await?;
-        #[cfg(not(feature = "no_tty_size_please"))]
         let docker = Arc::clone(&self.docker);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
             terminal_websocket_handle(
                 server_id,
                 #[cfg(not(feature = "no_tty_size_please"))]
                 docker,
+                #[cfg(not(feature = "no_tty_size_please"))]
                 server_data,
                 socket,
                 #[cfg(not(feature = "no_tty_size_please"))]
@@ -428,8 +423,6 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         let (server, server_data) =
             server_required::<ExecServerInteractiveError>(&self.conn, &self.servers, server_id)
                 .await?;
-        #[cfg(feature = "no_tty_size_please")]
-        let _ = (cols, rows);
 
         let docker = Arc::clone(&self.docker);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
@@ -439,9 +432,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
                 docker,
                 command.0,
                 socket,
-                #[cfg(not(feature = "no_tty_size_please"))]
                 cols.unwrap_or_default(),
-                #[cfg(not(feature = "no_tty_size_please"))]
                 rows.unwrap_or_default(),
             )
         })))

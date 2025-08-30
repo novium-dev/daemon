@@ -338,8 +338,8 @@ fn new_control_session(
                 got_stats = true;
                 if last_second != second {
                     last_second = second;
-                    cpu.enqueue(stats.cpu);
-                    ram.enqueue(stats.ram);
+                    cpu.push(stats.cpu);
+                    ram.push(stats.ram);
                 }
                 current_stat = stats;
             }
@@ -356,8 +356,8 @@ fn new_control_session(
         }
         if !got_stats && server_state.start() && last_second != second {
             last_second = second;
-            cpu.enqueue(current_stat.cpu);
-            ram.enqueue(current_stat.ram);
+            cpu.push(current_stat.cpu);
+            ram.push(current_stat.ram);
         }
     }
 }
@@ -1085,8 +1085,8 @@ async fn read_inner(
             io::Error::new(ErrorKind::InvalidData, "Read size larger than buffer")
         })?;
         for byte in data {
-            ring1.enqueue(*byte);
-            ring2.enqueue(*byte);
+            ring1.push(*byte);
+            ring2.push(*byte);
             match (ring1[0], ring1[1], ring1[2]) {
                 (27, 91, 67) => events.push(Event::ArrowRight),
                 (27, 91, 68) => events.push(Event::ArrowLeft),

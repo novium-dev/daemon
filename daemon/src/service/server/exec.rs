@@ -42,13 +42,10 @@ pub(super) async fn exec_websocket_handle(
     let server_data = server_data_arc.lock().await;
     if let Ok(Some((id, output, input))) = server.exec(&docker, command, &server_data, true).await {
         drop(server_data);
-        #[cfg(feature = "no_tty_size_please")]
-        drop(id);
 
         #[cfg(not(feature = "no_tty_size_please"))]
         let _ = FetchedServer::update_exec_tty_size(id.clone(), &docker, cols, rows).await;
 
-        #[cfg(not(feature = "no_tty_size_please"))]
         let docker2 = Arc::clone(&docker);
         tokio::task::spawn(new_exec_session(
             ChannelInterceptor::new(socket, move |_socket, mut message| {

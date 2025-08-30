@@ -32,4 +32,4 @@ mod types;
 #[cfg(target_os = "linux")]
 mod wrapper;
 
-include!("../../config.rs");
+include!("../../../config.rs");

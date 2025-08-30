@@ -18,7 +18,6 @@ use crate::server::stop::ServerStopError;
 use crate::utils::ChannelWriteData;
 #[cfg(not(feature = "no_tty_size_please"))]
 use bollard::Docker;
-#[cfg(not(feature = "no_tty_size_please"))]
 use bollard::query_parameters::ResizeContainerTTYOptions;
 use ringbuffer::AllocRingBuffer;
 #[cfg(not(feature = "no_tty_size_please"))]

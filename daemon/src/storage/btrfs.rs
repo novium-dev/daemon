@@ -34,7 +34,7 @@ pub fn get_subvol_id(file: Result<impl AsRawFd, io::Error>) -> io::Result<u64> {
     let fd = file.as_raw_fd();
 
     // SAFETY: ioctl syscall, should always be safe
-    if unsafe { ioctl(fd, BTRFS_IOC_INO_LOOKUP as _, &mut args) } < 0i32 {
+    if unsafe { ioctl(fd, BTRFS_IOC_INO_LOOKUP.into(), &mut args) } < 0i32 {
         return Err(io::Error::last_os_error());
     }
     Ok(args.treeid)
@@ -66,7 +66,7 @@ pub fn search_quotas(
 
     'l: loop {
         // SAFETY: ioctl syscall, should always be safe
-        if unsafe { ioctl(fd, BTRFS_IOC_TREE_SEARCH as _, &mut args) } < 0i32 {
+        if unsafe { ioctl(fd, BTRFS_IOC_TREE_SEARCH.into(), &mut args) } < 0i32 {
             return Err(io::Error::last_os_error());
         }
         let sk = &mut args.key;
@@ -160,7 +160,7 @@ pub async fn apply_qgroup_limit(dir: &PathBuf, disk: Option<u64>) -> Result<(), 
 
     // SAFETY: ioctl syscall, should always be safe
     let ret = tokio::task::spawn_blocking(move || unsafe {
-        ioctl(file.as_raw_fd(), BTRFS_IOC_QGROUP_LIMIT as _, &args)
+        ioctl(file.as_raw_fd(), BTRFS_IOC_QGROUP_LIMIT.into(), &args)
     })
     .await
     .map_err(io::Error::other)?;
@@ -200,7 +200,7 @@ pub async fn new_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
         };
 
         // SAFETY: ioctl syscall, should always be safe
-        if unsafe { ioctl(fd.as_raw_fd(), BTRFS_IOC_SUBVOL_CREATE_V2 as _, &args) } < 0i32 {
+        if unsafe { ioctl(fd.as_raw_fd(), BTRFS_IOC_SUBVOL_CREATE_V2.into(), &args) } < 0i32 {
             return Err(io::Error::last_os_error());
         }
         Ok(())
@@ -229,7 +229,7 @@ pub async fn remove_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
         };
 
         // SAFETY: ioctl syscall, should always be safe
-        if unsafe { ioctl(fd.as_raw_fd(), BTRFS_IOC_SNAP_DESTROY_V2 as _, &args) } < 0i32 {
+        if unsafe { ioctl(fd.as_raw_fd(), BTRFS_IOC_SNAP_DESTROY_V2.into(), &args) } < 0i32 {
             return Err(io::Error::last_os_error());
         }
         Ok(())
@@ -266,7 +266,7 @@ pub async fn new_snapshot(
         };
 
         // SAFETY: ioctl syscall, should always be safe
-        if unsafe { ioctl(fd.as_raw_fd(), BTRFS_IOC_SNAP_CREATE_V2 as _, &args) } < 0i32 {
+        if unsafe { ioctl(fd.as_raw_fd(), BTRFS_IOC_SNAP_CREATE_V2.into(), &args) } < 0i32 {
             return Err(io::Error::last_os_error());
         }
         Ok(())
