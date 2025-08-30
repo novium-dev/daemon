@@ -214,8 +214,10 @@ pub async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex<Server
         }
 
         drop(sessions);
-        if (server_data.size.0 != cols || server_data.size.1 != rows) && let Err(err) =
-                FetchedServer::update_tty_size(id, docker, &mut server_data, cols, rows).await {
+        if (server_data.size.0 != cols || server_data.size.1 != rows)
+            && let Err(err) =
+                FetchedServer::update_tty_size(id, docker, &mut server_data, cols, rows).await
+        {
             if matches!(err, ServerStopError::NotRunning) {
                 return;
             }

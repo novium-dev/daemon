@@ -41,10 +41,12 @@ impl<T: DaemonExtra> Server for DaemonSSHServer<T> {
     }
 
     fn handle_session_error(&mut self, err: <Self::Handler as Handler>::Error) {
-        if let russh::Error::IO(ref err) = err && matches!(
+        if let russh::Error::IO(ref err) = err
+            && matches!(
                 err.kind(),
                 ErrorKind::UnexpectedEof | ErrorKind::ConnectionReset
-            ) {
+            )
+        {
             return;
         }
         debug!("Session error: {err:?}");

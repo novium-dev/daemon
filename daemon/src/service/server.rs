@@ -259,7 +259,9 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         let daemon = self.clone();
         tokio::task::spawn(async move {
             let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
-            if let Ok(server_data) = server_data && let Err(err) = server.stop(&daemon.docker, server_data).await {
+            if let Ok(server_data) = server_data
+                && let Err(err) = server.stop(&daemon.docker, server_data).await
+            {
                 warn!("Failed to stop server: {err:?}");
             }
         });
@@ -274,7 +276,9 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         let daemon = self.clone();
         tokio::task::spawn(async move {
             let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
-            if let Ok(server_data) = server_data && let Err(err) = server.kill(&daemon.docker, server_data).await {
+            if let Ok(server_data) = server_data
+                && let Err(err) = server.kill(&daemon.docker, server_data).await
+            {
                 warn!("Failed to kill server: {err:?}");
             }
         });
@@ -289,7 +293,9 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         let state = self.clone();
         tokio::task::spawn(async move {
             let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
-            if let Ok(server_data) = server_data && let Err(err) = server.restart(&state.docker, server_data).await {
+            if let Ok(server_data) = server_data
+                && let Err(err) = server.restart(&state.docker, server_data).await
+            {
                 warn!("Failed to restart server: {err:?}");
             }
         });
@@ -304,7 +310,9 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         let state = self.clone();
         tokio::task::spawn(async move {
             let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
-            if let Ok(server_data) = server_data && let Err(err) = server.exec(&state.docker, cmd, &server_data, false).await {
+            if let Ok(server_data) = server_data
+                && let Err(err) = server.exec(&state.docker, cmd, &server_data, false).await
+            {
                 warn!("Failed to execute command in server: {:?}", err);
             }
         });

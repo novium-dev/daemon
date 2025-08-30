@@ -122,30 +122,30 @@ pub async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(),
         .inspect_err(|err| error!("Unable to check if storage directory exists: {err:?}"))?
         && let StorageEntry::Btrfs { .. } = storage
     {
-            use std::io::ErrorKind;
-            let Some(parent) = dir.parent() else {
-                error!("Got path without parent: {:?}", dir.to_string_lossy());
-                return Err(io::Error::other("Invalid path: No parent"));
-            };
-            let Some(filename) = dir.file_name() else {
-                error!("Missing final component in storage path");
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "No final component in storage path",
-                ));
-            };
-            let Some(filename) = filename.to_str() else {
-                error!("Final component in storage path is not utf8");
-                return Err(io::Error::new(
-                    ErrorKind::InvalidData,
-                    "Final component in storage path is not utf8",
-                ));
-            };
-            btrfs::remove_subvolume(parent, filename)
-                .await
-                .inspect_err(|err| {
-                    error!("Unable to remove subvolume of storage directory: {err:?}");
-                })?;
+        use std::io::ErrorKind;
+        let Some(parent) = dir.parent() else {
+            error!("Got path without parent: {:?}", dir.to_string_lossy());
+            return Err(io::Error::other("Invalid path: No parent"));
+        };
+        let Some(filename) = dir.file_name() else {
+            error!("Missing final component in storage path");
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "No final component in storage path",
+            ));
+        };
+        let Some(filename) = filename.to_str() else {
+            error!("Final component in storage path is not utf8");
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "Final component in storage path is not utf8",
+            ));
+        };
+        btrfs::remove_subvolume(parent, filename)
+            .await
+            .inspect_err(|err| {
+                error!("Unable to remove subvolume of storage directory: {err:?}");
+            })?;
     }
     if dir
         .try_exists()

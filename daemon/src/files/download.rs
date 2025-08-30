@@ -63,7 +63,9 @@ pub async fn download_file<
         .await
         .inspect_err(|err| error!("Failed to download file (metadata): {err:?}"))?;
     let length = metadata.len();
-    if let Some(limit) = limit && length > limit {
+    if let Some(limit) = limit
+        && length > limit
+    {
         return Err(<E as FromFileLimitReached>::from());
     }
 

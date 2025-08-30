@@ -279,9 +279,12 @@ impl FetchedServer {
     }
 
     pub async fn resolve_locked(id: u32, conn: &Pool<MySql>) -> HashSet<ServerLock> {
-        if let Ok(value) = query_scalar!("SELECT `lock` AS `lock: ServerLock` FROM `server_locks` WHERE `server` = ?", id)
-            .fetch_all(conn)
-            .await
+        if let Ok(value) = query_scalar!(
+            "SELECT `lock` AS `lock: ServerLock` FROM `server_locks` WHERE `server` = ?",
+            id
+        )
+        .fetch_all(conn)
+        .await
         {
             return value.into_iter().collect();
         }

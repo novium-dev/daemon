@@ -15,10 +15,10 @@
 use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::server::stop::ServerStopError;
-use cap_async_std::async_std::prelude::Stream;
 use bollard::Docker;
 use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, StartExecResults};
+use cap_async_std::async_std::prelude::Stream;
 use core::pin::Pin;
 use tokio::io::AsyncWrite;
 

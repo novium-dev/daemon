@@ -325,7 +325,9 @@ impl<T: DaemonExtra> Daemon<T> {
                     if let Some(suffix) = name.strip_prefix('/') {
                         name = suffix;
                     }
-                    if let Some(suffix) = name.strip_prefix(crate::common::CONTAINER_PREFIX) && let Ok(container_id) = suffix.parse() {
+                    if let Some(suffix) = name.strip_prefix(crate::common::CONTAINER_PREFIX)
+                        && let Ok(container_id) = suffix.parse()
+                    {
                         id = Some(container_id);
                         break;
                     }

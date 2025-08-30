@@ -228,30 +228,31 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
             let conn = Arc::clone(&daemon.conn);
             join.spawn(async move {
                 let stats_guard = timeout(Duration::from_millis(100), data.stats_lock.lock()).await;
-                if stats_guard.is_ok() && let Some(stats_sender) = sender {
-                        if let Some(server_id) = server_id
-                            && !quota
-                        {
-                            let locks = FetchedServer::resolve_locked(server_id, &conn).await;
-                            let _ =
-                                stats_sender.send(ChannelWriteData::Status(if locks.is_empty() {
-                                    InternalServerState::Stopped
-                                } else {
-                                    InternalServerState::Locked
-                                }));
-                        }
-                        let disk = data.value.0.load(Ordering::Relaxed);
-                        let disk_max = data.value.1.load(Ordering::Relaxed);
-                        let _ = stats_sender.send(ChannelWriteData::Stats(
-                            ServerStats::default()
-                                .with_disk((disk == -1).then(|| disk.unsigned_abs()))
-                                .with_max(
-                                    cpu_max,
-                                    ram_max,
-                                    swap_max,
-                                    (disk_max == -1).then(|| disk_max.unsigned_abs()),
-                                ),
-                        ));
+                if stats_guard.is_ok()
+                    && let Some(stats_sender) = sender
+                {
+                    if let Some(server_id) = server_id
+                        && !quota
+                    {
+                        let locks = FetchedServer::resolve_locked(server_id, &conn).await;
+                        let _ = stats_sender.send(ChannelWriteData::Status(if locks.is_empty() {
+                            InternalServerState::Stopped
+                        } else {
+                            InternalServerState::Locked
+                        }));
+                    }
+                    let disk = data.value.0.load(Ordering::Relaxed);
+                    let disk_max = data.value.1.load(Ordering::Relaxed);
+                    let _ = stats_sender.send(ChannelWriteData::Stats(
+                        ServerStats::default()
+                            .with_disk((disk == -1).then(|| disk.unsigned_abs()))
+                            .with_max(
+                                cpu_max,
+                                ram_max,
+                                swap_max,
+                                (disk_max == -1).then(|| disk_max.unsigned_abs()),
+                            ),
+                    ));
                 }
             });
         }

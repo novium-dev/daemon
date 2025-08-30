@@ -19,7 +19,11 @@ use ed25519_dalek::pkcs8::{
 };
 use ed25519_dalek::{SignatureError, SigningKey, VerifyingKey};
 use pem::{Pem, PemError};
-use rcgen::{BasicConstraints, CertificateParams, CertificateSigningRequestParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, string::Ia5String, IsCa, KeyPair, KeyUsagePurpose, PublicKey, SanType, Issuer};
+use rcgen::{
+    BasicConstraints, CertificateParams, CertificateSigningRequestParams, DistinguishedName,
+    DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose, PublicKey, SanType,
+    string::Ia5String,
+};
 use rustls::pki_types::pem::SectionKind;
 use rustls::pki_types::{
     CertificateDer, CertificateSigningRequestDer, DnsName, PrivateKeyDer, PrivatePkcs1KeyDer,

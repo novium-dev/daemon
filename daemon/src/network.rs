@@ -41,7 +41,9 @@ impl Network {
         .execute(&mut **tx)
         .await
         .inspect_err(|err| {
-            if let Error::Database(db) = &err && (db.is_unique_violation() || db.is_check_violation()) {
+            if let Error::Database(db) = &err
+                && (db.is_unique_violation() || db.is_check_violation())
+            {
                 return;
             }
             error!("Failed to insert network: {err:?}");
