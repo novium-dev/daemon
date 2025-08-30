@@ -18,12 +18,12 @@ use axum::http;
 use core::hash::Hash;
 use core::time::Duration;
 use daemon_common::ssh::DaemonBackendAuthResponse;
+use russh::keys::ssh_key::Fingerprint;
 use russh::keys::{HashAlg, PublicKey};
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::time::Instant;
-use russh::keys::ssh_key::Fingerprint;
 use tracing::debug;
 
 pub struct InvalidationCacheMap<T: Clone + Hash + Eq, E: Clone>(HashMap<T, (Instant, E)>, Duration);
