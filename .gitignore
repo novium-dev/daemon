@@ -18,15 +18,8 @@ rustc-*.*
 control.sock
 .env.local
 .DS_Store
-node_modules/
 
-# React Router
-frontend/.react-router/
-frontend/.svelte-kit/
-build/*
-gen/*
-
-daemon/server/wrapper-precompile.h*
-daemon/server/.macro_eval.c
-daemon/common/sdk.ts
+daemon/wrapper-precompile.h*
+daemon/.macro_eval.c
+daemon_common/sdk.ts
 
