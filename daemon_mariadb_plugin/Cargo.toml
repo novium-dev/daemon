@@ -22,7 +22,7 @@ maintainer-scripts = "debian/"
 section = "database"
 
 [lib]
-crate-type = ["cdylib"]
+crate-type = ["cdylib", "rlib"]
 
 [dependencies]
 libc.workspace = true
