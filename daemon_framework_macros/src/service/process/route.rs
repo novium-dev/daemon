@@ -65,7 +65,7 @@ pub fn process(
 
     routes.extend(quote! {
 
-        #crate_prefix paste::paste! {
+        #crate_prefix pastey::paste! {
 
             pub(crate) fn #fn_ident<T: super::#trait_ident + Clone + Send + Sync + 'static, #generic_types>(service: T) -> impl #crate_prefix axum::handler::Handler<(#target_generic_types), ()> #generic_type_conditions {
                 |#http_args| async move {

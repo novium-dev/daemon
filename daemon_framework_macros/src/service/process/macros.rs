@@ -171,7 +171,7 @@ pub fn process(
                     args.extend(group.stream());
                 }
                 errors.extend(quote! {
-                        #crate_prefix paste::paste! {
+                        #crate_prefix pastey::paste! {
                             #crate_prefix error!([< #fn_ident:camel Error >] #args);
                         }
                 });
@@ -183,7 +183,7 @@ pub fn process(
                         if let TokenTree::Ident(ident) = tree {
                             if ident.to_string().eq("_") {
                                 quote! {
-                                    #crate_prefix paste::paste! { error::[< #fn_ident:camel Error >] }
+                                    #crate_prefix pastey::paste! { error::[< #fn_ident:camel Error >] }
                                 }
                                     .into_iter()
                                     .collect()

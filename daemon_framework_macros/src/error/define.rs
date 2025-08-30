@@ -79,7 +79,7 @@ pub fn define_error0(crate_prefix: &TokenStream, attr: TokenStream) -> TokenStre
         let description = inner.description;
 
         result.extend(quote! {
-            #crate_prefix paste::paste! {
+            #crate_prefix pastey::paste! {
                 #[automatically_derived]
                 pub mod [< error_ #category:snake _ #error:snake >] {
 

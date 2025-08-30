@@ -437,7 +437,7 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
     let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
 
     quote! {
-        #crate_prefix paste::paste! {
+        #crate_prefix pastey::paste! {
             #[derive(Debug)]
             #[#crate_prefix ts]
             #[ts(crate = #ts_crate_literal)]

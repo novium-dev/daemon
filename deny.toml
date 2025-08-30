@@ -20,8 +20,8 @@ unknown-registry = "deny"
 unknown-git = "deny"
 
 allow-git = [
-  "https://github.com/MarkusTieger/reqwest.git?branch=testing",
-  "https://github.com/MarkusTieger/hyper-rustls.git",
+  "https://github.com/MarkusTieger/reqwest.git",
+  "https://github.com/rustls/hyper-rustls.git?rev=5e9b69b4128abfc147e8b6fa55977eac4c3f575c",
   "https://github.com/MarkusTieger/serde-yaml-ng.git",
   "https://github.com/qu0b/json-patch.git?rev=4eca239"
 ]
@@ -40,13 +40,15 @@ allow = [
   "Zlib",
   "AGPL-3.0",
   "CDLA-Permissive-2.0",
-  "OpenSSL"
+  "OpenSSL",
+
+  "bzip2-1.0.6" # No osi approvel yet?
 ]
 
 [advisories]
 unmaintained = "workspace"
 ignore = [
     "RUSTSEC-2023-0071", # Marvin side-channel attack on rsa@0.9.8
-    "RUSTSEC-2024-0436"
+#    "RUSTSEC-2024-0436" # TODO: paste is unmaintained
 ]
 

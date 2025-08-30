@@ -210,7 +210,7 @@ futures-util = "0.3.31"
 arrayvec = "0.7.6"
 either = "1.15.0"
 tower-layer = "0.3.3"
-paste = "1.0.15"
+pastey = "0.1.1"
 no-panic = "0.1.35"
 itertools = "0.14.0"
 arc-swap = "1.7.1"
@@ -244,7 +244,6 @@ version = "0.26.2"
 
 [workspace.dependencies.reqwest]
 git = "https://github.com/MarkusTieger/reqwest.git"
-branch = "testing"
 default-features = false
 features = [
     "charset",

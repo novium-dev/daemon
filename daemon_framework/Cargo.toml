@@ -13,7 +13,7 @@ ts = ["ts-rs", "daemon_framework_macros/ts", "convert_case"]
 
 [dependencies]
 axum-extra.workspace = true
-paste.workspace = true
+pastey.workspace = true
 serde.workspace = true
 daemon_framework_macros.workspace = true
 async-trait.workspace = true

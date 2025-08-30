@@ -145,7 +145,7 @@ pub fn process(
         };
 
         routes.extend(quote! {
-            #crate_prefix paste::paste! {
+            #crate_prefix pastey::paste! {
                 #[derive(Debug, Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize, #ts_extra)]
                 #ts_attr_extra
                 pub(crate) struct [< #fn_ident:camel Query >] {

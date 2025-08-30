@@ -28,7 +28,7 @@ pub use daemon_framework_macros::error;
 pub use daemon_framework_macros::service;
 pub use daemon_framework_macros::ts;
 pub use http;
-pub use paste;
+pub use pastey;
 pub use reqwest;
 pub use serde;
 pub use serde_json;
@@ -725,7 +725,7 @@ impl MultiRouterExtension for (OpenApiRouter, OpenApiRouter) {
 #[macro_export]
 macro_rules! define_path_variable {
     ($name:ident $description:literal) => {
-        $crate::paste::paste! {
+        $crate::pastey::paste! {
             pub mod [< variable_path_ $name:snake >] {
 
                 pub const DESCRIPTION: &str = $description;
@@ -738,7 +738,7 @@ macro_rules! define_path_variable {
 #[macro_export]
 macro_rules! define_query_variable {
     ($name:ident $description:literal) => {
-        $crate::paste::paste! {
+        $crate::pastey::paste! {
             pub mod [< variable_query_ $name:snake >] {
 
                 pub const DESCRIPTION: &str = $description;
@@ -751,7 +751,7 @@ macro_rules! define_query_variable {
 #[macro_export]
 macro_rules! define_header_variable {
     ($name:ident $description:literal) => {
-        $crate::paste::paste! {
+        $crate::pastey::paste! {
             pub mod [< variable_header_ $name:snake >] {
 
                 pub const DESCRIPTION: &str = $description;

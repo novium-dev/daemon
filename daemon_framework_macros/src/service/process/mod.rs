@@ -776,7 +776,7 @@ pub fn finish(
 
     trait_body_output.extend(quote! {
 
-        #crate_prefix paste::paste! {
+        #crate_prefix pastey::paste! {
 
             fn routes(&self) -> #crate_prefix utoipa_axum::router::OpenApiRouter where Self: Clone + Send + Sync + Sized + 'static {
                 use #crate_prefix utoipa_axum::router::OpenApiRouter;
@@ -806,7 +806,7 @@ pub fn finish(
     {
         trait_body_output.extend(quote! {
 
-            #crate_prefix paste::paste! {
+            #crate_prefix pastey::paste! {
 
                 fn visit_types(visitor: &mut #crate_prefix ts::TSTypeVisitor) where Self: Sized {
                     #ts_types_impl_merged
@@ -823,7 +823,7 @@ pub fn finish(
 
     output_extra.extend(quote! {
 
-        #crate_prefix paste::paste! {
+        #crate_prefix pastey::paste! {
 
             pub trait [< #trait_ident URL >]: #crate_prefix FrameworkClientImpl {
                 #client_def_merged
