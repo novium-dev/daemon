@@ -5,7 +5,23 @@ import { Readable } from 'node:stream';
 import * as forge from 'node-forge';
 
 export type JsonValue = number | string | boolean | Array<JsonValue> | { [key in string]?: JsonValue } | null;
-export type ServerFileWrite = { "filetype": "write", data: Array<number>, } | { "filetype": "properties", content: { [key in string]?: string }, } | { "filetype": "json", content: { [key in string]?: JsonValue }, } | { "filetype": "yaml", content: { [key in string]?: JsonValue }, };
+export type PatchEntry = { "patchtype": "normal", patch: (
+      { op: 'add', path: string, value: any }
+      | { op: 'remove', path: string }
+      | { op: 'replace', path: string, value: any }
+      | { op: 'move', from: string, path: string }
+      | { op: 'copy', from: string, path: string }
+      | { op: 'test', path: string, value: any }
+    ) [], } | { "patchtype": "merge", patch: JsonValue, };
+export type PatchSet = { condition: (
+      { op: 'add', path: string, value: any }
+      | { op: 'remove', path: string }
+      | { op: 'replace', path: string, value: any }
+      | { op: 'move', from: string, path: string }
+      | { op: 'copy', from: string, path: string }
+      | { op: 'test', path: string, value: any }
+    ) [], patch: PatchEntry, };
+export type ServerFileWrite = { "filetype": "write", data: Array<number>, } | { "filetype": "java_properties", content: { [key in string]?: string }, } | { "filetype": "json", set: Array<PatchSet>, } | { "filetype": "yaml", set: Array<PatchSet>, };
 export type ServerBuildImage = { dockerfile: string, default_tag: string | null, tag: string | null, args: { [key in string]?: string }, parents: Array<ServerBuildImage>, base: number | null, };
 export type ServerBuildPayload = { image: ServerBuildImage, backup_exclude: Array<string>, files_write: { [key in string]?: ServerFileWrite }, cap_add: Array<string>, cap_drop: Array<string>, environment: { [key in string]?: string }, uid: number | null, gid: number | null, stop_command: string | null, stop_timeout: number, };
 export type ServerResourcePayload = { cpu: number | null, ram: number | null, swap: number | null, disk: bigint | null, };
@@ -44,7 +60,7 @@ export type ServerDownloadFileUserError = { "Communication": any } | "auth/signa
 export type ServerUploadFileError = { "Communication": any } | "auth/invalid" | "storage/not_found" | "storage/mutex_locked" | "storage/failure" | "storage/quota_reached" | "file/not_found" | "file/sandbox_violated" | "file/is_directory" | "sql/failure";
 export type ServerUploadFileUserError = { "Communication": any } | "auth/signature_invalid" | "auth/signature_expired" | "storage/not_found" | "storage/mutex_locked" | "storage/failure" | "storage/quota_reached" | "file/not_found" | "file/sandbox_violated" | "file/is_directory" | "sql/failure";
 export type ServerWriteFileByUrlError = { "Communication": any } | "auth/invalid" | "storage/not_found" | "storage/mutex_locked" | "storage/failure" | "storage/quota_reached" | "file/not_found" | "file/sandbox_violated" | "file/is_directory" | "sql/failure" | "http_request/failed" | "http_request/not_success" | "http_request/read_failed";
-export type ServerWriteFileByTemplateError = { "Communication": any } | "auth/invalid" | "storage/not_found" | "storage/mutex_locked" | "storage/failure" | "storage/quota_reached" | "file/not_found" | "file/sandbox_violated" | "file/is_directory" | "sql/failure";
+export type ServerWriteFileByTemplateError = { "Communication": any } | "auth/invalid" | "storage/not_found" | "storage/mutex_locked" | "storage/failure" | "storage/quota_reached" | "storage/patch_failed" | "file/not_found" | "file/sandbox_violated" | "file/is_directory" | "sql/failure";
 export type ServerDeleteFileError = { "Communication": any } | "auth/invalid" | "storage/not_found" | "storage/mutex_locked" | "storage/failure" | "file/not_found" | "file/sandbox_violated" | "file/not_directory" | "file/is_directory" | "sql/failure";
 export type ServerCreateDirectoryError = { "Communication": any } | "auth/invalid" | "storage/not_found" | "storage/mutex_locked" | "storage/failure" | "storage/quota_reached" | "file/not_found" | "file/sandbox_violated" | "file/already_exists" | "sql/failure";
 export type ServerSymlinkError = { "Communication": any } | "auth/invalid" | "storage/not_found" | "storage/mutex_locked" | "storage/failure" | "storage/quota_reached" | "file/not_found" | "file/sandbox_violated" | "file/already_exists" | "sql/failure";
@@ -83,35 +99,36 @@ namespace FileMode {
 }
 
 export class UserSignature {
-  readonly signature: Uint8Array;
+    readonly signature: Uint8Array;
 
-  constructor(signature: Uint8Array) {
-    this.signature = signature;
-  }
+    constructor(signature: Uint8Array) {
+        this.signature = signature;
+    }
 
-  static new(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null) {
-    return new UserSignature(ed.sign(UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), privateKey));
-  }
+    static new(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null) {
+        return new UserSignature(ed.sign(UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), privateKey));
+    }
 
-  static async newAsync(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): Promise<UserSignature> {
-    return new UserSignature(await ed.signAsync(UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), privateKey));
-  }
+    static async newAsync(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): Promise<UserSignature> {
+        return new UserSignature(await ed.signAsync(UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), privateKey));
+    }
 
-  verify(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): boolean {
-    return ed.verify(this.signature, UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), publicKey);
-  }
+    verify(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): boolean {
+        return ed.verify(this.signature, UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), publicKey);
+    }
 
-  async verifyAsync(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): Promise<boolean> {
-    return await ed.verifyAsync(this.signature, UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), publicKey);
-  }
+    async verifyAsync(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, name: string, extra: string | null): Promise<boolean> {
+        return await ed.verifyAsync(this.signature, UserSignature.content(timestamp, nodeIdentifier, serverId, name, extra), publicKey);
+    }
 
-  private static content(timestamp: bigint, node_identifier: string, server_id: number, name: string, extra: string | null): Buffer {
-    return Buffer.from(`${name}-${node_identifier}-${server_id}-${timestamp}${extra === null ? "" : extra}`, 'utf8');
-  }
+    private static content(timestamp: bigint, node_identifier: string, server_id: number, name: string, extra: string | null): Buffer {
+        return Buffer.from(`${name}-${node_identifier}-${server_id}-${timestamp}${extra === null ? "" : extra}`, 'utf8');
+    }
 
-  toString(): string {
-    return Buffer.from(this.signature).toString('base64');
-  }
+    toString(): string {
+        return Buffer.from(this.signature).toString('base64');
+    }
+
 
   static newServerBackupDownload(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, backupStorage: string, backupId: bigint): UserSignature {
     return UserSignature.new(privateKey, timestamp, nodeIdentifier, serverId, "backup", `-${backupStorage}-${backupId}`);
@@ -224,8 +241,9 @@ export class UserSignature {
   async verifyServerFileUploadAsync(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number, path: string): Promise<boolean> {
     return await this.verifyAsync(publicKey, timestamp, nodeIdentifier, serverId, "server_file_upload", `-${path}`);
   }
-}
 
+
+}
 
 type DaemonSDKRequest = { path: string, method: string, headers: Record<string, string>, body?: string | Buffer | Uint8Array | Readable };
 
@@ -1915,6 +1933,8 @@ export class DaemonSDK {
           case "storage/failure":
             return { Err: errorId };
           case "storage/quota_reached":
+            return { Err: errorId };
+          case "storage/patch_failed":
             return { Err: errorId };
           case "file/not_found":
             return { Err: errorId };

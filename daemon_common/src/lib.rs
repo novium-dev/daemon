@@ -75,7 +75,7 @@ fn export_ts() {
     <DaemonSDKWithUserKey as BackupServiceUserKeyExtension>::visit_funcs(&mut user_visitor);
     <DaemonSDKWithUserKey as FilesServiceUserKeyExtension>::visit_funcs(&mut user_visitor);
 
-    let sdk = include_str!("sdk/template.ts")
+    let sdk = include_str!("sdk/ts/template.ts")
         .replace("/** {types} */", &type_visitor.out)
         .replace("/** {sdk_implementation} */", &visitor.out)
         .replace("/** {sdk_user_implementation} */", &user_visitor.out)
