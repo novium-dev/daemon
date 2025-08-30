@@ -19,10 +19,7 @@ use ed25519_dalek::pkcs8::{
 };
 use ed25519_dalek::{SignatureError, SigningKey, VerifyingKey};
 use pem::{Pem, PemError};
-use rcgen::{
-    BasicConstraints, CertificateParams, CertificateSigningRequestParams, DistinguishedName,
-    DnType, ExtendedKeyUsagePurpose, Ia5String, IsCa, KeyPair, KeyUsagePurpose, PublicKey, SanType,
-};
+use rcgen::{BasicConstraints, CertificateParams, CertificateSigningRequestParams, DistinguishedName, DnType, ExtendedKeyUsagePurpose, string::Ia5String, IsCa, KeyPair, KeyUsagePurpose, PublicKey, SanType, Issuer};
 use rustls::pki_types::pem::SectionKind;
 use rustls::pki_types::{
     CertificateDer, CertificateSigningRequestDer, DnsName, PrivateKeyDer, PrivatePkcs1KeyDer,
@@ -290,7 +287,7 @@ impl DaemonRootKey {
 
     pub fn sign_daemon_key(
         &self,
-        root_privkey: &KeyPair,
+        root_keypair: &KeyPair,
         public_key: PublicKey,
         identifier: Uuid,
     ) -> Result<CertificateDer<'static>, rcgen::Error> {
@@ -313,10 +310,9 @@ impl DaemonRootKey {
 
         let csr_params = CertificateSigningRequestParams { public_key, params };
 
-        let root_cert = CertificateParams::from_ca_cert_der(&self.tls_ca)?;
-        let root_cert = root_cert.self_signed(root_privkey)?;
+        let issuer = Issuer::from_ca_cert_der(&self.tls_ca, clone_keypair(root_keypair))?;
 
-        let signed = csr_params.signed_by(&root_cert, root_privkey)?;
+        let signed = csr_params.signed_by(&issuer)?;
 
         Ok(signed.der().clone())
     }
@@ -342,10 +338,9 @@ impl DaemonRootKey {
         params.not_after = OffsetDateTime::now_utc().saturating_add(Duration::days(365 * 64));
         params.not_before = OffsetDateTime::now_utc();
 
-        let root_cert = CertificateParams::from_ca_cert_der(&self.tls_ca)?;
-        let root_cert = root_cert.self_signed(root_keypair)?;
+        let issuer = Issuer::from_ca_cert_der(&self.tls_ca, clone_keypair(root_keypair))?;
 
-        let cert = params.signed_by(keypair, &root_cert, root_keypair)?;
+        let cert = params.signed_by(keypair, &issuer)?;
 
         let privkey =
             PrivateKeyDer::try_from(keypair.serialize_der()).map_err(BackendKeyError::Der)?;
@@ -366,6 +361,11 @@ impl DaemonRootKey {
             tls_cert: Arc::new(tls_cert),
         })
     }
+}
+
+fn clone_keypair(keypair: &KeyPair) -> KeyPair {
+    let der = PrivateKeyDer::try_from(keypair.serialize_der()).expect("Unable to clone keypair");
+    KeyPair::from_der_and_sign_algo(&der, keypair.algorithm()).expect("Unable to clone keypair")
 }
 
 impl BackendKey {
