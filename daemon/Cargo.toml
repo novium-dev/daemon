@@ -106,10 +106,6 @@ features = ["axum"]
 version = "3.4.4"
 features = ["tokio1"]
 
-[dependencies.async-std]
-version = "1.13.2"
-features = ["tokio1"]
-
 [dependencies.daemon_common]
 workspace = true
 features = ["docker", "service", "ssh", "keys"]

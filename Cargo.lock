@@ -1251,7 +1251,6 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "arc-swap",
- "async-std",
  "async-trait",
  "axum",
  "axum-extra",

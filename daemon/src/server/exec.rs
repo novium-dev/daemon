@@ -15,7 +15,7 @@
 use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::server::stop::ServerStopError;
-use async_std::prelude::Stream;
+use cap_async_std::async_std::prelude::Stream;
 use bollard::Docker;
 use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, StartExecResults};

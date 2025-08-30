@@ -15,7 +15,7 @@
 use crate::server::start::ServerStartError;
 use crate::server::{FetchedServer, Server};
 use crate::{Daemon, DaemonExtra, ServerData};
-use async_std::stream::StreamExt as _;
+use cap_async_std::async_std::stream::StreamExt as _;
 use bollard::Docker;
 use bollard::query_parameters::{BuildImageOptions, ListImagesOptions};
 use http_body_util::Full;
