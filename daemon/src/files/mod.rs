@@ -21,6 +21,7 @@ mod mkdir;
 mod rename;
 mod stat;
 mod symlink;
+mod watch;
 mod write;
 
 use std::io;
@@ -43,6 +44,7 @@ pub use mkdir::mkdir_file;
 pub use rename::rename_file;
 pub use stat::stat_file;
 pub use symlink::symlink_file;
+pub use watch::watch_files;
 pub use write::{write_file, write_file_by_template, write_file_by_url};
 
 async fn storage_path(

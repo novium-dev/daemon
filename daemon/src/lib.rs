@@ -45,6 +45,7 @@ use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
 use sqlx::{MySql, Pool};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tokio::io::AsyncWrite;
 use tokio::task::{AbortHandle, JoinSet};
 use url::Url;
@@ -122,6 +123,29 @@ pub(crate) struct StorageData {
     pub(crate) lock: Arc<RwLock<()>>,
     pub(crate) value: Arc<(AtomicI64, AtomicI64)>,
     pub(crate) stats_lock: Arc<Mutex<()>>,
+    pub(crate) notify: Sender<StorageNotification>,
+}
+
+#[derive(Clone)]
+pub(crate) enum StorageNotification {
+    Rename {
+        from: PathBuf,
+        to: PathBuf,
+        inode: u64,
+        from_parent_inode: u64,
+        to_parent_inode: u64,
+    },
+    Update {
+        path: PathBuf,
+        inode: u64,
+        parent_inode: u64,
+    },
+    Delete {
+        path: PathBuf,
+        dir: bool,
+        inode: u64,
+        parent_inode: u64,
+    },
 }
 
 pub(crate) type ServerContainerWrite = Pin<Box<dyn AsyncWrite + Send>>;
@@ -168,7 +192,7 @@ impl Default for ServerData {
 }
 
 // Some safeguards
-// Linux Maintainer: Markus Probst <markustieger@gmail.com>
+// Linux Maintainer: Markus Probst <markus.probst@posteo.de>
 // Macos Maintainer: InvalidJoker <0limitdev@gmail.com>
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 compile_error!("This daemon only runs on Unix.");

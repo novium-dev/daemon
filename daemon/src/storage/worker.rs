@@ -100,6 +100,7 @@ async fn resolve(
                             .map_or(-1, u64::cast_signed),
                     ),
                 )),
+                notify: Sender::new(32),
             })
             .clone();
         drop(storages);

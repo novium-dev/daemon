@@ -12,12 +12,12 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
-use crate::StorageData;
 use crate::config::{DaemonConfig, StorageEntry};
 use crate::storage::{StorageIdentifier, prepare};
 use crate::sync::Mutex;
 use crate::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use crate::utils::generic_server_select;
+use crate::{StorageData, StorageNotification};
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
 use core::sync::atomic::AtomicI64;
@@ -29,6 +29,7 @@ use sqlx::{Executor, MySql};
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::Arc;
+use tokio::sync::broadcast::Sender;
 
 pub struct StorageLockData<T> {
     pub path: String,
@@ -38,6 +39,7 @@ pub struct StorageLockData<T> {
     pub value: Arc<(AtomicI64, AtomicI64)>,
     pub stats_lock: Arc<Mutex<()>>,
     pub disk: Option<u64>,
+    pub notify: Sender<StorageNotification>,
 }
 
 /// Cancel safe
@@ -54,6 +56,7 @@ async fn storage_lock(
         StorageEntry,
         Arc<(AtomicI64, AtomicI64)>,
         Arc<Mutex<()>>,
+        Sender<StorageNotification>,
     )>,
     sqlx::Error,
 > {
@@ -73,7 +76,7 @@ async fn storage_lock(
         clippy::option_if_let_else,
         reason = "not possible due to the borrow of storages"
     )]
-    let (value, lock, stats_lock) = match storages.get(&storage) {
+    let (value, lock, stats_lock, notify) = match storages.get(&storage) {
         None => {
             let lock = Arc::new(RwLock::new(()));
             let current = AtomicI64::new(-1);
@@ -83,20 +86,23 @@ async fn storage_lock(
             );
             let value = Arc::new((current, max));
             let stats_lock = Arc::new(Mutex::new(()));
+            let notify = Sender::new(32);
             storages.insert(
                 storage,
                 StorageData {
                     lock: Arc::clone(&lock),
                     value: Arc::clone(&value),
                     stats_lock: Arc::clone(&stats_lock),
+                    notify: notify.clone(),
                 },
             );
-            (value, lock, stats_lock)
+            (value, lock, stats_lock, notify)
         }
         Some(lock) => (
             Arc::clone(&lock.value),
             Arc::clone(&lock.lock),
             Arc::clone(&lock.stats_lock),
+            lock.notify.clone(),
         ),
     };
     drop(storages);
@@ -107,6 +113,7 @@ async fn storage_lock(
         entry.clone(),
         value,
         stats_lock,
+        notify,
     )))
 }
 
@@ -120,7 +127,7 @@ pub async fn storage_read_timeout<
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
 ) -> Result<StorageLockData<OwnedRwLockReadGuard<()>>, E> {
-    let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
+    let Some((disk, lock, backup_exclude, entry, value, stats_lock, notify)) =
         storage_lock(config, conn, storages, storage).await?
     else {
         return Err(<E as FromStorageNotFound>::from());
@@ -139,6 +146,7 @@ pub async fn storage_read_timeout<
         value,
         stats_lock,
         disk,
+        notify,
     })
 }
 
@@ -149,7 +157,7 @@ pub async fn storage_read<'a, E: From<sqlx::Error> + FromStorageNotFound + FromS
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
 ) -> Result<StorageLockData<OwnedRwLockReadGuard<()>>, E> {
-    let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
+    let Some((disk, lock, backup_exclude, entry, value, stats_lock, notify)) =
         storage_lock(config, conn, storages, storage).await?
     else {
         return Err(<E as FromStorageNotFound>::from());
@@ -166,6 +174,7 @@ pub async fn storage_read<'a, E: From<sqlx::Error> + FromStorageNotFound + FromS
         value,
         stats_lock,
         disk,
+        notify,
     })
 }
 
@@ -179,7 +188,7 @@ pub async fn storage_write_timeout<
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
 ) -> Result<StorageLockData<OwnedRwLockWriteGuard<()>>, E> {
-    let Some((disk, lock, backup_exclude, entry, value, stats_lock)) =
+    let Some((disk, lock, backup_exclude, entry, value, stats_lock, notify)) =
         storage_lock(config, conn, storages, storage).await?
     else {
         return Err(<E as FromStorageNotFound>::from());
@@ -198,6 +207,7 @@ pub async fn storage_write_timeout<
         value,
         stats_lock,
         disk,
+        notify,
     })
 }
 
