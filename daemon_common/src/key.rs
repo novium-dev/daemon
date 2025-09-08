@@ -677,7 +677,7 @@ impl ServerCertVerifier for DaemonKeyVerifier {
 mod tests {
     use crate::key::{BackendKey, DaemonKey, DaemonRootKey};
     use ed25519_dalek::SigningKey;
-    use rand::{rngs::OsRng, TryRngCore};
+    use rand::{TryRngCore, rngs::OsRng};
     use rcgen::{CertificateSigningRequestParams, KeyPair};
     use rustls::pki_types::PrivateKeyDer;
     use uuid::Uuid;
