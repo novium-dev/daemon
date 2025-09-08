@@ -149,7 +149,7 @@ test:
   stage: test
   needs: ["crate_dependencies", "cli_sqlx", "cli_cargo2junit"]
   script:
-    - cargo test --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Z unstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
+    - RUSTC_BOOTSTRAP=1 cargo test --target x86_64-unknown-linux-musl --no-default-features --features ci --message-format json -Zunstable-options -- --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
   artifacts:
     when: always
     reports:
