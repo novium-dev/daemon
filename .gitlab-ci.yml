@@ -12,6 +12,7 @@ stages:
     GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
+    RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home .gradle_user -p
@@ -28,6 +29,7 @@ stages:
     GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
+    RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home .gradle_user -p
@@ -125,7 +127,7 @@ clippy:
   needs: ["crate_dependencies", "cli_sqlx"]
   script:
     - rustup component add clippy
-    - RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld" cargo clippy --color always --verbose --no-default-features --features ci
+    - cargo clippy --color always --verbose --no-default-features --features ci
 
 fmt:
   extends: .rust-default
