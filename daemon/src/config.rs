@@ -142,7 +142,6 @@ pub enum SSHHostKey {
 
 impl SSHHostKey {
     pub async fn as_russh_key(&self) -> Result<PrivateKey, anyhow::Error> {
-        use ed25519_dalek::ed25519::signature::rand_core::OsRng;
         use pkcs8::LineEnding;
         use russh::keys::ssh_encoding::{DecodePem as _, EncodePem as _};
         use std::io::ErrorKind;
@@ -157,7 +156,7 @@ impl SSHHostKey {
                     PrivateKey::decode_pem(&buffer)?
                 }
                 Err(err) if err.kind() == ErrorKind::NotFound => {
-                    let keypair = Ed25519Keypair::random(&mut OsRng);
+                    let keypair = Ed25519Keypair::random(&mut rand_core_old::OsRng);
                     let mut file = OpenOptions::new()
                         .create(true)
                         .write(true)
@@ -179,7 +178,7 @@ impl SSHHostKey {
                     PrivateKey::decode_pem(&buffer)?
                 }
                 Err(err) if err.kind() == ErrorKind::NotFound => {
-                    let keypair = RsaKeypair::random(&mut OsRng, 4096)?;
+                    let keypair = RsaKeypair::random(&mut rand_core_old::OsRng, 4096)?;
                     let mut file = OpenOptions::new()
                         .create(true)
                         .write(true)
