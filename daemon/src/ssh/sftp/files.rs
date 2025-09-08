@@ -12,6 +12,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+mod close;
 mod fsetstat;
 mod fstat;
 mod mkdir;
@@ -28,6 +29,7 @@ mod stat;
 mod symlink;
 mod write;
 
+pub use close::close;
 pub use fsetstat::fsetstat;
 pub use fstat::fstat;
 pub use mkdir::mkdir;
@@ -44,6 +46,7 @@ pub use stat::stat;
 pub use symlink::symlink;
 pub use write::write;
 
+use crate::StorageNotification;
 use crate::ssh::sftp::{DaemonSftpSession, FileHandle};
 use crate::utils::parse_path;
 use cap_async_std::fs::*;
@@ -51,12 +54,23 @@ use daemon_common::node::BackendAuthServerPermissions;
 use russh_sftp::protocol::*;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::broadcast::Sender;
 use tracing::debug;
 
 pub struct ResolvedPath {
-    pub storage: Option<(Arc<Dir>, BackendAuthServerPermissions)>,
+    pub storage: Option<(
+        Arc<Dir>,
+        BackendAuthServerPermissions,
+        Option<Sender<StorageNotification>>,
+    )>,
     pub temp_prefix: Vec<String>,
     pub temp_suffix: Vec<String>,
+}
+
+pub struct SandboxedPath {
+    pub storage: Arc<Dir>,
+    pub path: PathBuf,
+    pub notify: Option<Sender<StorageNotification>>,
 }
 
 impl DaemonSftpSession {
@@ -88,7 +102,8 @@ impl DaemonSftpSession {
             last.push('/');
         }
         Ok(ResolvedPath {
-            storage: storage.map(|(dir, perms, _)| (Arc::clone(dir), *perms)),
+            storage: storage
+                .map(|(dir, perms, _, notify)| (Arc::clone(dir), *perms, notify.clone())),
             temp_prefix,
             temp_suffix,
         })
@@ -98,7 +113,7 @@ impl DaemonSftpSession {
         &self,
         path: String,
         required: BackendAuthServerPermissions,
-    ) -> Result<(Arc<Dir>, PathBuf), StatusCode> {
+    ) -> Result<SandboxedPath, StatusCode> {
         let ResolvedPath {
             storage,
             temp_suffix,
@@ -107,7 +122,7 @@ impl DaemonSftpSession {
 
         match storage {
             None => Err(StatusCode::NoSuchFile),
-            Some((storage, permissions)) => {
+            Some((storage, permissions, notify)) => {
                 if !permissions.contains(required) {
                     return Err(StatusCode::PermissionDenied);
                 }
@@ -115,7 +130,11 @@ impl DaemonSftpSession {
                 for comp in temp_suffix {
                     path = path.join(comp);
                 }
-                Ok((storage, path))
+                Ok(SandboxedPath {
+                    storage,
+                    path,
+                    notify,
+                })
             }
         }
     }

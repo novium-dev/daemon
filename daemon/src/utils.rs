@@ -16,6 +16,7 @@ use crate::ServerData;
 use crate::server::status::InternalServerState;
 use crate::server::*;
 use async_trait::async_trait;
+use cap_async_std::fs::{Dir, MetadataExt as _};
 use core::fmt::Debug;
 use core::future::Future;
 use core::marker::PhantomData;
@@ -25,7 +26,7 @@ use daemon_common::service::server::ServerStats;
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::io;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio_util::io::SyncIoBridge;
 use tracing::error;
@@ -83,12 +84,17 @@ pub async fn server_required<T: From<sqlx::Error> + FromServerNotFound>(
         .ok_or_else(<T as FromServerNotFound>::from)
 }
 
-pub fn path_relative(str: String) -> PathBuf {
+pub fn path_relative(str: &str) -> PathBuf {
     if str.starts_with('/') {
         PathBuf::from(format!(".{str}"))
     } else {
-        PathBuf::from(str)
+        PathBuf::from(format!("./{str}"))
     }
+}
+
+pub async fn storage_parent_ino(storage: &Dir, path: &Path) -> Result<u64, io::Error> {
+    let path = path.parent().ok_or_else(|| io::Error::other("no parent"))?;
+    storage.metadata(path).await.map(|meta| meta.ino())
 }
 
 pub async fn generic_server_select(

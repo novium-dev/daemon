@@ -15,11 +15,11 @@
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
-use crate::utils::path_relative;
-use crate::{Daemon, DaemonExtra};
+use crate::utils::storage_parent_ino;
+use crate::{Daemon, DaemonExtra, StorageNotification};
 use axum_extra::TypedHeader;
 use axum_extra::headers::ContentLength;
-use cap_async_std::fs::{Dir, OpenOptions};
+use cap_async_std::fs::{Dir, MetadataExt as _, OpenOptions};
 use daemon_common::service::DataStream;
 use daemon_common::service::error_http_request_failed::FromHttpRequestFailed;
 use daemon_common::service::error_http_request_not_success::FromHttpRequestNotSuccess;
@@ -35,6 +35,7 @@ use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use tokio::io::{AsyncWriteExt as _, BufWriter};
+use tokio::sync::broadcast::Sender;
 use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 use url::Url;
@@ -55,14 +56,20 @@ pub async fn write_file<
 ) -> Result<(), E> {
     let _length = length.map(|header| header.0.0);
 
-    let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let path = path_relative(path);
-    let (storage, _) = storage_path(id, &storage).await?;
+    let StorageLockData {
+        lock,
+        storage,
+        notify,
+        ..
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    let (storage, _, path) = storage_path(id, &storage, path).await?;
+
+    let parent_ino = storage_parent_ino(&storage, &path).await;
+
     let mut reader = stream.reader();
     let fd: OwnedFd = storage
         .open_with(
-            path,
+            &path,
             OpenOptions::new().create(true).truncate(true).write(true),
         )
         .await
@@ -75,6 +82,9 @@ pub async fn write_file<
         })?
         .into_std()
         .into();
+
+    let ino = storage.metadata(path).await.map(|meta| meta.ino());
+
     let mut writer = BufWriter::new(tokio::fs::File::from_std(std::fs::File::from(fd)));
     tokio::io::copy(&mut reader, &mut writer)
         .await
@@ -82,6 +92,28 @@ pub async fn write_file<
             ErrorKind::QuotaExceeded => debug!("Failed to write file: {err:?}"),
             _ => error!("Failed to write file: {err:?}"),
         })?;
+
+    let _ = notify
+        .send(StorageNotification::Update {
+            parent_inode: parent_ino
+                .inspect_err(|err| {
+                    warn!(
+                        "Write was successful, but unable to trigger storage notification: {err:?}"
+                    );
+                })
+                .ok(),
+            inode: ino
+                .inspect_err(|err| {
+                    warn!(
+                        "Write was successful, but unable to trigger storage notification: {err:?}"
+                    );
+                })
+                .ok(),
+        })
+        .inspect_err(|err| {
+            warn!("Write was successful, but unable to trigger storage notification: {err:?}");
+        });
+
     drop(lock);
     Ok(())
 }
@@ -104,13 +136,21 @@ pub async fn write_file_by_template<
     path: String,
     template: ServerFileWrite,
 ) -> Result<(), E> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let path = path_relative(path);
-    let (storage, _) = storage_path(id, &storage).await?;
+    let StorageLockData {
+        lock,
+        storage,
+        notify,
+        ..
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    let (storage, _, path) = storage_path(id, &storage, path).await?;
+
+    let parent_ino = storage_parent_ino(&storage, &path).await;
 
     let fd: OwnedFd = storage
-        .open_with(path, OpenOptions::new().create(true).read(true).write(true))
+        .open_with(
+            &path,
+            OpenOptions::new().create(true).read(true).write(true),
+        )
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound
@@ -123,10 +163,23 @@ pub async fn write_file_by_template<
         })?
         .into_std()
         .into();
+
+    let ino = storage.metadata(path).await.map(|meta| meta.ino());
+
     let file = tokio::fs::File::from_std(std::fs::File::from(fd));
     tokio::task::spawn(async move { template.apply::<E>(file).await })
         .await
         .map_err(<io::Error as From<JoinError>>::from)??;
+
+    let _ = notify.send(StorageNotification::Update {
+        parent_inode: parent_ino
+            .inspect_err(|err| warn!("Write by template was successful, but unable to trigger storage notification: {err:?}"))
+            .ok()
+        , inode: ino
+            .inspect_err(|err| warn!("Write by template was successful, but unable to trigger storage notification: {err:?}"))
+            .ok()
+    })
+            .inspect_err(|err| warn!("Write by template was successful, but unable to trigger storage notification: {err:?}"));
 
     drop(lock);
     Ok(())
@@ -151,13 +204,22 @@ pub async fn write_file_by_url<
     path: String,
     url: Url,
 ) -> Result<(), E> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let path = path_relative(path);
-    let (storage, _) = storage_path(id, &storage).await?;
-    tokio::task::spawn(write_file_by_url0::<E>(daemon.clone(), storage, path, url))
-        .await
-        .map_err(<io::Error as From<JoinError>>::from)??;
+    let StorageLockData {
+        lock,
+        storage,
+        notify,
+        ..
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    let (storage, _, path) = storage_path(id, &storage, path).await?;
+    tokio::task::spawn(write_file_by_url0::<E>(
+        daemon.clone(),
+        storage,
+        path,
+        notify,
+        url,
+    ))
+    .await
+    .map_err(<io::Error as From<JoinError>>::from)??;
     drop(lock);
     Ok(())
 }
@@ -169,8 +231,11 @@ async fn write_file_by_url0<
     daemon: Daemon<impl DaemonExtra>,
     storage: Dir,
     path: PathBuf,
+    notify: Sender<StorageNotification>,
     url: Url,
 ) -> Result<(), E> {
+    let parent_ino = storage_parent_ino(&storage, &path).await;
+
     let mut response = daemon
         .client
         .get(url.clone())
@@ -184,7 +249,7 @@ async fn write_file_by_url0<
 
     let fd: OwnedFd = storage
         .open_with(
-            path,
+            &path,
             OpenOptions::new().create(true).truncate(true).write(true),
         )
         .await
@@ -197,6 +262,9 @@ async fn write_file_by_url0<
         })?
         .into_std()
         .into();
+
+    let ino = storage.metadata(path).await.map(|meta| meta.ino());
+
     let mut writer = BufWriter::new(tokio::fs::File::from_std(std::fs::File::from(fd)));
     while let Some(chunk) = response
         .chunk()
@@ -213,5 +281,16 @@ async fn write_file_by_url0<
             })?;
     }
     writer.flush().await?;
+
+    let _ = notify.send(StorageNotification::Update {
+        parent_inode: parent_ino
+            .inspect_err(|err| warn!("Write by url was successful, but unable to trigger storage notification: {err:?}"))
+            .ok()
+        , inode: ino
+            .inspect_err(|err| warn!("Write by url was successful, but unable to trigger storage notification: {err:?}"))
+            .ok()
+    })
+            .inspect_err(|err| warn!("Write by url was successful, but unable to trigger storage notification: {err:?}"));
+
     Ok(())
 }

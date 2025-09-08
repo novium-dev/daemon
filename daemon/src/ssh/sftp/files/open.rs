@@ -12,6 +12,7 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+use crate::StorageNotification;
 use crate::ssh::sftp::files::ResolvedPath;
 use crate::ssh::sftp::{DaemonSftpSession, FileHandle, internal_directory_attributes, sftp_err};
 use cap_async_std::fs::*;
@@ -22,6 +23,7 @@ use std::io::ErrorKind;
 use std::os::fd::{AsRawFd as _, OwnedFd};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::broadcast::Sender;
 use tracing::{debug, error};
 use uuid::Uuid;
 
@@ -32,8 +34,8 @@ pub async fn open(
 ) -> Result<String, StatusCode> {
     open_handle(session, path, options)
         .await
-        .map(|(name, handle)| {
-            session.file_handles.insert(name.clone(), handle);
+        .map(|(name, handle, notify)| {
+            session.file_handles.insert(name.clone(), (handle, notify));
             name
         })
 }
@@ -42,15 +44,17 @@ pub async fn open_handle(
     session: &DaemonSftpSession,
     path: String,
     options: &OpenOptions,
-) -> Result<(String, FileHandle), StatusCode> {
+) -> Result<(String, FileHandle, Option<Sender<StorageNotification>>), StatusCode> {
     let ResolvedPath {
         storage,
         temp_prefix,
         temp_suffix,
     } = session.resolve_path(path)?;
     match storage {
-        None => open_internal(session, &temp_prefix),
-        Some((dir, permissions)) => open_regular(dir, options, permissions, &temp_suffix).await,
+        None => open_internal(session, &temp_prefix).map(|(name, handle)| (name, handle, None)),
+        Some((dir, permissions, notify)) => open_regular(dir, options, permissions, &temp_suffix)
+            .await
+            .map(|(name, handle)| (name, handle, notify)),
     }
 }
 

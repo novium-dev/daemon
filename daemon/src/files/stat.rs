@@ -16,7 +16,6 @@ use crate::files::{IntoFileEntry as _, storage_path};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
-use crate::utils::path_relative;
 use crate::{Daemon, DaemonExtra};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -44,8 +43,7 @@ pub async fn stat_file<
 ) -> Result<FileEntry, E> {
     let StorageLockData { lock, storage, .. } =
         storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let path = path_relative(path);
-    let (storage, _) = storage_path(id, &storage).await?;
+    let (storage, _, path) = storage_path(id, &storage, path).await?;
     let metadata = storage
         .symlink_metadata(&path)
         .await

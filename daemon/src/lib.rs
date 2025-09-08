@@ -45,7 +45,6 @@ use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
 use sqlx::{MySql, Pool};
 use std::collections::HashMap;
-use std::path::PathBuf;
 use tokio::io::AsyncWrite;
 use tokio::task::{AbortHandle, JoinSet};
 use url::Url;
@@ -126,22 +125,27 @@ pub(crate) struct StorageData {
     pub(crate) notify: Sender<StorageNotification>,
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
+#[expect(dead_code, reason = "maybe useful later")]
 pub(crate) enum StorageNotification {
+    Create {
+        parent_inode: u64,
+        inode: u64,
+    },
     Rename {
-        from: PathBuf,
-        to: PathBuf,
         inode: u64,
         from_parent_inode: u64,
         to_parent_inode: u64,
     },
+    RenameFrom {
+        parent_inode: Option<u64>,
+        inode: Option<u64>,
+    },
     Update {
-        path: PathBuf,
-        inode: u64,
-        parent_inode: u64,
+        inode: Option<u64>,
+        parent_inode: Option<u64>,
     },
     Delete {
-        path: PathBuf,
         dir: bool,
         inode: u64,
         parent_inode: u64,

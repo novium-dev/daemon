@@ -372,14 +372,18 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                             .contains(BackendAuthServerPermissions::FILES_READ)
                         {
                             let identifier = StorageIdentifier::Primary(server.id);
-                            if let Ok(StorageLockData { lock, storage, .. }) =
-                                storage_read_timeout::<StorageError>(
-                                    &self.daemon.config,
-                                    &*self.daemon.conn,
-                                    &self.daemon.storages,
-                                    identifier,
-                                )
-                                .await
+                            if let Ok(StorageLockData {
+                                lock,
+                                storage,
+                                notify,
+                                ..
+                            }) = storage_read_timeout::<StorageError>(
+                                &self.daemon.config,
+                                &*self.daemon.conn,
+                                &self.daemon.storages,
+                                identifier,
+                            )
+                            .await
                             {
                                 let base =
                                     PathBuf::from(storage.path()).join(identifier.as_pathbuf());
@@ -394,7 +398,12 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                                     Ok(storage) => {
                                         sftp.access.insert(
                                             vec!["servers".to_owned(), server.name.clone()],
-                                            (Arc::new(storage), server.permissions, lock),
+                                            (
+                                                Arc::new(storage),
+                                                server.permissions,
+                                                lock,
+                                                Some(notify),
+                                            ),
                                         );
                                     }
                                     Err(_err) => continue,
@@ -441,6 +450,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                                                 Arc::new(storage),
                                                 BackendAuthServerPermissions::FILES_READ,
                                                 lock,
+                                                None,
                                             ),
                                         );
                                     }

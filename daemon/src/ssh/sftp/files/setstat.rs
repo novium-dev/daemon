@@ -12,22 +12,26 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+use crate::StorageNotification;
 use crate::ssh::sftp::sftp_err;
-use cap_async_std::fs::{Dir, Permissions, PermissionsExt as _};
+use crate::utils::storage_parent_ino;
+use cap_async_std::fs::{Dir, MetadataExt as _, Permissions, PermissionsExt as _};
 use russh_sftp::protocol::StatusCode;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{debug, error};
+use tokio::sync::broadcast::Sender;
+use tracing::{debug, error, warn};
 
 pub async fn setstat(
     storage: Arc<Dir>,
     path: PathBuf,
     permissions: Option<u32>,
     size: Option<u64>,
+    notify: Option<Sender<StorageNotification>>,
 ) -> Result<(), StatusCode> {
     let file = storage
-        .open(path)
+        .open(&path)
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::NotFound | ErrorKind::PermissionDenied => {
@@ -48,5 +52,32 @@ pub async fn setstat(
             .inspect_err(|err| error!("Failed to setstat (length): {err:?}"))
             .map_err(sftp_err)?;
     }
+
+    if let Some(notify) = notify {
+        let parent_ino = storage_parent_ino(&storage, &path).await;
+        let ino = file.metadata().await.map(|meta| meta.ino());
+
+        let _ = notify
+            .send(StorageNotification::Update {
+                parent_inode: parent_ino
+                    .inspect_err(|err| {
+                    warn!(
+                        "Setstat was successful, but unable to trigger storage notification: {err:?}"
+                    );
+                }).ok(),
+                inode: ino
+                    .inspect_err(|err| {
+                    warn!(
+                        "Setstat was successful, but unable to trigger storage notification: {err:?}"
+                    );
+                }).ok(),
+            })
+            .inspect_err(|err| {
+                warn!(
+                    "Setstat was successful, but unable to trigger storage notification: {err:?}"
+                );
+            });
+    }
+
     Ok(())
 }

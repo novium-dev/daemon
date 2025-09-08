@@ -1,5 +1,5 @@
 use crate::config::ArchiveCompression;
-use crate::files::{IntoFileEntry as _, storage_path};
+use crate::files::{IntoFileEntry as _, storage_path_root};
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::{Daemon, DaemonExtra, StorageNotification};
@@ -43,7 +43,7 @@ pub async fn watch_files<
     let StorageLockData {
         notify, storage, ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let (storage, _) = storage_path(id, &storage).await?;
+    let (storage, _) = storage_path_root(id, &storage).await?;
     let recv = notify.subscribe();
     Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
         handle_websocket(socket, recv, storage, path)
@@ -292,7 +292,17 @@ async fn handle_notification(
                 handle_reload(current_fd, current_path, current_list, false).await?;
             }
         }
-        StorageNotification::Update { parent_inode, .. } => {
+        StorageNotification::Update {
+            parent_inode,
+            inode,
+        } => {
+            if parent_inode == Some(*current_ino)
+                || inode.is_some_and(|ino| current_list.contains_key(&ino))
+            {
+                handle_reload(current_fd, current_path, current_list, false).await?;
+            }
+        }
+        StorageNotification::Create { parent_inode, .. } => {
             if parent_inode == *current_ino {
                 handle_reload(current_fd, current_path, current_list, false).await?;
             }
@@ -314,6 +324,18 @@ async fn handle_notification(
                 false
             };
             if parent_inode == *current_ino && !reload {
+                handle_reload(current_fd, current_path, current_list, false).await?;
+            }
+        }
+        StorageNotification::RenameFrom { parent_inode, .. } => {
+            let (reload, responses_result) =
+                handle_reload_work_directory(root, current_fd, current_ino, current_path).await?;
+            responses.extend(responses_result);
+            if reload {
+                responses
+                    .extend(handle_reload(current_fd, current_path, current_list, true).await?);
+            }
+            if parent_inode == Some(*current_ino) && !reload {
                 handle_reload(current_fd, current_path, current_list, false).await?;
             }
         }
@@ -565,15 +587,24 @@ async fn handle_reload_work_directory(
 
     let reload = match current_fd.canonicalize(".").await {
         Ok(path) => {
-            let current = process_path(root, path.as_ref()).await?;
-            if !current.eq(current_path) {
-                responses.push(FilesWatchResponseEntry::WorkDirectoryChanged {
-                    path: current.to_string_lossy().to_string(),
-                    reason: FilesWatchWorkDirectoryChangedReason::Update,
-                });
-                *current_path = current;
+            if let Ok(current) = process_path(root, path.as_ref()).await {
+                if !current.eq(current_path) {
+                    responses.push(FilesWatchResponseEntry::WorkDirectoryChanged {
+                        path: current.to_string_lossy().to_string(),
+                        reason: FilesWatchWorkDirectoryChangedReason::Update,
+                    });
+                    *current_path = current;
+                }
+                false
+            } else {
+                // could be triggered by cross-server rename in sftp
+                responses.extend(
+                    handle_delete_work_directory(root, current_fd, current_ino, current_path)
+                        .await?,
+                );
+
+                true
             }
-            false
         }
         Err(err) if err.kind() == ErrorKind::NotFound => {
             responses.extend(

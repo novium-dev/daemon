@@ -12,15 +12,25 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
+use crate::StorageNotification;
 use crate::ssh::sftp::sftp_err;
-use cap_async_std::fs::Dir;
+use crate::utils::storage_parent_ino;
+use cap_async_std::fs::{Dir, MetadataExt as _};
 use russh_sftp::protocol::StatusCode;
 use std::io::ErrorKind;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::{debug, error};
+use tokio::sync::broadcast::Sender;
+use tracing::{debug, error, warn};
 
-pub async fn remove(storage: Arc<Dir>, path: PathBuf) -> Result<(), StatusCode> {
+pub async fn remove(
+    storage: Arc<Dir>,
+    path: PathBuf,
+    notify: Option<Sender<StorageNotification>>,
+) -> Result<(), StatusCode> {
+    let ino = storage.metadata(&path).await.map(|meta| meta.ino());
+    let parent_ino = storage_parent_ino(&storage, &path).await;
+
     storage
         .remove_file(path)
         .await
@@ -30,5 +40,25 @@ pub async fn remove(storage: Arc<Dir>, path: PathBuf) -> Result<(), StatusCode> 
             }
             _ => error!("Failed to remove file: {err:?}"),
         })
-        .map_err(sftp_err)
+        .map_err(sftp_err)?;
+
+    if let Some(notify) = notify
+        && let Ok((inode, parent_inode)) = ino
+            .and_then(|ino| parent_ino.map(|parent_ino| (ino, parent_ino)))
+            .inspect_err(|err| {
+                warn!("Delete was successful, but unable to trigger storage notification: {err:?}");
+            })
+    {
+        let _ = notify
+            .send(StorageNotification::Delete {
+                parent_inode,
+                inode,
+                dir: false,
+            })
+            .inspect_err(|err| {
+                warn!("Delete was successful, but unable to trigger storage notification: {err:?}");
+            });
+    }
+
+    Ok(())
 }

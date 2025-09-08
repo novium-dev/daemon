@@ -35,6 +35,7 @@ use daemon_common::files::FileMode;
 use daemon_common::service::files::FileEntry;
 use tracing::error;
 
+use crate::utils::path_relative;
 pub use archive::{create_archive, unpack_archive};
 pub use copy::copy_file;
 pub use delete::delete_file;
@@ -47,7 +48,7 @@ pub use symlink::symlink_file;
 pub use watch::watch_files;
 pub use write::{write_file, write_file_by_template, write_file_by_url};
 
-async fn storage_path(
+async fn storage_path_root(
     id: StorageIdentifier,
     storage: &StorageEntry,
 ) -> Result<(Dir, PathBuf), io::Error> {
@@ -57,6 +58,21 @@ async fn storage_path(
             .await
             .inspect_err(|err| error!("Failed to open storage {:?}: {:?}", id, err))?,
         base,
+    ))
+}
+
+async fn storage_path(
+    id: StorageIdentifier,
+    storage: &StorageEntry,
+    path: String,
+) -> Result<(Dir, PathBuf, PathBuf), io::Error> {
+    let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
+    Ok((
+        Dir::open_ambient_dir(&base, ambient_authority())
+            .await
+            .inspect_err(|err| error!("Failed to open storage {:?}: {:?}", id, err))?,
+        base,
+        path_relative(&path), // TODO: token
     ))
 }
 
