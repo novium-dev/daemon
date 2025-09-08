@@ -9,13 +9,12 @@ stages:
   parallel:
   variables:
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
-    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
   before_script:
     - rustc --version && cargo --version
-    - mkdir .cargo_home .gradle_user -p
+    - mkdir .cargo_home -p
     - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-20 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-20 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
     - apk add --no-cache musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev clang20 clang20-static lld20 git curl --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
@@ -25,14 +24,14 @@ stages:
   variables:
     DAEMON_DATABASE_URL: 'mysql://root@db/daemon'
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
-    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
   before_script:
     - rustc --version && cargo --version
-    - mkdir .cargo_home .gradle_user -p
+    - mkdir .cargo_home -p
     - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-20 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-20 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
     - apk add --no-cache musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev clang20 clang20-static lld20 git openjdk21-jdk protoc mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
     - until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
@@ -149,7 +148,7 @@ test:
   stage: test
   needs: ["crate_dependencies", "cli_sqlx", "cli_cargo2junit"]
   script:
-    - cargo test -- -Z unstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
+    - cargo test --target x86_64-unknown-linux-musl -- -Z unstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
   artifacts:
     when: always
     reports:
