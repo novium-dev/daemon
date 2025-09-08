@@ -96,13 +96,11 @@ deny:
     - cargo deny check
 
 test:
-  image: rust:latest
+  extends: .rust-build-default
   stage: test
-  parallel:
   needs: ["prepare"]
-  before_script:
-    - cargo install cargo2junit
   script:
+    - cargo install cargo2junit
     - cargo test -- -Z unstable-options --format json --report-time | cargo2junit > report.xml
   artifacts:
     when: always

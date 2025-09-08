@@ -117,10 +117,21 @@ pub trait ServerService {
     #[doc = "Deletes all files in an existing server"]
     async fn wipe_server(&self, server_id: u32);
 
-    #[route(!"/user/server/{server_id}/terminal", method = WS, query = [ timestamp, verify, cols, rows, write ], user)]
-    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[route("/{server_id}/terminal", method = WS, query = [ cols, rows, write ])]
+    #[error(server(not_found) sql(failure [sql:*]))]
     #[doc = "A websocket for interaction with the terminal"]
     async fn server_terminal(
+        &self,
+        server_id: u32,
+        cols: Option<u16>,
+        rows: Option<u16>,
+        write: bool,
+    ) -> Result<WebsocketResponse, _>;
+
+    #[route(!"/user/server/{server_id}/terminal", method = WS, query = [ timestamp, verify, cols, rows, write ], user)]
+    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[doc = "A websocket for interaction with the terminal (called by the user)"]
+    async fn server_terminal_user(
         &self,
         server_id: u32,
         cols: Option<u16>,
@@ -130,20 +141,36 @@ pub trait ServerService {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, _>;
 
+    #[route("/{server_id}/stats", method = WS)]
+    #[error(server(not_found) sql(failure [sql:*]))]
+    #[doc = "A websocket for server stats"]
+    async fn server_stats(&self, server_id: u32) -> Result<WebsocketResponse, _>;
+
     #[route(!"/user/server/{server_id}/stats", method = WS, query = [ timestamp, verify ], user)]
     #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
-    #[doc = "A websocket for server stats"]
-    async fn server_stats(
+    #[doc = "A websocket for server stats (called by the user)"]
+    async fn server_stats_user(
         &self,
         server_id: u32,
         timestamp: i64,
         verify: UserSignature,
     ) -> Result<WebsocketResponse, _>;
 
-    #[route(!"/user/server/{server_id}/exec", method = WS, query = [ timestamp, verify, cols, rows, command ], user)]
-    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[route("/{server_id}/exec", method = WS, query = [ cols, rows, command ])]
+    #[error(server(not_found) sql(failure [sql:*]))]
     #[doc = "A websocket for server execution"]
     async fn exec_server_interactive(
+        &self,
+        server_id: u32,
+        cols: Option<u16>,
+        rows: Option<u16>,
+        command: JsonVec<String>,
+    ) -> Result<WebsocketResponse, _>;
+
+    #[route(!"/user/server/{server_id}/exec", method = WS, query = [ timestamp, verify, cols, rows, command ], user)]
+    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[doc = "A websocket for server execution (called by the user)"]
+    async fn exec_server_interactive_user(
         &self,
         server_id: u32,
         cols: Option<u16>,
@@ -155,7 +182,7 @@ pub trait ServerService {
 }
 
 pub trait ServerServiceUserKeyExtension {
-    fn server_terminal_url_signed(
+    fn server_terminal_user_url_signed(
         &self,
         server_id: u32,
         cols: Option<u16>,
@@ -163,9 +190,9 @@ pub trait ServerServiceUserKeyExtension {
         write: bool,
     ) -> Url;
 
-    fn server_stats_url_signed(&self, server_id: u32) -> Url;
+    fn server_stats_user_url_signed(&self, server_id: u32) -> Url;
 
-    fn exec_server_interactive_url_signed(
+    fn exec_server_interactive_user_url_signed(
         &self,
         server_id: u32,
         cols: Option<u16>,
@@ -178,7 +205,7 @@ pub trait ServerServiceUserKeyExtension {
 }
 
 impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T {
-    fn server_terminal_url_signed(
+    fn server_terminal_user_url_signed(
         &self,
         server_id: u32,
         cols: Option<u16>,
@@ -188,16 +215,16 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
         let timestamp = Utc::now().timestamp();
         let signature =
             UserSignature::new_terminal(self.key(), timestamp, self.node_id(), server_id, write);
-        self.server_terminal_url(server_id, cols, rows, write, timestamp, signature)
+        self.server_terminal_user_url(server_id, cols, rows, write, timestamp, signature)
     }
 
-    fn server_stats_url_signed(&self, server_id: u32) -> Url {
+    fn server_stats_user_url_signed(&self, server_id: u32) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature = UserSignature::new_stats(self.key(), timestamp, self.node_id(), server_id);
-        self.server_stats_url(server_id, timestamp, signature)
+        self.server_stats_user_url(server_id, timestamp, signature)
     }
 
-    fn exec_server_interactive_url_signed(
+    fn exec_server_interactive_user_url_signed(
         &self,
         server_id: u32,
         cols: Option<u16>,
@@ -207,34 +234,34 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
         let timestamp = Utc::now().timestamp();
         let signature =
             UserSignature::new_exec(self.key(), timestamp, self.node_id(), server_id, &command);
-        self.exec_server_interactive_url(server_id, cols, rows, command, timestamp, signature)
+        self.exec_server_interactive_user_url(server_id, cols, rows, command, timestamp, signature)
     }
 
     #[cfg(feature = "ts")]
     fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor) {
-        visitor.visit_start(true, "serverTerminalUrlSigned");
+        visitor.visit_start(true, "serverTerminalUserUrlSigned");
         visitor.visit_argument::<u32>("serverId");
         visitor.visit_argument::<Option<u16>>("cols");
         visitor.visit_argument::<Option<u16>>("rows");
         visitor.visit_argument::<bool>("write");
         visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newTerminalAsync(this.userKey, timestamp, this.identifier, serverId, write);
-return this.serverTerminalUrl(serverId, cols, rows, write, timestamp, signature);", "URL");
+return this.serverTerminalUserUrl(serverId, cols, rows, write, timestamp, signature);", "URL");
 
-        visitor.visit_start(true, "serverStatsUrlSigned");
+        visitor.visit_start(true, "serverStatsUserUrlSigned");
         visitor.visit_argument::<u32>("serverId");
         visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newStatsAsync(this.userKey, timestamp, this.identifier, serverId);
-return this.serverStatsUrl(serverId, timestamp, signature);", "URL");
+return this.serverStatsUserUrl(serverId, timestamp, signature);", "URL");
 
-        visitor.visit_start(true, "execServerInteractiveUrlSigned");
+        visitor.visit_start(true, "execServerInteractiveUserUrlSigned");
         visitor.visit_argument::<u32>("serverId");
         visitor.visit_argument::<Option<u16>>("cols");
         visitor.visit_argument::<Option<u16>>("rows");
         visitor.visit_argument::<JsonVec<String>>("command");
         visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newExecAsync(this.userKey, timestamp, this.identifier, serverId, command);
-return this.execServerInteractiveUrl(serverId, cols, rows, command, timestamp, signature);", "URL");
+return this.execServerInteractiveUserUrl(serverId, cols, rows, command, timestamp, signature);", "URL");
     }
 }
 
