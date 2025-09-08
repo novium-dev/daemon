@@ -38,7 +38,8 @@ use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::server::error::{
     CreateServerError, DeleteServerError, ExecServerError, ExecServerInteractiveError,
-    KillServerError, RestartServerError, ServerStatsError, ServerStatusError, ServerTerminalError,
+    ExecServerInteractiveUserError, KillServerError, RestartServerError, ServerStatsError,
+    ServerStatsUserError, ServerStatusError, ServerTerminalError, ServerTerminalUserError,
     StartServerError, StopServerError, UpdateServerError, WipeServerError,
 };
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
@@ -349,10 +350,34 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         cols: Option<u16>,
         rows: Option<u16>,
         write: bool,
+    ) -> Result<WebsocketResponse, ServerTerminalError> {
+        let (_, server_data) =
+            server_required::<ServerTerminalError>(&self.conn, &self.servers, server_id).await?;
+        let docker = Arc::clone(&self.docker);
+        Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
+            terminal_websocket_handle(
+                server_id,
+                docker,
+                server_data,
+                socket,
+                Arc::new(AtomicU16::new(cols.unwrap_or_default())),
+                Arc::new(AtomicU16::new(rows.unwrap_or_default())),
+                write,
+            )
+        })))
+    }
+
+    async fn server_terminal_user(
+        &self,
+        ws: WebSocketUpgrade,
+        server_id: u32,
+        cols: Option<u16>,
+        rows: Option<u16>,
+        write: bool,
         timestamp: i64,
         verify: UserSignature,
-    ) -> Result<WebsocketResponse, ServerTerminalError> {
-        verify.verify_terminal::<ServerTerminalError>(
+    ) -> Result<WebsocketResponse, ServerTerminalUserError> {
+        verify.verify_terminal::<ServerTerminalUserError>(
             self.root.user_key.as_ref(),
             timestamp,
             &self.key.id,
@@ -361,7 +386,8 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         )?;
 
         let (_, server_data) =
-            server_required::<ServerTerminalError>(&self.conn, &self.servers, server_id).await?;
+            server_required::<ServerTerminalUserError>(&self.conn, &self.servers, server_id)
+                .await?;
         let docker = Arc::clone(&self.docker);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
             terminal_websocket_handle(
@@ -380,10 +406,23 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         &self,
         ws: WebSocketUpgrade,
         server_id: u32,
+    ) -> Result<WebsocketResponse, ServerStatsError> {
+        let (_, server_data) =
+            server_required::<ServerStatsError>(&self.conn, &self.servers, server_id).await?;
+        let conn = Arc::clone(&self.conn);
+        Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
+            stats_websocket_handle(server_id, conn, server_data, socket)
+        })))
+    }
+
+    async fn server_stats_user(
+        &self,
+        ws: WebSocketUpgrade,
+        server_id: u32,
         timestamp: i64,
         verify: UserSignature,
-    ) -> Result<WebsocketResponse, ServerStatsError> {
-        verify.verify_stats::<ServerStatsError>(
+    ) -> Result<WebsocketResponse, ServerStatsUserError> {
+        verify.verify_stats::<ServerStatsUserError>(
             self.root.user_key.as_ref(),
             timestamp,
             &self.key.id,
@@ -391,7 +430,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         )?;
 
         let (_, server_data) =
-            server_required::<ServerStatsError>(&self.conn, &self.servers, server_id).await?;
+            server_required::<ServerStatsUserError>(&self.conn, &self.servers, server_id).await?;
         let conn = Arc::clone(&self.conn);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
             stats_websocket_handle(server_id, conn, server_data, socket)
@@ -405,10 +444,36 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         cols: Option<u16>,
         rows: Option<u16>,
         command: JsonVec<String>,
+    ) -> Result<WebsocketResponse, ExecServerInteractiveError> {
+        let (server, server_data) =
+            server_required::<ExecServerInteractiveError>(&self.conn, &self.servers, server_id)
+                .await?;
+
+        let docker = Arc::clone(&self.docker);
+        Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
+            exec_websocket_handle(
+                server,
+                server_data,
+                docker,
+                command.0,
+                socket,
+                cols.unwrap_or_default(),
+                rows.unwrap_or_default(),
+            )
+        })))
+    }
+
+    async fn exec_server_interactive_user(
+        &self,
+        ws: WebSocketUpgrade,
+        server_id: u32,
+        cols: Option<u16>,
+        rows: Option<u16>,
+        command: JsonVec<String>,
         timestamp: i64,
         verify: UserSignature,
-    ) -> Result<WebsocketResponse, ExecServerInteractiveError> {
-        verify.verify_exec::<ExecServerInteractiveError>(
+    ) -> Result<WebsocketResponse, ExecServerInteractiveUserError> {
+        verify.verify_exec::<ExecServerInteractiveUserError>(
             self.root.user_key.as_ref(),
             timestamp,
             &self.key.id,
@@ -417,7 +482,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         )?;
 
         let (server, server_data) =
-            server_required::<ExecServerInteractiveError>(&self.conn, &self.servers, server_id)
+            server_required::<ExecServerInteractiveUserError>(&self.conn, &self.servers, server_id)
                 .await?;
 
         let docker = Arc::clone(&self.docker);
