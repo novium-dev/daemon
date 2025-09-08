@@ -130,6 +130,7 @@ clippy:
 fmt:
   extends: .rust-default
   stage: check
+  needs: []
   script:
     - rustup component add rustfmt
     - cargo fmt --check --all --verbose
