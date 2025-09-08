@@ -62,7 +62,7 @@ crate_dependencies:
   after_script:
     - du -sh .cargo_home target/
 
-sqlx_build:
+cli_sqlx:
   extends: .rust-default
   stage: prepare
   cache:
@@ -72,7 +72,7 @@ sqlx_build:
         - rust-cache-sqlx-cli-default
       paths:
         - .cargo_home/
-        - crates/sqlx-cli/bin
+        - crates/sqlx-cli
       policy: pull-push
   artifacts:
     paths:
@@ -81,7 +81,7 @@ sqlx_build:
     - mkdir crates/sqlx-cli -p
     - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
 
-cargo2junit_build:
+cli_cargo2junit:
   extends: .rust-default
   stage: prepare
   cache:
@@ -91,7 +91,7 @@ cargo2junit_build:
         - rust-cache-cargo2junit-default
       paths:
         - .cargo_home/
-        - crates/cargo2junit/bin
+        - crates/cargo2junit
       policy: pull-push
   artifacts:
     paths:
@@ -100,7 +100,7 @@ cargo2junit_build:
     - mkdir crates/cargo2junit -p
     - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo2junit --root crates/cargo2junit
 
-deny_build:
+cli_deny:
   extends: .rust-default
   stage: prepare
   cache:
@@ -110,7 +110,7 @@ deny_build:
         - rust-cache-cargo-deny-default
       paths:
         - .cargo_home/
-        - crates/cargo-deny/bin
+        - crates/cargo-deny
       policy: pull-push
   artifacts:
     paths:
@@ -122,7 +122,7 @@ deny_build:
 clippy:
   extends: .rust-build-default
   stage: check
-  needs: ["crate_dependencies", "sqlx_build"]
+  needs: ["crate_dependencies", "cli_sqlx"]
   script:
     - rustup component add clippy
     - RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld" cargo clippy --color always --verbose --no-default-features --features ci
@@ -137,14 +137,14 @@ fmt:
 deny:
   extends: .rust-default
   stage: check
-  needs: ["deny_build"]
+  needs: ["cli_deny"]
   script:
     - crates/cargo-deny/bin/cargo-deny check
 
 test:
   extends: .rust-build-default
   stage: test
-  needs: ["crate_dependencies", "sqlx_build", "cargo2junit_build"]
+  needs: ["crate_dependencies", "cli_sqlx", "cli_cargo2junit"]
   script:
     - cargo test -- -Z unstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
   artifacts:
