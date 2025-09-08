@@ -50,7 +50,7 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 lazy-regex.workspace = true
-rand_core_old = { version = "=0.6.4", package = "rand_core" }
+rand_core_old.workspace = true
 rand.workspace = true
 signal-hook.workspace = true
 termion.workspace = true
