@@ -630,9 +630,10 @@ async fn handle_delete_work_directory(
     let parent = if let Ok(parent) = current_fd.open_parent_dir(ambient_authority()).await {
         let metadata = parent.dir_metadata().await?;
         let path = parent.canonicalize(".").await?;
-        let current = process_path(root, path.as_ref()).await?;
 
-        Some((parent, metadata.ino(), current))
+        process_path(root, path.as_ref()).await
+            .ok()
+            .map(|current| (parent, metadata.ino(), current))
     } else {
         None
     };
