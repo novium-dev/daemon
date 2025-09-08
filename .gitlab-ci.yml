@@ -33,15 +33,14 @@ stages:
     - mkdir .cargo_home .gradle_user -p
     - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-20 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-20 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
     - apk add --no-cache musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev clang20 clang20-static lld20 git openjdk21-jdk protoc mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli
     - until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
-    - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
-    - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
+    - crates/sqlx-cli/bin/sqlx database create --database-url "$DAEMON_DATABASE_URL"
+    - crates/sqlx-cli/bin/sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
   services:
     - name: mariadb:latest
       alias: db
 
-prepare:
+crate_dependencies:
   extends: .rust-default
   stage: prepare
   cache:
@@ -63,10 +62,67 @@ prepare:
   after_script:
     - du -sh .cargo_home target/
 
+sqlx_build:
+  extends: .rust-default
+  stage: prepare
+  cache:
+    - key: rust-cache-sqlx-cli-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-sqlx-cli-$CI_DEFAULT_BRANCH
+        - rust-cache-sqlx-cli-default
+      paths:
+        - .cargo_home/
+        - crates/sqlx-cli/bin
+      policy: pull-push
+  artifacts:
+    paths:
+      - crates/sqlx-cli/bin
+  script:
+    - mkdir crates/sqlx-cli -p
+    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
+
+cargo2junit_build:
+  extends: .rust-default
+  stage: prepare
+  cache:
+    - key: rust-cache-cargo2junit-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-cargo2junit-$CI_DEFAULT_BRANCH
+        - rust-cache-cargo2junit-default
+      paths:
+        - .cargo_home/
+        - crates/cargo2junit/bin
+      policy: pull-push
+  artifacts:
+    paths:
+      - crates/cargo2junit/bin
+  script:
+    - mkdir crates/cargo2junit -p
+    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo2junit --root crates/cargo2junit
+
+deny_build:
+  extends: .rust-default
+  stage: prepare
+  cache:
+    - key: rust-cache-cargo-deny-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-cargo-deny-$CI_DEFAULT_BRANCH
+        - rust-cache-cargo-deny-default
+      paths:
+        - .cargo_home/
+        - crates/cargo-deny/bin
+      policy: pull-push
+  artifacts:
+    paths:
+      - crates/cargo-deny/bin
+  script:
+    - mkdir crates/cargo-deny -p
+    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny --root crates/cargo-deny
+
 clippy:
   extends: .rust-build-default
   stage: check
-  needs: ["prepare"]
+  needs: ["crate_dependencies", "sqlx_build"]
   script:
     - rustup component add clippy
     - RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld" cargo clippy --color always --verbose --no-default-features --features ci
@@ -74,7 +130,6 @@ clippy:
 fmt:
   extends: .rust-default
   stage: check
-  parallel:
   script:
     - rustup component add rustfmt
     - cargo fmt --check --all --verbose
@@ -82,26 +137,16 @@ fmt:
 deny:
   extends: .rust-default
   stage: check
-  parallel:
-  variables:
-    CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
-  cache:
-    - key: rust-deny-cache
-      paths:
-        - .cargo_home/
-      policy: pull-push
+  needs: ["deny_build"]
   script:
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny
-
-    - cargo deny check
+    - crates/cargo-deny/bin/cargo-deny check
 
 test:
   extends: .rust-build-default
   stage: test
-  needs: ["prepare"]
+  needs: ["crate_dependencies", "sqlx_build", "cargo2junit_build"]
   script:
-    - cargo install cargo2junit
-    - cargo test -- -Z unstable-options --format json --report-time | cargo2junit > report.xml
+    - cargo test -- -Z unstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
   artifacts:
     when: always
     reports:
