@@ -60,9 +60,10 @@ pub async fn write_file<
         lock,
         storage,
         notify,
+        tokens,
         ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let (storage, _, path) = storage_path(id, &storage, path).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
 
     let parent_ino = storage_parent_ino(&storage, &path).await;
 
@@ -140,9 +141,10 @@ pub async fn write_file_by_template<
         lock,
         storage,
         notify,
+        tokens,
         ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let (storage, _, path) = storage_path(id, &storage, path).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
 
     let parent_ino = storage_parent_ino(&storage, &path).await;
 
@@ -208,9 +210,10 @@ pub async fn write_file_by_url<
         lock,
         storage,
         notify,
+        tokens,
         ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let (storage, _, path) = storage_path(id, &storage, path).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     tokio::task::spawn(write_file_by_url0::<E>(
         daemon.clone(),
         storage,

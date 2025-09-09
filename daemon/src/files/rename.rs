@@ -43,10 +43,11 @@ pub async fn rename_file<
         lock,
         storage,
         notify,
+        tokens,
         ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let (storage_from, _, path_from) = storage_path(id, &storage, from).await?;
-    let (storage_to, _, path_to) = storage_path(id, &storage, to).await?;
+    let (storage_from, _, path_from) = storage_path(id, &storage, from, &tokens).await?;
+    let (storage_to, _, path_to) = storage_path(id, &storage, to, &tokens).await?;
 
     let from_parent_ino = storage_parent_ino(&storage_from, &path_from).await;
     let to_parent_ino = storage_parent_ino(&storage_to, &path_to).await;

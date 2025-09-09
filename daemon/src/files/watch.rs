@@ -1,8 +1,9 @@
 use crate::config::ArchiveCompression;
 use crate::files::{IntoFileEntry as _, storage_path_root};
-use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
+use crate::storage::{STORAGE_TOKEN_MAGIC, StorageIdentifier};
 use crate::{Daemon, DaemonExtra, StorageNotification};
+use arc_swap::ArcSwap;
 use axum::extract::WebSocketUpgrade;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bytes::Bytes;
@@ -23,6 +24,7 @@ use std::io;
 use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tokio::sync::broadcast::Receiver;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
@@ -41,12 +43,15 @@ pub async fn watch_files<
     path: Option<String>,
 ) -> Result<WebsocketResponse, E> {
     let StorageLockData {
-        notify, storage, ..
+        notify,
+        storage,
+        tokens,
+        ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let (storage, _) = storage_path_root(id, &storage).await?;
     let recv = notify.subscribe();
     Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
-        handle_websocket(socket, recv, storage, path)
+        handle_websocket(socket, recv, storage, path, tokens)
     })))
 }
 
@@ -55,6 +60,8 @@ async fn handle_websocket(
     mut recv: Receiver<StorageNotification>,
     root: Dir,
     path: Option<String>,
+
+    tokens: Arc<StorageTokens>,
 ) {
     let mut last_sent = Instant::now();
     let mut ping_sent = false;
@@ -63,7 +70,7 @@ async fn handle_websocket(
 
     let mut initial_data = Vec::with_capacity(2);
 
-    let (mut current_fd, mut current_path) = match root.open_dir(requested_path).await {
+    let (current_fd, mut current_path) = match root.open_dir(requested_path).await {
         Ok(path) => {
             let current_path = match resolve_current_path(&root, &path).await {
                 Ok(path) => path,
@@ -118,8 +125,13 @@ async fn handle_websocket(
     initial_data.push(FilesWatchResponseEntry::Reset {
         data: current_list.values().cloned().collect(),
     });
+
+    let current_fd = Arc::new(ArcSwap::new(Arc::new(current_fd)));
+
+    let (id, _guard) = tokens.insert(Arc::clone(&current_fd)).await;
+
     let initial_response = FilesWatchResponse {
-        token: String::new(),
+        token: format!("{STORAGE_TOKEN_MAGIC}{id};"),
         data: initial_data,
     };
 
@@ -158,7 +170,7 @@ async fn handle_websocket(
                 stdout = recv.recv() => {
                     match stdout {
                         Ok(data) => {
-                            let data = match handle_notification(&root, data, &mut current_fd, &mut current_ino, &mut current_path, &mut current_list).await {
+                            let data = match handle_notification(&root, data, &current_fd, &mut current_ino, &mut current_path, &mut current_list).await {
                                 Ok(data) => data,
                                 Err(err) => {
                                     error!("Closing connection. Unable to handle notification: {err:?}");
@@ -170,7 +182,7 @@ async fn handle_websocket(
                             if !data.is_empty() {
                                 let response = FilesWatchResponse {
                                     data,
-                                    token: String::new(),
+                                    token: format!("{STORAGE_TOKEN_MAGIC}{id};"),
                                 };
                                 if let Err(err) = socket.send(Message::Text(Utf8Bytes::from(serde_json::to_string(&response).expect("Unable to serialize watch response")))).await {
                                     warn!("Channel disconnected with error: {err:?}");
@@ -204,12 +216,12 @@ async fn handle_websocket(
                                 },
                                 Message::Text(text) => {
                                     if let Ok(command) = serde_json::from_str(text.as_str()) {
-                                        match handle_command(&root, command, &mut current_fd, &mut current_ino, &mut current_path, &mut current_list).await {
+                                        match handle_command(&root, command, &current_fd, &mut current_ino, &mut current_path, &mut current_list).await {
                                             Ok(data) => {
                                                 if !data.is_empty() {
                                                     let response = FilesWatchResponse {
                                                         data,
-                                                        token: String::new(),
+                                                        token: format!("{STORAGE_TOKEN_MAGIC}{id};"),
                                                     };
                                                     if let Err(err) = socket.send(Message::Text(Utf8Bytes::from(serde_json::to_string(&response).expect("Unable to serialize watch responses")))).await {
                                                         warn!("Channel disconnected with error: {err:?}");
@@ -252,7 +264,7 @@ async fn handle_websocket(
 async fn handle_notification(
     root: &Dir,
     notification: StorageNotification,
-    current_fd: &mut Dir,
+    current_fd: &ArcSwap<Dir>,
     current_ino: &mut u64,
     current_path: &mut PathBuf,
     current_list: &mut IndexMap<u64, FileEntry>,
@@ -265,8 +277,8 @@ async fn handle_notification(
             inode,
             ..
         } => {
-            let reload = if inode_in_path(root, inode, current_fd, current_ino).await? {
-                if let Ok(path) = resolve_current_path(root, current_fd).await {
+            let reload = if inode_in_path(root, inode, &current_fd.load(), current_ino).await? {
+                if let Ok(path) = resolve_current_path(root, &current_fd.load()).await {
                     responses.push(FilesWatchResponseEntry::WorkDirectoryChanged {
                         reason: FilesWatchWorkDirectoryChangedReason::Update,
                         path: path.to_string_lossy().to_string(),
@@ -280,7 +292,8 @@ async fn handle_notification(
                     responses.extend(responses_result);
                     if reload {
                         responses.extend(
-                            handle_reload(current_fd, current_path, current_list, true).await?,
+                            handle_reload(&current_fd.load(), current_path, current_list, true)
+                                .await?,
                         );
                     }
                     reload
@@ -289,7 +302,7 @@ async fn handle_notification(
                 false
             };
             if (*current_ino == from_parent_inode || *current_ino == to_parent_inode) && !reload {
-                handle_reload(current_fd, current_path, current_list, false).await?;
+                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
             }
         }
         StorageNotification::Update {
@@ -299,12 +312,12 @@ async fn handle_notification(
             if parent_inode == Some(*current_ino)
                 || inode.is_some_and(|ino| current_list.contains_key(&ino))
             {
-                handle_reload(current_fd, current_path, current_list, false).await?;
+                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
             }
         }
         StorageNotification::Create { parent_inode, .. } => {
             if parent_inode == *current_ino {
-                handle_reload(current_fd, current_path, current_list, false).await?;
+                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
             }
         }
         StorageNotification::Delete {
@@ -316,15 +329,16 @@ async fn handle_notification(
                         .await?;
                 responses.extend(responses_result);
                 if reload {
-                    responses
-                        .extend(handle_reload(current_fd, current_path, current_list, true).await?);
+                    responses.extend(
+                        handle_reload(&current_fd.load(), current_path, current_list, true).await?,
+                    );
                 }
                 reload
             } else {
                 false
             };
             if parent_inode == *current_ino && !reload {
-                handle_reload(current_fd, current_path, current_list, false).await?;
+                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
             }
         }
         StorageNotification::RenameFrom { parent_inode, .. } => {
@@ -332,11 +346,12 @@ async fn handle_notification(
                 handle_reload_work_directory(root, current_fd, current_ino, current_path).await?;
             responses.extend(responses_result);
             if reload {
-                responses
-                    .extend(handle_reload(current_fd, current_path, current_list, true).await?);
+                responses.extend(
+                    handle_reload(&current_fd.load(), current_path, current_list, true).await?,
+                );
             }
             if parent_inode == Some(*current_ino) && !reload {
-                handle_reload(current_fd, current_path, current_list, false).await?;
+                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
             }
         }
     }
@@ -346,7 +361,7 @@ async fn handle_notification(
 async fn handle_command(
     root: &Dir,
     command: FilesWatchCommand,
-    current_fd: &mut Dir,
+    current_fd: &ArcSwap<Dir>,
     current_ino: &mut u64,
     current_path: &mut PathBuf,
     current_list: &mut IndexMap<u64, FileEntry>,
@@ -356,7 +371,9 @@ async fn handle_command(
             let (reload, mut responses) =
                 handle_reload_work_directory(root, current_fd, current_ino, current_path).await?;
 
-            responses.extend(handle_reload(current_fd, current_path, current_list, reload).await?);
+            responses.extend(
+                handle_reload(&current_fd.load(), current_path, current_list, reload).await?,
+            );
 
             responses
         }
@@ -414,16 +431,16 @@ async fn inode_in_path(
 async fn handle_work_directory_change(
     root: &Dir,
     requested_path: String,
-    current_fd: &mut Dir,
+    current_fd: &ArcSwap<Dir>,
     current_ino: &mut u64,
     current_path: &mut PathBuf,
     current_list: &mut IndexMap<u64, FileEntry>,
 ) -> Result<Vec<FilesWatchResponseEntry>, io::Error> {
     if requested_path.starts_with('/') {
-        *current_fd = root.open_dir(requested_path).await?;
+        current_fd.store(Arc::new(root.open_dir(requested_path).await?));
     } else {
         let mut path = &*requested_path;
-        let mut dir = current_fd.clone();
+        let mut dir = Dir::clone(&current_fd.load());
 
         let root_ino = root.dir_metadata().await?.ino();
         let root_path = root.canonicalize(".").await?;
@@ -451,17 +468,17 @@ async fn handle_work_directory_change(
             }
         }
 
-        *current_fd = dir.open_dir(path).await?;
+        current_fd.store(Arc::new(dir.open_dir(path).await?));
     }
 
-    *current_ino = current_fd.dir_metadata().await?.ino();
-    *current_path = resolve_current_path(root, current_fd).await?;
+    *current_ino = current_fd.load().dir_metadata().await?.ino();
+    *current_path = resolve_current_path(root, &current_fd.load()).await?;
 
     let mut responses = vec![FilesWatchResponseEntry::WorkDirectoryChanged {
         path: current_path.to_string_lossy().to_string(),
         reason: FilesWatchWorkDirectoryChangedReason::Changed,
     }];
-    responses.extend(handle_reload(current_fd, current_path, current_list, true).await?);
+    responses.extend(handle_reload(&current_fd.load(), current_path, current_list, true).await?);
 
     Ok(responses)
 }
@@ -579,13 +596,13 @@ async fn handle_reload(
 
 async fn handle_reload_work_directory(
     root: &Dir,
-    current_fd: &mut Dir,
+    current_fd: &ArcSwap<Dir>,
     current_ino: &mut u64,
     current_path: &mut PathBuf,
 ) -> Result<(bool, Vec<FilesWatchResponseEntry>), io::Error> {
     let mut responses = Vec::new();
 
-    let reload = match current_fd.canonicalize(".").await {
+    let reload = match current_fd.load().canonicalize(".").await {
         Ok(path) => {
             if let Ok(current) = process_path(root, path.as_ref()).await {
                 if !current.eq(current_path) {
@@ -621,17 +638,18 @@ async fn handle_reload_work_directory(
 
 async fn handle_delete_work_directory(
     root: &Dir,
-    current_fd: &mut Dir,
+    current_fd: &ArcSwap<Dir>,
     current_ino: &mut u64,
     current_path: &mut PathBuf,
 ) -> Result<Vec<FilesWatchResponseEntry>, io::Error> {
     let root_ino = root.dir_metadata().await?.ino();
 
-    let parent = if let Ok(parent) = current_fd.open_parent_dir(ambient_authority()).await {
+    let parent = if let Ok(parent) = current_fd.load().open_parent_dir(ambient_authority()).await {
         let metadata = parent.dir_metadata().await?;
         let path = parent.canonicalize(".").await?;
 
-        process_path(root, path.as_ref()).await
+        process_path(root, path.as_ref())
+            .await
             .ok()
             .map(|current| (parent, metadata.ino(), current))
     } else {
@@ -639,7 +657,7 @@ async fn handle_delete_work_directory(
     };
 
     if root_ino == *current_ino || current_path.as_os_str().eq("/") || parent.is_none() {
-        *current_fd = root.clone();
+        current_fd.store(Arc::new(root.clone()));
         *current_ino = root_ino;
         *current_path = PathBuf::from("/");
 
@@ -648,7 +666,7 @@ async fn handle_delete_work_directory(
             reason: FilesWatchWorkDirectoryChangedReason::Delete,
         }])
     } else if let Some((fd, ino, path)) = parent {
-        *current_fd = fd;
+        current_fd.store(Arc::new(fd));
         *current_ino = ino;
         current_path.clone_from(&path);
         Ok(vec![FilesWatchResponseEntry::WorkDirectoryChanged {

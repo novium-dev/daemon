@@ -26,6 +26,7 @@ use std::path::PathBuf;
 use tokio::fs;
 use tracing::error;
 
+pub const STORAGE_TOKEN_MAGIC: &str = "*DAEMON_WATCH\0";
 #[derive(Debug, Hash, PartialEq, Eq, Clone, Copy)]
 pub enum StorageIdentifier {
     Primary(u32),

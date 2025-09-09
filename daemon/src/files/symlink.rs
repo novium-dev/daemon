@@ -43,9 +43,10 @@ pub async fn symlink_file<
         lock,
         storage,
         notify,
+        tokens,
         ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let (storage, _, path) = storage_path(id, &storage, path).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
 
     let parent_ino = storage_parent_ino(&storage, &path).await;
 

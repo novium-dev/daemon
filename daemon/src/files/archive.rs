@@ -53,10 +53,11 @@ pub async fn unpack_archive<
         lock,
         storage,
         notify,
+        tokens,
         ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let (dest_storage, dest_storage_path, dest_path) = storage_path(id, &storage, dest).await?;
-    let (storage, _, path) = storage_path(id, &storage, path).await?;
+    let (dest_storage, dest_storage_path, dest_path) = storage_path(id, &storage, dest, &tokens).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
 
     let parent_ino = storage_parent_ino(&dest_storage, &dest_path).await;
 
@@ -149,6 +150,7 @@ pub async fn create_archive<
         lock,
         storage,
         notify,
+        tokens,
         ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let compression: ArchiveCompression = serde_json::from_value(json!({
@@ -156,8 +158,8 @@ pub async fn create_archive<
     }))
     .map_err(|_err| <E as FromCompressionUnsupported>::from())?;
 
-    let (_, src_storage_path, src_path) = storage_path(id, &storage, src).await?;
-    let (storage, _, path) = storage_path(id, &storage, path).await?;
+    let (_, src_storage_path, src_path) = storage_path(id, &storage, src, &tokens).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     tokio::task::spawn(create_archive0::<E>(
         storage,
         src_storage_path,

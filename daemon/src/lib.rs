@@ -51,6 +51,7 @@ use url::Url;
 
 use crate::config::DaemonConfig;
 use crate::storage::StorageIdentifier;
+use crate::storage::sync::StorageTokens;
 use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
@@ -123,6 +124,7 @@ pub(crate) struct StorageData {
     pub(crate) value: Arc<(AtomicI64, AtomicI64)>,
     pub(crate) stats_lock: Arc<Mutex<()>>,
     pub(crate) notify: Sender<StorageNotification>,
+    pub(crate) tokens: Arc<StorageTokens>,
 }
 
 #[derive(Debug, Clone)]
