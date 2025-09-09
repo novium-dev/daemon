@@ -73,12 +73,19 @@ cli_sqlx:
     - mkdir crates/sqlx-cli -p
     - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
 
-build:
+clippy:
   extends: .rust-build-default
   stage: check
-  needs: [
-#    "crate_dependencies",
-    "cli_sqlx"]
+  needs: ["cli_sqlx"]
+  cache:
+    - key: rust-cache-clippy-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-clippy-$CI_DEFAULT_BRANCH
+        - rust-cache-clippy-default
+      paths:
+        - .cargo_home/
+        - target/
+      policy: pull-push
   script:
     - rustup component add clippy
     - cargo clippy --color always --verbose --no-default-features --features ci --no-deps
