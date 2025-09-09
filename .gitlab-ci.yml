@@ -17,7 +17,6 @@ stages:
     CACHE_COMPRESSION_LEVEL: "fastest"
   before_script:
     - rustc --version && cargo --version
-    - apk add --no-cache musl-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 .rust-build-default:
   image:
@@ -63,6 +62,7 @@ cli_shared:
     paths:
       - crates/sqlx-cli/bin
   script:
+    - apk add --no-cache musl-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
     - mkdir crates/sqlx-cli -p
     - cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
   rules:
