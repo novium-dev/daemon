@@ -5,7 +5,9 @@ stages:
 
 
 .rust-default:
-  image: lukemathwalker/cargo-chef:latest-rust-1-alpine
+  image:
+    name: lukemathwalker/cargo-chef:latest-rust-1.89.0-alpine
+    pull_policy: if-not-present
   parallel:
   interruptible: true
   variables:
@@ -13,6 +15,7 @@ stages:
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
+    RUSTC_BOOTSTRAP: "1"
 
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
@@ -24,7 +27,9 @@ stages:
     - apk add --no-cache musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev clang20 clang20-static lld20 git curl --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 .rust-build-default:
-  image: lukemathwalker/cargo-chef:latest-rust-1-alpine
+  image:
+    name: lukemathwalker/cargo-chef:latest-rust-1.89.0-alpine
+    pull_policy: if-not-present
   parallel:
   interruptible: true
   variables:
@@ -35,6 +40,7 @@ stages:
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
+    RUSTC_BOOTSTRAP: "1"
 
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
@@ -131,13 +137,13 @@ cli_deny:
     - mkdir crates/cargo-deny -p
     - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny --root crates/cargo-deny
 
-clippy:
+check:
   extends: .rust-build-default
   stage: check
   needs: ["crate_dependencies", "cli_sqlx"]
   script:
   #  - rustup component add clippy
-    - cargo check --color always --verbose --no-default-features --features ci --no-deps
+    - cargo check --color always --verbose --no-default-features --features ci
 
 fmt:
   extends: .rust-default
@@ -157,15 +163,9 @@ deny:
 test:
   extends: .rust-build-default
   stage: test
-  needs: ["crate_dependencies", "cli_sqlx"
-  #  , "cli_cargo2junit"
-  ]
-  #variables:
-  #  RUSTC_BOOTSTRAP: "1"
-  #script:
-  #  - cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci --message-format json -- -Zunstable-options --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
+  needs: ["crate_dependencies", "cli_sqlx", "cli_cargo2junit"]
   script:
-    - cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci
+    - cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
   artifacts:
     when: always
     reports:
