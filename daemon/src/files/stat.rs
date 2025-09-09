@@ -41,8 +41,12 @@ pub async fn stat_file<
     id: StorageIdentifier,
     path: String,
 ) -> Result<FileEntry, E> {
-    let StorageLockData { lock, storage, tokens, .. } =
-        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    let StorageLockData {
+        lock,
+        storage,
+        tokens,
+        ..
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     let metadata = storage
         .symlink_metadata(&path)

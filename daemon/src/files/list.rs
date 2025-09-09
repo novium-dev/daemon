@@ -40,8 +40,12 @@ pub async fn list_files<
     id: StorageIdentifier,
     path: String,
 ) -> Result<Vec<FileEntry>, E> {
-    let StorageLockData { lock, storage, tokens, .. } =
-        storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
+    let StorageLockData {
+        lock,
+        storage,
+        tokens,
+        ..
+    } = storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     let read_dir = storage
         .read_dir(&path)

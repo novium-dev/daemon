@@ -56,7 +56,8 @@ pub async fn unpack_archive<
         tokens,
         ..
     } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let (dest_storage, dest_storage_path, dest_path) = storage_path(id, &storage, dest, &tokens).await?;
+    let (dest_storage, dest_storage_path, dest_path) =
+        storage_path(id, &storage, dest, &tokens).await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
 
     let parent_ino = storage_parent_ino(&dest_storage, &dest_path).await;

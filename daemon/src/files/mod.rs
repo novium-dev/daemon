@@ -32,6 +32,7 @@ pub use archive::{create_archive, unpack_archive};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, FileTypeExt as _, Metadata, MetadataExt as _};
 pub use copy::copy_file;
+use core::str::FromStr as _;
 use daemon_common::files::FileMode;
 use daemon_common::service::files::FileEntry;
 pub use delete::delete_file;
@@ -43,7 +44,6 @@ pub use stat::stat_file;
 use std::io;
 use std::io::ErrorKind;
 use std::path::PathBuf;
-use core::str::FromStr as _;
 pub use symlink::symlink_file;
 use tracing::error;
 use uuid::Uuid;
@@ -63,7 +63,10 @@ async fn storage_path_root(
     ))
 }
 
-#[expect(clippy::assigning_clones, reason = "false positive, already borrowed immutable")]
+#[expect(
+    clippy::assigning_clones,
+    reason = "false positive, already borrowed immutable"
+)]
 async fn storage_path(
     id: StorageIdentifier,
     storage: &StorageEntry,
@@ -83,9 +86,9 @@ async fn storage_path(
         }
         let Some(id) = path_stripped.get(0..36) else {
             return Err(io::Error::new(
-                    ErrorKind::NotFound,
-                    "found token magic, but was unable to parse uuid (utf8 issue)",
-                ));
+                ErrorKind::NotFound,
+                "found token magic, but was unable to parse uuid (utf8 issue)",
+            ));
         };
         match Uuid::from_str(id) {
             Ok(id) => {
@@ -102,7 +105,7 @@ async fn storage_path(
                 }
 
                 Dir::clone(&dir)
-            },
+            }
             Err(_) => {
                 return Err(io::Error::new(
                     ErrorKind::NotFound,
@@ -116,11 +119,7 @@ async fn storage_path(
             .inspect_err(|err| error!("Failed to open storage {id:?}: {err:?}"))?
     };
 
-    Ok((
-        dir,
-        base,
-        path_relative(&path),
-    ))
+    Ok((dir, base, path_relative(&path)))
 }
 
 pub trait IntoFileEntry {
