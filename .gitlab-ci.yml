@@ -65,6 +65,10 @@ cli_shared:
   script:
     - mkdir crates/sqlx-cli -p
     - cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+    - when: on_success
 
 clippy:
   extends: .rust-build-default
@@ -82,6 +86,10 @@ clippy:
   script:
     - rustup component add clippy
     - cargo clippy --color always --verbose --no-default-features --features ci --no-deps
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+    - when: on_success
 
 fmt:
   extends: .rust-default
@@ -90,6 +98,10 @@ fmt:
   script:
     - rustup component add rustfmt
     - cargo fmt --check --all --verbose
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+    - when: on_success
 
 deny:
   extends: .rust-default
@@ -104,6 +116,10 @@ deny:
     - mkdir crates/cargo-deny -p
     - cargo install --color always --verbose cargo-deny --root crates/cargo-deny
     - crates/cargo-deny/bin/cargo-deny check
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+    - when: on_success
 
 test:
   extends: .rust-build-default
@@ -126,6 +142,10 @@ test:
     - mkdir crates/cargo2junit -p
     - cargo install --color always --verbose cargo2junit --root crates/cargo2junit
     - RUSTC_BOOTSTRAP=1 cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED != "true"
+      when: never
+    - when: on_success
   artifacts:
     when: always
     reports:
