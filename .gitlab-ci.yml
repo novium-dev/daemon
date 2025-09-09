@@ -57,6 +57,7 @@ stages:
   services:
     - name: mariadb:latest
       alias: db
+      pull_policy: if-not-present
 
 crate_dependencies:
   extends: .rust-default
@@ -137,13 +138,13 @@ cli_deny:
     - mkdir crates/cargo-deny -p
     - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny --root crates/cargo-deny
 
-check:
+build:
   extends: .rust-build-default
   stage: check
   needs: ["crate_dependencies", "cli_sqlx"]
   script:
   #  - rustup component add clippy
-    - cargo check --color always --verbose --no-default-features --features ci
+    - cargo build --color always --verbose --no-default-features --features ci
 
 fmt:
   extends: .rust-default
