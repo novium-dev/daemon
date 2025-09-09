@@ -29,6 +29,8 @@ keys = [
     "dep:rustls",
     "dep:time",
     "dep:rcgen",
+    "dep:rand",
+    "dep:pkcs8",
 ]
 service = [
     "dep:daemon_framework",
@@ -70,6 +72,14 @@ url.workspace = true
 uuid.workspace = true
 
 [dependencies.daemon_framework]
+workspace = true
+optional = true
+
+[dependencies.rand]
+workspace = true
+optional = true
+
+[dependencies.pkcs8]
 workspace = true
 optional = true
 

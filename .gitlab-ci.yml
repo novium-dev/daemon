@@ -1,80 +1,92 @@
 stages:
   - prepare
   - check
-  - test
-
 
 .rust-default:
-  image: lukemathwalker/cargo-chef:latest-rust-1-alpine
+  image:
+    name: rust:1.89.0-alpine
+    pull_policy: if-not-present
   parallel:
+  interruptible: true
   variables:
-    CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
-    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
-    LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
+    RUSTFLAGS: "-C opt-level=0"
+
+    FF_USE_FASTZIP: "true"
+    ARTIFACT_COMPRESSION_LEVEL: "fastest"
+    CACHE_COMPRESSION_LEVEL: "fastest"
   before_script:
     - rustc --version && cargo --version
-    - mkdir .cargo_home .gradle_user -p
-    - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-20 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-20 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
-    - apk add --no-cache musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev clang20 clang20-static lld20 git curl --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+    - apk add --no-cache musl-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 .rust-build-default:
-  image: lukemathwalker/cargo-chef:latest-rust-1-alpine
+  image:
+    name: rust:1.89.0-alpine
+    pull_policy: if-not-present
   parallel:
+  interruptible: true
   variables:
     DAEMON_DATABASE_URL: 'mysql://root@db/daemon'
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
+
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
-    GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle_user"
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
+    RUSTFLAGS: "-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld"
+
+    FF_USE_FASTZIP: "true"
+    ARTIFACT_COMPRESSION_LEVEL: "fastest"
+    CACHE_COMPRESSION_LEVEL: "fastest"
   before_script:
     - rustc --version && cargo --version
-    - mkdir .cargo_home .gradle_user -p
+    - mkdir .cargo_home -p
     - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-20 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-20 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
-    - apk add --no-cache musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev clang20 clang20-static lld20 git openjdk21-jdk protoc mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli
+    - apk add --no-cache musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev clang20 clang20-static lld20 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+    - apk upgrade --no-cache gcc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
     - until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
-    - cargo sqlx database create --database-url "$DAEMON_DATABASE_URL"
-    - cargo sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
+    - crates/sqlx-cli/bin/sqlx database create --database-url "$DAEMON_DATABASE_URL"
+    - crates/sqlx-cli/bin/sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
   services:
     - name: mariadb:latest
       alias: db
+      pull_policy: if-not-present
 
-prepare:
+cli_shared:
   extends: .rust-default
   stage: prepare
   cache:
-    - key: rust-cache-$CI_COMMIT_REF_SLUG
-      fallback_keys:
-        - rust-cache-$CI_DEFAULT_BRANCH
-        - rust-cache-default
+    - key: rust-cache-cli
       paths:
-        - .cargo_home/
-        - target/
+        - crates/sqlx-cli
       policy: pull-push
   artifacts:
     paths:
-      - .cargo_home/
-      - target/
+      - crates/sqlx-cli/bin
   script:
-    - cargo chef prepare --recipe-path recipe.json
-    - cargo chef cook --recipe-path recipe.json --no-default-features --features ci --verbose --workspace --target x86_64-unknown-linux-musl
-  after_script:
-    - du -sh .cargo_home target/
+    - mkdir crates/sqlx-cli -p
+    - cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
 
 clippy:
   extends: .rust-build-default
   stage: check
-  needs: ["prepare"]
+  needs: ["cli_shared"]
+  cache:
+    - key: rust-cache-clippy-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-clippy-$CI_DEFAULT_BRANCH
+        - rust-cache-clippy-default
+      paths:
+        - .cargo_home/
+        - target/
+      policy: pull-push
   script:
     - rustup component add clippy
-    - RUSTFLAGS="-C linker=clang -C link-arg=-fuse-ld=lld" cargo clippy --color always --verbose --no-default-features --features ci
+    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps
 
 fmt:
   extends: .rust-default
   stage: check
-  parallel:
+  needs: []
   script:
     - rustup component add rustfmt
     - cargo fmt --check --all --verbose
@@ -82,26 +94,38 @@ fmt:
 deny:
   extends: .rust-default
   stage: check
-  parallel:
-  variables:
-    CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
+  needs: []
   cache:
-    - key: rust-deny-cache
+    - key: rust-cache-cargo-deny-default
       paths:
-        - .cargo_home/
+        - crates/cargo-deny
       policy: pull-push
   script:
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny
-
-    - cargo deny check
+    - mkdir crates/cargo-deny -p
+    - cargo install --color always --verbose cargo-deny --root crates/cargo-deny
+    - crates/cargo-deny/bin/cargo-deny check
 
 test:
   extends: .rust-build-default
-  stage: test
-  needs: ["prepare"]
+  stage: check
+  cache:
+    - key: rust-cache-test-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-test-$CI_DEFAULT_BRANCH
+        - rust-cache-test-default
+      paths:
+        - .cargo_home/
+        - target/
+      policy: pull-push
+    - key: rust-cargo2junit-default
+      paths:
+        - crates/cargo2junit
+      policy: pull-push
+  needs: ["cli_shared"]
   script:
-    - cargo install cargo2junit
-    - cargo test -- -Z unstable-options --format json --report-time | cargo2junit > report.xml
+    - mkdir crates/cargo2junit -p
+    - cargo install --color always --verbose cargo2junit --root crates/cargo2junit
+    - RUSTC_BOOTSTRAP=1 cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
   artifacts:
     when: always
     reports:
