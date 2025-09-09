@@ -101,8 +101,8 @@ deny:
         - crates/cargo-deny
       policy: pull-push
   script:
-    - mkdir crates/cargo2junit -p
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo2junit --root crates/cargo2junit
+    - mkdir crates/cargo-deny -p
+    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny --root crates/cargo-deny
     - crates/cargo-deny/bin/cargo-deny check
 
 test:
