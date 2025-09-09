@@ -9,7 +9,6 @@ stages:
   parallel:
   interruptible: true
   variables:
-    CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C opt-level=0"
 
