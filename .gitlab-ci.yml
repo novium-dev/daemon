@@ -61,10 +61,12 @@ cli_shared:
         - rust-cache-sqlx-cli-default
       paths:
         - crates/sqlx-cli
+        - crates/cargo-sweep
       policy: pull-push
   artifacts:
     paths:
       - crates/sqlx-cli/bin
+      - crates/cargo-sweep/bin
   script:
     - mkdir crates/sqlx-cli crates/cargo-sweep -p
     - cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
