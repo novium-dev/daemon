@@ -55,10 +55,7 @@ cli_shared:
   extends: .rust-default
   stage: prepare
   cache:
-    - key: rust-cache-sqlx-cli-$CI_COMMIT_REF_SLUG
-      fallback_keys:
-        - rust-cache-sqlx-cli-$CI_DEFAULT_BRANCH
-        - rust-cache-sqlx-cli-default
+    - key: rust-cache-cli
       paths:
         - crates/sqlx-cli
         - crates/cargo-sweep
