@@ -12,7 +12,6 @@ stages:
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
-    RUSTC_BOOTSTRAP: "1"
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home -p
@@ -30,7 +29,6 @@ stages:
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
-    RUSTC_BOOTSTRAP: "1"
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home -p
@@ -62,7 +60,7 @@ crate_dependencies:
       - target/
   script:
     - cargo chef prepare --recipe-path recipe.json
-    - cargo chef cook --recipe-path recipe.json --no-default-features --features ci --verbose --workspace --target x86_64-unknown-linux-musl -Zunstable-options
+    - cargo chef cook --recipe-path recipe.json --no-default-features --features ci --verbose --workspace --target x86_64-unknown-linux-musl
   after_script:
     - du -sh .cargo_home target/
 
@@ -129,7 +127,7 @@ clippy:
   needs: ["crate_dependencies", "cli_sqlx"]
   script:
     - rustup component add clippy
-    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps -Zunstable-options
+    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps
 
 fmt:
   extends: .rust-default
@@ -150,8 +148,10 @@ test:
   extends: .rust-build-default
   stage: test
   needs: ["crate_dependencies", "cli_sqlx", "cli_cargo2junit"]
+  variables:
+    RUSTC_BOOTSTRAP: "1"
   script:
-    - cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci --message-format json -Zunstable-options -- --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
+    - cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci --message-format json -- -Zunstable-options --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
   artifacts:
     when: always
     reports:
