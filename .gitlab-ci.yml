@@ -17,6 +17,7 @@ stages:
     CACHE_COMPRESSION_LEVEL: "fastest"
   before_script:
     - rustc --version && cargo --version
+    - apk add --no-cache musl-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 .rust-build-default:
   image:
