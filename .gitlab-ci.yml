@@ -10,18 +10,14 @@ stages:
   interruptible: true
   variables:
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
-    LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
-    RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
+    RUSTFLAGS: "-C opt-level=0"
 
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
     CACHE_COMPRESSION_LEVEL: "fastest"
   before_script:
     - rustc --version && cargo --version
-    - mkdir .cargo_home -p
-    - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-20 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-20 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
-    - apk add --no-cache musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm20-static llvm20-dev clang20 clang20-static lld20 git curl --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 .rust-build-default:
   image:
@@ -36,7 +32,7 @@ stages:
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
-    RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
+    RUSTFLAGS: "-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld"
 
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
@@ -55,7 +51,7 @@ stages:
       alias: db
       pull_policy: if-not-present
 
-cli_sqlx:
+cli_shared:
   extends: .rust-default
   stage: prepare
   cache:
@@ -70,13 +66,14 @@ cli_sqlx:
     paths:
       - crates/sqlx-cli/bin
   script:
-    - mkdir crates/sqlx-cli -p
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
+    - mkdir crates/sqlx-cli crates/cargo-sweep -p
+    - cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
+    - cargo install --color always --verbose cargo-sweep --root crates/cargo-sweep
 
 clippy:
   extends: .rust-build-default
   stage: check
-  needs: ["cli_sqlx"]
+  needs: ["cli_shared"]
   cache:
     - key: rust-cache-clippy-$CI_COMMIT_REF_SLUG
       fallback_keys:
@@ -88,7 +85,9 @@ clippy:
       policy: pull-push
   script:
     - rustup component add clippy
+    - crates/cargo-sweep/bin/cargo-sweep sweep --stamp
     - cargo clippy --color always --verbose --no-default-features --features ci --no-deps
+    - crates/cargo-sweep/bin/cargo-sweep sweep --file
 
 fmt:
   extends: .rust-default
@@ -109,7 +108,7 @@ deny:
       policy: pull-push
   script:
     - mkdir crates/cargo-deny -p
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny --root crates/cargo-deny
+    - cargo install --color always --verbose cargo-deny --root crates/cargo-deny
     - crates/cargo-deny/bin/cargo-deny check
 
 test:
@@ -128,11 +127,13 @@ test:
       paths:
         - crates/cargo2junit
       policy: pull-push
-  needs: ["cli_sqlx"]
+  needs: ["cli_shared"]
   script:
     - mkdir crates/cargo2junit -p
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo2junit --root crates/cargo2junit
+    - cargo install --color always --verbose cargo2junit --root crates/cargo2junit
+    - crates/cargo-sweep/bin/cargo-sweep sweep --stamp
     - RUSTC_BOOTSTRAP=1 cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
+    - crates/cargo-sweep/bin/cargo-sweep sweep --file
   artifacts:
     when: always
     reports:
