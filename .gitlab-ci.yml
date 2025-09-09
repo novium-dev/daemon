@@ -57,16 +57,13 @@ cli_shared:
     - key: rust-cache-cli
       paths:
         - crates/sqlx-cli
-        - crates/cargo-sweep
       policy: pull-push
   artifacts:
     paths:
       - crates/sqlx-cli/bin
-      - crates/cargo-sweep/bin
   script:
-    - mkdir crates/sqlx-cli crates/cargo-sweep -p
+    - mkdir crates/sqlx-cli -p
     - cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
-    - cargo install --color always --verbose cargo-sweep --root crates/cargo-sweep
 
 clippy:
   extends: .rust-build-default
@@ -83,9 +80,7 @@ clippy:
       policy: pull-push
   script:
     - rustup component add clippy
-    - crates/cargo-sweep/bin/cargo-sweep sweep --stamp
     - cargo clippy --color always --verbose --no-default-features --features ci --no-deps
-    - crates/cargo-sweep/bin/cargo-sweep sweep --file
 
 fmt:
   extends: .rust-default
@@ -129,9 +124,7 @@ test:
   script:
     - mkdir crates/cargo2junit -p
     - cargo install --color always --verbose cargo2junit --root crates/cargo2junit
-    - crates/cargo-sweep/bin/cargo-sweep sweep --stamp
     - RUSTC_BOOTSTRAP=1 cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
-    - crates/cargo-sweep/bin/cargo-sweep sweep --file
   artifacts:
     when: always
     reports:
