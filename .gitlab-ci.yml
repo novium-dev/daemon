@@ -7,11 +7,16 @@ stages:
 .rust-default:
   image: lukemathwalker/cargo-chef:latest-rust-1-alpine
   parallel:
+  interruptible: true
   variables:
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
+
+    FF_USE_FASTZIP: "true"
+    ARTIFACT_COMPRESSION_LEVEL: "fastest"
+    CACHE_COMPRESSION_LEVEL: "fastest"
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home -p
@@ -21,6 +26,7 @@ stages:
 .rust-build-default:
   image: lukemathwalker/cargo-chef:latest-rust-1-alpine
   parallel:
+  interruptible: true
   variables:
     DAEMON_DATABASE_URL: 'mysql://root@db/daemon'
     MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: '1'
@@ -29,6 +35,10 @@ stages:
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
+
+    FF_USE_FASTZIP: "true"
+    ARTIFACT_COMPRESSION_LEVEL: "fastest"
+    CACHE_COMPRESSION_LEVEL: "fastest"
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home -p
