@@ -13,7 +13,6 @@ stages:
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
-    RUSTC_BOOTSTRAP: "1"
 
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
@@ -38,7 +37,6 @@ stages:
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
     RUSTFLAGS: "-C linker=clang -C link-arg=-fuse-ld=lld"
-    RUSTC_BOOTSTRAP: "1"
 
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
@@ -57,28 +55,6 @@ stages:
       alias: db
       pull_policy: if-not-present
 
-#crate_dependencies:
-#  extends: .rust-default
-#  stage: prepare
-#  cache:
-#    - key: rust-cache-$CI_COMMIT_REF_SLUG
-#      fallback_keys:
-#        - rust-cache-$CI_DEFAULT_BRANCH
-#        - rust-cache-default
-#      paths:
-#        - .cargo_home/
-#        - target/
-#      policy: pull-push
-#  artifacts:
-#    paths:
-#      - .cargo_home/
-#      - target/
-#  script:
-#    - cargo chef prepare --recipe-path recipe.json
-#    - cargo chef cook --recipe-path recipe.json --no-default-features --features ci --verbose --workspace --target x86_64-unknown-linux-musl
-#  after_script:
-#    - du -sh .cargo_home target/
-
 cli_sqlx:
   extends: .rust-default
   stage: prepare
@@ -88,7 +64,6 @@ cli_sqlx:
         - rust-cache-sqlx-cli-$CI_DEFAULT_BRANCH
         - rust-cache-sqlx-cli-default
       paths:
-        - .cargo_home/
         - crates/sqlx-cli
       policy: pull-push
   artifacts:
@@ -97,44 +72,6 @@ cli_sqlx:
   script:
     - mkdir crates/sqlx-cli -p
     - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
-
-cli_cargo2junit:
-  extends: .rust-default
-  stage: prepare
-  cache:
-    - key: rust-cache-cargo2junit-$CI_COMMIT_REF_SLUG
-      fallback_keys:
-        - rust-cache-cargo2junit-$CI_DEFAULT_BRANCH
-        - rust-cache-cargo2junit-default
-      paths:
-        - .cargo_home/
-        - crates/cargo2junit
-      policy: pull-push
-  artifacts:
-    paths:
-      - crates/cargo2junit/bin
-  script:
-    - mkdir crates/cargo2junit -p
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo2junit --root crates/cargo2junit
-
-cli_deny:
-  extends: .rust-default
-  stage: prepare
-  cache:
-    - key: rust-cache-cargo-deny-$CI_COMMIT_REF_SLUG
-      fallback_keys:
-        - rust-cache-cargo-deny-$CI_DEFAULT_BRANCH
-        - rust-cache-cargo-deny-default
-      paths:
-        - .cargo_home/
-        - crates/cargo-deny
-      policy: pull-push
-  artifacts:
-    paths:
-      - crates/cargo-deny/bin
-  script:
-    - mkdir crates/cargo-deny -p
-    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo-deny --root crates/cargo-deny
 
 build:
   extends: .rust-build-default
@@ -157,18 +94,38 @@ fmt:
 deny:
   extends: .rust-default
   stage: check
-  needs: ["cli_deny"]
+  needs: []
+  cache:
+    - key: rust-cache-cargo-deny-default
+      paths:
+        - crates/cargo-deny
+      policy: pull-push
   script:
+    - mkdir crates/cargo2junit -p
+    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo2junit --root crates/cargo2junit
     - crates/cargo-deny/bin/cargo-deny check
 
 test:
   extends: .rust-build-default
   stage: check
-  needs: [
-#    "crate_dependencies",
-    "cli_sqlx", "cli_cargo2junit"]
+  cache:
+    - key: rust-cache-test-$CI_COMMIT_REF_SLUG
+      fallback_keys:
+        - rust-cache-test-$CI_DEFAULT_BRANCH
+        - rust-cache-test-default
+      paths:
+        - .cargo_home/
+        - target/
+      policy: pull-push
+    - key: rust-cargo2junit-default
+      paths:
+        - crates/cargo2junit
+      policy: pull-push
+  needs: ["cli_sqlx"]
   script:
-    - cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
+    - mkdir crates/cargo2junit -p
+    - RUSTFLAGS="-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld" cargo install --color always --verbose cargo2junit --root crates/cargo2junit
+    - RUSTC_BOOTSTRAP=1 cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
   artifacts:
     when: always
     reports:
