@@ -32,6 +32,7 @@ pub(crate) use daemon_framework::{define_error, service};
 use daemon_framework::{define_header_variable, define_path_variable, error};
 use std::io;
 use std::io::ErrorKind;
+use uuid::Uuid;
 
 pub use daemon_framework::DataStream;
 pub use daemon_framework::FileResponse;
@@ -125,6 +126,7 @@ pub trait DaemonServices:
     + ScheduleService
     + SetupService
 {
+    fn id(&self) -> Uuid;
 }
 pub trait DaemonServicesClientImpl:
     ServerServiceClientImpl

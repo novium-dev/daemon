@@ -96,7 +96,11 @@ pub(crate) trait DaemonExtra: Clone + Send + Sync + 'static {}
 impl DaemonExtra for () {}
 impl DaemonExtra for WithUserKey {}
 
-impl<T: DaemonExtra> DaemonServices for Daemon<T> {}
+impl<T: DaemonExtra> DaemonServices for Daemon<T> {
+    fn id(&self) -> Uuid {
+        self.key.id
+    }
+}
 impl DaemonServicesURL for Daemon<WithUserKey> {}
 impl DaemonServicesURLWithUserKey for Daemon<WithUserKey> {}
 impl FrameworkClientImpl for Daemon<WithUserKey> {

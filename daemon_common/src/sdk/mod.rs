@@ -72,7 +72,11 @@ impl<T: DaemonSDKExtra + Send + Sync> ResourceServiceClientImpl for DaemonSDK<T>
 impl<T: DaemonSDKExtra + Send + Sync> DatabaseServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> ScheduleServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> SetupServiceClientImpl for DaemonSDK<T> {}
-impl<T: DaemonSDKExtra + Send + Sync> DaemonServices for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra + Send + Sync> DaemonServices for DaemonSDK<T> {
+    fn id(&self) -> Uuid {
+        self.identifier
+    }
+}
 impl<T: DaemonSDKExtra + Send + Sync> DaemonServicesURL for DaemonSDK<T> {}
 impl DaemonServicesURLWithUserKey for DaemonSDK<WithUserKey> {}
 
