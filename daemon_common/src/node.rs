@@ -63,6 +63,7 @@ pub struct NodeUpdateRequest {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum ServerStorage {
     #[cfg(feature = "btrfs")]
     #[serde(rename = "btrfs")]
@@ -72,6 +73,7 @@ pub enum ServerStorage {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[repr(u8)]
 pub enum BackupStorage {
     #[cfg(feature = "btrfs")]
     #[serde(rename = "btrfs")]
