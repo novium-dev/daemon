@@ -68,17 +68,17 @@ fn gen_btrfs_bindings() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .default_enum_style(bindgen::EnumVariation::ModuleConsts)
         .size_t_is_usize(true)
-        .generate() {
+        .generate()
+    {
         Ok(bindings) => {
             bindings
                 .write_to_file(target_path)
                 .expect("Couldn't write bindings!");
-        },
+        }
         Err(err) => {
             println!("Unable to generate btrfs bindings, using prebuilt instead: {err:?}");
             fs::copy("btrfs/bindings_prebuilt.rs", target_path)
                 .expect("Unable to copy prebuilt btrfs bindings");
         }
     }
-
 }
