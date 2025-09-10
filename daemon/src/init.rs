@@ -23,6 +23,7 @@ use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
 use bollard::query_parameters::{
     InspectNetworkOptions, KillContainerOptions, ListContainersOptions,
 };
+use core::fmt::{Debug, Display, Formatter};
 use core::mem;
 use core::time::Duration;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
@@ -45,6 +46,14 @@ pub enum DaemonInitError {
     Sql(sqlx::Error),
     Docker(bollard::errors::Error),
 }
+
+impl Display for DaemonInitError {
+    fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
+        <Self as Debug>::fmt(self, formatter)
+    }
+}
+
+impl core::error::Error for DaemonInitError {}
 
 impl Daemon<()> {
     pub async fn init(
