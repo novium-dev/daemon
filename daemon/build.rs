@@ -14,6 +14,7 @@
  */
 #![allow(clippy::expect_used)]
 
+use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -55,7 +56,11 @@ fn main() {
 
 #[cfg(feature = "btrfs")]
 fn gen_btrfs_bindings() {
-    let bindings = bindgen::Builder::default()
+    // Write the bindings to the $OUT_DIR/bindings.rs file.
+    let out_path = PathBuf::from(std::env::var("OUT_DIR").expect("Missing output directory"));
+    let target_path = out_path.join("btrfs_bindings.rs");
+
+    match bindgen::Builder::default()
         .header("btrfs/wrapper.h")
         .derive_default(true)
         .ignore_functions()
@@ -63,12 +68,17 @@ fn gen_btrfs_bindings() {
         .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
         .default_enum_style(bindgen::EnumVariation::ModuleConsts)
         .size_t_is_usize(true)
-        .generate()
-        .expect("Unable to generate bindings");
+        .generate() {
+        Ok(bindings) => {
+            bindings
+                .write_to_file(target_path)
+                .expect("Couldn't write bindings!");
+        },
+        Err(err) => {
+            println!("Unable to generate btrfs bindings, using prebuilt instead: {err:?}");
+            fs::copy("btrfs/bindings_prebuilt.rs", target_path)
+                .expect("Unable to copy prebuilt btrfs bindings");
+        }
+    }
 
-    // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_path = PathBuf::from(std::env::var("OUT_DIR").expect("Missing output directory"));
-    bindings
-        .write_to_file(out_path.join("btrfs_bindings.rs"))
-        .expect("Couldn't write bindings!");
 }
