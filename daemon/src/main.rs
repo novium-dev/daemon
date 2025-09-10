@@ -20,6 +20,7 @@ use crate::config::DaemonConfig;
 use clap::*;
 use daemon::*;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
+use std::sync::Arc;
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt as _;
 use tracing::info;
@@ -192,7 +193,7 @@ async fn run() {
 
     info!("Starting Daemon on version {GIT_HASH}");
 
-    let daemon = Daemon::init(config, root, key)
+    let daemon = Daemon::init(config, Arc::new(root), Arc::new(key))
         .await
         .expect("Unable to initialize daemon");
 

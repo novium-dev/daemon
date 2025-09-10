@@ -49,8 +49,8 @@ pub enum DaemonInitError {
 impl Daemon<()> {
     pub async fn init(
         config: DaemonConfig,
-        root: DaemonRootKey,
-        key: DaemonKey,
+        root: Arc<DaemonRootKey>,
+        key: Arc<DaemonKey>,
     ) -> Result<Self, DaemonInitError> {
         Self::init_internal(config, root, key, ()).await
     }
@@ -59,8 +59,8 @@ impl Daemon<()> {
 impl Daemon<WithUserKey> {
     pub async fn init_embedded(
         config: DaemonConfig,
-        root: DaemonRootKey,
-        key: DaemonKey,
+        root: Arc<DaemonRootKey>,
+        key: Arc<DaemonKey>,
 
         mut base_url: Url,
         user_key: SigningKey,
@@ -73,8 +73,8 @@ impl Daemon<WithUserKey> {
 impl<T: DaemonExtra> Daemon<T> {
     async fn init_internal(
         config: DaemonConfig,
-        root: DaemonRootKey,
-        key: DaemonKey,
+        root: Arc<DaemonRootKey>,
+        key: Arc<DaemonKey>,
         extra: T,
     ) -> Result<Self, DaemonInitError> {
         let servers = HashMap::new();
@@ -210,8 +210,8 @@ impl<T: DaemonExtra> Daemon<T> {
             client: Arc::default(),
             extra: Arc::new(extra),
 
-            root: Arc::new(root),
-            key: Arc::new(key),
+            root,
+            key,
         };
         sql::init(&daemon.conn)
             .await
