@@ -12,7 +12,6 @@ workspace = true
 crate-type = ["rlib", "staticlib"]
 
 [features]
-btrfs = []
 ssh = ["backend", "dep:serde"]
 docker = [
     "dep:bollard",

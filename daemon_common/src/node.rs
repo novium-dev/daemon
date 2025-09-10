@@ -24,13 +24,6 @@ pub struct HostAndPort {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(
-    not(feature = "btrfs"),
-    expect(
-        clippy::zero_sized_map_values,
-        reason = "single value enum if btrfs is disabled"
-    )
-)]
 pub struct NodeRegistrationRequest {
     pub base_url: Url,
 
@@ -46,13 +39,6 @@ pub struct NodeRegistrationRequest {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-#[cfg_attr(
-    not(feature = "btrfs"),
-    expect(
-        clippy::zero_sized_map_values,
-        reason = "single value enum if btrfs is disabled"
-    )
-)]
 pub struct NodeUpdateRequest {
     pub base_url: Url,
 
@@ -63,9 +49,7 @@ pub struct NodeUpdateRequest {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[repr(u8)]
 pub enum ServerStorage {
-    #[cfg(feature = "btrfs")]
     #[serde(rename = "btrfs")]
     Btrfs(String),
     #[serde(rename = "directory")]
@@ -73,9 +57,7 @@ pub enum ServerStorage {
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
-#[repr(u8)]
 pub enum BackupStorage {
-    #[cfg(feature = "btrfs")]
     #[serde(rename = "btrfs")]
     Btrfs(String),
     #[serde(rename = "archive")]
@@ -84,20 +66,11 @@ pub enum BackupStorage {
 
 impl BackupStorage {
     #[must_use]
-    #[cfg_attr(
-        not(feature = "btrfs"),
-        expect(
-            clippy::missing_const_for_fn,
-            reason = "the eq call is only present with btrfs"
-        )
-    )]
     pub fn is_compatible_with(&self, storage: &ServerStorage) -> bool {
         match (self, storage) {
-            #[cfg(feature = "btrfs")]
             (Self::Btrfs(backup_group), ServerStorage::Btrfs(server_group)) => {
                 server_group.eq(backup_group)
             }
-            #[cfg(feature = "btrfs")]
             (Self::Btrfs(_), ServerStorage::Directory) => false,
             (Self::Archive, _) => true,
         }

@@ -24,7 +24,7 @@ features = ["trace_sync"]
 
 [features]
 ssh_debug_auth_bypass = []
-btrfs = ["daemon_common/btrfs"]
+btrfs = []
 sentry = ["dep:sentry"]
 no_tty_size_please = []
 
