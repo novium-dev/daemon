@@ -202,8 +202,8 @@ where
 {
     use de::Error as _;
 
-    let data = <&str>::deserialize(deserializer)?;
-    HeaderValue::from_str(data).map_err(D::Error::custom)
+    let data = <String>::deserialize(deserializer)?;
+    HeaderValue::from_str(&data).map_err(D::Error::custom)
 }
 
 fn serialize_header<S>(data: &HeaderValue, serializer: S) -> Result<S::Ok, S::Error>
