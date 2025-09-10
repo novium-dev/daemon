@@ -17,9 +17,9 @@ use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::{TarSandboxedAppendExt as _, TarSandboxedUnpackExt as _};
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
-use crate::utils::path_relative;
-use crate::{Daemon, DaemonExtra};
-use cap_async_std::fs::{Dir, OpenOptions};
+use crate::utils::storage_parent_ino;
+use crate::{Daemon, DaemonExtra, StorageNotification};
+use cap_async_std::fs::{Dir, MetadataExt as _, OpenOptions};
 use daemon_common::service::error_compression_unsupported::FromCompressionUnsupported;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -31,7 +31,8 @@ use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use tar::{Archive, Builder};
-use tracing::{debug, error};
+use tokio::sync::broadcast::Sender;
+use tracing::{debug, error, warn};
 
 /// Cancel safe
 #[inline(always)]
@@ -48,10 +49,19 @@ pub async fn unpack_archive<
     path: String,
     dest: String,
 ) -> Result<(), E> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let path = path_relative(path);
-    let (storage, storage_path) = storage_path(id, &storage).await?;
+    let StorageLockData {
+        lock,
+        storage,
+        notify,
+        tokens,
+        ..
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    let (dest_storage, dest_storage_path, dest_path) =
+        storage_path(id, &storage, dest, &tokens).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
+
+    let parent_ino = storage_parent_ino(&dest_storage, &dest_path).await;
+
     let file = storage
         .open(path)
         .await
@@ -75,7 +85,7 @@ pub async fn unpack_archive<
         Ok((Some(compression), file)) => {
             let archive = Archive::new(compression.create_decoder(file)?);
             archive
-                .unpack_sandboxed(storage_path, dest, ())
+                .unpack_sandboxed(dest_storage_path, &dest_path, ())
                 .await
                 .inspect_err(|err| match err.kind() {
                     ErrorKind::InvalidData | ErrorKind::QuotaExceeded => {
@@ -98,6 +108,24 @@ pub async fn unpack_archive<
             return Err(<E as From<io::Error>>::from(err));
         }
     }
+
+    let ino = dest_storage
+        .metadata(dest_path)
+        .await
+        .map(|meta| meta.ino());
+
+    if let Ok((inode, parent_inode)) = ino
+        .and_then(|ino| parent_ino.map(|parent_ino| (ino, parent_ino)))
+        .inspect_err(|err| {
+            warn!(
+                "Archive unpack was successful, but unable to trigger storage notification: {err:?}"
+            );
+        })
+    {
+        let _ = notify.send(StorageNotification::Create { parent_inode, inode })
+            .inspect_err(|err| warn!("Archive unpack was successful, but unable to trigger storage notification: {err:?}"));
+    }
+
     drop(lock);
     Ok(())
 }
@@ -119,22 +147,27 @@ pub async fn create_archive<
     src: String,
     compression: String,
 ) -> Result<(), E> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let path = path_relative(path);
-
+    let StorageLockData {
+        lock,
+        storage,
+        notify,
+        tokens,
+        ..
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
     let compression: ArchiveCompression = serde_json::from_value(json!({
         "type": compression
     }))
     .map_err(|_err| <E as FromCompressionUnsupported>::from())?;
 
-    let (storage, storage_path) = storage_path(id, &storage).await?;
+    let (_, src_storage_path, src_path) = storage_path(id, &storage, src, &tokens).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     tokio::task::spawn(create_archive0::<E>(
         storage,
-        storage_path,
+        src_storage_path,
         path,
-        src,
+        src_path,
         compression,
+        notify,
     ))
     .await
     .map_err(io::Error::from)??;
@@ -145,14 +178,17 @@ pub async fn create_archive<
 #[inline(always)]
 async fn create_archive0<E: From<io::Error>>(
     storage: Dir,
-    storage_path: PathBuf,
+    src_storage_path: PathBuf,
     path: PathBuf,
-    src: String,
+    src: PathBuf,
     compression: ArchiveCompression,
+    notify: Sender<StorageNotification>,
 ) -> Result<(), E> {
+    let parent_ino = storage_parent_ino(&storage, &path).await;
+
     let file = storage
         .open_with(
-            path,
+            &path,
             OpenOptions::new().create(true).truncate(true).write(true),
         )
         .await
@@ -164,6 +200,8 @@ async fn create_archive0<E: From<io::Error>>(
             _ => error!("Failed to create archive (open): {err:?}"),
         })?;
 
+    let ino = storage.metadata(path).await.map(|meta| meta.ino());
+
     let fd: OwnedFd = file.into_std().into();
     let file = std::fs::File::from(fd);
     let archive = Builder::new(
@@ -172,7 +210,7 @@ async fn create_archive0<E: From<io::Error>>(
             .inspect_err(|err| error!("Failed to create archive (create_encoder): {err:?}"))?,
     );
     let (archive, ()) = archive
-        .append_dir_all_sandboxed(storage_path, "", src, HashSet::new(), (), true)
+        .append_dir_all_sandboxed(src_storage_path, "", src, HashSet::new(), (), true)
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::QuotaExceeded => debug!("Failed to create archive (create): {err:?}"),
@@ -190,5 +228,27 @@ async fn create_archive0<E: From<io::Error>>(
         ErrorKind::QuotaExceeded => debug!("Failed to create archive (flush): {err:?}"),
         _ => error!("Failed to create archive (flush): {err:?}"),
     })?;
+
+    let _ = notify
+        .send(StorageNotification::Update {
+            parent_inode: parent_ino
+                .inspect_err(|err| {
+                    warn!(
+                        "Archive creation was successful, but unable to trigger storage notification: {err:?}"
+                    );
+                })
+                .ok(),
+            inode: ino
+                .inspect_err(|err| {
+                    warn!(
+                        "Archive creation was successful, but unable to trigger storage notification: {err:?}"
+                    );
+                })
+                .ok(),
+        })
+        .inspect_err(|err| {
+            warn!("Archive creation was successful, but unable to trigger storage notification: {err:?}");
+        });
+
     Ok(())
 }

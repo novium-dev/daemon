@@ -145,6 +145,9 @@ pub fn process(
         operations.extend(quote! { .tag(#tag) });
     }
 
+    #[cfg(feature = "ts")]
+    let mut ts_types_impl = TokenStream::new();
+
     let (
         pre_fn_result,
         RouteArgs {
@@ -164,6 +167,8 @@ pub fn process(
         errors,
         &mut post_fn,
         &mut result,
+        #[cfg(feature = "ts")]
+        &mut ts_types_impl,
     );
 
     if let Some(desc) = &doc {
@@ -291,8 +296,6 @@ pub fn process(
     let mut client_def_body = TokenStream::new();
     let mut fn_def_args = quote! { &self, };
     let mut fn_def_call = TokenStream::new();
-    #[cfg(feature = "ts")]
-    let mut ts_types_impl = TokenStream::new();
     #[cfg(feature = "ts")]
     let mut ts_funcs_impl = TokenStream::new();
 

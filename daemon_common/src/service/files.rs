@@ -158,7 +158,11 @@ pub trait FilesService {
         dest: String,
     ) -> Result<(), _>;
 
-    #[route("/archive/create", method = GET, query = [ path "The source directory for the archive contents", src "The file location where the archive should be created", compression "The compression algorithm to use for the archive" ])]
+    #[route("/archive/create", method = GET, query = [
+        path "The source directory for the archive contents",
+        src "The file location where the archive should be created",
+        compression "The compression algorithm to use for the archive"
+    ])]
     #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) compression(unsupported) sql(failure [sql:*]))]
     #[doc = "Creates an archive"]
     async fn server_create_archive(
@@ -168,6 +172,28 @@ pub trait FilesService {
         path: String,
         compression: String,
     ) -> Result<(), _>;
+
+    #[route("/watch", method = WS, query = [ path "The initial work directory path" ])]
+    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[ts(FilesWatchResponse FilesWatchCommand)]
+    #[doc = "A websocket for file updates in realtime"]
+    async fn server_watch_files(
+        &self,
+        server_id: u32,
+        path: Option<String>,
+    ) -> Result<WebsocketResponse, _>;
+
+    #[route(!"/user/files/{server_id}/watch", method = WS, query = [ path "The initial work directory path", verify, timestamp ])]
+    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[ts(FilesWatchResponse FilesWatchCommand)]
+    #[doc = "A websocket for file updates in realtime (called by the user)"]
+    async fn server_watch_files_user(
+        &self,
+        server_id: u32,
+        path: Option<String>,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<WebsocketResponse, _>;
 }
 
 pub trait FilesServiceUserKeyExtension {
@@ -179,6 +205,8 @@ pub trait FilesServiceUserKeyExtension {
     ) -> Url;
 
     fn server_upload_file_user_url_signed(&self, server_id: u32, path: String) -> Url;
+
+    fn server_watch_files_user_url_signed(&self, server_id: u32, path: Option<String>) -> Url;
 
     #[cfg(feature = "ts")]
     fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor);
@@ -214,6 +242,13 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
         self.server_upload_file_user_url(server_id, path, timestamp, signature)
     }
 
+    fn server_watch_files_user_url_signed(&self, server_id: u32, path: Option<String>) -> Url {
+        let timestamp = Utc::now().timestamp();
+        let signature =
+            UserSignature::new_server_watch_files(self.key(), timestamp, self.node_id(), server_id);
+        self.server_watch_files_user_url(server_id, path, timestamp, signature)
+    }
+
     #[cfg(feature = "ts")]
     fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor) {
         visitor.visit_start(true, "serverDownloadFileUserUrlSigned");
@@ -230,10 +265,17 @@ return this.serverDownloadFileUserUrl(serverId, path, limit, timestamp, signatur
         visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
 const signature = await UserSignature.newServerFileUploadAsync(this.userKey, timestamp, this.identifier, serverId, path);
 return this.serverUploadFileUserUrl(serverId, path, timestamp, signature);", "URL");
+
+        visitor.visit_start(true, "serverWatchFilesUserUrlSigned");
+        visitor.visit_argument::<u32>("serverId");
+        visitor.visit_argument::<Option<String>>("path");
+        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
+const signature = await UserSignature.newServerWatchFilesAsync(this.userKey, timestamp, this.identifier, serverId);
+return this.serverWatchFilesUserUrl(serverId, path, timestamp, signature);", "URL");
     }
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({"name": "eula.txt", "uid": 0, "gid": 0, "mode": 0o644, "size": 64, "path": null}))]
 #[ts]
 pub struct FileEntry {
@@ -245,4 +287,59 @@ pub struct FileEntry {
     pub relative_path: String, // for recursive listing like /plugins/essentials
     pub path: Option<String>,  // for symlinks
     pub archive: bool,
+}
+
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
+pub struct FilesWatchResponse {
+    pub token: String,
+    pub data: Vec<FilesWatchResponseEntry>,
+}
+
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
+#[serde(tag = "type")]
+#[serde(rename_all = "lowercase")]
+pub enum FilesWatchCommand {
+    Reload,
+    Fresh,
+    WorkDirectory { path: String },
+}
+
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
+#[serde(rename_all = "lowercase")]
+pub enum FilesWatchWorkDirectoryChangedReason {
+    Changed, // another path was requested via command
+    Update,  // the current directory got renamed (still the same directory, just the path differs)
+    Delete, // current directory got deleted, forced to change into another directory (if possible the parent directory, otherwise root)
+}
+
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[ts]
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+pub enum FilesWatchResponseEntry {
+    WorkDirectoryChanged {
+        path: String,
+        reason: FilesWatchWorkDirectoryChangedReason,
+    },
+    Reset {
+        data: Vec<FileEntry>,
+    },
+    Add {
+        index: usize,
+        entry: FileEntry,
+    },
+    Remove {
+        index: usize,
+    },
+    Modify {
+        index: usize,
+        entry: FileEntry,
+    },
+    Move {
+        index: usize,
+        offset: i64,
+    },
 }

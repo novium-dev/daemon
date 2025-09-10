@@ -16,7 +16,6 @@ use crate::files::{IntoFileEntry as _, storage_path};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
-use crate::utils::path_relative;
 use crate::{Daemon, DaemonExtra};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -41,10 +40,13 @@ pub async fn list_files<
     id: StorageIdentifier,
     path: String,
 ) -> Result<Vec<FileEntry>, E> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
-    let path = path_relative(path);
-    let (storage, _) = storage_path(id, &storage).await?;
+    let StorageLockData {
+        lock,
+        storage,
+        tokens,
+        ..
+    } = storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     let read_dir = storage
         .read_dir(&path)
         .await

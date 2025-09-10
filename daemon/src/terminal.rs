@@ -125,6 +125,7 @@ pub async fn new_session<
         )]
         {
             tokio::select! {
+                _timeout = tokio::time::sleep(Duration::from_secs(10)) => {}
                 stdout = recv.recv() => {
                     match stdout {
                         Ok(data) => {

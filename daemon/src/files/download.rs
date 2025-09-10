@@ -15,7 +15,6 @@
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
-use crate::utils::path_relative;
 use crate::{Daemon, DaemonExtra};
 use axum::http;
 use axum::http::{HeaderMap, HeaderValue};
@@ -43,10 +42,13 @@ pub async fn download_file<
     path: String,
     limit: Option<u64>,
 ) -> Result<FileResponse, E> {
-    let StorageLockData { lock, storage, .. } =
-        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
-    let path = path_relative(path);
-    let (storage, _) = storage_path(id, &storage).await?;
+    let StorageLockData {
+        lock,
+        storage,
+        tokens,
+        ..
+    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     let fd: OwnedFd = storage
         .open(&path)
         .await

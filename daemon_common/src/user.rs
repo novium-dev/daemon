@@ -212,6 +212,13 @@ impl UserSignature {
             ("path: string"),
             "`-${path}`"
         );
+        signature_ts_impl!(
+            replace,
+            "server_watch_files",
+            "server_watch_files",
+            (""),
+            "null"
+        );
 
         visitor
             .out
@@ -225,6 +232,7 @@ impl UserSignature {
     signature_impl!(exec, "exec", (command: &[String]), Some(format!("-{}", command.join(";"))));
     signature_impl!(server_file_download, "server_file_download", (path: impl Into<String>), Some(format!("-{}", path.into())));
     signature_impl!(server_file_upload, "server_file_upload", (path: impl Into<String>), Some(format!("-{}", path.into())));
+    signature_impl!(server_watch_files, "server_watch_files", (), None);
 }
 
 impl Serialize for UserSignature {

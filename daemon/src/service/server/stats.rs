@@ -76,6 +76,7 @@ async fn new_stats_session<
             last_sent = Instant::now();
         }
         tokio::select! {
+            _timeout = tokio::time::sleep(Duration::from_secs(10)) => {}
             stdout = recv.recv() => {
                 match stdout {
                     Ok(data) => {

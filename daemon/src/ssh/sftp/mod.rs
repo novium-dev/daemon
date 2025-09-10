@@ -16,6 +16,7 @@ pub mod ext;
 pub mod files;
 pub mod r#impl;
 
+use crate::StorageNotification;
 use cap_async_std::fs::*;
 use daemon_common::node::BackendAuthServerPermissions;
 use indexmap::IndexMap;
@@ -26,19 +27,20 @@ use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io;
 use tokio::sync::OwnedRwLockReadGuard;
+use tokio::sync::broadcast::Sender;
 use tracing::*;
+
+type DaemonAccess = (
+    Arc<Dir>,
+    BackendAuthServerPermissions,
+    OwnedRwLockReadGuard<()>,
+    Option<Sender<StorageNotification>>,
+);
 
 pub struct DaemonSftpSession {
     pub version: Option<u32>,
-    pub file_handles: HashMap<String, FileHandle>,
-    pub access: HashMap<
-        Vec<String>,
-        (
-            Arc<Dir>,
-            BackendAuthServerPermissions,
-            OwnedRwLockReadGuard<()>,
-        ),
-    >,
+    pub file_handles: HashMap<String, (FileHandle, Option<Sender<StorageNotification>>)>,
+    pub access: HashMap<Vec<String>, DaemonAccess>,
 }
 
 impl DaemonSftpSession {
@@ -46,18 +48,18 @@ impl DaemonSftpSession {
         &mut self,
         handle: &String,
         permissions: BackendAuthServerPermissions,
-    ) -> Result<&mut FileHandle, StatusCode> {
+    ) -> Result<(&mut FileHandle, Option<Sender<StorageNotification>>), StatusCode> {
         match self.file_handles.get_mut(handle) {
             None => {
                 debug!("File handle does not exist: {handle:?}");
                 Err(StatusCode::NoSuchFile)
             }
-            Some(handle) => {
+            Some((handle, sender)) => {
                 if !handle.has_permissions(permissions) {
                     debug!("File handle was opened with less permissions than required");
                     return Err(StatusCode::PermissionDenied);
                 }
-                Ok(handle)
+                Ok((handle, sender.clone()))
             }
         }
     }

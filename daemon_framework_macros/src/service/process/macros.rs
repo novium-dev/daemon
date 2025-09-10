@@ -26,6 +26,7 @@ pub fn process(
     errors: &mut TokenStream,
     post_fn: &mut Vec<TokenTree>,
     result: &mut Vec<TokenTree>,
+    #[cfg(feature = "ts")] ts_types_impl: &mut TokenStream,
 ) -> (Vec<TokenTree>, RouteArgs, Option<LitStr>, Option<Literal>) {
     let mut route_args = None;
     let mut pre_fn_result0 = VecDeque::new();
@@ -80,6 +81,46 @@ pub fn process(
                         route_args = Some(args);
                     }
                     Err(err) => panic!("Failed to parse route macro arguments: {err}"),
+                }
+            }
+            "ts" => {
+                let Some(TokenTree::Group(group)) = macro_inner.pop_front() else {
+                    panic!("Expected ts macro arguments");
+                };
+                assert_eq!(
+                    group.delimiter(),
+                    Delimiter::Parenthesis,
+                    "Expected ts macro arguments in parenthesis"
+                );
+                for token in group.stream() {
+                    let TokenTree::Ident(tstype) = token else {
+                        panic!("Only identifiers are allowed as ts macro argument");
+                    };
+                    #[cfg(feature = "ts")]
+                    {
+                        use proc_macro2::Span;
+                        let ts_crate_literal =
+                            LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
+                        ts_types_impl.extend(quote! {
+
+                            {
+                                #[derive(#crate_prefix ts_rs::TS)]
+                                #[ts(crate = #ts_crate_literal)]
+                                #[allow(dead_code)]
+                                struct ExtraStruct {
+                                    inner: #tstype,
+                                }
+
+                                visitor.allowed.extend(<ExtraStruct as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
+                                <ExtraStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
+                            }
+                        });
+                    }
+
+                    #[cfg(not(feature = "ts"))]
+                    {
+                        drop(tstype);
+                    }
                 }
             }
             "doc" => {

@@ -14,11 +14,13 @@
  */
 use crate::files::{
     copy_file, create_archive, delete_file, download_file, list_files, mkdir_file, rename_file,
-    stat_file, symlink_file, unpack_archive, write_file, write_file_by_template, write_file_by_url,
+    stat_file, symlink_file, unpack_archive, watch_files, write_file, write_file_by_template,
+    write_file_by_url,
 };
 use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
+use axum::extract::WebSocketUpgrade;
 use axum_extra::TypedHeader;
 use axum_extra::headers::ContentLength;
 use daemon_common::service::files::FileEntry;
@@ -28,10 +30,11 @@ use daemon_common::service::files::error::{
     ServerDeleteFileError, ServerDownloadFileError, ServerDownloadFileUserError,
     ServerListFilesError, ServerRenameFileError, ServerStatFileError, ServerSymlinkError,
     ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
-    ServerWriteFileByTemplateError, ServerWriteFileByUrlError,
+    ServerWatchFilesError, ServerWatchFilesUserError, ServerWriteFileByTemplateError,
+    ServerWriteFileByUrlError,
 };
 use daemon_common::service::server::ServerFileWrite;
-use daemon_common::service::{DataStream, FileResponse};
+use daemon_common::service::{DataStream, FileResponse, WebsocketResponse};
 use daemon_common::user::UserSignature;
 use url::Url;
 
@@ -204,5 +207,33 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
     ) -> Result<(), ServerCreateArchiveError> {
         let storage = StorageIdentifier::Primary(server_id);
         create_archive(self, storage, path, src, compression).await
+    }
+
+    async fn server_watch_files(
+        &self,
+        ws: WebSocketUpgrade,
+        server_id: u32,
+        path: Option<String>,
+    ) -> Result<WebsocketResponse, ServerWatchFilesError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        watch_files(self, ws, storage, path).await
+    }
+
+    async fn server_watch_files_user(
+        &self,
+        ws: WebSocketUpgrade,
+        server_id: u32,
+        path: Option<String>,
+        timestamp: i64,
+        verify: UserSignature,
+    ) -> Result<WebsocketResponse, ServerWatchFilesUserError> {
+        verify.verify_server_watch_files::<ServerWatchFilesUserError>(
+            self.root.user_key.as_ref(),
+            timestamp,
+            &self.key.id,
+            server_id,
+        )?;
+        let storage = StorageIdentifier::Primary(server_id);
+        watch_files(self, ws, storage, path).await
     }
 }

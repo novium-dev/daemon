@@ -51,6 +51,7 @@ use url::Url;
 
 use crate::config::DaemonConfig;
 use crate::storage::StorageIdentifier;
+use crate::storage::sync::StorageTokens;
 use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
@@ -122,6 +123,35 @@ pub(crate) struct StorageData {
     pub(crate) lock: Arc<RwLock<()>>,
     pub(crate) value: Arc<(AtomicI64, AtomicI64)>,
     pub(crate) stats_lock: Arc<Mutex<()>>,
+    pub(crate) notify: Sender<StorageNotification>,
+    pub(crate) tokens: Arc<StorageTokens>,
+}
+
+#[derive(Debug, Clone)]
+#[expect(dead_code, reason = "maybe useful later")]
+pub(crate) enum StorageNotification {
+    Create {
+        parent_inode: u64,
+        inode: u64,
+    },
+    Rename {
+        inode: u64,
+        from_parent_inode: u64,
+        to_parent_inode: u64,
+    },
+    RenameFrom {
+        parent_inode: Option<u64>,
+        inode: Option<u64>,
+    },
+    Update {
+        inode: Option<u64>,
+        parent_inode: Option<u64>,
+    },
+    Delete {
+        dir: bool,
+        inode: u64,
+        parent_inode: u64,
+    },
 }
 
 pub(crate) type ServerContainerWrite = Pin<Box<dyn AsyncWrite + Send>>;
@@ -168,7 +198,7 @@ impl Default for ServerData {
 }
 
 // Some safeguards
-// Linux Maintainer: Markus Probst <markustieger@gmail.com>
+// Linux Maintainer: Markus Probst <markus.probst@posteo.de>
 // Macos Maintainer: InvalidJoker <0limitdev@gmail.com>
 #[cfg(not(any(target_os = "linux", target_os = "macos")))]
 compile_error!("This daemon only runs on Unix.");
