@@ -16,6 +16,7 @@ stages:
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
     CACHE_COMPRESSION_LEVEL: "fastest"
+    FF_SCRIPT_SECTIONS: "true"
   before_script:
     - rustc --version && cargo --version
     - apk add --no-cache musl-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
@@ -38,6 +39,7 @@ stages:
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
     CACHE_COMPRESSION_LEVEL: "fastest"
+    FF_SCRIPT_SECTIONS: "true"
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home -p
