@@ -2,7 +2,7 @@
 name = "daemon_mariadb_plugin"
 version = "0.1.0"
 edition = "2024"
-authors = ["Markus Probst <markustieger@gmail.com>"]
+authors = ["Markus Probst <markus.probst@posteo.de>"]
 license = "AGPL-3.0-only"
 
 [lints]
