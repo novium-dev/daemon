@@ -2,7 +2,9 @@ services:
   mariadb:
     image: mariadb:latest
     container_name: daemon_mariadb
-    network_mode: 'none'
+    network_mode: 'bridge'
+    ports:
+    - 3306:3306
     environment:
     - MARIADB_ALLOW_EMPTY_ROOT_PASSWORD=1
     volumes:
