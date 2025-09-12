@@ -69,7 +69,7 @@ let_underscore_must_use = "allow"
 let_underscore_untyped = "allow"
 
 todo = "warn"
-unimplemented = "warn"
+unimplemented = "allow"
 
 shadow_reuse = "allow"
 shadow_unrelated = "allow"
@@ -95,6 +95,7 @@ cognitive_complexity = "allow"
 multiple_inherent_impl = "allow"
 # Caused by the tokio select macro, remove after fixed
 integer_division_remainder_used = "allow"
+redundant_pub_crate = "allow"
 
 # For now, deny later, DOC
 missing_errors_doc = "allow"

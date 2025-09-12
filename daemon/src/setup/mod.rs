@@ -228,7 +228,7 @@ fn test_host(config: &DaemonConfig, root: Arc<DaemonRootKey>, key: Arc<DaemonKey
         let (router, _) =
             framework_router!(ConnectionTestWrapper ConnectionTestWrapper { SetupService });
         let router = OpenApiRouter::new()
-            .merge(router)
+            .merge(router.into_openapi())
             .layer(axum::middleware::from_fn(middleware));
         let (router, _) = router.split_for_parts();
 

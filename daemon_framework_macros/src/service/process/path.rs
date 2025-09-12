@@ -56,13 +56,13 @@ pub fn process(
 
             let variable_literal = LitStr::new(&arg_name.to_string(), arg_name.span());
             operations.extend(quote! {
-                .parameter(
+                operations = operations.parameter(
                     #crate_prefix utoipa::openapi::path::ParameterBuilder::from(
                         #crate_prefix utoipa::openapi::path::Parameter::new(#variable_literal)
                     )
                     .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Path)
                     .description(Some([< variable_path_ #arg_name:snake >]::DESCRIPTION)),
-                )
+                );
             });
 
             fn_def_args.extend(quote! { #arg_name: #arg_type, });
@@ -88,7 +88,7 @@ pub fn process(
     client_def_body.extend(quote! {
         use #crate_prefix serde::Serialize;
         #urlencode
-        let daemon_result_url: String = format!(#path);
-        let mut daemon_result_url = <Self as #crate_prefix FrameworkClientImpl>::base_url(self).join(&daemon_result_url).expect("Expected url");
+        let framework_result_url: String = format!(#path);
+        let mut framework_result_url = <Self as #crate_prefix sdk::FrameworkClientImpl>::base_url(self).join(&framework_result_url).expect("Expected url");
     });
 }

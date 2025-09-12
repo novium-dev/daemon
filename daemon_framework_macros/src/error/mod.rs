@@ -238,7 +238,7 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
                     });
 
                     openapi.extend(quote! {
-                        responses_owned = responses_owned.response(
+                        responses = responses.response(
                             format!("{}{}", #crate_prefix http::StatusCode::#statuscode.as_str(), #error_suffix),
                             #crate_prefix utoipa::openapi::ResponseBuilder::new()
                                 .description(#msg)
@@ -279,7 +279,7 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
                 });
 
                 openapi.extend(quote! {
-                    responses_owned = responses_owned.response(
+                    responses = responses.response(
                         format!("{}{}", [< error_ #category _ #error_ident >]::STATUSCODE.as_str(), #error_suffix),
                         #crate_prefix utoipa::openapi::ResponseBuilder::new()
                             .description([< error_ #category _ #error_ident >]::DESCRIPTION)
@@ -466,13 +466,11 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
             }
 
             #[automatically_derived]
-            impl #crate_prefix FrameworkDocumentedResponse for #ident {
+            impl #crate_prefix responses::DocumentedResponse for #ident {
 
-                fn openapi(responses: &mut #crate_prefix utoipa::openapi::ResponsesBuilder, _schemas: &mut std::collections::HashMap<String, #crate_prefix utoipa::openapi::RefOr<#crate_prefix utoipa::openapi::schema::Schema>>) {
-                    let mut responses_owned = #crate_prefix utoipa::openapi::ResponsesBuilder::new();
-                    std::mem::swap(responses, &mut responses_owned);
+                fn openapi(mut responses: #crate_prefix utoipa::openapi::ResponsesBuilder, _schemas: &mut std::collections::HashMap<String, #crate_prefix utoipa::openapi::RefOr<#crate_prefix utoipa::openapi::schema::Schema>>) -> #crate_prefix utoipa::openapi::ResponsesBuilder {
                     #openapi
-                    *responses = responses_owned;
+                    responses
                 }
 
                 fn error_values() -> &'static [&'static str] {

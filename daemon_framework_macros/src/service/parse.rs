@@ -48,6 +48,10 @@ pub enum ParseExpectation {
 
 #[derive(Clone)]
 pub enum FunctionArgument {
+    Special {
+        variable_name: Ident,
+        variable_type: TokenStream,
+    },
     Header {
         variable_name: Ident,
         variable_type: TokenStream,

@@ -54,12 +54,12 @@ impl<T: DaemonExtra> Daemon<T> {
         #[openapi()]
         struct ApiDoc;
 
-        let router = framework_router!(Self self {
+        let (router, router_user) = framework_router!(Self self {
             ServerService, BackupService, FilesService, NetworkService,
             ResourceService, DatabaseService, ScheduleService {"trace_sync" daemon_common::service::debug::DebugService}
         });
-
-        let (router, router_user) = router;
+        let router = router.into_openapi();
+        let router_user = router_user.into_openapi();
 
         let cors = tower_http::cors::CorsLayer::new()
             .allow_origin(tower_http::cors::AllowOrigin::exact(

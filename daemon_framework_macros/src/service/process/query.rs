@@ -55,7 +55,7 @@ pub fn process(
     if !fn_args_query.is_empty() {
         let mut client_def_body_pre = TokenStream::new();
         let mut client_def_body_post = quote! {
-            daemon_result_url.query_pairs_mut()
+            framework_result_url.query_pairs_mut()
         };
 
         let mut query_fields = TokenStream::new();
@@ -78,14 +78,14 @@ pub fn process(
                 LitStr::into_token_stream,
             );
             operations.extend(quote! {
-                .parameter(
+                operations = operations.parameter(
                     #crate_prefix utoipa::openapi::path::ParameterBuilder::from(
                         #crate_prefix utoipa::openapi::path::Parameter::new(#variable_literal)
                     )
                     .parameter_in(#crate_prefix utoipa::openapi::path::ParameterIn::Query)
                     .description(Some(#desc))
                     .required(#crate_prefix utoipa::openapi::Required::#required_indent),
-                )
+                );
             });
 
             fn_def_args.extend(quote! { #arg_name: #arg_type, });

@@ -51,6 +51,6 @@ pub fn define_error(attr: StdTokenStream) -> StdTokenStream {
 
 fn crate_prefix() -> TokenStream {
     quote! {
-        daemon_framework::
+        ::daemon_framework::
     }
 }

@@ -248,7 +248,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
     });
     output.extend(quote! {
 
-        mod __daemon_framework_routes {
+        mod __framework_routes {
             use super::*;
 
             #routes

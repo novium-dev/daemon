@@ -71,14 +71,14 @@ pub fn process(
             func_args.push(quote! { #arg_type });
 
             operations.extend(quote! {
-                .request_body(Some(
+                operations = operations.request_body(Some(
                     #crate_prefix utoipa::openapi::request_body::RequestBodyBuilder::new()
                         .content("application/octet-stream", #crate_prefix utoipa::openapi::content::Content::builder()
                             .build()
                         )
                         .required(Some(#crate_prefix utoipa::openapi::Required::True))
                         .build()
-                ))
+                ));
             });
 
             client_impl_body.extend(quote! {
@@ -96,7 +96,7 @@ pub fn process(
             func_args.push(quote! { #crate_prefix axum::extract::Json< #arg_type > });
 
             operations.extend(quote! {
-                .request_body(Some(
+                operations = operations.request_body(Some(
                     #crate_prefix utoipa::openapi::request_body::RequestBodyBuilder::new()
                         .content("application/json", #crate_prefix utoipa::openapi::content::Content::builder()
                             .schema(Some(
@@ -109,7 +109,7 @@ pub fn process(
                         )
                         .required(Some(#crate_prefix utoipa::openapi::Required::True))
                         .build()
-                ))
+                ));
             });
             schema_extra.extend(quote! {
                 schemas.insert(< #arg_type as #crate_prefix utoipa::ToSchema >::name().to_string(), < #arg_type as #crate_prefix utoipa::PartialSchema >::schema());
@@ -159,12 +159,12 @@ pub fn process(
             .push(quote! { #crate_prefix axum::extract::Json< [< #fn_ident:camel Payload >] > });
 
         operations.extend(quote! {
-            .request_body(Some(
+            operations = operations.request_body(Some(
                 #crate_prefix utoipa::openapi::request_body::RequestBodyBuilder::new()
                     .content("application/json", #crate_prefix utoipa::openapi::content::Content::builder()
                         .schema(Some(
                             #crate_prefix utoipa::openapi::schema::RefBuilder::new()
-                                .ref_location_from_schema_name(< __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name())
+                                .ref_location_from_schema_name(< __framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name())
                                 .build()
                         ))
                         #content_extra
@@ -172,17 +172,17 @@ pub fn process(
                     )
                     .required(Some(#crate_prefix utoipa::openapi::Required::True))
                     .build()
-            ))
+            ));
         });
         schema_extra.extend(quote! {
-            schemas.insert(< __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name().to_string(), < __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::PartialSchema >::schema());
+            schemas.insert(< __framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name().to_string(), < __framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::PartialSchema >::schema());
             let mut schemas_vec = Vec::new();
-            < __daemon_framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
+            < __framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
             schemas.extend(schemas_vec);
         });
 
         client_impl_body.extend(quote! {
-            request = request.json(&__daemon_framework_routes::[< #fn_ident:camel Payload >] { #payload_names });
+            request = request.json(&__framework_routes::[< #fn_ident:camel Payload >] { #payload_names });
         });
     } else {
         // If there are no payload arguments, there is no payload.

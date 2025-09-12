@@ -18,6 +18,7 @@ mod path;
 mod payload;
 mod query;
 mod route;
+mod special;
 
 use crate::route::RouteArgs;
 use crate::service::args::ServiceArgs;
@@ -138,7 +139,7 @@ pub fn process(
     let mut operations = TokenStream::new();
 
     if let Some(tag) = &args.tag {
-        operations.extend(quote! { .tag(#tag) });
+        operations.extend(quote! { operations = operations.tag(#tag); });
     }
 
     let (
@@ -163,7 +164,7 @@ pub fn process(
     );
 
     if let Some(desc) = &doc {
-        operations.extend(quote! { .description(Some(#desc)) });
+        operations.extend(quote! { operations = operations.description(Some(#desc)); });
     }
 
     let path = if absolute {
@@ -180,8 +181,7 @@ pub fn process(
     let mut fn_args_out = TokenStream::new();
 
     for (fn_index, fn_arg) in fn_args_array.0.into_iter().enumerate() {
-        fn_args_out.extend(quote! { #fn_arg, });
-
+        let fn_arg_unmodified = fn_arg.clone();
         let mut fn_arg = fn_arg.into_iter();
         if fn_index == 0 {
             let Some(TokenTree::Punct(punct)) = fn_arg.next() else {
@@ -201,6 +201,7 @@ pub fn process(
                 "Your function needs to have &self as the first argument"
             );
 
+            fn_args_out.extend(quote! { #fn_arg_unmodified, });
             if HttpMethod::Ws == method {
                 fn_args_out
                     .extend(quote! { ws: #crate_prefix axum::extract::ws::WebSocketUpgrade, });
@@ -208,9 +209,43 @@ pub fn process(
 
             continue;
         }
-        let Some(TokenTree::Ident(fn_arg_name)) = fn_arg.next() else {
-            continue;
+
+        let (fn_arg_name, special) = match fn_arg.next() {
+            Some(TokenTree::Ident(fn_arg_name)) => {
+                fn_args_out.extend(quote! { #fn_arg_unmodified, });
+                (fn_arg_name, false)
+            }
+            Some(TokenTree::Punct(ch)) if ch.as_char() == '#' => {
+                let Some(TokenTree::Group(group)) = fn_arg.next() else {
+                    panic!("Expected brackets after # in function argument");
+                };
+                assert_eq!(
+                    group.delimiter(),
+                    Delimiter::Bracket,
+                    "Expected brackets after # in function argument"
+                );
+                assert_eq!(
+                    group.stream().to_string(),
+                    "special",
+                    "Only #[special] attribute is allowed in function arguments"
+                );
+
+                let Some(TokenTree::Ident(fn_arg_name)) = fn_arg.next() else {
+                    panic!("Expected parameter name in function");
+                };
+
+                let fn_arg_out_stripped: TokenStream =
+                    fn_arg_unmodified.clone().into_iter().skip(2).collect();
+                fn_args_out.extend(quote! { #fn_arg_out_stripped, });
+
+                (fn_arg_name, true)
+            }
+            _ => {
+                fn_args_out.extend(quote! { #fn_arg_unmodified, });
+                continue;
+            }
         };
+
         let Some(TokenTree::Punct(punct)) = fn_arg.next() else {
             panic!("Expected : after function argument");
         };
@@ -223,7 +258,12 @@ pub fn process(
         let fn_arg_type: TokenStream = fn_arg.collect();
         let (fn_arg_type_opt, fn_arg_type_opt_used) = type_option(fn_arg_type.clone());
 
-        if path.contains(&format!("{{{fn_arg_name}}}")) {
+        if special {
+            fn_args_identified.push(FunctionArgument::Special {
+                variable_name: fn_arg_name,
+                variable_type: fn_arg_type,
+            });
+        } else if path.contains(&format!("{{{fn_arg_name}}}")) {
             fn_args_identified.push(FunctionArgument::Path {
                 variable_name: fn_arg_name,
                 variable_type: fn_arg_type,
@@ -274,7 +314,8 @@ pub fn process(
             let (FunctionArgument::Path { variable_name, .. }
             | FunctionArgument::Query { variable_name, .. }
             | FunctionArgument::Header { variable_name, .. }
-            | FunctionArgument::Payload { variable_name, .. }) = argument;
+            | FunctionArgument::Payload { variable_name, .. }
+            | FunctionArgument::Special { variable_name, .. }) = argument;
             quote! { #variable_name, }
         })
         .collect();
@@ -317,8 +358,15 @@ pub fn process(
         &mut http_args,
         &mut func_args,
         &mut operations,
-        user,
         &mut client_impl_body,
+    );
+
+    special::process(
+        crate_prefix,
+        &fn_args_identified,
+        &mut http_args,
+        &mut func_args,
+        &mut operations,
     );
 
     payload::process(
@@ -409,7 +457,7 @@ pub fn process(
 
         #fn_keyword [< #fn_ident _url >] #fn_def_args -> #crate_prefix url::Url {
             #client_def_body
-            daemon_result_url
+            framework_result_url
         }
 
     };
@@ -468,28 +516,26 @@ pub fn finish(
 
         token.extend(quote! {
 
-            .routes(
+            .route(
+                #path,
+                #crate_prefix utoipa::openapi::HttpMethod::#method,
                 {
                     let mut schemas = std::collections::HashMap::new();
                     #schema_extra
-                    let mut builder = #crate_prefix utoipa::openapi::ResponsesBuilder::new();
-                    <#result as #crate_prefix FrameworkDocumentedResponse>::openapi(&mut builder, &mut schemas);
-                    (schemas.into_iter().collect(), {
-                        use #crate_prefix utoipa::PartialSchema;
-                        let mut paths = #crate_prefix utoipa::openapi::path::Paths::new();
-                        paths.add_path_operation(#path, vec![#crate_prefix utoipa::openapi::HttpMethod::#method],
 
-                            OperationBuilder::new()
-                                .responses(builder)
-                                .operation_id(Some(#operation_id))
-                                #operations
-                            .build()
-                        );
-                        paths
-                    }, MethodRouter::new().on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), __daemon_framework_routes::#fn_ident(self.clone())))
-                }
+                    let responses = <#result as #crate_prefix responses::DocumentedResponse>::openapi(
+                        #crate_prefix utoipa::openapi::ResponsesBuilder::new(),
+                        &mut schemas
+                    );
+                    let mut operations = OperationBuilder::new()
+                        .operation_id(Some(#operation_id));
+                    #operations
+
+                    (responses, operations, schemas.into_iter().collect())
+                },
+                MethodRouter::new()
+                    .on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), __framework_routes::#fn_ident(self.clone())),
             )
-
         });
     }
 
@@ -497,23 +543,23 @@ pub fn finish(
 
         #crate_prefix pastey::paste! {
 
-            fn routes(&self) -> #crate_prefix utoipa_axum::router::OpenApiRouter where Self: Clone + Send + Sync + Sized + 'static {
-                use #crate_prefix utoipa_axum::router::OpenApiRouter;
+            fn routes(&self) -> #crate_prefix router::FrameworkRouter where Self: Clone + Send + Sync + Sized + 'static {
+                use #crate_prefix router::FrameworkRouter;
                 use #crate_prefix utoipa::openapi::path::OperationBuilder;
                 use #crate_prefix utoipa_axum::PathItemExt;
                 use #crate_prefix axum::routing::method_routing::MethodRouter;
 
-                OpenApiRouter::new()
+                FrameworkRouter::new()
                     #routes
             }
 
-            fn routes_user(&self) -> #crate_prefix utoipa_axum::router::OpenApiRouter where Self: Clone + Send + Sync + Sized + 'static {
-                use #crate_prefix utoipa_axum::router::OpenApiRouter;
+            fn routes_user(&self) -> #crate_prefix router::FrameworkRouter where Self: Clone + Send + Sync + Sized + 'static {
+                use #crate_prefix router::FrameworkRouter;
                 use #crate_prefix utoipa::openapi::path::OperationBuilder;
                 use #crate_prefix utoipa_axum::PathItemExt;
                 use #crate_prefix axum::routing::method_routing::MethodRouter;
 
-                OpenApiRouter::new()
+                FrameworkRouter::new()
                     #routes_user
             }
 
@@ -526,13 +572,13 @@ pub fn finish(
 
         #crate_prefix pastey::paste! {
 
-                pub trait [< #trait_ident URL >]: #crate_prefix FrameworkClientImpl {
+                pub trait [< #trait_ident URL >]: #crate_prefix sdk::FrameworkClientImpl {
                     #client_def_merged
                 }
 
-                pub trait [< #trait_ident ClientImpl >]: #crate_prefix FrameworkClientImpl {}
+                pub trait [< #trait_ident ClientImpl >]: #crate_prefix sdk::FrameworkClientImpl {}
 
-                impl<T: #trait_ident + #crate_prefix FrameworkClientImpl> [< #trait_ident URL >] for T {}
+                impl<T: #trait_ident + #crate_prefix sdk::FrameworkClientImpl> [< #trait_ident URL >] for T {}
 
                 #[#crate_prefix async_trait]
                 #[diagnostic::do_not_recommend]
