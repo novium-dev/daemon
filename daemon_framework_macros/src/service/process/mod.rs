@@ -431,6 +431,7 @@ pub fn process(
 
 pub fn finish(
     crate_prefix: &TokenStream,
+    args: &ServiceArgs,
     trait_ident: &Ident,
     trait_body_output: &mut Vec<TokenTree>,
     output_extra: &mut Vec<TokenTree>,
@@ -520,30 +521,28 @@ pub fn finish(
 
     });
 
-    output_extra.extend(quote! {
+    if !args.no_sdk {
+        output_extra.extend(quote! {
 
         #crate_prefix pastey::paste! {
 
-            pub trait [< #trait_ident URL >]: #crate_prefix FrameworkClientImpl {
-                #client_def_merged
+                pub trait [< #trait_ident URL >]: #crate_prefix FrameworkClientImpl {
+                    #client_def_merged
+                }
+
+                pub trait [< #trait_ident ClientImpl >]: #crate_prefix FrameworkClientImpl {}
+
+                impl<T: #trait_ident + #crate_prefix FrameworkClientImpl> [< #trait_ident URL >] for T {}
+
+                #[#crate_prefix async_trait]
+                #[diagnostic::do_not_recommend]
+                #[allow(unused_variables)] // TODO: Why is this needed?
+                impl<T: [< #trait_ident ClientImpl >] + Send + Sync> #trait_ident for T {
+                    #client_impl_merged
+                }
+
             }
 
-            pub trait [< #trait_ident ClientImpl >]: #crate_prefix FrameworkClientImpl {
-
-            }
-
-            impl<T: #trait_ident + #crate_prefix FrameworkClientImpl> [< #trait_ident URL >] for T {
-
-            }
-
-            #[#crate_prefix async_trait]
-            #[diagnostic::do_not_recommend]
-            #[allow(unused_variables)] // TODO: Why is this needed?
-            impl<T: [< #trait_ident ClientImpl >] + Send + Sync> #trait_ident for T {
-                #client_impl_merged
-            }
-
-        }
-
-    });
+        });
+    }
 }

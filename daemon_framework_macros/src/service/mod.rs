@@ -223,6 +223,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
 
     process::finish(
         crate_prefix,
+        args,
         &trait_ident,
         &mut trait_body_output,
         &mut output_extra,
