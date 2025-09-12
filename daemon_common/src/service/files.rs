@@ -194,6 +194,11 @@ pub trait FilesService {
         timestamp: i64,
         verify: UserSignature,
     ) -> Result<WebsocketResponse, _>;
+
+    #[route("/wipe", method = GET)]
+    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[doc = "Deletes all files"]
+    async fn wipe_server(&self, server_id: u32);
 }
 
 pub trait FilesServiceUserKeyExtension {

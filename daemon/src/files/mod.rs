@@ -22,6 +22,7 @@ mod rename;
 mod stat;
 mod symlink;
 mod watch;
+mod wipe;
 mod write;
 
 use crate::config::StorageEntry;
@@ -48,6 +49,7 @@ pub use symlink::symlink_file;
 use tracing::error;
 use uuid::Uuid;
 pub use watch::watch_files;
+pub use wipe::wipe;
 pub use write::{write_file, write_file_by_template, write_file_by_url};
 
 async fn storage_path_root(

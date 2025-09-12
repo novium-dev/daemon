@@ -111,12 +111,6 @@ pub trait ServerService {
     #[doc = "Executes a command inside an running server"]
     async fn exec_server(&self, server_id: u32, cmd: Vec<String>);
 
-    // TODO: Move to FilesService
-    #[route("/{server_id}/wipe", method = GET)]
-    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
-    #[doc = "Deletes all files in an existing server"]
-    async fn wipe_server(&self, server_id: u32);
-
     #[route("/{server_id}/terminal", method = WS, query = [ cols, rows, write ])]
     #[error(server(not_found) sql(failure [sql:*]))]
     #[doc = "A websocket for interaction with the terminal"]

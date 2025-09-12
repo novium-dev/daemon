@@ -23,16 +23,14 @@ use crate::service::server::exec::exec_websocket_handle;
 use crate::service::server::stats::stats_websocket_handle;
 use crate::service::server::terminal::terminal_websocket_handle;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{
-    StorageError, StorageLockData, storage_read_timeout, storage_write_timeout,
-};
+use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::server_required;
 use crate::{Daemon, DaemonExtra, sql, storage};
 use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
-use core::sync::atomic::{AtomicU16, Ordering};
+use core::sync::atomic::AtomicU16;
 use core::time::Duration;
 use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
@@ -40,7 +38,7 @@ use daemon_common::service::server::error::{
     CreateServerError, DeleteServerError, ExecServerError, ExecServerInteractiveError,
     ExecServerInteractiveUserError, KillServerError, RestartServerError, ServerStatsError,
     ServerStatsUserError, ServerStatusError, ServerTerminalError, ServerTerminalUserError,
-    StartServerError, StopServerError, UpdateServerError, WipeServerError,
+    StartServerError, StopServerError, UpdateServerError,
 };
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
 use daemon_common::service::server::error_server_image_missing_tag::FromServerImageMissingTag;
@@ -318,28 +316,6 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
             }
         });
 
-        Ok(())
-    }
-
-    async fn wipe_server(&self, server_id: u32) -> Result<(), WipeServerError> {
-        let StorageLockData {
-            lock,
-            storage: entry,
-            value: storage_value,
-            ..
-        } = storage_write_timeout::<WipeServerError>(
-            &self.config,
-            &*self.conn,
-            &self.storages,
-            StorageIdentifier::Primary(server_id),
-        )
-        .await?;
-        storage::delete(&entry, StorageIdentifier::Primary(server_id))
-            .await
-            .inspect_err(|err| error!("Failed to wipe server: {:?}", err))?;
-        storage_value.0.store(0, Ordering::Relaxed);
-
-        drop(lock);
         Ok(())
     }
 

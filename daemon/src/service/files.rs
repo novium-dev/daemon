@@ -14,7 +14,7 @@
  */
 use crate::files::{
     copy_file, create_archive, delete_file, download_file, list_files, mkdir_file, rename_file,
-    stat_file, symlink_file, unpack_archive, watch_files, write_file, write_file_by_template,
+    stat_file, symlink_file, unpack_archive, watch_files, wipe, write_file, write_file_by_template,
     write_file_by_url,
 };
 use crate::storage::StorageIdentifier;
@@ -31,7 +31,7 @@ use daemon_common::service::files::error::{
     ServerListFilesError, ServerRenameFileError, ServerStatFileError, ServerSymlinkError,
     ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
     ServerWatchFilesError, ServerWatchFilesUserError, ServerWriteFileByTemplateError,
-    ServerWriteFileByUrlError,
+    ServerWriteFileByUrlError, WipeServerError,
 };
 use daemon_common::service::server::ServerFileWrite;
 use daemon_common::service::{DataStream, FileResponse, WebsocketResponse};
@@ -235,5 +235,10 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
         )?;
         let storage = StorageIdentifier::Primary(server_id);
         watch_files(self, ws, storage, path).await
+    }
+
+    async fn wipe_server(&self, server_id: u32) -> Result<(), WipeServerError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        wipe(self, storage).await
     }
 }
