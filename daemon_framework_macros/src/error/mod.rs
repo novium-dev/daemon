@@ -213,8 +213,6 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
 
                 if error_ident.to_string().eq("Communication") {
                     content.extend(quote! {
-                        #[ts(rename = #error_id)]
-                        #[ts(type = "any")]
                         #error_ident (#crate_prefix reqwest::Error),
                     });
 
@@ -223,7 +221,6 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
                     });
                 } else {
                     content.extend(quote! {
-                        #[ts(rename = #error_id)]
                         #error_ident,
                     });
 
@@ -269,7 +266,6 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
                 });
 
                 content.extend(quote! {
-                    #[ts(rename = #error_id)]
                     [< #category:camel #error_ident:camel >],
                 });
 
@@ -434,13 +430,9 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
         }
     }
 
-    let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
-
     quote! {
         #crate_prefix pastey::paste! {
             #[derive(Debug)]
-            #[#crate_prefix ts]
-            #[ts(crate = #ts_crate_literal)]
             #[automatically_derived]
             pub enum #ident {
                 #content

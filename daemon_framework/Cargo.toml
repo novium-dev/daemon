@@ -8,9 +8,6 @@ license = "AGPL-3.0-only"
 [lints]
 workspace = true
 
-[features]
-ts = ["ts-rs", "daemon_framework_macros/ts", "convert_case"]
-
 [dependencies]
 axum-extra.workspace = true
 pastey.workspace = true
@@ -37,15 +34,6 @@ features = ["io-util"]
 
 [dependencies.tokio]
 workspace = true
-
-[dependencies.ts-rs]
-version = "11.0.1"
-features = ["tokio-impl", "url-impl", "uuid-impl", "bytes-impl", "chrono-impl", "bigdecimal-impl", "serde-json-impl"]
-optional = true
-
-[dependencies.convert_case]
-version = "0.8.0"
-optional = true
 
 [dependencies.axum]
 workspace = true

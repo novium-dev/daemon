@@ -13,8 +13,6 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use crate::service::parse::FunctionArgument;
-#[cfg(feature = "ts")]
-use proc_macro2::Ident;
 use proc_macro2::{Span, TokenStream};
 use quote::quote;
 use syn::LitStr;
@@ -22,8 +20,6 @@ use syn::LitStr;
 #[expect(clippy::too_many_arguments)]
 pub fn process(
     crate_prefix: &TokenStream,
-    #[cfg(feature = "ts")] trait_ident: &Ident,
-    #[cfg(feature = "ts")] fn_ident: &Ident,
     path: &str,
     fn_args_identified: &[FunctionArgument],
     http_args: &mut TokenStream,
@@ -32,9 +28,6 @@ pub fn process(
     client_def_body: &mut TokenStream,
     fn_def_args: &mut TokenStream,
     fn_def_call: &mut TokenStream,
-    #[cfg(feature = "ts")] types_impl: &mut TokenStream,
-    #[cfg(feature = "ts")] ts_func_body_url: &mut String,
-    #[cfg(feature = "ts")] ts_func_args_url: &mut indexmap::IndexMap<String, TokenStream>,
 ) {
     let fn_args_path: Vec<_> = fn_args_identified
         .iter()
@@ -57,8 +50,6 @@ pub fn process(
         let mut path_names = TokenStream::new();
         let mut path_types = TokenStream::new();
 
-        let mut ts_struct = TokenStream::new();
-
         for (arg_name, arg_type) in &fn_args_path {
             path_names.extend(quote! { #arg_name, });
             path_types.extend(quote! { #arg_type, });
@@ -77,51 +68,11 @@ pub fn process(
             fn_def_args.extend(quote! { #arg_name: #arg_type, });
             fn_def_call.extend(quote! { #arg_name, });
 
-            #[cfg(feature = "ts")]
-            {
-                use convert_case::{Case, Casing as _};
-                ts_func_args_url
-                    .insert(arg_name.to_string().to_case(Case::Camel), arg_type.clone());
-
-                ts_func_body_url.push_str("const ");
-                ts_func_body_url.push_str(&format!("{arg_name}_encoded").to_case(Case::Camel));
-                ts_func_body_url.push_str(" = ");
-                ts_func_body_url.push_str("encodeURIComponent(String(");
-                ts_func_body_url.push_str(&arg_name.to_string().to_case(Case::Camel));
-                ts_func_body_url.push_str("));\n");
-            };
-
             urlencode.extend(quote! {
                 let #arg_name: String = #arg_name.serialize(#crate_prefix internal::StringSerializer).unwrap().unwrap_or_default();
                 let #arg_name = #crate_prefix urlencoding::encode(& #arg_name);
             });
-
-            ts_struct.extend(quote! { #arg_name: #arg_type, });
         }
-
-        #[cfg(feature = "ts")]
-        {
-            let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
-            let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
-            let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
-
-            types_impl.extend(quote! {
-
-                {
-                    println!("{}::{} Path", #trait_name, #fn_name);
-
-                    #[derive(#crate_prefix ts_rs::TS)]
-                    #[ts(crate = #ts_crate_literal)]
-                    #[allow(dead_code)]
-                    struct TypescriptPathStruct {
-                        #ts_struct
-                    }
-
-                    visitor.allowed.extend(<TypescriptPathStruct as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
-                    <TypescriptPathStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
-                }
-            });
-        };
 
         http_args.extend(quote! {
             #crate_prefix axum::extract::Path((#path_names)): #crate_prefix axum::extract::Path<(#path_types)>,
@@ -131,21 +82,6 @@ pub fn process(
 
     let Some(path) = path.strip_prefix("/") else {
         panic!("Path must start with /");
-    };
-
-    #[cfg(feature = "ts")]
-    {
-        use convert_case::{Case, Casing as _};
-        ts_func_body_url.push_str("const daemonResultUrl = new URL(`${this.baseUrl}");
-        let mut ts_path = path.to_owned();
-        for (name, _) in fn_args_path {
-            ts_path = ts_path.replace(
-                &format!("{{{name}}}"),
-                &format!("${{{}}}", format!("{name}_encoded").to_case(Case::Camel)),
-            );
-        }
-        ts_func_body_url.push_str(&ts_path);
-        ts_func_body_url.push_str("`);\n");
     };
 
     let path = LitStr::new(path, Span::call_site());

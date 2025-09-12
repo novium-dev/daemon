@@ -64,8 +64,6 @@ pub enum FunctionArgument {
     },
     Query {
         variable_name: Ident,
-        #[cfg(feature = "ts")]
-        variable_type: TokenStream,
         variable_type_wopt: TokenStream,
         required: bool,
         desc: Option<LitStr>,

@@ -17,16 +17,12 @@
     reason = "This order is more readable"
 )]
 
-#[cfg(feature = "ts")]
-pub mod ts;
-
 pub use async_trait::async_trait;
 pub use axum;
 pub use axum_extra;
 pub use daemon_framework_macros::define_error;
 pub use daemon_framework_macros::error;
 pub use daemon_framework_macros::service;
-pub use daemon_framework_macros::ts;
 pub use http;
 pub use pastey;
 pub use reqwest;
@@ -35,8 +31,6 @@ pub use serde_json;
 pub use serde_urlencoded;
 pub use sqlx;
 pub use tap;
-#[cfg(feature = "ts")]
-pub use ts_rs;
 pub use url;
 pub use urlencoding;
 pub use utoipa;
@@ -553,40 +547,6 @@ impl<E: FrameworkDocumentedResponse + 'static> FrameworkDocumentedResponse
 #[derive(Debug, Clone)]
 pub struct JsonVec<T: Clone>(pub Vec<T>);
 
-#[cfg(feature = "ts")]
-impl<T: Clone + ts_rs::TS> ts_rs::TS for JsonVec<T> {
-    type WithoutGenerics = <Vec<T> as ts_rs::TS>::WithoutGenerics;
-    type OptionInnerType = Self;
-
-    fn ident() -> String {
-        <Vec<T>>::ident()
-    }
-
-    fn decl() -> String {
-        <Vec<T>>::decl()
-    }
-
-    fn decl_concrete() -> String {
-        <Vec<T>>::decl_concrete()
-    }
-
-    fn name() -> String {
-        <Vec<T>>::name()
-    }
-
-    fn inline() -> String {
-        <Vec<T>>::inline()
-    }
-
-    fn inline_flattened() -> String {
-        <Vec<T>>::inline_flattened()
-    }
-
-    fn docs() -> Option<String> {
-        <Vec<T>>::docs()
-    }
-}
-
 impl<T: Clone> Deref for JsonVec<T> {
     type Target = Vec<T>;
 
@@ -678,36 +638,6 @@ impl<S: Send + Sync> FromRequest<S> for DataStream {
 
     async fn from_request(req: Request, _state: &S) -> Result<Self, Self::Rejection> {
         Ok(Self::Axum(req.into_body().into_data_stream()))
-    }
-}
-
-#[cfg(feature = "ts")]
-impl ts_rs::TS for DataStream {
-    type WithoutGenerics = Self;
-    type OptionInnerType = Self;
-
-    fn decl() -> String {
-        "type DataStream = string | Buffer | Uint8Array | Readable;".to_owned()
-    }
-
-    fn decl_concrete() -> String {
-        Self::decl()
-    }
-
-    fn name() -> String {
-        "string | Buffer | Uint8Array | Readable".to_owned()
-    }
-
-    fn inline() -> String {
-        Self::name()
-    }
-
-    fn inline_flattened() -> String {
-        Self::name()
-    }
-
-    fn docs() -> Option<String> {
-        Some("/// Universal type for data streams over the network".to_owned())
     }
 }
 
@@ -804,32 +734,6 @@ macro_rules! framework_router {
                     )*
                 )*
             )
-        }
-    };
-}
-
-#[cfg(feature = "ts")]
-#[macro_export]
-macro_rules! framework_ts_type_export {
-    ($base:ident $visitor:ident { $($tr:path),* }) => {
-        {
-
-            $(
-                <$base as $tr>::visit_types(&mut $visitor);
-            )*
-        }
-    };
-}
-
-#[cfg(feature = "ts")]
-#[macro_export]
-macro_rules! framework_ts_func_export {
-    ($base:ident $visitor:ident { $($tr:path),* }) => {
-        {
-
-            $(
-                <$base as $tr>::visit_funcs(&mut $visitor);
-            )*
         }
     };
 }

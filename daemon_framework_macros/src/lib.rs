@@ -22,14 +22,12 @@
 mod error;
 mod route;
 mod service;
-mod ts;
 mod utils;
 
 use crate::error::define::define_error0;
 use crate::error::error0;
 use crate::service::args::ServiceArgs;
 use crate::service::service0;
-use crate::ts::ts0;
 use proc_macro::TokenStream as StdTokenStream;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -49,15 +47,6 @@ pub fn error(attr: proc_macro::TokenStream) -> StdTokenStream {
 #[proc_macro]
 pub fn define_error(attr: StdTokenStream) -> StdTokenStream {
     StdTokenStream::from(define_error0(&crate_prefix(), TokenStream::from(attr)))
-}
-
-#[proc_macro_attribute]
-pub fn ts(attr: StdTokenStream, input: StdTokenStream) -> StdTokenStream {
-    StdTokenStream::from(ts0(
-        &crate_prefix(),
-        &TokenStream::from(attr),
-        TokenStream::from(input),
-    ))
 }
 
 fn crate_prefix() -> TokenStream {

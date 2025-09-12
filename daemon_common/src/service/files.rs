@@ -19,7 +19,7 @@ use crate::user::*;
 use chrono::Utc;
 use daemon_framework::axum_extra::TypedHeader;
 use daemon_framework::axum_extra::headers::ContentLength;
-use daemon_framework::{DataStream, FileResponse, define_query_variable, ts};
+use daemon_framework::{DataStream, FileResponse, define_query_variable};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
@@ -175,7 +175,6 @@ pub trait FilesService {
 
     #[route("/watch", method = WS, query = [ path "The initial work directory path" ])]
     #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
-    #[ts(FilesWatchResponse FilesWatchCommand)]
     #[doc = "A websocket for file updates in realtime"]
     async fn server_watch_files(
         &self,
@@ -185,7 +184,6 @@ pub trait FilesService {
 
     #[route(!"/user/files/{server_id}/watch", method = WS, query = [ path "The initial work directory path", verify, timestamp ])]
     #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
-    #[ts(FilesWatchResponse FilesWatchCommand)]
     #[doc = "A websocket for file updates in realtime (called by the user)"]
     async fn server_watch_files_user(
         &self,
@@ -212,9 +210,6 @@ pub trait FilesServiceUserKeyExtension {
     fn server_upload_file_user_url_signed(&self, server_id: u32, path: String) -> Url;
 
     fn server_watch_files_user_url_signed(&self, server_id: u32, path: Option<String>) -> Url;
-
-    #[cfg(feature = "ts")]
-    fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor);
 }
 
 impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
@@ -253,36 +248,10 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
             UserSignature::new_server_watch_files(self.key(), timestamp, self.node_id(), server_id);
         self.server_watch_files_user_url(server_id, path, timestamp, signature)
     }
-
-    #[cfg(feature = "ts")]
-    fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor) {
-        visitor.visit_start(true, "serverDownloadFileUserUrlSigned");
-        visitor.visit_argument::<u32>("serverId");
-        visitor.visit_argument::<String>("path");
-        visitor.visit_argument::<Option<u64>>("limit");
-        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
-const signature = await UserSignature.newServerFileDownloadAsync(this.userKey, timestamp, this.identifier, serverId, path);
-return this.serverDownloadFileUserUrl(serverId, path, limit, timestamp, signature);", "URL");
-
-        visitor.visit_start(true, "serverUploadFileUserUrlSigned");
-        visitor.visit_argument::<u32>("serverId");
-        visitor.visit_argument::<String>("path");
-        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
-const signature = await UserSignature.newServerFileUploadAsync(this.userKey, timestamp, this.identifier, serverId, path);
-return this.serverUploadFileUserUrl(serverId, path, timestamp, signature);", "URL");
-
-        visitor.visit_start(true, "serverWatchFilesUserUrlSigned");
-        visitor.visit_argument::<u32>("serverId");
-        visitor.visit_argument::<Option<String>>("path");
-        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
-const signature = await UserSignature.newServerWatchFilesAsync(this.userKey, timestamp, this.identifier, serverId);
-return this.serverWatchFilesUserUrl(serverId, path, timestamp, signature);", "URL");
-    }
 }
 
 #[derive(Clone, Eq, PartialEq, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({"name": "eula.txt", "uid": 0, "gid": 0, "mode": 0o644, "size": 64, "path": null}))]
-#[ts]
 pub struct FileEntry {
     pub name: String,
     pub uid: u32,
@@ -295,14 +264,12 @@ pub struct FileEntry {
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct FilesWatchResponse {
     pub token: String,
     pub data: Vec<FilesWatchResponseEntry>,
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 #[serde(tag = "type")]
 #[serde(rename_all = "lowercase")]
 pub enum FilesWatchCommand {
@@ -312,7 +279,6 @@ pub enum FilesWatchCommand {
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 #[serde(rename_all = "lowercase")]
 pub enum FilesWatchWorkDirectoryChangedReason {
     Changed, // another path was requested via command
@@ -321,7 +287,6 @@ pub enum FilesWatchWorkDirectoryChangedReason {
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 #[serde(tag = "type")]
 #[serde(rename_all = "snake_case")]
 pub enum FilesWatchResponseEntry {

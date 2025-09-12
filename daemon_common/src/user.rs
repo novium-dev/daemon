@@ -60,45 +60,6 @@ macro_rules! signature_impl {
     };
 }
 
-#[cfg(feature = "ts")]
-macro_rules! signature_ts_impl {
-    (
-        $replace:ident,
-        $id:literal,
-        $name:literal,
-        ($args: literal),
-        $extra:literal
-    ) => {
-        {
-            use core::fmt::Write as _;
-            let _ = write!(&mut $replace, r"
-  static {}(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number{}{}): UserSignature {{
-    return UserSignature.new(privateKey, timestamp, nodeIdentifier, serverId, {}, {});
-  }}
-", daemon_framework::ts::to_camel(&format!("new_{}", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra);
-
-            let _ = write!(&mut $replace, r"
-  static async {}(privateKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number{}{}): Promise<UserSignature> {{
-    return await UserSignature.newAsync(privateKey, timestamp, nodeIdentifier, serverId, {}, {});
-  }}
-", daemon_framework::ts::to_camel(&format!("new_{}_async", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra);
-
-
-            let _ = write!(&mut $replace, r"
-  {}(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number{}{}): boolean {{
-    return this.verify(publicKey, timestamp, nodeIdentifier, serverId, {}, {});
-  }}
-", daemon_framework::ts::to_camel(&format!("verify_{}", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra);
-
-            let _ = write!(&mut $replace, r"
-  async {}(publicKey: Uint8Array | string, timestamp: bigint, nodeIdentifier: string, serverId: number{}{}): Promise<boolean> {{
-    return await this.verifyAsync(publicKey, timestamp, nodeIdentifier, serverId, {}, {});
-  }}
-", daemon_framework::ts::to_camel(&format!("verify_{}_async", $id)), if ($args).is_empty() { "" } else { ", " }, $args, serde_json::to_string($name).unwrap(), $extra);
-        }
-    };
-}
-
 impl UserSignature {
     const THRESHOLD: i128 = 60_000;
 
@@ -164,67 +125,6 @@ impl UserSignature {
         Ok(())
     }
 
-    #[cfg(feature = "ts")]
-    #[expect(clippy::cognitive_complexity, reason = "isn't that complex")]
-    pub fn visit_types(visitor: &mut daemon_framework::ts::TSTypeVisitor) {
-        let mut replace = String::new();
-
-        signature_ts_impl!(
-            replace,
-            "server_backup_download",
-            "backup",
-            ("backupStorage: string, backupId: bigint"),
-            "`-${backupStorage}-${backupId}`"
-        );
-        signature_ts_impl!(
-            replace,
-            "server_realtime_download",
-            "backup_rt",
-            ("compression: string"),
-            "`-${compression}`"
-        );
-        signature_ts_impl!(
-            replace,
-            "terminal",
-            "terminal",
-            ("write: boolean"),
-            "`-${write}`"
-        );
-        signature_ts_impl!(replace, "stats", "stats", (""), "null");
-        signature_ts_impl!(
-            replace,
-            "exec",
-            "exec",
-            ("command: Array<string>"),
-            r#"`-${command.join(";")}`"#
-        );
-        signature_ts_impl!(
-            replace,
-            "server_file_download",
-            "server_file_download",
-            ("path: string"),
-            "`-${path}`"
-        );
-        signature_ts_impl!(
-            replace,
-            "server_file_upload",
-            "server_file_upload",
-            ("path: string"),
-            "`-${path}`"
-        );
-        signature_ts_impl!(
-            replace,
-            "server_watch_files",
-            "server_watch_files",
-            (""),
-            "null"
-        );
-
-        visitor
-            .out
-            .push_str(&include_str!("sdk/ts/user.ts").replace("/** {user_methods} */", &replace));
-    }
-
     signature_impl!(server_backup_download, "backup", (backup_storage: impl Into<String>, backup_id: i64), Some(format!("-{}-{}", backup_storage.into(), backup_id)));
     signature_impl!(server_realtime_download, "backup_rt", (compression: impl Into<String>), Some(format!("-{}", compression.into())));
     signature_impl!(terminal, "terminal", (write: bool), Some(format!("-{write}")));
@@ -257,40 +157,6 @@ impl<'de> Deserialize<'de> for UserSignature {
         Signature::from_slice(&decoded)
             .map_err(D::Error::custom)
             .map(UserSignature)
-    }
-}
-
-#[cfg(feature = "ts")]
-#[expect(clippy::panic, reason = "Type cannot be declared")]
-impl daemon_framework::ts_rs::TS for UserSignature {
-    type WithoutGenerics = Self;
-    type OptionInnerType = Self;
-
-    fn decl() -> String {
-        panic!(
-            "{} cannot be declared",
-            <Self as daemon_framework::ts_rs::TS>::name()
-        )
-    }
-
-    fn decl_concrete() -> String {
-        Self::decl()
-    }
-
-    fn name() -> String {
-        "UserSignature".to_owned()
-    }
-
-    fn inline() -> String {
-        Self::name()
-    }
-
-    fn inline_flattened() -> String {
-        Self::name()
-    }
-
-    fn docs() -> Option<String> {
-        None
     }
 }
 

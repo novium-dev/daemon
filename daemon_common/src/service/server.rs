@@ -20,7 +20,7 @@ use axum::extract::ws::Message;
 use chrono::Utc;
 use core::error::Error as _;
 use crc64::crc64;
-use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable, ts};
+use daemon_framework::{JsonVec, WebsocketResponse, define_query_variable};
 pub use json_patch::Patch;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -193,9 +193,6 @@ pub trait ServerServiceUserKeyExtension {
         rows: Option<u16>,
         command: JsonVec<String>,
     ) -> Url;
-
-    #[cfg(feature = "ts")]
-    fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor);
 }
 
 impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T {
@@ -230,37 +227,9 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
             UserSignature::new_exec(self.key(), timestamp, self.node_id(), server_id, &command);
         self.exec_server_interactive_user_url(server_id, cols, rows, command, timestamp, signature)
     }
-
-    #[cfg(feature = "ts")]
-    fn visit_funcs(visitor: &mut daemon_framework::ts::TSClassFunctionVisitor) {
-        visitor.visit_start(true, "serverTerminalUserUrlSigned");
-        visitor.visit_argument::<u32>("serverId");
-        visitor.visit_argument::<Option<u16>>("cols");
-        visitor.visit_argument::<Option<u16>>("rows");
-        visitor.visit_argument::<bool>("write");
-        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
-const signature = await UserSignature.newTerminalAsync(this.userKey, timestamp, this.identifier, serverId, write);
-return this.serverTerminalUserUrl(serverId, cols, rows, write, timestamp, signature);", "URL");
-
-        visitor.visit_start(true, "serverStatsUserUrlSigned");
-        visitor.visit_argument::<u32>("serverId");
-        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
-const signature = await UserSignature.newStatsAsync(this.userKey, timestamp, this.identifier, serverId);
-return this.serverStatsUserUrl(serverId, timestamp, signature);", "URL");
-
-        visitor.visit_start(true, "execServerInteractiveUserUrlSigned");
-        visitor.visit_argument::<u32>("serverId");
-        visitor.visit_argument::<Option<u16>>("cols");
-        visitor.visit_argument::<Option<u16>>("rows");
-        visitor.visit_argument::<JsonVec<String>>("command");
-        visitor.visit_end_result_custom(r"const timestamp: bigint = BigInt(Date.now());
-const signature = await UserSignature.newExecAsync(this.userKey, timestamp, this.identifier, serverId, command);
-return this.execServerInteractiveUserUrl(serverId, cols, rows, command, timestamp, signature);", "URL");
-    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct ServerResourcePayload {
     pub cpu: Option<f32>,
     pub ram: Option<u32>,
@@ -269,7 +238,6 @@ pub struct ServerResourcePayload {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct ServerBuildPayload {
     pub image: ServerBuildImage,
 
@@ -290,7 +258,6 @@ pub struct ServerBuildPayload {
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(no_recursion)]
-#[ts]
 pub struct ServerBuildImage {
     pub dockerfile: String,
     pub default_tag: Option<String>,
@@ -347,14 +314,12 @@ impl ServerBuildImage {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct ServerNetworkPayload {
     pub internet_access: bool,
     pub networks: Vec<NetworkAttachment>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct NetworkAttachment {
     pub network: u32,
     pub ipv4: u8,
@@ -362,7 +327,6 @@ pub struct NetworkAttachment {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct ServerPortEntryPayload {
     pub internal_port: u16,
     pub external_port: u16,
@@ -372,7 +336,6 @@ pub struct ServerPortEntryPayload {
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({"label": "Running", "healthcheck": null, "start": false, "stop": true, "kill": false, "time": 0}))]
-#[ts]
 pub struct PublicServerState {
     pub label: String,
     pub healthcheck: Option<String>,
@@ -383,7 +346,6 @@ pub struct PublicServerState {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 #[serde(tag = "filetype", rename_all = "snake_case")]
 pub enum ServerFileWrite {
     Write { data: Vec<u8> },
@@ -393,38 +355,16 @@ pub enum ServerFileWrite {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct PatchSet {
-    #[ts(type = r#"(
-      { op: 'add', path: string, value: any }
-      | { op: 'remove', path: string }
-      | { op: 'replace', path: string, value: any }
-      | { op: 'move', from: string, path: string }
-      | { op: 'copy', from: string, path: string }
-      | { op: 'test', path: string, value: any }
-    ) []"#)]
     pub condition: Patch,
     pub patch: PatchEntry,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 #[serde(tag = "patchtype", rename_all = "snake_case")]
 pub enum PatchEntry {
-    Normal {
-        #[ts(type = r#"(
-      { op: 'add', path: string, value: any }
-      | { op: 'remove', path: string }
-      | { op: 'replace', path: string, value: any }
-      | { op: 'move', from: string, path: string }
-      | { op: 'copy', from: string, path: string }
-      | { op: 'test', path: string, value: any }
-    ) []"#)]
-        patch: Patch,
-    },
-    Merge {
-        patch: Value,
-    },
+    Normal { patch: Patch },
+    Merge { patch: Value },
 }
 
 impl ServerFileWrite {

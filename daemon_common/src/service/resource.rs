@@ -13,7 +13,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use super::*;
-use daemon_framework::{service, ts};
+use daemon_framework::service;
 use serde::{Deserialize, Serialize};
 
 #[service(tag = "resource")]
@@ -114,7 +114,6 @@ pub trait ResourceService {
     }
   ]
 }))]
-#[ts]
 pub struct ResourceResponse {
     pub mem_total: u64,
     pub mem_used: u64,
@@ -128,7 +127,6 @@ pub struct ResourceResponse {
 }
 
 #[derive(Serialize, Deserialize, Eq, PartialEq, Hash, utoipa::ToSchema)]
-#[ts]
 pub struct ResourceDisk {
     pub available: u64,
     pub total: u64,

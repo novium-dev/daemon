@@ -18,18 +18,16 @@
 )]
 
 use super::*;
-use daemon_framework::{service, ts};
+use daemon_framework::service;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct TraceResult<T> {
     pub last_trace: Option<T>,
     pub locked: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct LastMutexTrace {
     pub file: String,
     pub line: u32,
@@ -38,7 +36,6 @@ pub struct LastMutexTrace {
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct LastRwLockTrace {
     pub file: String,
     pub line: u32,
@@ -48,7 +45,6 @@ pub struct LastRwLockTrace {
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct ServerTraceResult {
     pub data: Option<TraceResult<LastMutexTrace>>,
     pub buffer: Option<TraceResult<LastMutexTrace>>,
@@ -60,7 +56,6 @@ pub struct ServerTraceResult {
 }
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[ts]
 pub struct DaemonTraceResult {
     pub servers: TraceResult<LastMutexTrace>,
     pub storages: TraceResult<LastMutexTrace>,

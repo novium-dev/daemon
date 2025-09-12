@@ -113,10 +113,6 @@ pub struct ProcessedFunction {
     path: String,
     result: TokenStream,
     schema_extra: TokenStream,
-    #[cfg(feature = "ts")]
-    ts_funcs_impl: TokenStream,
-    #[cfg(feature = "ts")]
-    ts_types_impl: TokenStream,
     user: bool,
 }
 
@@ -145,9 +141,6 @@ pub fn process(
         operations.extend(quote! { .tag(#tag) });
     }
 
-    #[cfg(feature = "ts")]
-    let mut ts_types_impl = TokenStream::new();
-
     let (
         pre_fn_result,
         RouteArgs {
@@ -167,8 +160,6 @@ pub fn process(
         errors,
         &mut post_fn,
         &mut result,
-        #[cfg(feature = "ts")]
-        &mut ts_types_impl,
     );
 
     if let Some(desc) = &doc {
@@ -240,8 +231,6 @@ pub fn process(
         } else if let Some(desc) = query.get(&fn_arg_name.to_string()) {
             fn_args_identified.push(FunctionArgument::Query {
                 variable_name: fn_arg_name,
-                #[cfg(feature = "ts")]
-                variable_type: fn_arg_type_opt,
                 variable_type_wopt: fn_arg_type,
                 required: !fn_arg_type_opt_used,
                 desc: desc.clone(),
@@ -296,26 +285,9 @@ pub fn process(
     let mut client_def_body = TokenStream::new();
     let mut fn_def_args = quote! { &self, };
     let mut fn_def_call = TokenStream::new();
-    #[cfg(feature = "ts")]
-    let mut ts_funcs_impl = TokenStream::new();
-
-    #[cfg(feature = "ts")]
-    let mut ts_replace: std::collections::HashMap<String, TokenStream> =
-        std::collections::HashMap::new();
-    #[cfg(feature = "ts")]
-    let mut ts_options_body = String::new();
-
-    #[cfg(feature = "ts")]
-    let mut ts_func_body_url = String::new();
-    #[cfg(feature = "ts")]
-    let mut ts_func_args_url: indexmap::IndexMap<String, TokenStream> = indexmap::IndexMap::new();
 
     path::process(
         crate_prefix,
-        #[cfg(feature = "ts")]
-        trait_ident,
-        #[cfg(feature = "ts")]
-        &fn_ident,
         &path,
         &fn_args_identified,
         &mut http_args,
@@ -324,18 +296,10 @@ pub fn process(
         &mut client_def_body,
         &mut fn_def_args,
         &mut fn_def_call,
-        #[cfg(feature = "ts")]
-        &mut ts_types_impl,
-        #[cfg(feature = "ts")]
-        &mut ts_func_body_url,
-        #[cfg(feature = "ts")]
-        &mut ts_func_args_url,
     );
 
     query::process(
         crate_prefix,
-        #[cfg(feature = "ts")]
-        trait_ident,
         &fn_ident,
         &fn_args_identified,
         routes,
@@ -345,34 +309,20 @@ pub fn process(
         &mut client_def_body,
         &mut fn_def_args,
         &mut fn_def_call,
-        #[cfg(feature = "ts")]
-        &mut ts_types_impl,
-        #[cfg(feature = "ts")]
-        &mut ts_func_body_url,
-        #[cfg(feature = "ts")]
-        &mut ts_func_args_url,
     );
 
     header::process(
         crate_prefix,
-        #[cfg(feature = "ts")]
-        &fn_ident,
         &fn_args_identified,
         &mut http_args,
         &mut func_args,
         &mut operations,
         user,
         &mut client_impl_body,
-        #[cfg(feature = "ts")]
-        &mut ts_options_body,
-        #[cfg(feature = "ts")]
-        &mut ts_replace,
     );
 
     payload::process(
         crate_prefix,
-        #[cfg(feature = "ts")]
-        trait_ident,
         &fn_ident,
         &fn_args_identified,
         routes,
@@ -382,10 +332,6 @@ pub fn process(
         &mut schema_extra,
         example,
         &mut client_impl_body,
-        #[cfg(feature = "ts")]
-        &mut ts_types_impl,
-        #[cfg(feature = "ts")]
-        &mut ts_options_body,
     );
 
     route::process(
@@ -417,31 +363,9 @@ pub fn process(
     let fn_def_call = Group::new(Delimiter::Parenthesis, fn_def_call);
     let method_http = method.to_http();
     if method == HttpMethod::Ws {
-        client_impl_body = quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
+        client_impl_body =
+            quote! { panic!("Websocket client is not implemented (and will maybe never be)"); };
     } else if raw {
-        #[cfg(feature = "ts")]
-        {
-            let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
-            let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
-            let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
-
-            ts_types_impl.extend(quote! {
-
-                {
-                    println!("{}::{} Result (raw)", #trait_name, #fn_name);
-                    #[derive(#crate_prefix ts_rs::TS)]
-                    #[ts(crate = #ts_crate_literal)]
-                    #[allow(dead_code)]
-                    struct TypescriptResultStruct {
-                        result: #crate_prefix ts::TSResponse<#result>,
-                    }
-
-                    visitor.allowed.extend(<TypescriptResultStruct as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
-                    <TypescriptResultStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
-                }
-            });
-        };
-
         client_impl_body = quote! {
             let mut request = self.client().request(#crate_prefix http::Method::#method_http, self.[< #fn_ident _url >] #fn_def_call);
             #client_impl_body
@@ -458,29 +382,6 @@ pub fn process(
             }
         };
     } else {
-        #[cfg(feature = "ts")]
-        {
-            let ts_crate_literal = LitStr::new(&format!("{crate_prefix}ts_rs"), Span::call_site());
-            let trait_name = LitStr::new(&trait_ident.to_string(), trait_ident.span());
-            let fn_name = LitStr::new(&fn_ident.to_string(), fn_ident.span());
-
-            ts_types_impl.extend(quote! {
-
-                {
-                    println!("{}::{} Result", #trait_name, #fn_name);
-                    #[derive(#crate_prefix ts_rs::TS)]
-                    #[ts(crate = #ts_crate_literal)]
-                    #[allow(dead_code)]
-                    struct TypescriptResultStruct {
-                        result: #result,
-                    }
-
-                    visitor.allowed.extend(<TypescriptResultStruct as #crate_prefix ts_rs::TS>::dependencies().into_iter().map(|dep| dep.type_id));
-                    <TypescriptResultStruct as #crate_prefix ts_rs::TS>::visit_dependencies(visitor);
-                }
-            });
-        };
-
         client_impl_body = quote! {
             let mut request = self.client().request(#crate_prefix http::Method::#method_http, self.[< #fn_ident _url >] #fn_def_call)
                 .header(#crate_prefix http::header::ACCEPT, "application/json");
@@ -513,175 +414,6 @@ pub fn process(
 
     };
 
-    #[cfg(feature = "ts")]
-    {
-        use convert_case::{Case, Casing as _};
-        use itertools::Itertools as _;
-        ts_func_body_url.push_str("return daemonResultUrl;\n");
-
-        #[expect(unstable_name_collisions)]
-        let ts_func_url_args: String = ts_func_args_url
-            .keys()
-            .map(String::as_str)
-            .intersperse(", ")
-            .collect();
-        let ts_func_body = format!(
-            r#"const daemonRequestUrl = this.{}({});
-const daemonRequest: DaemonSDKRequest = {{
-  path: `${{daemonRequestUrl.pathname}}${{daemonRequestUrl.search}}`,
-  method: '{}',
-  headers: Object.assign({{}}, this.headers),
-}};
-const client = new UndiciClient(daemonRequestUrl.origin, {{
-  connect: this.connect,
-  bodyTimeout: 0,
-  headersTimeout: 0,
-}});
-{}
-try {{
-  const response = await client.request(daemonRequest);
-  if (response.statusCode >= 200 && response.statusCode <= 299) {{
-    daemon_return_response
-  }} else {{
-    const errorResponse = await response.body.json() as {{ error: {{ id: string, msg: string }} }};
-    const errorId = errorResponse.error.id;
-    switch (errorId) {{
-daemon_return_error_response
-      default:
-        throw new Error(`Unknown error: ${{errorId}}`);
-    }}
-  }}
-
-}} catch (err) {{
-  return {{ Err: {{ "Communication": err }} }};
-}}
-            "#,
-            format!("{fn_ident}_url").to_case(Case::Camel),
-            ts_func_url_args,
-            method,
-            ts_options_body,
-        );
-
-        ts_replace.insert("daemon_return_error_response".to_owned(), quote! {
-            &{
-                <#result as #crate_prefix FrameworkDocumentedResponse>::error_values()
-                    .iter()
-                    .map(|str| format!("      case {}:\n        return {{ Err: errorId }};\n", #crate_prefix serde_json::to_string(str).unwrap() ))
-                    .collect::<String>()
-            }
-        });
-        ts_replace.insert(
-            "daemon_return_response".to_owned(),
-            quote! {
-               &(
-                    <#result as #crate_prefix ts::FrameworkTSResponse>::visit_ts_response()
-                )
-            },
-        );
-
-        let func_name_url = LitStr::new(&format!("{fn_ident}_url"), Span::call_site());
-        let func_name = LitStr::new(&fn_ident.to_string(), Span::call_site());
-        let func_body_url = LitStr::new(&ts_func_body_url, Span::call_site());
-        let func_body = LitStr::new(&ts_func_body, Span::call_site());
-        let mut func_args_url = TokenStream::new();
-        let mut func_args = TokenStream::new();
-
-        for (name, typ) in ts_func_args_url {
-            let name = LitStr::new(&name, Span::call_site());
-            func_args_url.extend(quote! {
-                visitor.visit_argument::<#typ>(#crate_prefix ts::to_camel(#name));
-            });
-        }
-
-        for arg in &fn_args_identified {
-            match arg {
-                FunctionArgument::Path {
-                    variable_name,
-                    variable_type,
-                }
-                | FunctionArgument::Query {
-                    variable_name,
-                    variable_type,
-                    ..
-                }
-                | FunctionArgument::Payload {
-                    variable_name,
-                    variable_type,
-                } => {
-                    let name = LitStr::new(&variable_name.to_string(), Span::call_site());
-                    func_args.extend(quote! {
-                        visitor.visit_argument::<#variable_type>(#crate_prefix ts::to_camel(#name));
-                    });
-                }
-                FunctionArgument::Header {
-                    variable_name,
-                    required,
-                    ..
-                } => {
-                    let name = LitStr::new(&variable_name.to_string(), Span::call_site());
-                    if *required {
-                        func_args.extend(quote! {
-                            visitor.visit_argument::<String>(#crate_prefix ts::to_camel(#name));
-                        });
-                    } else {
-                        func_args.extend(quote! {
-                            visitor.visit_argument::<Option<String>>(#crate_prefix ts::to_camel(#name));
-                        });
-                    }
-                }
-            }
-        }
-
-        ts_funcs_impl.extend(quote! {
-
-            visitor.visit_start(false, #crate_prefix ts::to_camel(#func_name_url));
-
-            #func_args_url
-
-            visitor.visit_end_result_custom(#func_body_url, "URL");
-        });
-
-        let mut replace_chain = TokenStream::new();
-        for (replace_key, replace_value) in ts_replace {
-            let replace_key = LitStr::new(&replace_key, Span::call_site());
-            replace_chain.extend(quote! {
-                .replace(#replace_key, #replace_value)
-            });
-        }
-
-        if method == HttpMethod::Ws {
-            // client_impl_body = quote! { panic!("Websocket client is not implemented (and very likely will never be)"); };
-        } else if raw {
-            if let Some(doc) = doc {
-                ts_funcs_impl.extend(quote! {
-                    visitor.visit_doc(#doc);
-                });
-            }
-
-            ts_funcs_impl.extend(quote! {
-                visitor.visit_start(true, #crate_prefix ts::to_camel(#func_name));
-
-                #func_args
-
-                visitor.visit_end_result::<#crate_prefix ts::TSResponse<#result>>(#func_body #replace_chain);
-            });
-        } else {
-            if let Some(doc) = doc {
-                ts_funcs_impl.extend(quote! {
-                    visitor.visit_doc(#doc);
-                });
-            }
-
-            ts_funcs_impl.extend(quote! {
-                visitor.visit_start(true, #crate_prefix ts::to_camel(#func_name));
-
-                #func_args
-
-                visitor.visit_end_result::<#result>(#func_body #replace_chain);
-            });
-        }
-    }
-
     functions.push(ProcessedFunction {
         client_def,
         client_impl,
@@ -691,10 +423,6 @@ daemon_return_error_response
         path,
         result,
         schema_extra,
-        #[cfg(feature = "ts")]
-        ts_funcs_impl,
-        #[cfg(feature = "ts")]
-        ts_types_impl,
         user,
     });
 
@@ -714,11 +442,6 @@ pub fn finish(
     let mut client_impl_merged = TokenStream::new();
     let mut client_def_merged = TokenStream::new();
 
-    #[cfg(feature = "ts")]
-    let mut ts_types_impl_merged = TokenStream::new();
-    #[cfg(feature = "ts")]
-    let mut ts_funcs_impl_merged = TokenStream::new();
-
     for ProcessedFunction {
         fn_ident,
         path,
@@ -729,20 +452,12 @@ pub fn finish(
         schema_extra,
         client_impl,
         client_def,
-        #[cfg(feature = "ts")]
-        ts_types_impl,
-        #[cfg(feature = "ts")]
-        ts_funcs_impl,
     } in functions
     {
         let token = if user { &mut routes_user } else { &mut routes };
 
         client_impl_merged.extend(client_impl);
         client_def_merged.extend(client_def);
-        #[cfg(feature = "ts")]
-        ts_types_impl_merged.extend(ts_types_impl);
-        #[cfg(feature = "ts")]
-        ts_funcs_impl_merged.extend(ts_funcs_impl);
 
         let method = method.to_utoipa();
 
@@ -804,25 +519,6 @@ pub fn finish(
         }
 
     });
-
-    #[cfg(feature = "ts")]
-    {
-        trait_body_output.extend(quote! {
-
-            #crate_prefix pastey::paste! {
-
-                fn visit_types(visitor: &mut #crate_prefix ts::TSTypeVisitor) where Self: Sized {
-                    #ts_types_impl_merged
-                }
-
-                fn visit_funcs(visitor: &mut #crate_prefix ts::TSClassFunctionVisitor) where Self: Sized {
-                    #ts_funcs_impl_merged
-                }
-
-            }
-
-        });
-    };
 
     output_extra.extend(quote! {
 
