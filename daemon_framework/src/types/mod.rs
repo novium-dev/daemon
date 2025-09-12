@@ -20,5 +20,8 @@ pub use stream::DataStream;
 use utoipa::openapi::path::OperationBuilder;
 
 pub trait DocumentedType {
-    fn openapi(operations: OperationBuilder) -> OperationBuilder;
+    #[must_use]
+    fn openapi(operations: OperationBuilder) -> OperationBuilder {
+        operations
+    }
 }
