@@ -15,8 +15,10 @@
 use crate::network::Network;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
+use daemon_common::service::network::__NetworkService_error::{
+    CreateNetworkError, DeleteNetworkError,
+};
 use daemon_common::service::network::NetworkService;
-use daemon_common::service::network::error::{CreateNetworkError, DeleteNetworkError};
 use sqlx::Connection as _;
 use std::sync::Arc;
 use tracing::error;

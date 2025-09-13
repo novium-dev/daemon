@@ -44,3 +44,8 @@ workspace = true
 [dependencies.axum]
 workspace = true
 features = ["ws"]
+
+[dev-dependencies.tokio]
+workspace = true
+features = ["full"]
+

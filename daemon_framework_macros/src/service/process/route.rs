@@ -65,15 +65,11 @@ pub fn process(
 
     routes.extend(quote! {
 
-        #crate_prefix pastey::paste! {
-
-            pub(crate) fn #fn_ident<T: super::#trait_ident + Clone + Send + Sync + 'static, #generic_types>(service: T) -> impl #crate_prefix axum::handler::Handler<(#target_generic_types), ()> #generic_type_conditions {
-                |#http_args| async move {
-                    service.#fn_ident(#call_args).await
-                    #result_map
-                }
+        pub(crate) fn #fn_ident<T: super::#trait_ident + Clone + Send + Sync + 'static, #generic_types>(service: T) -> impl #crate_prefix axum::handler::Handler<(#target_generic_types), ()> #generic_type_conditions {
+            |#http_args| async move {
+                service.#fn_ident(#call_args).await
+                #result_map
             }
-
         }
 
     });

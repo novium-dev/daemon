@@ -329,19 +329,23 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
 
     output.extend(quote! {
 
-        pub mod error {
-            use super::*;
+        #crate_prefix pastey::paste! {
+            pub mod [< __ #trait_ident _error >] {
+                use super::*;
 
-            #errors
+                #errors
+            }
         }
 
     });
     output.extend(quote! {
 
-        mod __framework_routes {
-            use super::*;
+        #crate_prefix pastey::paste! {
+            mod [< __ #trait_ident _framework_routes >] {
+                use super::*;
 
-            #routes
+                #routes
+            }
         }
 
     });

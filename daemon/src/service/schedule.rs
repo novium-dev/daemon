@@ -16,10 +16,10 @@ use crate::schedule::worker::task;
 use crate::utils::server_required;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
-use daemon_common::service::schedule::ScheduleService;
-use daemon_common::service::schedule::error::{
+use daemon_common::service::schedule::__ScheduleService_error::{
     CreateScheduleError, DeleteScheduleError, UpdateScheduleError,
 };
+use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::schedule::{SchedulePayload, ScheduleRunPolicy};
 use sqlx::{Connection as _, query, query_scalar};
 use tracing::error;

@@ -15,8 +15,8 @@
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use core::time::Duration;
+use daemon_common::service::resource::__ResourceService_error::ResourceInfoError;
 use daemon_common::service::resource::ResourceService;
-use daemon_common::service::resource::error::ResourceInfoError;
 use daemon_common::service::resource::{ResourceDisk, ResourceResponse};
 use num_traits::ToPrimitive as _;
 use sqlx::query_as;

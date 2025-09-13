@@ -20,6 +20,7 @@ use syn::LitStr;
 #[expect(clippy::too_many_arguments)]
 pub fn process(
     crate_prefix: &TokenStream,
+    trait_ident: &Ident,
     fn_ident: &Ident,
     fn_args_identified: &[FunctionArgument],
     routes: &mut TokenStream,
@@ -140,11 +141,9 @@ pub fn process(
         }
 
         routes.extend(quote! {
-            #crate_prefix pastey::paste! {
-                #[derive(Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize, Debug, #crate_prefix utoipa::ToSchema)]
-                pub(crate) struct [< #fn_ident:camel Payload >] {
-                    #payload_fields
-                }
+            #[derive(Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize, Debug, #crate_prefix utoipa::ToSchema)]
+            pub(crate) struct [< #fn_ident:camel Payload >] {
+                #payload_fields
             }
         });
         http_args.extend(quote! {
@@ -164,7 +163,7 @@ pub fn process(
                     .content("application/json", #crate_prefix utoipa::openapi::content::Content::builder()
                         .schema(Some(
                             #crate_prefix utoipa::openapi::schema::RefBuilder::new()
-                                .ref_location_from_schema_name(< __framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name())
+                                .ref_location_from_schema_name(< [< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name())
                                 .build()
                         ))
                         #content_extra
@@ -175,14 +174,14 @@ pub fn process(
             ));
         });
         schema_extra.extend(quote! {
-            schemas.insert(< __framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name().to_string(), < __framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::PartialSchema >::schema());
+            schemas.insert(< [< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name().to_string(), < [< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::PartialSchema >::schema());
             let mut schemas_vec = Vec::new();
-            < __framework_routes::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
+            < [< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
             schemas.extend(schemas_vec);
         });
 
         client_impl_body.extend(quote! {
-            request = request.json(&__framework_routes::[< #fn_ident:camel Payload >] { #payload_names });
+            request = request.json(&[< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] { #payload_names });
         });
     } else {
         // If there are no payload arguments, there is no payload.

@@ -20,11 +20,14 @@
 pub mod sdk;
 pub mod types;
 
+pub mod error;
 #[doc(hidden)]
 pub mod internal;
 pub mod responses;
 pub mod router;
 pub(crate) mod utils;
+
+extern crate self as daemon_framework;
 
 pub use async_trait::async_trait;
 pub use axum;

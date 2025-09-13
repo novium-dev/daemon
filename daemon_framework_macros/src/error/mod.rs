@@ -252,7 +252,7 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> syn::Result<Tok
                                 "id": #error_id,
                                 "msg": #msg,
                             }
-                        }))),
+                        }))).into_response(),
                     });
 
                     openapi.extend(quote! {
@@ -293,7 +293,7 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> syn::Result<Tok
                             "id": #error_id,
                             "msg": [< error_ #category _ #error_ident >]::DESCRIPTION,
                         }
-                    }))),
+                    }))).into_response(),
                 });
 
                 openapi.extend(quote! {
@@ -490,7 +490,7 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> syn::Result<Tok
                     #[allow(unreachable_code)]
                     match self {
                         #response
-                    }.into_response()
+                    }
                 }
 
             }

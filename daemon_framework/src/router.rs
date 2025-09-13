@@ -16,7 +16,7 @@ enum RouterOperation {
     Nest(&'static str, FrameworkRouter),
     Route(Box<FrameworkRoute>),
     Merge(FrameworkRouter),
-    Patch(Box<dyn FnOnce(OpenApiRouter) -> OpenApiRouter>),
+    Patch(Box<dyn FnOnce(OpenApiRouter) -> OpenApiRouter + Send + Sync>),
 }
 
 struct FrameworkRoute {

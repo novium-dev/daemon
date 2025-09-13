@@ -160,6 +160,7 @@ pub fn process(
         doc,
     ) = macros::process(
         crate_prefix,
+        trait_ident,
         &fn_ident,
         pre_fn,
         errors,
@@ -376,6 +377,7 @@ pub fn process(
 
     payload::process(
         crate_prefix,
+        trait_ident,
         &fn_ident,
         &fn_args_identified,
         routes,
@@ -545,7 +547,7 @@ pub fn finish(
                     (responses, operations, schemas.into_iter().collect())
                 },
                 MethodRouter::new()
-                    .on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), __framework_routes::#fn_ident(self.clone())),
+                    .on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), [< __ #trait_ident _framework_routes >]::#fn_ident(self.clone())),
             )
         };
 

@@ -105,11 +105,9 @@ pub fn process(
         client_def_body.extend(client_def_body_post);
 
         routes.extend(quote! {
-            #crate_prefix pastey::paste! {
-                #[derive(Debug, Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize)]
-                pub(crate) struct [< #fn_ident:camel Query >] {
-                    #query_fields
-                }
+            #[derive(Debug, Clone, #crate_prefix serde::Serialize, #crate_prefix serde::Deserialize)]
+            pub(crate) struct [< #fn_ident:camel Query >] {
+                #query_fields
             }
         });
         http_args.extend(quote! {
