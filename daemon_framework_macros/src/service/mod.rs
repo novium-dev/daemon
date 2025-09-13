@@ -19,6 +19,7 @@ pub mod process;
 use crate::service::args::ServiceArgs;
 use crate::service::parse::ParseExpectation;
 use core::mem::take;
+use either::Either;
 use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::VecDeque;
@@ -53,10 +54,30 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
     };
     output.push(TokenTree::Ident(trait_ident.clone()));
 
+    let mut impl_ident = None;
+    let mut struct_ident = None;
+
     input = input
         .into_iter()
-        .skip_while(|item| match item {
+        .enumerate()
+        .skip_while(|(index, item)| match item {
+            TokenTree::Ident(ident) if *index == 1 && impl_ident.is_some() => {
+                struct_ident = Some(ident.clone());
+                true
+            }
+            TokenTree::Group(_)
+            | TokenTree::Ident(_)
+            | TokenTree::Punct(_)
+            | TokenTree::Literal(_)
+                if *index == 1 && impl_ident.is_some() =>
+            {
+                panic!("Expected struct after impl");
+            }
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => false,
+            TokenTree::Ident(ident) if ident.to_string().eq("impl") && *index == 0 => {
+                impl_ident = Some(ident.clone());
+                true
+            }
             TokenTree::Group(_)
             | TokenTree::Ident(_)
             | TokenTree::Punct(_)
@@ -65,7 +86,12 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                 true
             }
         })
+        .map(|(_index, item)| item)
         .collect();
+
+    let impl_data = impl_ident
+        .and_then(|impl_ident| struct_ident.map(|struct_ident| (impl_ident, struct_ident)));
+
     let Some(TokenTree::Group(trait_body)) = input.pop_front() else {
         panic!("Expected trait body");
     };
@@ -85,23 +111,23 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
     let mut functions = Vec::new();
 
     while let Some(tree) = input.pop_front() {
-        match (tree, expect_fn) {
-            (TokenTree::Ident(ident), ParseExpectation::FnKeyword)
+        match (tree, expect_fn, &impl_data) {
+            (TokenTree::Ident(ident), ParseExpectation::FnKeyword, _)
                 if ident.to_string().eq("fn") =>
             {
                 expect_fn = ParseExpectation::FunctionIdentifier { fn_keyword: ident };
             }
-            (item, ParseExpectation::FnKeyword) => {
+            (item, ParseExpectation::FnKeyword, _) => {
                 expect_fn = ParseExpectation::FnKeyword;
                 pre_fn.push(item);
             }
-            (TokenTree::Ident(ident), ParseExpectation::FunctionIdentifier { fn_keyword }) => {
+            (TokenTree::Ident(ident), ParseExpectation::FunctionIdentifier { fn_keyword }, _) => {
                 expect_fn = ParseExpectation::ArgumentsTuple {
                     fn_keyword,
                     fn_ident: ident,
                 };
             }
-            (_, ParseExpectation::FunctionIdentifier { .. }) => {
+            (_, ParseExpectation::FunctionIdentifier { .. }, _) => {
                 panic!("Expected function identifier after fn keyword")
             }
             (
@@ -110,6 +136,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                     fn_keyword,
                     fn_ident,
                 },
+                _,
             ) if group.delimiter() == Delimiter::Parenthesis => {
                 expect_fn = ParseExpectation::FunctionOrResult {
                     fn_keyword,
@@ -123,6 +150,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                     fn_ident,
                     fn_keyword,
                 },
+                _,
             ) => {
                 expect_fn = ParseExpectation::ArgumentsTuple {
                     fn_ident,
@@ -137,6 +165,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                     fn_ident,
                     fn_args,
                 },
+                _,
             ) if punct.as_char() == '-' => {
                 expect_fn = ParseExpectation::Arrow {
                     fn_keyword,
@@ -152,6 +181,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                     fn_ident,
                     fn_args,
                 },
+                _,
             ) if punct.as_char() == '>' => {
                 expect_fn = ParseExpectation::Result {
                     fn_keyword,
@@ -160,11 +190,11 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                 };
                 post_fn.push(TokenTree::Punct(punct.clone()));
             }
-            (_, ParseExpectation::Arrow { .. }) => {
+            (_, ParseExpectation::Arrow { .. }, _) => {
                 panic!("Expected > after -, expecting the function result after that.")
             }
             (
-                TokenTree::Punct(punct),
+                TokenTree::Group(group),
                 ParseExpectation::FunctionOrResult {
                     fn_keyword,
                     fn_ident,
@@ -175,7 +205,8 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                     fn_ident,
                     fn_args,
                 },
-            ) if punct.as_char() == ';' => {
+                Some(_),
+            ) if group.delimiter() == Delimiter::Brace => {
                 expect_fn = ParseExpectation::FnKeyword; // for next function
 
                 trait_body_output.extend(process::process(
@@ -184,7 +215,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                     &trait_ident,
                     &fn_keyword,
                     fn_ident,
-                    punct.clone(),
+                    Either::Right(group),
                     #[expect(
                         clippy::iter_with_drain,
                         reason = "We want to reuse the pre_fn later, it should be cleared"
@@ -198,8 +229,47 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                     &mut functions,
                 ));
             }
-            (_, ParseExpectation::FunctionOrResult { .. }) => {
+            (
+                TokenTree::Punct(punct),
+                ParseExpectation::FunctionOrResult {
+                    fn_keyword,
+                    fn_ident,
+                    fn_args,
+                }
+                | ParseExpectation::Result {
+                    fn_keyword,
+                    fn_ident,
+                    fn_args,
+                },
+                None,
+            ) if punct.as_char() == ';' => {
+                expect_fn = ParseExpectation::FnKeyword; // for next function
+
+                trait_body_output.extend(process::process(
+                    crate_prefix,
+                    args,
+                    &trait_ident,
+                    &fn_keyword,
+                    fn_ident,
+                    Either::Left(punct.clone()),
+                    #[expect(
+                        clippy::iter_with_drain,
+                        reason = "We want to reuse the pre_fn later, it should be cleared"
+                    )]
+                    pre_fn.drain(..).collect(),
+                    take(&mut post_fn),
+                    fn_args,
+                    &mut errors,
+                    &mut routes,
+                    take(&mut result),
+                    &mut functions,
+                ));
+            }
+            (_, ParseExpectation::FunctionOrResult { .. }, None) => {
                 panic!("Expected semicolon after function")
+            }
+            (_, ParseExpectation::FunctionOrResult { .. }, Some(_)) => {
+                panic!("Expected method body after function")
             }
             (
                 tree,
@@ -208,6 +278,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
                     fn_ident,
                     fn_args,
                 },
+                _,
             ) => {
                 expect_fn = ParseExpectation::Result {
                     fn_keyword,
@@ -228,6 +299,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
         &mut trait_body_output,
         &mut output_extra,
         functions,
+        impl_data,
     );
 
     output.push(TokenTree::Group(Group::new(

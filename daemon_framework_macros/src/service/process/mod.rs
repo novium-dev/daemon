@@ -26,7 +26,8 @@ use crate::service::parse::FunctionArgument;
 use crate::utils::{TokenStreamArray, type_option};
 use core::fmt::{Display, Formatter};
 use core::str::FromStr;
-use proc_macro2::{Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree};
+use either::Either;
+use proc_macro2::{Delimiter, Group, Ident, Punct, Spacing, Span, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::{HashMap, VecDeque};
 use syn::LitStr;
@@ -115,6 +116,8 @@ pub struct ProcessedFunction {
     result: TokenStream,
     schema_extra: TokenStream,
     routes_selection: Vec<Ident>,
+    fn_args: TokenTree,
+    function_impl: Option<Group>,
 }
 
 #[expect(clippy::too_many_arguments)]
@@ -125,7 +128,7 @@ pub fn process(
     trait_ident: &Ident,
     fn_keyword: &Ident,
     fn_ident: Ident,
-    end_punct: Punct,
+    end: Either<Punct, Group>,
 
     pre_fn: VecDeque<TokenTree>,
     mut post_fn: Vec<TokenTree>,
@@ -403,7 +406,10 @@ pub fn process(
     func.push(TokenTree::Group(fn_args.clone()));
     func.append(&mut post_fn.clone());
     func.append(&mut result.clone());
-    func.push(TokenTree::Punct(end_punct));
+    func.push(TokenTree::Punct(match &end {
+        Either::Left(end) => end.clone(),
+        Either::Right(_) => Punct::new(';', Spacing::Joint),
+    }));
 
     let post_fn = TokenStream::from_iter(post_fn);
     let result = TokenStream::from_iter(result);
@@ -474,6 +480,8 @@ pub fn process(
         result,
         schema_extra,
         routes_selection,
+        fn_args,
+        function_impl: end.right(),
     });
 
     func
@@ -486,11 +494,13 @@ pub fn finish(
     trait_body_output: &mut Vec<TokenTree>,
     output_extra: &mut Vec<TokenTree>,
     functions: Vec<ProcessedFunction>,
+    impl_data: Option<(Ident, Ident)>,
 ) {
     let mut routes = HashMap::new();
 
     let mut client_impl_merged = TokenStream::new();
     let mut client_def_merged = TokenStream::new();
+    let mut impl_tokens = TokenStream::new();
 
     for ProcessedFunction {
         fn_ident,
@@ -502,6 +512,8 @@ pub fn finish(
         schema_extra,
         client_impl,
         client_def,
+        fn_args,
+        function_impl,
     } in functions
     {
         client_impl_merged.extend(client_impl);
@@ -544,6 +556,12 @@ pub fn finish(
                 .1
                 .extend(token.clone());
         }
+
+        if let Some(function_impl) = function_impl {
+            impl_tokens.extend(quote! {
+                async fn #fn_ident #fn_args -> #result #function_impl
+            });
+        }
     }
 
     routes
@@ -576,6 +594,19 @@ pub fn finish(
                     FrameworkRouter::new()
                         #routes
                 }
+            }
+        });
+    }
+
+    if let Some((impl_ident, struct_ident)) = impl_data {
+        output_extra.extend(quote! {
+            #crate_prefix pastey::paste! {
+
+                #[#crate_prefix async_trait]
+                #impl_ident #trait_ident for #struct_ident {
+                    #impl_tokens
+                }
+
             }
         });
     }
