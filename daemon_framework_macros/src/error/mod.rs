@@ -23,7 +23,7 @@ use syn::token::{Brace, Bracket};
 use syn::{LitStr, Token};
 
 // Taken from https://stackoverflow.com/a/73727708
-const INVISIBLE_CHARS: &[u32] = &[
+const INVISIBLE_CHARS_HEX: &[u32] = &[
     0x00AD, 0x061C, 0x180E, 0x200B, 0x200C, 0x200D, 0x200E, 0x200F, 0x202A, 0x202B, 0x202C, 0x202D,
     0x202E, 0x2060, 0x2061, 0x2062, 0x2063, 0x2064, 0x2067, 0x2066, 0x2068, 0x2069, 0x206A, 0x206B,
     0x206C, 0x206D, 0x206E, 0x206F, 0xFEFF, 0x1D173, 0x1D174, 0x1D175, 0x1D176, 0x1D177, 0x1D178,
@@ -39,7 +39,23 @@ const INVISIBLE_CHARS: &[u32] = &[
     0xE0077, 0xE0078, 0xE0079, 0xE007A, 0xE007B, 0xE007C, 0xE007D, 0xE007E, 0xE007F,
 ];
 
-type ErrorAttributes = Vec<(Ident, Option<Ident>)>;
+#[expect(clippy::indexing_slicing, reason = "this is a const evaluation")]
+const INVISIBLE_CHARS: [char; INVISIBLE_CHARS_HEX.len()] = {
+    let mut chars = [' '; INVISIBLE_CHARS_HEX.len()];
+
+    let mut pos = 0;
+    while pos < INVISIBLE_CHARS_HEX.len() {
+        if let Some(char) = char::from_u32(INVISIBLE_CHARS_HEX[pos]) {
+            chars[pos] = char;
+        } else {
+            panic!("Invisible Char is not actually a char");
+        }
+        pos += 1;
+    }
+    chars
+};
+
+type ErrorAttributes = Vec<(Ident, Span, Option<Ident>)>;
 type ErrorInner = Either<(Ident, Ident, LitStr), (Ident, Ident)>;
 
 pub struct ErrorContent {
@@ -147,7 +163,7 @@ impl Parse for ErrorCustomContent {
 }
 
 pub struct ErrorAttributesContent {
-    pub vec: Vec<(Ident, Option<Ident>)>,
+    pub vec: Vec<(Ident, Span, Option<Ident>)>,
 }
 
 impl Parse for ErrorAttributesContent {
@@ -161,11 +177,11 @@ impl Parse for ErrorAttributesContent {
                 return Err(syn::Error::new(punct.span(), "Expected :"));
             }
             if input.peek(Token![*]) {
-                let _: Punct = input.parse()?;
-                vec.push((key, None));
+                let value: Punct = input.parse()?;
+                vec.push((key, value.span(), None));
             } else {
                 let value: Ident = input.parse()?;
-                vec.push((key, Some(value)));
+                vec.push((key, value.span(), Some(value)));
             }
         }
 
@@ -173,8 +189,8 @@ impl Parse for ErrorAttributesContent {
     }
 }
 
-pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
-    let ErrorContent { ident, mut errors } = syn::parse2(input).expect("Expected error content");
+pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> syn::Result<TokenStream> {
+    let ErrorContent { ident, mut errors } = syn::parse2(input)?;
 
     let mut content = TokenStream::new();
     let mut values_impl = TokenStream::new();
@@ -198,13 +214,15 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
     let mut attributes_parsed = HashMap::new();
     let mut errors2 = Vec::with_capacity(errors.len());
     for (index, (error, attributes)) in errors.into_iter().enumerate() {
-        let error_suffix = char::from_u32(
-            *INVISIBLE_CHARS
-                .get(index)
-                .expect("Not enough invisible chars available"),
-        )
-        .expect("Unable to convert ascii code to char")
-        .to_string(); // So I can have multiple errors in openapi with the same status code
+        let error_suffix = INVISIBLE_CHARS
+            .get(index)
+            .ok_or_else(|| {
+                syn::Error::new(
+                    ident.span(),
+                    "Too many errors. Not enough invisible chars hardcoded",
+                )
+            })?
+            .to_string(); // So I can have multiple errors in openapi with the same status code
 
         let error_suffix = LitStr::new(&error_suffix, Span::call_site());
         let entry = match error {
@@ -309,48 +327,53 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
                 quote! { [< #category:camel #error_ident:camel >] }
             }
         };
-        let attributes: Vec<_> = attributes
-            .into_iter()
-            .map(|(attr, key)| (attr.to_string(), key))
-            .collect();
 
-        for (attr, key) in &attributes {
+        for (attr, key_span, key) in &attributes {
             if key.is_none() {
-                assert!(
-                    !attributes_parsed.contains_key(attr),
-                    "Duplicate default entry for {attr} in error"
-                );
+                if attributes_parsed.contains_key(&attr.to_string()) {
+                    return Err(syn::Error::new(
+                        *key_span,
+                        format!(
+                            "There is already an {attr} attribute with an default entry in this error"
+                        ),
+                    ));
+                }
                 attributes_parsed
-                    .entry(attr.clone())
-                    .or_insert_with(|| (entry.clone(), Vec::new()));
+                    .entry(attr.to_string())
+                    .or_insert_with(|| (attr.span(), entry.clone(), Vec::new()));
             }
         }
         errors2.push((attributes, entry));
     }
     for (attributes, entry) in errors2 {
-        for (attr, key) in attributes {
+        for (attr, _key_span, key) in attributes {
             let Some(key) = key else {
                 continue;
             };
-            attributes_parsed
-                .get_mut(&attr)
-                .expect("Default implementation missing in error attribute")
-                .1
-                .push((key, entry.clone()));
+            if let Some((_, _, vec)) = attributes_parsed.get_mut(&attr.to_string()) {
+                vec.push((key, entry.clone()));
+            } else {
+                return Err(syn::Error::new(
+                    attr.span(),
+                    "You cannot use an specific error attribute, without having an default one",
+                ));
+            }
         }
     }
 
-    for (attr, (_, vec)) in &attributes_parsed {
+    for (attr, (_, _, vec)) in &attributes_parsed {
         let mut set = HashSet::new();
         for (entry, _) in vec {
-            assert!(
-                set.insert(entry.to_string()),
-                "Duplicate entry {entry} for {attr} in error"
-            );
+            if !set.insert(entry.to_string()) {
+                return Err(syn::Error::new(
+                    entry.span(),
+                    format!("Duplicate entry {entry} for attribute {attr} in error"),
+                ));
+            }
         }
     }
 
-    for (attr, (def, other)) in attributes_parsed {
+    for (attr, (attr_span, def, other)) in attributes_parsed {
         match attr.as_str() {
             "io" => {
                 let mut matches = TokenStream::new();
@@ -404,7 +427,12 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
                                     }
                             });
                         }
-                        _ => panic!("Unknown entry {kind} for {attr} in error"),
+                        _ => {
+                            return Err(syn::Error::new(
+                                kind.span(),
+                                format!("Unknown entry {kind} for {attr} in error"),
+                            ));
+                        }
                     }
                 }
                 if !database_matches.is_empty() {
@@ -426,11 +454,13 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
                     }
                 });
             }
-            _ => panic!("Unknown attribute {attr} in error"),
+            _ => {
+                return Err(syn::Error::new(attr_span, "Unknown error attribute"));
+            }
         }
     }
 
-    quote! {
+    Ok(quote! {
         #crate_prefix pastey::paste! {
             #[derive(Debug)]
             #[automatically_derived]
@@ -490,5 +520,5 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> TokenStream {
 
             #impls
         }
-    }
+    })
 }

@@ -28,6 +28,7 @@ use crate::error::define::define_error0;
 use crate::error::error0;
 use crate::service::args::ServiceArgs;
 use crate::service::service0;
+use manyhow::manyhow;
 use proc_macro::TokenStream as StdTokenStream;
 use proc_macro2::TokenStream;
 use quote::quote;
@@ -39,9 +40,10 @@ pub fn service(attr: StdTokenStream, input: StdTokenStream) -> StdTokenStream {
     StdTokenStream::from(service0(&crate_prefix(), &args, TokenStream::from(input)))
 }
 
+#[manyhow]
 #[proc_macro]
-pub fn error(attr: proc_macro::TokenStream) -> StdTokenStream {
-    StdTokenStream::from(error0(&crate_prefix(), TokenStream::from(attr)))
+pub fn error(attr: TokenStream) -> syn::Result<TokenStream> {
+    error0(&crate_prefix(), attr)
 }
 
 #[proc_macro]
