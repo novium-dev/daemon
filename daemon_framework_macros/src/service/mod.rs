@@ -20,7 +20,7 @@ use crate::service::args::ServiceArgs;
 use crate::service::parse::ParseExpectation;
 use core::mem::take;
 use either::Either;
-use proc_macro2::{Delimiter, Group, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, Span, TokenStream, TokenTree};
 use quote::quote;
 use std::collections::VecDeque;
 
@@ -35,7 +35,11 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
     let mut input: VecDeque<_> = input
         .into_iter()
         .skip_while(|item| match item {
-            TokenTree::Ident(ident) if ident.to_string().eq("trait") => false,
+            TokenTree::Ident(ident)
+                if ident.to_string().eq("trait") || ident.to_string().eq("impl") =>
+            {
+                false
+            }
             TokenTree::Group(_)
             | TokenTree::Ident(_)
             | TokenTree::Punct(_)
@@ -45,23 +49,28 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
             }
         })
         .collect();
-    let Some(trait_keyword) = input.pop_front() else {
-        panic!("Expected trait keyword");
+    let Some(TokenTree::Ident(trait_keyword)) = input.pop_front() else {
+        panic!("Expected trait or impl keyword");
     };
-    output.push(trait_keyword);
+    output.push(TokenTree::Ident(if trait_keyword.to_string().eq("impl") {
+        Ident::new("trait", Span::call_site())
+    } else {
+        trait_keyword.clone()
+    }));
+
     let Some(TokenTree::Ident(trait_ident)) = input.pop_front() else {
         panic!("Expected identifier after trait keyword");
     };
     output.push(TokenTree::Ident(trait_ident.clone()));
 
-    let mut impl_ident = None;
+    let mut for_ident = None;
     let mut struct_ident = None;
 
     input = input
         .into_iter()
         .enumerate()
         .skip_while(|(index, item)| match item {
-            TokenTree::Ident(ident) if *index == 1 && impl_ident.is_some() => {
+            TokenTree::Ident(ident) if *index == 1 && for_ident.is_some() => {
                 struct_ident = Some(ident.clone());
                 true
             }
@@ -69,13 +78,17 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
             | TokenTree::Ident(_)
             | TokenTree::Punct(_)
             | TokenTree::Literal(_)
-                if *index == 1 && impl_ident.is_some() =>
+                if *index == 1 && for_ident.is_some() =>
             {
-                panic!("Expected struct after impl");
+                panic!("Expected struct after impl <trait> for");
             }
             TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => false,
-            TokenTree::Ident(ident) if ident.to_string().eq("impl") && *index == 0 => {
-                impl_ident = Some(ident.clone());
+            TokenTree::Ident(ident)
+                if ident.to_string().eq("for")
+                    && *index == 0
+                    && trait_keyword.to_string().eq("impl") =>
+            {
+                for_ident = Some(ident.clone());
                 true
             }
             TokenTree::Group(_)
@@ -89,8 +102,13 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
         .map(|(_index, item)| item)
         .collect();
 
-    let impl_data = impl_ident
-        .and_then(|impl_ident| struct_ident.map(|struct_ident| (impl_ident, struct_ident)));
+    assert!(
+        !(struct_ident.is_none() && trait_keyword.to_string().eq("impl")),
+        "Expected for <struct> after impl <trait>"
+    );
+    let impl_data = for_ident.and_then(|for_ident| {
+        struct_ident.map(|struct_ident| (trait_keyword, for_ident, struct_ident))
+    });
 
     let Some(TokenTree::Group(trait_body)) = input.pop_front() else {
         panic!("Expected trait body");

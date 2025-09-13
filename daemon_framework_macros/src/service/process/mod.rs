@@ -494,7 +494,7 @@ pub fn finish(
     trait_body_output: &mut Vec<TokenTree>,
     output_extra: &mut Vec<TokenTree>,
     functions: Vec<ProcessedFunction>,
-    impl_data: Option<(Ident, Ident)>,
+    impl_data: Option<(Ident, Ident, Ident)>,
 ) {
     let mut routes = HashMap::new();
 
@@ -598,12 +598,12 @@ pub fn finish(
         });
     }
 
-    if let Some((impl_ident, struct_ident)) = impl_data {
+    if let Some((impl_ident, for_ident, struct_ident)) = impl_data {
         output_extra.extend(quote! {
             #crate_prefix pastey::paste! {
 
                 #[#crate_prefix async_trait]
-                #impl_ident #trait_ident for #struct_ident {
+                #impl_ident #trait_ident #for_ident #struct_ident {
                     #impl_tokens
                 }
 
