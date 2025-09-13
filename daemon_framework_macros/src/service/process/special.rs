@@ -8,6 +8,7 @@ pub fn process(
     http_args: &mut TokenStream,
     func_args: &mut Vec<TokenStream>,
     operations: &mut TokenStream,
+    client_impl_body: &mut TokenStream,
 ) {
     let fn_args_path: Vec<_> = fn_args_identified
         .iter()
@@ -33,5 +34,8 @@ pub fn process(
             #arg_name: #arg_type,
         });
         func_args.push(quote! { #arg_type });
+        client_impl_body.extend(quote! {
+            request = <#arg_type as #crate_prefix sdk::IntoRequestParts>::into_request(#arg_name, request).await;
+        });
     }
 }

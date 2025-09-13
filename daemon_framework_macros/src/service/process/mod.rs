@@ -368,6 +368,7 @@ pub fn process(
         &mut http_args,
         &mut func_args,
         &mut operations,
+        &mut client_impl_body,
     );
 
     payload::process(
