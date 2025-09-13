@@ -25,6 +25,7 @@ pub mod error;
 pub mod internal;
 pub mod responses;
 pub mod router;
+pub mod special;
 pub(crate) mod utils;
 
 extern crate self as daemon_framework;

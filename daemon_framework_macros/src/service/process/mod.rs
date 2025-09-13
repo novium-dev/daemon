@@ -369,6 +369,7 @@ pub fn process(
     special::process(
         crate_prefix,
         &fn_args_identified,
+        &result,
         &mut http_args,
         &mut func_args,
         &mut operations,

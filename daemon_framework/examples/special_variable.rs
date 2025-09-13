@@ -1,18 +1,20 @@
-use axum::extract::FromRequestParts;
-use daemon_framework::error::BlankError;
-use daemon_framework::sdk::IntoRequestParts;
+use crate::error_special_test::FromSpecialTest;
 use daemon_framework::service;
+use daemon_framework::special::{FromRequestParts, IntoRequestParts};
 use daemon_framework::types::DocumentedType;
+use daemon_framework_macros::define_error;
 use http::request::Parts;
 use reqwest::RequestBuilder;
 
 #[expect(dead_code)]
 struct SpecialVariable;
 
-impl<S: Send + Sync> FromRequestParts<S> for SpecialVariable {
-    type Rejection = ();
+define_error!(special {
+    test ("Test error" IM_A_TEAPOT)
+});
 
-    async fn from_request_parts(_parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+impl<E: FromSpecialTest> FromRequestParts<E> for SpecialVariable {
+    async fn from_request_parts(_parts: &mut Parts) -> Result<Self, E> {
         Ok(Self)
     }
 }
@@ -29,8 +31,8 @@ impl IntoRequestParts for SpecialVariable {
 #[service]
 trait ExampleService {
     #[route("/", method = GET, no_auth)]
-    async fn example(&self, #[special] special_variable: SpecialVariable)
-    -> Result<(), BlankError>;
+    #[error(special(test))]
+    async fn example(&self, #[special] special_variable: SpecialVariable) -> Result<(), _>;
 }
 
 fn main() {}

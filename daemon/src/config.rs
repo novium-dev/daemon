@@ -148,18 +148,18 @@ impl TlsConfig {
             .collect();
 
         // Make sure file contains only one key
-        if key_vec.len() != 1 {
+        let Some(key) = key_vec.pop() else {
             return Err(io::Error::other("private key format not supported"));
-        }
+        };
 
         let cert = cert.into_iter().map(CertificateDer::from).collect();
         let key = PrivateKeyDer::try_from(key).map_err(io::Error::other)?;
-        Ok(CertifiedKey::from_der(
+        CertifiedKey::from_der(
             cert,
             key,
             rustls::crypto::CryptoProvider::get_default().expect("No default crypto provider set"),
         )
-        .map_err(io::Error::other)?)
+        .map_err(io::Error::other)
     }
 }
 

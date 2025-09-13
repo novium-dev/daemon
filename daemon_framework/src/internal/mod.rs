@@ -2,11 +2,13 @@ mod error;
 mod header;
 mod json;
 mod serializer;
+mod special;
 
 pub use error::{error_by_response, error_schema};
 pub use header::{header_insert, header_name};
 pub use json::FrameworkJsonResponse;
 pub use serializer::StringSerializer;
+pub use special::AxumSpecialWrapper;
 
 use crate::SUCCESS_DESCRIPTION;
 use crate::responses::DocumentedResponse;
