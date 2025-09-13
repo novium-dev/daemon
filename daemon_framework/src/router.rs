@@ -33,7 +33,7 @@ impl FrameworkRouter {
         Self(None, Vec::new())
     }
 
-    pub const fn from_openapi(openapi: OpenApi) -> Self {
+    pub const fn with_openapi(openapi: OpenApi) -> Self {
         Self(Some(openapi), Vec::new())
     }
 
