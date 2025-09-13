@@ -163,7 +163,7 @@ pub fn process(
                     .content("application/json", #crate_prefix utoipa::openapi::content::Content::builder()
                         .schema(Some(
                             #crate_prefix utoipa::openapi::schema::RefBuilder::new()
-                                .ref_location_from_schema_name(< [< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name())
+                                .ref_location_from_schema_name(< [< __ #trait_ident:snake _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name())
                                 .build()
                         ))
                         #content_extra
@@ -174,14 +174,14 @@ pub fn process(
             ));
         });
         schema_extra.extend(quote! {
-            schemas.insert(< [< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name().to_string(), < [< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::PartialSchema >::schema());
+            schemas.insert(< [< __ #trait_ident:snake _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::name().to_string(), < [< __ #trait_ident:snake _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::PartialSchema >::schema());
             let mut schemas_vec = Vec::new();
-            < [< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
+            < [< __ #trait_ident:snake _framework_routes >]::[< #fn_ident:camel Payload >] as #crate_prefix utoipa::ToSchema >::schemas(&mut schemas_vec);
             schemas.extend(schemas_vec);
         });
 
         client_impl_body.extend(quote! {
-            request = request.json(&[< __ #trait_ident _framework_routes >]::[< #fn_ident:camel Payload >] { #payload_names });
+            request = request.json(&[< __ #trait_ident:snake _framework_routes >]::[< #fn_ident:camel Payload >] { #payload_names });
         });
     } else {
         // If there are no payload arguments, there is no payload.

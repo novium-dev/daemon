@@ -330,7 +330,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
     output.extend(quote! {
 
         #crate_prefix pastey::paste! {
-            pub mod [< __ #trait_ident _error >] {
+            pub mod [< #trait_ident:snake _error >] {
                 use super::*;
 
                 #errors
@@ -341,7 +341,7 @@ pub fn service0(crate_prefix: &TokenStream, args: &ServiceArgs, input: TokenStre
     output.extend(quote! {
 
         #crate_prefix pastey::paste! {
-            mod [< __ #trait_ident _framework_routes >] {
+            mod [< __ #trait_ident:snake _framework_routes >] {
                 use super::*;
 
                 #routes

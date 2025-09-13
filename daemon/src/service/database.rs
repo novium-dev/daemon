@@ -16,10 +16,10 @@ use crate::database::{Database, DatabasePayloadFunctionExt as _, DatabaseState, 
 use crate::utils::database;
 use crate::{Daemon, DaemonExtra, sql};
 use async_trait::async_trait;
-use daemon_common::service::database::__DatabaseService_error::{
+use daemon_common::service::database::DatabaseService;
+use daemon_common::service::database::database_service_error::{
     CreateDatabaseError, DeleteDatabaseError, UpdateDatabaseError,
 };
-use daemon_common::service::database::DatabaseService;
 use daemon_common::service::database::{DatabaseUserPayload, DatabaseUserPermissions};
 use sqlx::{Connection as _, query};
 use std::collections::HashMap;

@@ -74,8 +74,8 @@ use daemon_common::node::{
     BackupStorage, HostAndPort, NodeRegistrationRequest, NodeUpdateRequest, ServerStorage,
 };
 use daemon_common::service::framework_router;
-use daemon_common::service::setup::__SetupService_error::ConnectionTestError;
 use daemon_common::service::setup::SetupService;
+use daemon_common::service::setup::setup_service_error::ConnectionTestError;
 use inquire::autocompletion::Replacement;
 use inquire::validator::{ErrorMessage, StringValidator, Validation};
 use inquire::{Autocomplete, CustomUserError, Text};

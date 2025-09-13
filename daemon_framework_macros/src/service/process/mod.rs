@@ -548,7 +548,7 @@ pub fn finish(
                     (responses, operations, schemas.into_iter().collect())
                 },
                 MethodRouter::new()
-                    .on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), [< __ #trait_ident _framework_routes >]::#fn_ident(self.clone())),
+                    .on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), [< __ #trait_ident:snake _framework_routes >]::#fn_ident(self.clone())),
             )
         };
 

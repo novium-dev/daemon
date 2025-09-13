@@ -182,7 +182,7 @@ pub fn process(
                         if let TokenTree::Ident(ident) = tree {
                             if ident.to_string().eq("_") {
                                 quote! {
-                                    #crate_prefix pastey::paste! { [< __ #trait_ident _error >]::[< #fn_ident:camel Error >] }
+                                    #crate_prefix pastey::paste! { [< #trait_ident:snake _error >]::[< #fn_ident:camel Error >] }
                                 }
                                     .into_iter()
                                     .collect()
