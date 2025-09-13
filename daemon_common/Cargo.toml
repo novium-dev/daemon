@@ -142,7 +142,7 @@ version = "3.0.5"
 optional = true
 
 [dependencies.rustls-pemfile]
-version = "2.2.0"
+workspace = true
 optional = true
 
 [dependencies.rustls]

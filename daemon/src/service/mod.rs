@@ -28,6 +28,7 @@ use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
 use rustls::ServerConfig;
 use rustls::server::WebPkiClientVerifier;
+use rustls::sign::CertifiedKey;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 use tower_http::trace::TraceLayer;
@@ -98,6 +99,12 @@ impl<T: DaemonExtra> Daemon<T> {
         reason = "only runs once on start"
     )]
     pub async fn serve_http(&self) -> Result<(), anyhow::Error> {
+        let tls = if let Some(tls) = &self.config.tls {
+            Some(tls.load_certs().await?)
+        } else {
+            None
+        };
+
         let mut rustls = ServerConfig::builder()
             .with_client_cert_verifier(
                 WebPkiClientVerifier::builder(Arc::clone(&self.root.cert_store))
@@ -107,7 +114,7 @@ impl<T: DaemonExtra> Daemon<T> {
             )
             .with_cert_resolver(Arc::new(DaemonCertResolver(
                 Arc::clone(&self.key),
-                None,
+                tls,
                 self.key.id,
             )));
         rustls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];

@@ -1326,6 +1326,7 @@ dependencies = [
  "russh-sftp",
  "rustix 1.0.8",
  "rustls",
+ "rustls-pemfile",
  "sentry",
  "serde",
  "serde_json",
