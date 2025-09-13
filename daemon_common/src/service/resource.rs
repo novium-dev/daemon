@@ -18,9 +18,9 @@ use serde::{Deserialize, Serialize};
 
 #[service(tag = "resource")]
 pub trait ResourceService {
+    /// Gets resource information
     #[route("/resource", method = GET)]
     #[error(sql(failure [sql:*]) { ResourceError "Unable to retrieve the resource info" INTERNAL_SERVER_ERROR })]
-    #[doc = "Gets resource information"]
     async fn resource_info(&self) -> Result<ResourceResponse, _>;
 }
 

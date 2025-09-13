@@ -64,11 +64,11 @@ pub struct DaemonTraceResult {
 
 #[service(path = "/debug", tag = "debug")]
 pub trait DebugService {
+    /// Print debug information about the synchronization primitives used in the daemon
     #[route("/trace", method = GET, no_auth)]
-    #[doc = "Print debug information about the synchronization primitives used in the daemon"]
     async fn debug_trace_daemon(&self) -> Result<DaemonTraceResult, BlankError>;
 
+    /// Print debug information about the synchronization primitives used in a server
     #[route("/trace/{server_id}", method = GET, no_auth)]
-    #[doc = "Print debug information about the synchronization primitives used in a server"]
     async fn debug_trace_server(&self, server_id: u32) -> Result<ServerTraceResult, BlankError>;
 }

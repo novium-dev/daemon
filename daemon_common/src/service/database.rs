@@ -31,16 +31,16 @@ define_path_variable!(database_id "The database id");
 
 #[service(path = "/database", tag = "database")]
 pub trait DatabaseService {
+    /// Creates a new database
     #[route("", method = PUT)]
     #[error(database(invalid_identifier) sql(failure [sql:*]))]
     #[example("examples/database.create.json")]
-    #[doc = "Creates a new database"]
     async fn create_database(&self, name_suffix: String) -> Result<u32, _>;
 
+    /// Updates an existing database
     #[route("/{database_id}", method = PATCH)]
     #[error(database(not_found invalid_identifier invalid_hash permissionless_entry) sql(failure [sql:*]))]
     #[example("examples/database.update.json")]
-    #[doc = "Updates an existing database"]
     async fn update_database(
         &self,
         database_id: u32,
@@ -48,9 +48,9 @@ pub trait DatabaseService {
         passwordless: HashMap<u32, DatabaseUserPermissions>,
     ) -> Result<(), _>;
 
+    /// Updates an existing database
     #[route("/{database_id}", method = DELETE)]
     #[error(database(not_found) sql(failure [sql:*]))]
-    #[doc = "Updates an existing database"]
     async fn delete_database(&self, database_id: u32) -> Result<(), _>;
 }
 
