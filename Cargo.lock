@@ -1414,6 +1414,8 @@ dependencies = [
  "thiserror 2.0.16",
  "tokio",
  "tokio-util",
+ "tower-layer",
+ "tower-service",
  "url",
  "urlencoding",
  "utoipa",

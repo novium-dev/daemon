@@ -1,16 +1,22 @@
-use axum::routing::MethodRouter;
+use axum::extract::Request;
+use axum::response::IntoResponse;
+use axum::routing::{MethodRouter, Route};
+use core::convert::Infallible;
+use tower_layer::Layer;
+use tower_service::Service;
 use utoipa::openapi::path::OperationBuilder;
-use utoipa::openapi::{HttpMethod, Paths, RefOr, ResponsesBuilder, Schema};
+use utoipa::openapi::{HttpMethod, OpenApi, Paths, RefOr, ResponsesBuilder, Schema};
 use utoipa_axum::router::OpenApiRouter;
 
 #[must_use]
 #[derive(Default)]
-pub struct FrameworkRouter(Vec<RouterOperation>);
+pub struct FrameworkRouter(Option<OpenApi>, Vec<RouterOperation>);
 
 enum RouterOperation {
     Nest(&'static str, FrameworkRouter),
     Route(Box<FrameworkRoute>),
     Merge(FrameworkRouter),
+    Patch(Box<dyn FnOnce(OpenApiRouter) -> OpenApiRouter>),
 }
 
 struct FrameworkRoute {
@@ -23,18 +29,21 @@ struct FrameworkRoute {
 }
 
 impl FrameworkRouter {
-    pub fn new() -> Self {
-        Self::default()
+    pub const fn new() -> Self {
+        Self(None, Vec::new())
+    }
+
+    pub const fn from_openapi(openapi: OpenApi) -> Self {
+        Self(Some(openapi), Vec::new())
     }
 
     pub fn document_middleware<
-        F: FnMut(
-            HttpMethod,
+        F: for<'a> FnMut(
+            &'a HttpMethod,
             ResponsesBuilder,
             OperationBuilder,
             Vec<(String, RefOr<Schema>)>,
         ) -> (
-            HttpMethod,
             ResponsesBuilder,
             OperationBuilder,
             Vec<(String, RefOr<Schema>)>,
@@ -47,13 +56,12 @@ impl FrameworkRouter {
     }
 
     fn document_middleware0<
-        F: FnMut(
-            HttpMethod,
+        F: for<'a> FnMut(
+            &'a HttpMethod,
             ResponsesBuilder,
             OperationBuilder,
             Vec<(String, RefOr<Schema>)>,
         ) -> (
-            HttpMethod,
             ResponsesBuilder,
             OperationBuilder,
             Vec<(String, RefOr<Schema>)>,
@@ -62,21 +70,20 @@ impl FrameworkRouter {
         mut self,
         func: &mut F,
     ) -> Self {
-        self.0 = self
-            .0
+        self.1 = self
+            .1
             .into_iter()
             .map(|op| match op {
                 RouterOperation::Nest(path, router) => {
                     RouterOperation::Nest(path, router.document_middleware0(func))
                 }
                 RouterOperation::Route(mut route) => {
-                    let (method, responses, operations, schemas) = func(
-                        route.method,
+                    let (responses, operations, schemas) = func(
+                        &route.method,
                         route.responses,
                         route.operations,
                         route.schemas,
                     );
-                    route.method = method;
                     route.responses = responses;
                     route.operations = operations;
                     route.schemas = schemas;
@@ -85,8 +92,23 @@ impl FrameworkRouter {
                 RouterOperation::Merge(router) => {
                     RouterOperation::Merge(router.document_middleware0(func))
                 }
+                RouterOperation::Patch(func) => RouterOperation::Patch(func),
             })
             .collect();
+        self
+    }
+
+    pub fn layer<L>(mut self, layer: L) -> Self
+    where
+        L: Layer<Route> + Clone + Send + Sync + 'static,
+        L::Service: Service<Request> + Clone + Send + Sync + 'static,
+        <L::Service as Service<Request>>::Response: IntoResponse + 'static,
+        <L::Service as Service<Request>>::Error: Into<Infallible> + 'static,
+        <L::Service as Service<Request>>::Future: Send + 'static,
+    {
+        self.1.push(RouterOperation::Patch(Box::new(move |router| {
+            router.layer(layer)
+        })));
         self
     }
 
@@ -101,7 +123,7 @@ impl FrameworkRouter {
         ),
         router: MethodRouter,
     ) -> Self {
-        self.0.push(RouterOperation::Route(Box::new(FrameworkRoute {
+        self.1.push(RouterOperation::Route(Box::new(FrameworkRoute {
             path,
             method,
             responses,
@@ -113,20 +135,22 @@ impl FrameworkRouter {
     }
 
     pub fn nest(mut self, path: &'static str, router: Self) -> Self {
-        self.0.push(RouterOperation::Nest(path, router));
+        self.1.push(RouterOperation::Nest(path, router));
         self
     }
 
     pub fn merge(mut self, other: Self) -> Self {
-        self.0.push(RouterOperation::Merge(other));
+        self.1.push(RouterOperation::Merge(other));
         self
     }
 
     #[must_use]
     pub fn into_openapi(self) -> OpenApiRouter {
-        let mut openapi = OpenApiRouter::new();
+        let mut openapi = self
+            .0
+            .map_or_else(OpenApiRouter::new, OpenApiRouter::with_openapi);
 
-        for op in self.0 {
+        for op in self.1 {
             match op {
                 RouterOperation::Nest(path, router) => {
                     openapi = openapi.nest(path, router.into_openapi());
@@ -156,6 +180,9 @@ impl FrameworkRouter {
                 }
                 RouterOperation::Merge(other) => {
                     openapi = openapi.merge(other.into_openapi());
+                }
+                RouterOperation::Patch(func) => {
+                    openapi = func(openapi);
                 }
             }
         }

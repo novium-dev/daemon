@@ -28,6 +28,12 @@ thiserror = "2.0.16"
 urlencoding = "2.1.3"
 tap = "1.0.1"
 
+[dependencies.tower-layer]
+version = "0.3.3"
+
+[dependencies.tower-service]
+version = "0.3.3"
+
 [dependencies.tokio-util]
 workspace = true
 features = ["io-util"]
