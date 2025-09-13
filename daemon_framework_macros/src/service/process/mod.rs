@@ -28,7 +28,7 @@ use core::fmt::{Display, Formatter};
 use core::str::FromStr;
 use proc_macro2::{Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree};
 use quote::quote;
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use syn::LitStr;
 
 #[derive(Copy, Clone, Eq, PartialEq, Hash)]
@@ -114,7 +114,7 @@ pub struct ProcessedFunction {
     path: String,
     result: TokenStream,
     schema_extra: TokenStream,
-    user: bool,
+    routes_selection: Vec<Ident>,
 }
 
 #[expect(clippy::too_many_arguments)]
@@ -149,8 +149,9 @@ pub fn process(
             path,
             method,
             query,
-            user,
+            routes: routes_selection,
             raw,
+            ..
         },
         example,
         doc,
@@ -471,7 +472,7 @@ pub fn process(
         path,
         result,
         schema_extra,
-        user,
+        routes_selection,
     });
 
     func
@@ -485,8 +486,7 @@ pub fn finish(
     output_extra: &mut Vec<TokenTree>,
     functions: Vec<ProcessedFunction>,
 ) {
-    let mut routes = TokenStream::new();
-    let mut routes_user = TokenStream::new();
+    let mut routes = HashMap::new();
 
     let mut client_impl_merged = TokenStream::new();
     let mut client_def_merged = TokenStream::new();
@@ -495,7 +495,7 @@ pub fn finish(
         fn_ident,
         path,
         method,
-        user,
+        routes_selection,
         result,
         operations,
         schema_extra,
@@ -503,8 +503,6 @@ pub fn finish(
         client_def,
     } in functions
     {
-        let token = if user { &mut routes_user } else { &mut routes };
-
         client_impl_merged.extend(client_impl);
         client_def_merged.extend(client_def);
 
@@ -514,7 +512,7 @@ pub fn finish(
 
         let operation_id = LitStr::new(&fn_ident.to_string(), Span::call_site());
 
-        token.extend(quote! {
+        let token = quote! {
 
             .route(
                 #path,
@@ -536,36 +534,50 @@ pub fn finish(
                 MethodRouter::new()
                     .on(#crate_prefix utoipa::openapi::HttpMethod::#method.to_method_filter(), __framework_routes::#fn_ident(self.clone())),
             )
-        });
+        };
+
+        for selection in routes_selection {
+            routes
+                .entry(selection.to_string())
+                .or_insert_with(|| (selection, TokenStream::new()))
+                .1
+                .extend(token.clone());
+        }
     }
 
-    trait_body_output.extend(quote! {
-
-        #crate_prefix pastey::paste! {
-
-            fn routes(&self) -> #crate_prefix router::FrameworkRouter where Self: Clone + Send + Sync + Sized + 'static {
-                use #crate_prefix router::FrameworkRouter;
-                use #crate_prefix utoipa::openapi::path::OperationBuilder;
-                use #crate_prefix utoipa_axum::PathItemExt;
-                use #crate_prefix axum::routing::method_routing::MethodRouter;
-
-                FrameworkRouter::new()
-                    #routes
-            }
-
-            fn routes_user(&self) -> #crate_prefix router::FrameworkRouter where Self: Clone + Send + Sync + Sized + 'static {
-                use #crate_prefix router::FrameworkRouter;
-                use #crate_prefix utoipa::openapi::path::OperationBuilder;
-                use #crate_prefix utoipa_axum::PathItemExt;
-                use #crate_prefix axum::routing::method_routing::MethodRouter;
-
-                FrameworkRouter::new()
-                    #routes_user
-            }
-
-        }
-
+    routes
+        .entry("default".to_owned())
+        .or_insert_with(|| (Ident::new("default", Span::call_site()), TokenStream::new()));
+    routes.entry("with_auth".to_owned()).or_insert_with(|| {
+        (
+            Ident::new("with_auth", Span::call_site()),
+            TokenStream::new(),
+        )
     });
+    routes.entry("without_auth".to_owned()).or_insert_with(|| {
+        (
+            Ident::new("without_auth", Span::call_site()),
+            TokenStream::new(),
+        )
+    });
+
+    for (selection, routes) in routes.into_values() {
+        trait_body_output.extend(quote! {
+
+            #crate_prefix pastey::paste! {
+
+                fn [< routes_ #selection >] (&self) -> #crate_prefix router::FrameworkRouter where Self: Clone + Send + Sync + Sized + 'static {
+                    use #crate_prefix router::FrameworkRouter;
+                    use #crate_prefix utoipa::openapi::path::OperationBuilder;
+                    use #crate_prefix utoipa_axum::PathItemExt;
+                    use #crate_prefix axum::routing::method_routing::MethodRouter;
+
+                    FrameworkRouter::new()
+                        #routes
+                }
+            }
+        });
+    }
 
     if !args.no_sdk {
         output_extra.extend(quote! {

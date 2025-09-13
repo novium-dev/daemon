@@ -124,7 +124,7 @@ pub trait ServerService {
         write: bool,
     ) -> Result<WebsocketResponse, _>;
 
-    #[route(!"/user/server/{server_id}/terminal", method = WS, query = [ timestamp, verify, cols, rows, write ], user)]
+    #[route(!"/user/server/{server_id}/terminal", method = WS, query = [ timestamp, verify, cols, rows, write ], no_auth)]
     #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
     #[doc = "A websocket for interaction with the terminal (called by the user)"]
     async fn server_terminal_user(
@@ -142,7 +142,7 @@ pub trait ServerService {
     #[doc = "A websocket for server stats"]
     async fn server_stats(&self, server_id: u32) -> Result<WebsocketResponse, _>;
 
-    #[route(!"/user/server/{server_id}/stats", method = WS, query = [ timestamp, verify ], user)]
+    #[route(!"/user/server/{server_id}/stats", method = WS, query = [ timestamp, verify ], no_auth)]
     #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
     #[doc = "A websocket for server stats (called by the user)"]
     async fn server_stats_user(
@@ -163,7 +163,7 @@ pub trait ServerService {
         command: JsonVec<String>,
     ) -> Result<WebsocketResponse, _>;
 
-    #[route(!"/user/server/{server_id}/exec", method = WS, query = [ timestamp, verify, cols, rows, command ], user)]
+    #[route(!"/user/server/{server_id}/exec", method = WS, query = [ timestamp, verify, cols, rows, command ], no_auth)]
     #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
     #[doc = "A websocket for server execution (called by the user)"]
     async fn exec_server_interactive_user(

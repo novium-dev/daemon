@@ -101,47 +101,40 @@ macro_rules! define_header_variable {
 
 #[macro_export]
 macro_rules! framework_router {
-    ($base:tt $var:ident { $($tr:path),* $( { $($feat:literal $tr2:path),* } )* }) => {
+    ($base:tt $variable:ident ($($variant:ident,)* ) $content:tt) => {
+        ($(
+            {
+                $crate::framework_router_inner!($base $variable $variant $content)
+            }
+        ,)*)
+    };
+}
+
+#[macro_export]
+macro_rules! framework_router_inner {
+    ($base:tt $variable:ident $variant:ident { $($tr:path),* $( { $($feat:literal $tr2:path),* } )* }) => {
         {
             use $crate::tap::Pipe;
-            ($crate::router::FrameworkRouter::new()
-                $(
-                    .merge(<$base as $tr>::routes(&$var))
-                )*
-                $(
-                    $(
-                        .pipe(|router| {
-                            #[cfg(feature = $feat)]
-                            {
-                                router.merge(<$base as $tr2>::routes(&$var))
-                            }
-                            #[cfg(not(feature = $feat))]
-                            {
-                                router
-                            }
-                        })
-                    )*
-                )*,
+            $crate::pastey::paste! {
                 $crate::router::FrameworkRouter::new()
-                $(
-                    .merge(<$base as $tr>::routes_user(&$var))
-                )*
-                $(
                     $(
-                        .pipe(|router| {
-                            #[cfg(feature = $feat)]
-                            {
-                                router.merge(<$base as $tr2>::routes_user(&$var))
-                            }
-                            #[cfg(not(feature = $feat))]
-                            {
-                                router
-                            }
-                        })
-
+                        .merge(<$base as $tr>:: [< routes_ $variant >] (&$variable))
                     )*
-                )*
-            )
+                    $(
+                        $(
+                            .pipe(|router| {
+                                #[cfg(feature = $feat)]
+                                {
+                                    router.merge(<$base as $tr2>::routes(&$variable))
+                                }
+                                #[cfg(not(feature = $feat))]
+                                {
+                                    router
+                                }
+                            })
+                        )*
+                    )*
+            }
         }
     };
 }

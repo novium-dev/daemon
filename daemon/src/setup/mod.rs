@@ -225,8 +225,7 @@ fn test_host(config: &DaemonConfig, root: Arc<DaemonRootKey>, key: Arc<DaemonKey
     let rustls = RustlsConfig::from_config(Arc::new(rustls));
 
     for listener in config.listeners.clone() {
-        let (router, _) =
-            framework_router!(ConnectionTestWrapper ConnectionTestWrapper { SetupService });
+        let (router,) = framework_router!(ConnectionTestWrapper ConnectionTestWrapper (default,) { SetupService });
         let router = OpenApiRouter::new()
             .merge(router.into_openapi())
             .layer(axum::middleware::from_fn(middleware));

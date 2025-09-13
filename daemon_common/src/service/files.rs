@@ -69,7 +69,7 @@ pub trait FilesService {
         limit: Option<u64>,
     ) -> Result<FileResponse, _>;
 
-    #[route(!"/user/files/{server_id}/file", method = GET, query = [ path, limit, timestamp, verify ], user, raw)]
+    #[route(!"/user/files/{server_id}/file", method = GET, query = [ path, limit, timestamp, verify ], no_auth, raw)]
     #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory] limit_reached) sql(failure [sql:*]))]
     #[doc = "Downloads a file (called by the user)"]
     async fn server_download_file_user(
@@ -92,7 +92,7 @@ pub trait FilesService {
         data: DataStream,
     ) -> Result<(), _>;
 
-    #[route(!"/user/files/{server_id}/file", method = PUT, query = [ path, timestamp, verify ], user)]
+    #[route(!"/user/files/{server_id}/file", method = PUT, query = [ path, timestamp, verify ], no_auth)]
     #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
     #[doc = "Uploads a file (called by the user)"]
     async fn server_upload_file_user(

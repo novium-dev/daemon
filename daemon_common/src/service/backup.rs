@@ -74,7 +74,7 @@ pub trait BackupService {
         backup_id: i64,
     ) -> Result<FileResponse, _>;
 
-    #[route(!"/user/backup/{server_id}/{backup_storage}/{backup_id}", method = GET, query = [ timestamp, verify ], raw, user)]
+    #[route(!"/user/backup/{server_id}/{backup_storage}/{backup_id}", method = GET, query = [ timestamp, verify ], raw, no_auth)]
     #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) backup_storage(location_not_found) sql(failure [sql:*]))]
     #[doc = "Downloads a backup (called by the user)"]
     async fn server_download_backup_user(
@@ -95,7 +95,7 @@ pub trait BackupService {
         compression: String,
     ) -> Result<FileResponse, _>;
 
-    #[route(!"/user/backup/{server_id}/rt", method = GET, query = [ timestamp, verify, compression ], raw, user)]
+    #[route(!"/user/backup/{server_id}/rt", method = GET, query = [ timestamp, verify, compression ], raw, no_auth)]
     #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure[io:*]) compression(unsupported) sql(failure [sql:*]))]
     #[doc = "Downloads the contents of a server in realtime (without creating a backup and called by the user)"]
     async fn server_download_realtime_user(

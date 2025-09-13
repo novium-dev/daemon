@@ -54,7 +54,7 @@ impl<T: DaemonExtra> Daemon<T> {
         #[openapi()]
         struct ApiDoc;
 
-        let (router, router_user) = framework_router!(Self self {
+        let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
             ServerService, BackupService, FilesService, NetworkService,
             ResourceService, DatabaseService, ScheduleService {"trace_sync" daemon_common::service::debug::DebugService}
         });
