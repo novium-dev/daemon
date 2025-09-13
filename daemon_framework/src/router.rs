@@ -27,6 +27,69 @@ impl FrameworkRouter {
         Self::default()
     }
 
+    pub fn document_middleware<
+        F: FnMut(
+            HttpMethod,
+            ResponsesBuilder,
+            OperationBuilder,
+            Vec<(String, RefOr<Schema>)>,
+        ) -> (
+            HttpMethod,
+            ResponsesBuilder,
+            OperationBuilder,
+            Vec<(String, RefOr<Schema>)>,
+        ),
+    >(
+        self,
+        mut func: F,
+    ) -> Self {
+        self.document_middleware0(&mut func)
+    }
+
+    fn document_middleware0<
+        F: FnMut(
+            HttpMethod,
+            ResponsesBuilder,
+            OperationBuilder,
+            Vec<(String, RefOr<Schema>)>,
+        ) -> (
+            HttpMethod,
+            ResponsesBuilder,
+            OperationBuilder,
+            Vec<(String, RefOr<Schema>)>,
+        ),
+    >(
+        mut self,
+        func: &mut F,
+    ) -> Self {
+        self.0 = self
+            .0
+            .into_iter()
+            .map(|op| match op {
+                RouterOperation::Nest(path, router) => {
+                    RouterOperation::Nest(path, router.document_middleware0(func))
+                }
+                RouterOperation::Route(mut route) => {
+                    let (method, responses, operations, schemas) = func(
+                        route.method,
+                        route.responses,
+                        route.operations,
+                        route.schemas,
+                    );
+                    route.method = method;
+                    route.responses = responses;
+                    route.operations = operations;
+                    route.schemas = schemas;
+                    RouterOperation::Route(route)
+                }
+                RouterOperation::Merge(router) => {
+                    RouterOperation::Merge(router.document_middleware0(func))
+                }
+            })
+            .collect();
+        self
+    }
+
     pub fn route(
         mut self,
         path: &'static str,
