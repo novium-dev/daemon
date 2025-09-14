@@ -86,6 +86,6 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
         })
         .await
         .inspect_err(|err| debug!("Failed to provide resource info: {:?}", err))
-        .map_err(|_err| ResourceInfoError::ResourceError)
+        .map_err(|_err| ResourceInfoError::Resource)
     }
 }

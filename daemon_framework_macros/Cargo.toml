@@ -8,9 +8,6 @@ license = "AGPL-3.0-only"
 [lints]
 workspace = true
 
-[features]
-ts = ["serde_json", "convert_case"]
-
 [lib]
 proc-macro = true
 
@@ -22,12 +19,4 @@ manyhow = "0.11.4"
 either.workspace = true
 itertools.workspace = true
 indexmap.workspace = true
-
-[dependencies.serde_json]
-workspace = true
-optional = true
-
-[dependencies.convert_case]
-version = "0.8.0"
-optional = true
-
+convert_case = "0.8.0"

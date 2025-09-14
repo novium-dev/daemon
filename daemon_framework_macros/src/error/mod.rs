@@ -14,6 +14,7 @@
  */
 pub mod define;
 
+use convert_case::{Case, Casing as _};
 use either::Either;
 use proc_macro2::{Delimiter, Group, Ident, Punct, Span, TokenStream, TokenTree};
 use quote::quote;
@@ -227,7 +228,10 @@ pub fn error0(crate_prefix: &TokenStream, input: TokenStream) -> syn::Result<Tok
         let error_suffix = LitStr::new(&error_suffix, Span::call_site());
         let entry = match error {
             Either::Left((error_ident, statuscode, msg)) => {
-                let error_id = LitStr::new(&error_ident.to_string(), Span::call_site());
+                let error_id = LitStr::new(
+                    &error_ident.to_string().to_case(Case::Snake),
+                    Span::call_site(),
+                );
 
                 if error_ident.to_string().eq("Communication") {
                     content.extend(quote! {
