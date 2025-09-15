@@ -6476,7 +6476,7 @@ dependencies = [
 [[package]]
 name = "zelus"
 version = "0.1.0"
-source = "git+ssh://git@github.com/MarkusTieger/zelus.git#c898a5323cfc54238c8b47f1c83d144ac67b01eb"
+source = "git+https://github.com/MarkusTieger/zelus.git#c898a5323cfc54238c8b47f1c83d144ac67b01eb"
 dependencies = [
  "async-trait",
  "axum",
@@ -6506,7 +6506,7 @@ dependencies = [
 [[package]]
 name = "zelus_macros"
 version = "0.1.0"
-source = "git+ssh://git@github.com/MarkusTieger/zelus.git#c898a5323cfc54238c8b47f1c83d144ac67b01eb"
+source = "git+https://github.com/MarkusTieger/zelus.git#c898a5323cfc54238c8b47f1c83d144ac67b01eb"
 dependencies = [
  "convert_case 0.8.0",
  "either",

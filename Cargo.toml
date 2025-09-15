@@ -232,7 +232,7 @@ path = "daemon_common"
 default-features = false
 
 [workspace.dependencies.zelus]
-git = "ssh://git@github.com/MarkusTieger/zelus.git"
+git = "https://github.com/MarkusTieger/zelus.git"
 default-features = false
 features = ["sqlx", "io", "rustls-tls-webpki-roots-no-provider", "http2"]
 
