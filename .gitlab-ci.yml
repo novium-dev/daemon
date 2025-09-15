@@ -162,12 +162,12 @@ deploy_default:
     pull_policy: if-not-present
   variables:
     DOCKER_HOST: tcp://docker:2376
-    DOCKER_DRIVER: overlay2
-    DOCKER_TLS_CERTDIR: "/certs"
+    DOCKER_TLS_CERTDIR: ""
   services:
     - docker:28.4.0-dind
   parallel:
   needs: ["clippy", "deny", "test", "fmt"]
+  dependencies: []
   before_script:
     - sleep 20
     - docker info
