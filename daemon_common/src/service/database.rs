@@ -14,7 +14,7 @@
  */
 use super::*;
 use bitflags::bitflags;
-use daemon_framework::service;
+use zelus::service;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::HashMap;

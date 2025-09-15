@@ -16,7 +16,8 @@ use crate::user::error_auth_signature_expired::FromAuthSignatureExpired;
 use crate::user::error_auth_signature_invalid::FromAuthSignatureInvalid;
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
-use daemon_framework::{define_error, define_query_variable, pastey};
+use zelus::{define_query_variable, paste};
+use zelus::error::define_error;
 use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier as _, VerifyingKey};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -45,7 +46,7 @@ macro_rules! signature_impl {
         $extra:stmt
     ) => {
 
-        pastey::paste! {
+        paste! {
 
             pub fn [< new_ $id >](key: &SigningKey, timestamp: i64, node_identifier: &uuid::Uuid, server_id: u32, $( $arg )*) -> Self {
                 Self::new(key, timestamp, node_identifier, server_id, $name, $extra)

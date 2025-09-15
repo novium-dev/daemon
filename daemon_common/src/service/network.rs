@@ -13,7 +13,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use super::*;
-use daemon_framework::service;
+use zelus::service;
 
 define_error!(network {
     not_found ("The network does not exist" NOT_FOUND),

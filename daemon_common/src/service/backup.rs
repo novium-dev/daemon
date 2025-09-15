@@ -16,8 +16,8 @@ use super::*;
 use crate::service::service;
 use crate::user::*;
 use chrono::Utc;
-use daemon_framework::define_query_variable;
-use daemon_framework::responses::FileResponse;
+use zelus::define_query_variable;
+use zelus::responses::FileResponse;
 use serde::{Deserialize, Serialize};
 use url::Url;
 

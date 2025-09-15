@@ -31,7 +31,7 @@ use crate::service::{
     DaemonServices, DaemonServicesClientImpl, DaemonServicesURL, DaemonServicesURLWithUserKey,
 };
 use crate::user::UserKeyProvider;
-use daemon_framework::sdk::FrameworkClientImpl;
+use zelus::sdk::FrameworkClientImpl;
 use reqwest::{Client, ResolveServerName, Url};
 use rustls::pki_types::{DnsName, ServerName};
 use uuid::Uuid;

@@ -13,7 +13,7 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use super::*;
-use daemon_framework::service;
+use zelus::service;
 
 #[service(tag = "setup")]
 pub trait SetupService {

@@ -2,11 +2,20 @@
 members = [
     "daemon",
     "daemon_common",
-    "daemon_framework",
-    "daemon_framework_macros",
     "daemon_mariadb_plugin"
 ]
 resolver = "3"
+
+[patch.crates-io.reqwest]
+git = "https://github.com/MarkusTieger/reqwest.git"
+default-features = false
+features = [
+    "charset",
+    "http2",
+    "json",
+    "rustls-tls-webpki-roots-no-provider",
+    "stream"
+]
 
 [workspace.lints.rust]
 unused = { level = "deny", priority = -1 }
@@ -222,11 +231,10 @@ rand_core_old = { version = "=0.6.4", package = "rand_core" }
 path = "daemon_common"
 default-features = false
 
-[workspace.dependencies.daemon_framework]
-path = "daemon_framework"
-
-[workspace.dependencies.daemon_framework_macros]
-path = "daemon_framework_macros"
+[workspace.dependencies.zelus]
+git = "ssh://git@github.com/MarkusTieger/zelus.git"
+default-features = false
+features = ["sqlx", "io", "rustls-tls-webpki-roots-no-provider", "http2"]
 
 [workspace.dependencies.rustls]
 version = "0.23.31"
@@ -249,7 +257,6 @@ default-features = false
 features = [
     "charset",
     "http2",
-    "macos-system-configuration",
     "json",
     "rustls-tls-webpki-roots-no-provider",
     "stream"
@@ -371,7 +378,8 @@ default-features = false
 features = ["crypto", "pem", "x509-parser", "aws_lc_rs"]
 
 [workspace.dependencies.serde_yaml_ng]
-git = "https://github.com/MarkusTieger/serde-yaml-ng.git"
+git = "https://github.com/acatton/serde-yaml-ng"
+rev = "3628102977f3ec9e02b95ef32fcec30b3df91390"
 
 [profile.dev.package.sqlx-macros]
 opt-level = 3

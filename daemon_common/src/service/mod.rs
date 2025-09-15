@@ -28,17 +28,17 @@ use crate::service::server::{
 };
 use crate::service::setup::{SetupService, SetupServiceClientImpl, SetupServiceURL};
 use crate::user::UserKeyProvider;
-pub(crate) use daemon_framework::{define_error, service};
-use daemon_framework::{define_header_variable, define_path_variable, error};
+pub(crate) use zelus::service;
+pub(crate) use zelus::error::{define_error, error};
+use zelus::{define_header_variable, define_path_variable};
 use std::io;
 use std::io::ErrorKind;
 use uuid::Uuid;
 
-pub use daemon_framework::MultiRouterExtension;
-pub use daemon_framework::framework_router;
-pub use daemon_framework::responses::{FileResponse, WebsocketResponse};
-pub use daemon_framework::sdk::FrameworkClientImpl;
-pub use daemon_framework::types::{DataStream, JsonVec};
+pub use zelus::framework_router;
+pub use zelus::responses::{FileResponse, WebsocketResponse};
+pub use zelus::sdk::ZelusClientImpl;
+pub use zelus::types::{DataStream, JsonVec};
 
 pub mod backup;
 pub mod database;

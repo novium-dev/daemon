@@ -55,7 +55,7 @@ use crate::storage::sync::StorageTokens;
 use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
-use daemon_common::service::FrameworkClientImpl;
+use daemon_common::service::ZelusClientImpl;
 use daemon_common::service::{DaemonServices, DaemonServicesURL, DaemonServicesURLWithUserKey};
 use daemon_common::user::UserKeyProvider;
 use std::sync::Arc;
@@ -103,7 +103,7 @@ impl<T: DaemonExtra> DaemonServices for Daemon<T> {
 }
 impl DaemonServicesURL for Daemon<WithUserKey> {}
 impl DaemonServicesURLWithUserKey for Daemon<WithUserKey> {}
-impl FrameworkClientImpl for Daemon<WithUserKey> {
+impl ZelusClientImpl for Daemon<WithUserKey> {
     fn client(&self) -> &Client {
         &self.client
     }

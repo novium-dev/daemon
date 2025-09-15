@@ -32,7 +32,7 @@ keys = [
     "dep:pkcs8",
 ]
 service = [
-    "dep:daemon_framework",
+    "dep:zelus",
     "dep:cron",
     "dep:chrono-tz",
     "dep:ed25519-dalek",
@@ -69,7 +69,7 @@ bitflags.workspace = true
 url.workspace = true
 uuid.workspace = true
 
-[dependencies.daemon_framework]
+[dependencies.zelus]
 workspace = true
 optional = true
 

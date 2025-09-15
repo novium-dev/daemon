@@ -15,7 +15,7 @@
 use super::*;
 use chrono_tz::Tz;
 use cron::Schedule;
-use daemon_framework::service;
+use zelus::service;
 use serde::{Deserialize, Serialize};
 use utoipa::PartialSchema;
 use utoipa::openapi::{Object, RefOr, Schema};

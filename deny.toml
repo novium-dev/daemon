@@ -20,9 +20,10 @@ unknown-registry = "deny"
 unknown-git = "deny"
 
 allow-git = [
+  "ssh://git@github.com/MarkusTieger/zelus.git",
   "https://github.com/MarkusTieger/reqwest.git",
   "https://github.com/rustls/hyper-rustls.git?rev=5e9b69b4128abfc147e8b6fa55977eac4c3f575c",
-  "https://github.com/MarkusTieger/serde-yaml-ng.git",
+  "https://github.com/acatton/serde-yaml-ng.git?rev=3628102977f3ec9e02b95ef32fcec30b3df91390",
   "https://github.com/qu0b/json-patch.git?rev=4eca239"
 ]
 

@@ -18,7 +18,7 @@
 )]
 
 use super::*;
-use daemon_framework::service;
+use zelus::service;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
