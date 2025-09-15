@@ -14,12 +14,12 @@
  */
 use super::*;
 use bitflags::bitflags;
-use zelus::service;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
+use zelus::service;
 
 define_error!(database {
     not_found ("The database does not exist" NOT_FOUND),

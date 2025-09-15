@@ -16,14 +16,14 @@ use crate::user::error_auth_signature_expired::FromAuthSignatureExpired;
 use crate::user::error_auth_signature_invalid::FromAuthSignatureInvalid;
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
-use zelus::{define_query_variable, paste};
-use zelus::error::define_error;
 use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier as _, VerifyingKey};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::error;
 use uuid::Uuid;
+use zelus::error::define_error;
+use zelus::{define_query_variable, paste};
 
 define_query_variable!(verify "The signature to ensure the request is authorized");
 define_query_variable!(timestamp "The timestamp the request was authorized. This is needed for verification");

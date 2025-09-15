@@ -20,9 +20,6 @@ use axum::extract::ws::Message;
 use chrono::Utc;
 use core::error::Error as _;
 use crc64::crc64;
-use zelus::define_query_variable;
-use zelus::responses::WebsocketResponse;
-use zelus::types::JsonVec;
 pub use json_patch::Patch;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -32,6 +29,9 @@ use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
 use tokio::task::JoinError;
 use tracing::{debug, error, warn};
 use url::Url;
+use zelus::define_query_variable;
+use zelus::responses::WebsocketResponse;
+use zelus::types::JsonVec;
 
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),

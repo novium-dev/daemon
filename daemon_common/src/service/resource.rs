@@ -13,8 +13,8 @@
  * along with this program. If not, see <https://www.gnu.org/licenses/>.
  */
 use super::*;
-use zelus::service;
 use serde::{Deserialize, Serialize};
+use zelus::service;
 
 #[service(tag = "resource")]
 pub trait ResourceService {

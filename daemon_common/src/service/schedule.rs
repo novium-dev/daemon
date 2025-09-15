@@ -15,10 +15,10 @@
 use super::*;
 use chrono_tz::Tz;
 use cron::Schedule;
-use zelus::service;
 use serde::{Deserialize, Serialize};
 use utoipa::PartialSchema;
 use utoipa::openapi::{Object, RefOr, Schema};
+use zelus::service;
 
 define_path_variable!(schedule_id "The schedule id");
 define_error!(schedule {

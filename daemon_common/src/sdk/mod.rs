@@ -31,10 +31,10 @@ use crate::service::{
     DaemonServices, DaemonServicesClientImpl, DaemonServicesURL, DaemonServicesURLWithUserKey,
 };
 use crate::user::UserKeyProvider;
-use zelus::sdk::FrameworkClientImpl;
 use reqwest::{Client, ResolveServerName, Url};
 use rustls::pki_types::{DnsName, ServerName};
 use uuid::Uuid;
+use zelus::sdk::ZelusClientImpl;
 
 pub trait DaemonSDKExtra: DaemonSdkSealed + Sized {}
 pub(crate) trait DaemonSdkSealed {}
@@ -53,7 +53,7 @@ pub struct DaemonSDK<T: DaemonSDKExtra + Send + Sync> {
     extra: T,
 }
 
-impl<T: DaemonSDKExtra + Send + Sync> FrameworkClientImpl for DaemonSDK<T> {
+impl<T: DaemonSDKExtra + Send + Sync> ZelusClientImpl for DaemonSDK<T> {
     fn client(&self) -> &Client {
         &self.client
     }

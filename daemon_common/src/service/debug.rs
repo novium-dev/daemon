@@ -18,8 +18,8 @@
 )]
 
 use super::*;
-use zelus::service;
 use serde::{Deserialize, Serialize};
+use zelus::service;
 
 #[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct TraceResult<T> {

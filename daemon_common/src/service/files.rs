@@ -17,13 +17,13 @@ use crate::service::server::ServerFileWrite;
 use crate::service::service;
 use crate::user::*;
 use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use url::Url;
 use zelus::axum_extra::TypedHeader;
 use zelus::axum_extra::headers::ContentLength;
 use zelus::define_query_variable;
 use zelus::responses::FileResponse;
 use zelus::types::DataStream;
-use serde::{Deserialize, Serialize};
-use url::Url;
 
 define_error!(file {
     not_found ("This file doesn't exist" NOT_FOUND),
