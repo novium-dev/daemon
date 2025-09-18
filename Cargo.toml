@@ -323,7 +323,7 @@ features = ["color", "env", "cargo"]
 
 [workspace.dependencies.utoipa]
 version = "5.4.0"
-features = ["macros", "preserve_path_order"]
+features = ["macros", "preserve_path_order", "url"]
 
 [workspace.dependencies.utoipa-axum]
 version = "0.2.0"

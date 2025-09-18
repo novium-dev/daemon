@@ -232,11 +232,12 @@ impl DaemonRootKey {
         let mut cert_store = RootCertStore::empty();
         cert_store.add(tls_ca.clone())?;
 
-        let mut keypair = None;
-        if let Some(privkey) = privkey {
+        let keypair = if let Some(privkey) = privkey {
             let privkey = PrivateKeyDer::try_from(privkey).map_err(DaemonRootKeyError::Der)?;
-            keypair = Some(KeyPair::try_from(&privkey)?);
-        }
+            Some(KeyPair::try_from(&privkey)?)
+        } else {
+            None
+        };
 
         Ok((
             Self {

@@ -19,8 +19,12 @@ use base64::prelude::BASE64_STANDARD;
 use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier as _, VerifyingKey};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+use std::borrow::Cow;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::error;
+use utoipa::openapi::schema::SchemaType;
+use utoipa::openapi::{Object, Ref, RefOr, Schema, Type};
+use utoipa::{PartialSchema, ToSchema};
 use uuid::Uuid;
 use zelus::error::define_error;
 use zelus::{define_query_variable, paste};
@@ -134,6 +138,32 @@ impl UserSignature {
     signature_impl!(server_file_download, "server_file_download", (path: impl Into<String>), Some(format!("-{}", path.into())));
     signature_impl!(server_file_upload, "server_file_upload", (path: impl Into<String>), Some(format!("-{}", path.into())));
     signature_impl!(server_watch_files, "server_watch_files", (), None);
+}
+
+impl PartialSchema for UserSignature {
+    fn schema() -> RefOr<Schema> {
+        RefOr::Ref(Ref::from_schema_name(Self::name()))
+    }
+}
+
+impl ToSchema for UserSignature {
+    fn name() -> Cow<'static, str> {
+        Cow::Borrowed("UserSignature")
+    }
+
+    fn schemas(schemas: &mut Vec<(String, RefOr<Schema>)>) {
+        schemas.push((
+            Self::name().to_string(),
+            RefOr::T(Schema::Object(
+                Object::builder()
+                    .schema_type(SchemaType::Type(Type::String))
+                    .min_length(Some(88))
+                    .max_length(Some(88))
+                    .pattern(Some("(?:[A-Za-z0-9+\\/]{86})=="))
+                    .build(),
+            )),
+        ));
+    }
 }
 
 impl Serialize for UserSignature {

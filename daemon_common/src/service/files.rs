@@ -112,7 +112,7 @@ pub trait FilesService {
         &self,
         server_id: u32,
         path: String,
-        url: Url,
+        #[no_schema] url: Url,
     ) -> Result<(), _>;
 
     /// Writes a file using a template
