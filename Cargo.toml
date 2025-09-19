@@ -6,16 +6,8 @@ members = [
 ]
 resolver = "3"
 
-[patch.crates-io.reqwest]
-git = "https://github.com/MarkusTieger/reqwest.git"
-default-features = false
-features = [
-    "charset",
-    "http2",
-    "json",
-    "rustls-tls-webpki-roots-no-provider",
-    "stream"
-]
+[patch.crates-io]
+reqwest.git = "https://github.com/MarkusTieger/reqwest.git"
 
 [workspace.lints.rust]
 unused = { level = "deny", priority = -1 }
