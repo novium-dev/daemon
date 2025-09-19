@@ -83,6 +83,8 @@ optional = true
 
 [dependencies.x509-parser]
 version = "0.18.0"
+default-features = false
+features = ["verify-aws"]
 optional = true
 
 [dependencies.asn1-rs]

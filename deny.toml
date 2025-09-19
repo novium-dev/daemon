@@ -11,8 +11,8 @@ all-features = true
 multiple-versions = "warn"
 
 deny = [
-    # We want rustls
-    { name = "openssl-sys" },
+  # We want rustls
+  { name = "openssl-sys" },
 ]
 
 [sources]
