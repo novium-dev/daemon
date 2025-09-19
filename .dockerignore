@@ -4,19 +4,12 @@ workdir/
 
 storage/*
 storages/*
-valkey/*
 mariadb/data/
 mariadb/sockets/
-build/
 
-# Don't leak information
 *.pem
-!test_ed25519.pem
 
-backend/minecraft/agent/build/
-backend/minecraft/agent/.gradle/
-
-daemon/server/wrapper-precompile.h
-daemon/server/wrapper-precompile.h.pch
-daemon/server/.macro_eval.c
+daemon/wrapper-precompile.h
+daemon/wrapper-precompile.h.pch
+daemon/.macro_eval.c
 
