@@ -192,8 +192,15 @@ async fn stream_realtime1(
         let encoder = compression.create_encoder(SyncIoBridge::new(sender))?;
         let mut archive = Builder::new(encoder);
         archive.follow_symlinks(false);
-        let (archive, ()) =
-            archive.append_dir_all_sandboxed_blocking(&target, "", "/", exclude, (), true)?;
+        let (archive, ()) = archive.append_dir_all_sandboxed_blocking(
+            &target,
+            "",
+            "/",
+            exclude,
+            (),
+            true,
+            false,
+        )?;
         archive.into_inner()?.finish()?.flush()?;
         Ok::<(), io::Error>(())
     });

@@ -188,7 +188,7 @@ async fn create_archive_backup(
     let mut archive = tar::Builder::new(encoder);
     archive.follow_symlinks(false);
     let (archive, ()) = archive
-        .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true)
+        .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true, false)
         .await
         .inspect_err(|err| debug!("Backup creation failed (append_dir_all): {:?}", err))?;
     tokio::task::spawn_blocking(move || {

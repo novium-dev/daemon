@@ -197,7 +197,7 @@ async fn create_archive0<E: From<io::Error>>(
             .inspect_err(|err| error!("Failed to create archive (create_encoder): {err:?}"))?,
     );
     let (archive, ()) = archive
-        .append_dir_all_sandboxed(src_storage_path, "", src, HashSet::new(), (), true)
+        .append_dir_all_sandboxed(src_storage_path, "", src, HashSet::new(), (), true, false)
         .await
         .inspect_err(|err| match err.kind() {
             ErrorKind::QuotaExceeded => debug!("Failed to create archive (create): {err:?}"),

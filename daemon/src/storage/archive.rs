@@ -5,7 +5,7 @@ use std::collections::HashSet;
 use std::io::{Error, Read, Write};
 use std::path::{Path, PathBuf};
 use std::{fs, io, thread};
-use tar::{Archive, Builder, HeaderMode};
+use tar::{Archive, Builder};
 
 fn chroot(dest: PathBuf) -> Result<(), io::Error> {
     use rustix::thread::*;
@@ -43,6 +43,7 @@ pub trait TarSandboxedAppendExt {
         exclude: HashSet<String>,
         lock: T,
         finish: bool,
+        follow_symlinks: bool,
     ) -> Result<(Self, T), Error>
     where
         Self: Sized;
@@ -60,6 +61,7 @@ pub trait TarSandboxedAppendExt {
         exclude: HashSet<String>,
         lock: T,
         finish: bool,
+        follow_symlinks: bool,
     ) -> Result<(Self, T), Error>
     where
         Self: Sized;
@@ -104,6 +106,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
         exclude: HashSet<String>,
         lock: T,
         finish: bool,
+        follow_symlinks: bool,
     ) -> Result<(Self, T), Error>
     where
         Self: Sized,
@@ -117,7 +120,13 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
 
         tokio::task::spawn_blocking(move || {
             self.append_dir_all_sandboxed_blocking(
-                chroot_dst, path, target_dst, exclude, lock, finish,
+                chroot_dst,
+                path,
+                target_dst,
+                exclude,
+                lock,
+                finish,
+                follow_symlinks,
             )
         })
         .await?
@@ -136,6 +145,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
         exclude: HashSet<String>,
         lock: T,
         finish: bool,
+        follow_symlinks: bool,
     ) -> Result<(Self, T), Error>
     where
         Self: Sized,
@@ -149,7 +159,7 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
 
         thread::spawn(move || {
             chroot(chroot_dst)?;
-            append_dir_all(&mut self, &path, &target_dst, &exclude)?;
+            append_dir_all(&mut self, &path, &target_dst, &exclude, follow_symlinks)?;
             if finish {
                 self.finish()?;
             }
@@ -165,29 +175,8 @@ fn append_dir_all<W: Write>(
     path: &Path,
     src_path: &Path,
     exclude: &HashSet<String>,
+    follow_symlinks: bool,
 ) -> io::Result<()> {
-    #[expect(dead_code, reason = "this is an exact copy of Builder from upstream")]
-    struct BuilderCopy<W: Write> {
-        options: BuilderOptionsCopy,
-        finished: bool,
-        obj: Option<W>,
-    }
-    #[derive(Clone, Copy)]
-    #[expect(
-        dead_code,
-        reason = "this is an exact copy of BuilderOptions from upstream"
-    )]
-    struct BuilderOptionsCopy {
-        mode: HeaderMode,
-        follow: bool,
-        sparse: bool,
-    }
-
-    let archive_raw_copy = core::ptr::from_ref(archive).cast::<BuilderCopy<W>>();
-
-    // SAFETY: As long as the struct matches if the upstream version, there is no undefined behaviour
-    let follow_symlinks = unsafe { &*archive_raw_copy }.options.follow;
-
     let mut stack = vec![(src_path.to_path_buf(), true, false)];
     while let Some((src, is_dir, is_symlink)) = stack.pop() {
         let dest = path.join(src.strip_prefix(src_path).map_err(io::Error::other)?);
