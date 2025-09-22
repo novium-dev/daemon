@@ -65,6 +65,7 @@ cli_shared:
   artifacts:
     paths:
       - crates/sqlx-cli/bin
+    expire_in: 1 week
   script:
     - mkdir crates/sqlx-cli -p
     - cargo install --color always --verbose --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
@@ -85,10 +86,18 @@ clippy:
       paths:
         - .cargo_home/
         - target/
+        - crates/gitlab_clippy
       policy: pull-push
   script:
+    - mkdir crates/gitlab_clippy -p
     - rustup component add clippy
-    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps
+    - cargo install --color always --verbose gitlab_clippy --root crates/gitlab_clippy
+    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps --message-format=json | crates/gitlab_clippy/gitlab-clippy > gl-code-quality-report.json
+  artifacts:
+    reports:
+      codequality:
+      - gl-code-quality-report.json
+    expire_in: 1 week
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED != "true"
       when: never
@@ -161,6 +170,7 @@ test:
       coverage_report:
         coverage_format: cobertura
         path: coverage.xml
+    expire_in: 1 week
 
 deploy_default:
   stage: deploy
