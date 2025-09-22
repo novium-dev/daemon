@@ -156,7 +156,7 @@ test:
     - curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-x86_64-unknown-linux-musl.tar.bz2 | tar jxf -
     - RUSTC_BOOTSTRAP=1 RUSTFLAGS="$RUSTFLAGS -C instrument-coverage" LLVM_PROFILE_FILE="coverage.profraw" cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
     - ./grcov . --llvm-path /usr/lib/llvm20/bin/ --binary-path ./target/debug/ -s . -t cobertura --branch --ignore-not-existing --ignore "*cargo*" -o coverage.xml
-    - xmllint --xpath "concat('Coverage - ', 100 * string(//coverage/@line-rate), '%')" cobertura.xml
+    - xmllint --xpath "concat('Coverage - ', 100 * string(//coverage/@line-rate), '%')" coverage.xml
   coverage: '/Coverage - \d+(?:\.\d+)?/'
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED != "true"
