@@ -1,1 +1,3 @@
 allowed-idents-below-min-chars = ["a", "b", "i", "j", "x", "y", "z", "w", "n", "T", "E"]
+stack-size-threshold = 8388608
+
