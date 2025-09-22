@@ -30,6 +30,7 @@ pub trait TarSandboxedUnpackExt {
 }
 
 pub trait TarSandboxedAppendExt {
+    #[expect(clippy::too_many_arguments)]
     async fn append_dir_all_sandboxed<
         P: AsRef<Path>,
         F: AsRef<Path>,
@@ -48,6 +49,7 @@ pub trait TarSandboxedAppendExt {
     where
         Self: Sized;
 
+    #[expect(clippy::too_many_arguments)]
     fn append_dir_all_sandboxed_blocking<
         P: AsRef<Path>,
         F: AsRef<Path>,
