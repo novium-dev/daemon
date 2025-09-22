@@ -92,7 +92,7 @@ clippy:
     - mkdir crates/gitlab_clippy -p
     - rustup component add clippy
     - cargo install --color always --verbose gitlab_clippy --root crates/gitlab_clippy
-    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps --message-format=json | crates/gitlab_clippy/gitlab-clippy > gl-code-quality-report.json
+    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps --message-format=json | crates/gitlab_clippy/bin/gitlab-clippy > gl-code-quality-report.json
   artifacts:
     reports:
       codequality:
