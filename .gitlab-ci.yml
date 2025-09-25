@@ -180,6 +180,7 @@ deploy_default:
   variables:
     DOCKER_HOST: tcp://docker:2376
     DOCKER_TLS_CERTDIR: ""
+    CI_DEBUG_SERVICES: "true"
   services:
     - docker:28.4.0-dind
   parallel:
