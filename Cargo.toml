@@ -194,7 +194,7 @@ little_endian_bytes = "deny"
 [workspace.dependencies]
 libc = "0.2"
 bollard = "0.19.2"
-toml = "0.9.5"
+toml = "0.9.7"
 base64 = "0.22.1"
 rand = "0.9.2"
 signal-hook = "0.3.18"
@@ -206,7 +206,7 @@ tracing-subscriber = "0.3.20"
 hex = "0.4.3"
 java-properties = "2.0.0"
 futures = "0.3.31"
-anyhow = "1.0.99"
+anyhow = "1.0.100"
 bytes = "1.10.1"
 futures-util = "0.3.31"
 either = "1.15.0"
@@ -229,7 +229,7 @@ default-features = false
 features = ["error", "sqlx", "io", "rustls-tls-webpki-roots-no-provider", "http2"]
 
 [workspace.dependencies.rustls]
-version = "0.23.31"
+version = "0.23.32"
 #default-features = false
 #features = [
 #  "ring",
@@ -239,7 +239,7 @@ version = "0.23.31"
 #]
 
 [workspace.dependencies.tokio-rustls]
-version = "0.26.2"
+version = "0.26.3"
 #default-features = false
 #features = ["ring", "tls12", "logging"]
 
@@ -255,7 +255,7 @@ features = [
 ]
 
 [workspace.dependencies.sentry]
-version = "0.42.0"
+version = "0.43.0"
 default-features = false
 features = [
     "backtrace",
@@ -280,7 +280,7 @@ version = "0.10.4"
 features = ["serde"]
 
 [workspace.dependencies.bitflags]
-version = "2.9.3"
+version = "2.9.4"
 features = ["serde"]
 
 [workspace.dependencies.serde]
@@ -310,7 +310,7 @@ version = "0.10.1"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.clap]
-version = "4.5.46"
+version = "4.5.48"
 features = ["color", "env", "cargo"]
 
 [workspace.dependencies.utoipa]
@@ -341,15 +341,15 @@ features = [
 ]
 
 [workspace.dependencies.chrono]
-version = "0.4.41"
+version = "0.4.42"
 features = ["serde"]
 
 [workspace.dependencies.uuid]
-version = "1.18.0"
+version = "1.18.1"
 features = ["serde", "v4"]
 
 [workspace.dependencies.pkcs8]
-version = "0.11.0-rc.6"
+version = "0.11.0-rc.7"
 features = ["pem", "std"]
 
 [workspace.dependencies.ed25519-dalek]
@@ -361,11 +361,11 @@ version = "2.5.7"
 features = ["serde"]
 
 [workspace.dependencies.indexmap]
-version = "2.11.0"
+version = "2.11.4"
 features = ["serde"]
 
 [workspace.dependencies.rcgen]
-version = "0.14.3"
+version = "0.14.5"
 default-features = false
 features = ["crypto", "pem", "x509-parser", "aws_lc_rs"]
 

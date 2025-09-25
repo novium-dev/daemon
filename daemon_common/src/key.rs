@@ -302,7 +302,7 @@ impl DaemonRootKey {
 
         let csr_params = CertificateSigningRequestParams { public_key, params };
 
-        let issuer = Issuer::from_ca_cert_der(&self.tls_ca, clone_keypair(root_keypair))?;
+        let issuer = Issuer::from_ca_cert_der(&self.tls_ca, root_keypair)?;
 
         let signed = csr_params.signed_by(&issuer)?;
 
@@ -330,7 +330,7 @@ impl DaemonRootKey {
         params.not_after = OffsetDateTime::now_utc().saturating_add(Duration::days(365 * 64));
         params.not_before = OffsetDateTime::now_utc();
 
-        let issuer = Issuer::from_ca_cert_der(&self.tls_ca, clone_keypair(root_keypair))?;
+        let issuer = Issuer::from_ca_cert_der(&self.tls_ca, root_keypair)?;
 
         let cert = params.signed_by(keypair, &issuer)?;
 
@@ -353,11 +353,6 @@ impl DaemonRootKey {
             tls_cert: Arc::new(tls_cert),
         })
     }
-}
-
-fn clone_keypair(keypair: &KeyPair) -> KeyPair {
-    let der = PrivateKeyDer::try_from(keypair.serialize_der()).expect("Unable to clone keypair");
-    KeyPair::from_der_and_sign_algo(&der, keypair.algorithm()).expect("Unable to clone keypair")
 }
 
 impl BackendKey {

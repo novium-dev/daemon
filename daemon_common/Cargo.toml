@@ -184,7 +184,7 @@ workspace = true
 optional = true
 
 [dependencies.time]
-version = "0.3.41"
+version = "0.3.44"
 optional = true
 
 [dependencies.json-patch]
