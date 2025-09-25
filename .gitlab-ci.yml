@@ -186,7 +186,7 @@ deploy_default:
   needs: ["clippy", "deny", "test", "fmt"]
   dependencies: []
   before_script:
-    - sleep 20
+    - sleep 30
     - docker info
     - echo "$DOCKER_REGISTRY_PASS" | docker login $DOCKER_REGISTRY --username $DOCKER_REGISTRY_USER --password-stdin
   script:
