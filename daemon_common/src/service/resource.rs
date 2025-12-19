@@ -7,7 +7,7 @@ use zelus::service;
 pub trait ResourceService {
     /// Gets resource information
     #[route("/resource", method = GET)]
-    #[error(sql(failure [sql:*]) { Resource "Unable to retrieve the resource info" INTERNAL_SERVER_ERROR })]
+    #[error(sql::failure <- [sql:*], (Resource, "Unable to retrieve the resource info", INTERNAL_SERVER_ERROR))]
     async fn resource_info(&self) -> Result<ResourceResponse, _>;
 }
 

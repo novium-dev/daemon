@@ -19,7 +19,7 @@ pub struct BuildImage {
     pub tag: String,
     pub dockerfile: String,
     pub args: HashMap<String, String>,
-    pub parents: Vec<BuildImage>,
+    pub parents: Vec<Self>,
 }
 
 impl Server {

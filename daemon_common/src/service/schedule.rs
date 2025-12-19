@@ -16,13 +16,13 @@ define_error!(schedule {
 pub trait ScheduleService {
     /// Creates a new schedule
     #[route("", method = PUT)]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     #[example("examples/schedule.json")]
     async fn create_schedule(&self, server_id: u32, payload: SchedulePayload) -> Result<u32, _>;
 
     /// Updates a schedule
     #[route("/{schedule_id}", method = PATCH)]
-    #[error(server(not_found) schedule(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, schedule::not_found, sql::failure <- [sql:*])]
     #[example("examples/schedule.json")]
     async fn update_schedule(
         &self,
@@ -33,7 +33,7 @@ pub trait ScheduleService {
 
     /// Deletes a schedule
     #[route("/{schedule_id}", method = DELETE)]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     async fn delete_schedule(&self, server_id: u32, schedule_id: u32) -> Result<(), _>;
 }
 

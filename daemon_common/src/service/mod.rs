@@ -99,7 +99,7 @@ define_error!(http_request {
 define_path_variable!(server_id "The server id");
 define_header_variable!(auth "The authentication token");
 
-error!(BlankError, auth(invalid));
+error!(BlankError, auth::invalid);
 
 pub trait DaemonServices:
     ServerService

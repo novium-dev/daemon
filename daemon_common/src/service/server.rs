@@ -36,7 +36,7 @@ define_query_variable!(precise "If stopping or restarting should be determined. 
 pub trait ServerService {
     /// Creates a new server
     #[route("", method = PUT)]
-    #[error(server(image_different image_missing_tag) storage(location_not_found) sql(failure [sql:*]))]
+    #[error(server::{image_different, image_missing_tag}, storage::location_not_found, sql::failure <- [sql:*])]
     #[example("examples/server.create.json")]
     async fn create_server(
         &self,
@@ -49,7 +49,7 @@ pub trait ServerService {
 
     /// Updates an existing server
     #[route("/{server_id}", method = PATCH)]
-    #[error(server(not_found image_different image_missing_tag) sql(failure [sql:*]))]
+    #[error(server::{not_found, image_different, image_missing_tag}, sql::failure <- [sql:*])]
     #[example("examples/server.update.json")]
     async fn update_server(
         &self,
@@ -62,12 +62,12 @@ pub trait ServerService {
 
     /// Deletes an existing server
     #[route("/{server_id}", method = DELETE)]
-    #[error(server(not_found mutex_locked) docker(failure) sql(failure [sql:*]))]
+    #[error(server::{not_found, mutex_locked}, docker::failure, sql::failure <- [sql:*])]
     async fn delete_server(&self, server_id: u32);
 
     /// Gets the status of an existing server
     #[route("/{server_id}", method = GET, query = [ precise ])]
-    #[error(server(not_found mutex_locked) docker(failure) sql(failure [sql:*]))]
+    #[error(server::{not_found, mutex_locked}, docker::failure, sql::failure <- [sql:*])]
     async fn server_status(
         &self,
         server_id: u32,
@@ -76,33 +76,33 @@ pub trait ServerService {
 
     /// Starts an existing server
     #[route("/{server_id}/start", method = GET)]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     async fn start_server(&self, server_id: u32);
 
     /// Stops an existing server
     #[route("/{server_id}/stop", method = GET)]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     async fn stop_server(&self, server_id: u32);
 
     /// Kills an existing server
     #[route("/{server_id}/kill", method = GET)]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     async fn kill_server(&self, server_id: u32);
 
     /// Restarts an existing server
     #[route("/{server_id}/restart", method = GET)]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     async fn restart_server(&self, server_id: u32);
 
     /// Executes a command inside an running server
     #[route("/{server_id}/exec", method = POST)]
-    #[error(server(not_found mutex_locked) sql(failure [sql:*]))]
+    #[error(server::{not_found, mutex_locked}, sql::failure <- [sql:*])]
     #[example("examples/server.exec.json")]
     async fn exec_server(&self, server_id: u32, cmd: Vec<String>);
 
     /// A websocket for interaction with the terminal
     #[route("/{server_id}/terminal", method = WS, query = [ cols, rows, write ])]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     async fn server_terminal(
         &self,
         server_id: u32,
@@ -113,7 +113,7 @@ pub trait ServerService {
 
     /// A websocket for interaction with the terminal (called by the user)
     #[route(!"/user/server/{server_id}/terminal", method = WS, query = [ timestamp, verify, cols, rows, write ], no_auth)]
-    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[error(auth::{signature_invalid, signature_expired}, server::not_found, sql::failure <- [sql:*])]
     async fn server_terminal_user(
         &self,
         server_id: u32,
@@ -126,12 +126,12 @@ pub trait ServerService {
 
     /// A websocket for server stats
     #[route("/{server_id}/stats", method = WS)]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     async fn server_stats(&self, server_id: u32) -> Result<WebsocketResponse, _>;
 
     /// A websocket for server stats (called by the user)
     #[route(!"/user/server/{server_id}/stats", method = WS, query = [ timestamp, verify ], no_auth)]
-    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[error(auth::{signature_invalid, signature_expired}, server::not_found, sql::failure <- [sql:*])]
     async fn server_stats_user(
         &self,
         server_id: u32,
@@ -141,7 +141,7 @@ pub trait ServerService {
 
     /// A websocket for server execution
     #[route("/{server_id}/exec", method = WS, query = [ cols, rows, command ])]
-    #[error(server(not_found) sql(failure [sql:*]))]
+    #[error(server::not_found, sql::failure <- [sql:*])]
     async fn exec_server_interactive(
         &self,
         server_id: u32,
@@ -152,7 +152,7 @@ pub trait ServerService {
 
     /// A websocket for server execution (called by the user)
     #[route(!"/user/server/{server_id}/exec", method = WS, query = [ timestamp, verify, cols, rows, command ], no_auth)]
-    #[error(auth(signature_invalid signature_expired) server(not_found) sql(failure [sql:*]))]
+    #[error(auth::{signature_invalid, signature_expired}, server::not_found, sql::failure <- [sql:*])]
     async fn exec_server_interactive_user(
         &self,
         server_id: u32,
@@ -252,7 +252,7 @@ pub struct ServerBuildImage {
     pub default_tag: Option<String>,
     pub tag: Option<String>,
     pub args: HashMap<String, String>,
-    pub parents: Vec<ServerBuildImage>,
+    pub parents: Vec<Self>,
     pub base: Option<usize>,
 }
 

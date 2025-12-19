@@ -161,10 +161,6 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         let (server, server_data) =
             server_required::<ServerStatusError>(&self.conn, &self.servers, server_id).await?;
 
-        #[expect(
-            clippy::if_then_some_else_none,
-            reason = "await is used, there is no then_async yet"
-        )]
         let server_data = if precise.unwrap_or(true) {
             let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
             Some(server_data.map_err(|_elapsed| ServerStatusError::ServerMutexLocked)?)

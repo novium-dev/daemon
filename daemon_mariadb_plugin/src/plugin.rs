@@ -56,10 +56,7 @@ pub fn identify(vio: &mut PluginVIO) -> Result<u32, Box<dyn Error>> {
         PluginVIOInfoProtocol::MYSQL_VIO_TCP => {
             // SAFETY: Passed by mariadb, so should be safe
             let tcp = ManuallyDrop::new(unsafe { TcpStream::from_raw_fd(vio_info.socket) });
-            let addr = match tcp.peer_addr() {
-                Ok(addr) => addr,
-                Err(err) => return Err(err.into()),
-            };
+            let addr = tcp.peer_addr()?;
             let _ = ManuallyDrop::<TcpStream>::into_inner(tcp).into_raw_fd();
             RUNTIME.as_ref()?.block_on(identify_tcp(addr))
         }

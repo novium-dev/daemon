@@ -28,27 +28,31 @@ define_header_variable!(length "The content length of the upload");
 pub trait FilesService {
     /// List files inside a directory
     #[route("/list", method = GET, query = [ path ])]
-    #[error(storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] not_directory [io:NotADirectory]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], not_directory <- [io:NotADirectory]}, sql::failure <- [sql:*])]
     async fn server_list_files(&self, server_id: u32, path: String) -> Result<Vec<FileEntry>, _>;
 
     /// Gets the info about a file
     #[route("/stat", method = GET, query = [ path ])]
-    #[error(storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied]}, sql::failure <- [sql:*])]
     async fn server_stat_file(&self, server_id: u32, path: String) -> Result<FileEntry, _>;
 
     /// Renames/Moves a file
     #[route("/rename", method = GET, query = [ from "The old file location", to "The new file location" ])]
-    #[error(storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] already_exists [io:AlreadyExists]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], already_exists <- [io:AlreadyExists]}, sql::failure <- [sql:*])]
     async fn server_rename_file(&self, server_id: u32, from: String, to: String) -> Result<(), _>;
 
     /// Copies a file
     #[route("/copy", method = GET, query = [ from "The original file location", to "The new copied file location" ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory]},
+        sql::failure <- [sql:*])]
     async fn server_copy_file(&self, server_id: u32, from: String, to: String) -> Result<(), _>;
 
     /// Downloads a file
     #[route("/file", method = GET, query = [ path, limit ], raw)]
-    #[error(storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory] limit_reached) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory], limit_reached},
+        sql::failure <- [sql:*])]
     async fn server_download_file(
         &self,
         server_id: u32,
@@ -58,7 +62,10 @@ pub trait FilesService {
 
     /// Downloads a file (called by the user)
     #[route(!"/user/files/{server_id}/file", method = GET, query = [ path, limit, timestamp, verify ], no_auth, raw)]
-    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory] limit_reached) sql(failure [sql:*]))]
+    #[error(auth::{signature_invalid, signature_expired},
+        storage::{not_found, mutex_locked, failure <- [io:*]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory], limit_reached},
+        sql::failure <- [sql:*])]
     async fn server_download_file_user(
         &self,
         server_id: u32,
@@ -70,7 +77,9 @@ pub trait FilesService {
 
     /// Uploads a file
     #[route("/file", method = PUT, query = [ path ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory]},
+        sql::failure <- [sql:*])]
     async fn server_upload_file(
         &self,
         server_id: u32,
@@ -81,7 +90,10 @@ pub trait FilesService {
 
     /// Uploads a file (called by the user)
     #[route(!"/user/files/{server_id}/file", method = PUT, query = [ path, timestamp, verify ], no_auth)]
-    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
+    #[error(auth::{signature_invalid, signature_expired},
+        storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory]},
+        sql::failure <- [sql:*])]
     async fn server_upload_file_user(
         &self,
         server_id: u32,
@@ -94,7 +106,10 @@ pub trait FilesService {
 
     /// Writes a file using a url
     #[route("/url", method = GET, query = [ path, url "The url from which the file gets downloaded" ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]) http_request(failed not_success read_failed))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory]},
+        sql::failure <- [sql:*],
+        http_request::{failed, not_success, read_failed})]
     async fn server_write_file_by_url(
         &self,
         server_id: u32,
@@ -104,7 +119,9 @@ pub trait FilesService {
 
     /// Writes a file using a template
     #[route("/template", method = POST, query = [ path ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded] patch_failed) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded], patch_failed},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory]},
+        sql::failure <- [sql:*])]
     async fn server_write_file_by_template(
         &self,
         server_id: u32,
@@ -114,7 +131,9 @@ pub trait FilesService {
 
     /// Deletes a file
     #[route("/file", method = DELETE, query = [ path, recursive "If it is a directory and should be deleted recursively" ])]
-    #[error(storage(not_found mutex_locked failure [io:*]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] not_directory [io:NotADirectory] is_directory [io:IsADirectory]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], not_directory <- [io:NotADirectory], is_directory <- [io:IsADirectory]},
+        sql::failure <- [sql:*])]
     async fn server_delete_file(
         &self,
         server_id: u32,
@@ -124,7 +143,9 @@ pub trait FilesService {
 
     /// Creates a new directory
     #[route("/mkdir", method = GET, query = [ path, recursive "If parents should be created as well" ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound io:NotADirectory] sandbox_violated [io:PermissionDenied] already_exists [io:AlreadyExists]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound, io:NotADirectory], sandbox_violated <- [io:PermissionDenied], already_exists <- [io:AlreadyExists]},
+        sql::failure <- [sql:*])]
     async fn server_create_directory(
         &self,
         server_id: u32,
@@ -134,12 +155,16 @@ pub trait FilesService {
 
     /// Creates a new symlink
     #[route("/symlink", method = GET, query = [ path, content "The contents of the symlink" ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] already_exists [io:AlreadyExists]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], already_exists <- [io:AlreadyExists]},
+        sql::failure <- [sql:*])]
     async fn server_symlink(&self, server_id: u32, path: String, content: String) -> Result<(), _>;
 
     /// Unpacks an existing archive
     #[route("/archive/unpack", method = GET, query = [ path "The location of the existing archive", dest "The destination directory location" ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied]) compression(unsupported) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied]},
+        compression::unsupported, sql::failure <- [sql:*])]
     async fn server_unpack_archive(
         &self,
         server_id: u32,
@@ -153,7 +178,9 @@ pub trait FilesService {
         src "The file location where the archive should be created",
         compression "The compression algorithm to use for the archive"
     ])]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) file(not_found [io:NotFound] sandbox_violated [io:PermissionDenied] is_directory [io:IsADirectory]) compression(unsupported) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory]},
+        compression::unsupported, sql::failure <- [sql:*])]
     async fn server_create_archive(
         &self,
         server_id: u32,
@@ -164,7 +191,7 @@ pub trait FilesService {
 
     /// A websocket for file updates in realtime
     #[route("/watch", method = WS, query = [ path "The initial work directory path" ])]
-    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
     async fn server_watch_files(
         &self,
         server_id: u32,
@@ -173,7 +200,7 @@ pub trait FilesService {
 
     /// A websocket for file updates in realtime (called by the user)
     #[route(!"/user/files/{server_id}/watch", method = WS, query = [ path "The initial work directory path", verify, timestamp ])]
-    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[error(auth::{signature_invalid, signature_expired}, storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
     async fn server_watch_files_user(
         &self,
         server_id: u32,
@@ -184,7 +211,7 @@ pub trait FilesService {
 
     /// Deletes all files
     #[route("/wipe", method = GET)]
-    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
     async fn wipe_server(&self, server_id: u32);
 }
 

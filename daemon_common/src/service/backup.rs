@@ -38,22 +38,22 @@ define_error!(backup_storage {
 pub trait BackupService {
     /// Lists all backups of an existing server
     #[route("", method = GET)]
-    #[error(storage(not_found mutex_locked failure [io:*]) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
     async fn server_list_backups(&self, server_id: u32) -> Result<Vec<BackupResponseEntry>, _>;
 
     /// Creates a new backup (selecting the backup storage by order)
     #[route("", method = PUT)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(no_suitable_found) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::no_suitable_found, sql::failure <- [sql:*])]
     async fn server_create_backup_order(&self, server_id: u32) -> Result<i64, _>;
 
     /// Creates a new backup
     #[route("/{backup_storage}", method = PUT)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(incompatible location_not_found) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::{incompatible, location_not_found}, sql::failure <- [sql:*])]
     async fn server_create_backup(&self, server_id: u32, backup_storage: String) -> Result<i64, _>;
 
     /// Downloads a backup
     #[route("/{backup_storage}/{backup_id}", method = GET, raw)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup_storage(location_not_found) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::location_not_found, sql::failure <- [sql:*])]
     async fn server_download_backup(
         &self,
         server_id: u32,
@@ -63,7 +63,7 @@ pub trait BackupService {
 
     /// Downloads a backup (called by the user)
     #[route(!"/user/backup/{server_id}/{backup_storage}/{backup_id}", method = GET, query = [ timestamp, verify ], raw, no_auth)]
-    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure [io:*]) backup_storage(location_not_found) sql(failure [sql:*]))]
+    #[error(auth::{signature_invalid, signature_expired}, storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::location_not_found, sql::failure <- [sql:*])]
     async fn server_download_backup_user(
         &self,
         server_id: u32,
@@ -75,7 +75,7 @@ pub trait BackupService {
 
     /// Downloads the contents of a server in realtime (without creating a backup)
     #[route("/rt", method = GET, query = [ compression ], raw)]
-    #[error(storage(not_found mutex_locked failure[io:*]) compression(unsupported) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, compression::unsupported, sql::failure <- [sql:*])]
     async fn server_download_realtime(
         &self,
         server_id: u32,
@@ -84,7 +84,7 @@ pub trait BackupService {
 
     /// Downloads the contents of a server in realtime (without creating a backup and called by the user)
     #[route(!"/user/backup/{server_id}/rt", method = GET, query = [ timestamp, verify, compression ], raw, no_auth)]
-    #[error(auth(signature_invalid signature_expired) storage(not_found mutex_locked failure[io:*]) compression(unsupported) sql(failure [sql:*]))]
+    #[error(auth::{signature_invalid, signature_expired}, storage::{not_found, mutex_locked, failure <- [io:*]}, compression::unsupported, sql::failure <- [sql:*])]
     async fn server_download_realtime_user(
         &self,
         server_id: u32,
@@ -95,7 +95,7 @@ pub trait BackupService {
 
     /// Sets the name of a backup
     #[route("/{backup_storage}/{backup_id}", method = PATCH)]
-    #[error(storage(not_found mutex_locked failure [io:*]) backup(not_found [io:NotFound]) backup_storage(location_not_found) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup::not_found <- [io:NotFound], backup_storage::location_not_found, sql::failure <- [sql:*])]
     async fn server_set_backup_name(
         &self,
         server_id: u32,
@@ -106,7 +106,7 @@ pub trait BackupService {
 
     /// Deletes a backup
     #[route("/{backup_storage}/{backup_id}", method = DELETE)]
-    #[error(storage(not_found mutex_locked failure[io:*]) backup(not_found [io:NotFound]) backup_storage(location_not_found) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup::not_found <- [io:NotFound], backup_storage::location_not_found, sql::failure <- [sql:*])]
     async fn server_delete_backup(
         &self,
         server_id: u32,
@@ -116,7 +116,7 @@ pub trait BackupService {
 
     /// Restores a backup
     #[route("/{backup_storage}/{backup_id}/restore", method = GET)]
-    #[error(storage(not_found mutex_locked failure [io:*] quota_reached [io:QuotaExceeded]) backup(not_found [io:NotFound]) backup_storage(location_not_found) sql(failure [sql:*]))]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]}, backup::not_found <- [io:NotFound], backup_storage::location_not_found, sql::failure <- [sql:*])]
     async fn server_restore_backup(
         &self,
         server_id: u32,
