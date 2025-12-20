@@ -491,7 +491,8 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to update resource info of server: {err:?}"))?;
     }
     if let Some(build) = &build {
         query!(
@@ -499,71 +500,84 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to delete prior added capabilities: {err:?}"))?;
         query!(
             "DELETE FROM `server_capability_drop` WHERE `server` = ?",
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to delete prior dropped capabilities: {err:?}"))?;
         query!(
             "DELETE FROM `server_environment` WHERE `server` = ?",
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| {
+            error!("Unable to delete prior server environment variables: {err:?}");
+        })?;
         query!(
             "DELETE FROM `server_image_tags` WHERE `server` = ?",
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to delete prior used image tags: {err:?}"))?;
         query!(
             "DELETE FROM `server_image_args` WHERE `server` = ?",
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to delete prior used image args: {err:?}"))?;
 
         query!(
             "DELETE FROM `server_backup_exclude` WHERE `server` = ?",
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to delete prior backup exclusions: {err:?}"))?;
         query!(
             "DELETE FROM `server_file_writes` WHERE `server` = ?",
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to delete prior set server writes: {err:?}"))?;
 
         for (path, file_write) in &build.files_write {
             match file_write {
                 ServerFileWrite::Write { data } => {
                     query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'write', NULL, ?)", server_id, path, BASE64_STANDARD.encode(data))
                         .execute(&mut **tx)
-                        .await?;
+                        .await
+                    .inspect_err(|err| error!("Unable to insert basic server write operation: {err:?}"))?;
                 }
                 ServerFileWrite::JavaProperties { content } => {
                     for (key, value) in content {
                         query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'properties', ?, ?)", server_id, path, key, value)
                             .execute(&mut **tx)
-                            .await?;
+                            .await
+                            .inspect_err(|err| error!("Unable to insert properties server write operation: {err:?}"))?;
                     }
                 }
                 ServerFileWrite::Json { set } => {
                     for patch in set {
                         query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'json', ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
                             .execute(&mut **tx)
-                            .await?;
+                            .await
+                            .inspect_err(|err| error!("Unable to insert json server write operation: {err:?}"))?;
                     }
                 }
                 ServerFileWrite::Yaml { set } => {
                     for patch in set {
                         query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'yaml', ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
                             .execute(&mut **tx)
-                            .await?;
+                            .await
+                            .inspect_err(|err| error!("Unable to insert yaml server write operation: {err:?}"))?;
                     }
                 }
             }
@@ -576,7 +590,8 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 cap
             )
             .execute(&mut **tx)
-            .await?;
+            .await
+            .inspect_err(|err| error!("Unable to insert added capability: {err:?}"))?;
         }
         for cap in &build.cap_drop {
             query!(
@@ -585,7 +600,8 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 cap
             )
             .execute(&mut **tx)
-            .await?;
+            .await
+            .inspect_err(|err| error!("Unable to insert dropped capability: {err:?}"))?;
         }
         for (key, val) in &build.environment {
             query!(
@@ -635,16 +651,19 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 &image.default_tag
             )
             .execute(&mut **tx)
-            .await?;
+            .await
+            .inspect_err(|err| error!("Unable to insert required server images: {err:?}"))?;
             if let Some(tag) = &image.tag {
                 query!("INSERT IGNORE INTO `server_image_tags` (`server`, `image`, `tag`) VALUES (?, ?, ?)", server_id, image_id, tag)
                     .execute(&mut **tx)
-                    .await?;
+                    .await
+                    .inspect_err(|err| error!("Unable to insert server image tags: {err:?}"))?;
             }
             for (key, value) in &image.args {
                 query!("INSERT IGNORE INTO `server_image_args` (`server`, `image`, `key`, `value`) VALUES (?, ?, ?, ?)", server_id, image_id, key, value)
                     .execute(&mut **tx)
-                    .await?;
+                    .await
+                    .inspect_err(|err| error!("Unable to insert server image args: {err:?}"))?;
             }
 
             for parent in parents {
@@ -654,7 +673,8 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                     parent
                 )
                 .execute(&mut **tx)
-                .await?;
+                .await
+                .inspect_err(|err| error!("Unable to insert server image parents: {err:?}"))?;
             }
         }
         for exclude in &build.backup_exclude {
@@ -664,7 +684,8 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 exclude
             )
             .execute(&mut **tx)
-            .await?;
+            .await
+            .inspect_err(|err| error!("Unable to insert server backup exclusion: {err:?}"))?;
         }
 
         query!(
@@ -677,16 +698,19 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
             server_id,
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to update server build info: {err:?}"))?;
     }
     if let Some(ports) = &ports {
         query!("DELETE FROM `server_ports` WHERE `server` = ?", server_id)
             .execute(&mut **tx)
-            .await?;
+            .await
+            .inspect_err(|err| error!("Unable to remove prior server ports: {err:?}"))?;
         for port in ports {
             query!("INSERT INTO `server_ports` (`server`, `internal_port`, `external_port`, `external_ip`, `protocol`) VALUES (?, ?, ?, ?, ?)", server_id, &port.internal_port, &port.external_port, &port.external_ip, &port.protocol)
                 .execute(&mut **tx)
-                .await?;
+                .await
+                .inspect_err(|err| error!("Unable to insert server port: {err:?}"))?;
         }
     }
     if let Some(network) = &network {
@@ -696,17 +720,20 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to update server network info: {err:?}"))?;
         query!(
             "DELETE FROM `server_networks` WHERE `server` = ?",
             server_id
         )
         .execute(&mut **tx)
-        .await?;
+        .await
+        .inspect_err(|err| error!("Unable to remove prior server network attachments: {err:?}"))?;
         for attachment in &network.networks {
             query!("INSERT INTO `server_networks` (`server`, `network`, `ipv4`, `ipv6`) VALUES (?, ?, ?, ?)", server_id, attachment.network, attachment.ipv4, attachment.ipv6)
                 .execute(&mut **tx)
-                .await?;
+                .await
+                .inspect_err(|err| error!("Unable to insert server network attachments: {err:?}"))?;
         }
     }
 
