@@ -566,7 +566,7 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 }
                 ServerFileWrite::Json { set } => {
                     for patch in set {
-                        query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'json', ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
+                        query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'json', NULL, ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
                             .execute(&mut **tx)
                             .await
                             .inspect_err(|err| error!("Unable to insert json server write operation: {err:?}"))?;
@@ -574,7 +574,7 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 }
                 ServerFileWrite::Yaml { set } => {
                     for patch in set {
-                        query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'yaml', ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
+                        query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'yaml', NULL, ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
                             .execute(&mut **tx)
                             .await
                             .inspect_err(|err| error!("Unable to insert yaml server write operation: {err:?}"))?;
