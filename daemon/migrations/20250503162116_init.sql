@@ -2,17 +2,17 @@ CREATE TABLE IF NOT EXISTS `images`
 (
     `id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
     `dockerfile` VARCHAR(10000) NOT NULL,
-    `default_tag` VARCHAR(255)
+    `default_tag` VARCHAR(255) NULL
 ) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `servers`
 (
   `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `image` BIGINT UNSIGNED,
-  `cpu` FLOAT(255,2),
-  `ram` INT UNSIGNED,
-  `swap` INT UNSIGNED,
-  `disk` BIGINT UNSIGNED,
+  `image` BIGINT UNSIGNED NULL,
+  `cpu` FLOAT(255,2) NULL,
+  `ram` INT UNSIGNED NULL,
+  `swap` INT UNSIGNED NULL,
+  `disk` BIGINT UNSIGNED NULL,
   `storage` VARCHAR(255) NOT NULL DEFAULT 'local',
   `internet` BOOLEAN NOT NULL DEFAULT FALSE,
   `ipv6_suffix` BIGINT UNSIGNED DEFAULT NULL,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS `server_file_writes`
   `server` INT(255) UNSIGNED NOT NULL,
   `file` VARCHAR(255) NOT NULL,
   `filetype` ENUM('write', 'properties', 'json', 'yaml') NOT NULL,
-  `key` VARCHAR(255),
+  `key` VARCHAR(255) NULL,
   `value` TEXT NOT NULL,
   PRIMARY KEY (`server`, `file`, `key`),
   FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
