@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS `server_file_writes`
   `server` INT(255) UNSIGNED NOT NULL,
   `file` VARCHAR(255) NOT NULL,
   `filetype` ENUM('write', 'properties', 'json', 'yaml') NOT NULL,
-  `key` VARCHAR(255) NULL,
+  `key` VARCHAR(255) NOT NULL DEFAULT '',
   `value` TEXT NOT NULL,
   PRIMARY KEY (`server`, `file`, `key`),
   FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
