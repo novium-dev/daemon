@@ -93,7 +93,7 @@ CREATE TABLE IF NOT EXISTS `server_file_writes`
   `file` VARCHAR(255) NOT NULL,
   `filetype` ENUM('write', 'properties', 'json', 'yaml') NOT NULL,
   `key` VARCHAR(255),
-  `value` VARCHAR(1000) NOT NULL,
+  `value` TEXT NOT NULL,
   PRIMARY KEY (`server`, `file`, `key`),
   FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
 ) ENGINE=INNODB;
