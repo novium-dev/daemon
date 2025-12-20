@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS `images`
     `id` BIGINT UNSIGNED NOT NULL PRIMARY KEY,
     `dockerfile` VARCHAR(10000) NOT NULL,
     `default_tag` VARCHAR(255)
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `servers`
 (
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS `servers`
   `stop_timeout` SMALLINT UNSIGNED NOT NULL DEFAULT 60,
   FOREIGN KEY (`image`) REFERENCES `images`(`id`),
   CONSTRAINT MAX_DISK CHECK ( (`disk`*1024*1024) <= ((POWER(2, 64))/2)-1 ) -- i64 is used heavy (where -1 means null) in the daemon. Do not allow disk limits that would overflow
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `server_locks`
 (
@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS `server_locks`
     `lock` VARCHAR(255) NOT NULL,
     PRIMARY KEY (`server`, `lock`),
     FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `server_capability_add`
 (
@@ -116,7 +116,7 @@ CREATE TABLE IF NOT EXISTS `image_parents`
     PRIMARY KEY (`image`, `parent`),
     FOREIGN KEY (`image`) REFERENCES `images`(`id`),
     FOREIGN KEY (`parent`) REFERENCES `images`(`id`)
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `networks`
 (
@@ -124,7 +124,7 @@ CREATE TABLE IF NOT EXISTS `networks`
   `ipv4` SMALLINT UNSIGNED NOT NULL UNIQUE,
   `ipv6` SMALLINT UNSIGNED NOT NULL UNIQUE,
   CONSTRAINT IP_RANGE CHECK ((`ipv4` & 0b111111) = 0 AND (`ipv4` >> 8) != 255)
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `server_networks`
 (
@@ -147,20 +147,20 @@ CREATE TABLE IF NOT EXISTS `schedules` (
     `schedule` VARCHAR(255) NOT NULL,
     `timezone` VARCHAR(255) NOT NULL,
     FOREIGN KEY (`server`) REFERENCES `servers`(`id`) ON DELETE CASCADE
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `schedule_steps` (
     `schedule` INT(255) UNSIGNED NOT NULL,
     `index` INT UNSIGNED NOT NULL,
     `value` JSON NOT NULL, -- I do not like json in sql, but its the best way here I guess
     FOREIGN KEY (`schedule`) REFERENCES `schedules`(`id`) ON DELETE CASCADE
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `databases`
 (
   `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `name_suffix` VARCHAR(255) NOT NULL
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `database_passwordless`
 (
@@ -168,7 +168,7 @@ CREATE TABLE IF NOT EXISTS `database_passwordless`
   `server` INT(255) UNSIGNED NOT NULL,
   `permissions` TINYINT NOT NULL,
   PRIMARY KEY (`database`, `server`)
-);
+) ENGINE=INNODB;
 
 CREATE TABLE IF NOT EXISTS `database_user`
 (
@@ -177,4 +177,4 @@ CREATE TABLE IF NOT EXISTS `database_user`
   `password_hash` VARCHAR(255) NOT NULL,
   `permissions` TINYINT NOT NULL,
   PRIMARY KEY (`database`, `name_suffix`)
-);
+) ENGINE=INNODB;
