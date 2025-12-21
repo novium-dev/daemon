@@ -76,7 +76,7 @@ use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr};
+use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::process::Stdio;
 use std::str::FromStr;
@@ -266,18 +266,12 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
 
     let config = DaemonConfig {
         database: mysql,
-        listeners: HashSet::from([
-            SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 3000),
-            SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 3000),
-        ]),
+        listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 3000)]),
         backend_url: backend.join("/").unwrap(),
         origin: HeaderValue::from_str(&backend.join("/").unwrap().to_string()).unwrap(),
         tls: None,
         ssh: Some(crate::config::SSHConfig {
-            listeners: HashSet::from([
-                SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 22),
-                SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 22),
-            ]),
+            listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 22)]),
             host_key: vec![
                 crate::config::SSHHostKey::Ed25519 {
                     path: "ed25519.pem".to_string(),
