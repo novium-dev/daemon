@@ -3,14 +3,16 @@ use bitflags::bitflags;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use url::{Host, Url};
+use utoipa::{PartialSchema as _, ToSchema};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct HostAndPort {
+    #[schema(schema_with = String::schema)]
     pub host: Host,
     pub port: u16,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct NodeRegistrationRequest {
     pub base_url: Url,
 
@@ -35,7 +37,7 @@ pub struct NodeUpdateRequest {
     pub backups: HashMap<String, BackupStorage>,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, ToSchema)]
 pub enum ServerStorage {
     #[serde(rename = "btrfs")]
     Btrfs(String),
@@ -43,7 +45,7 @@ pub enum ServerStorage {
     Directory,
 }
 
-#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq)]
+#[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, ToSchema)]
 pub enum BackupStorage {
     #[serde(rename = "btrfs")]
     Btrfs(String),
