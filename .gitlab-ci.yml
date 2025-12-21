@@ -5,7 +5,7 @@ stages:
 
 .rust-default:
   image:
-    name: rust:1.89.0-alpine
+    name: rust:1.92.0-alpine
     pull_policy: if-not-present
   parallel:
   interruptible: true
@@ -23,7 +23,7 @@ stages:
 
 .rust-build-default:
   image:
-    name: rust:1.89.0-alpine
+    name: rust:1.92.0-alpine
     pull_policy: if-not-present
   parallel:
   interruptible: true
@@ -52,7 +52,7 @@ stages:
   services:
     - name: mariadb:latest
       alias: db
-      pull_policy: if-not-present
+      pull_policy: always
 
 cli_shared:
   extends: .rust-default
@@ -175,8 +175,8 @@ test:
 deploy_default:
   stage: deploy
   image:
-    name: docker:28.4.0
-    pull_policy: if-not-present
+    name: docker:latest
+    pull_policy: always
   variables:
     DOCKER_HOST: "unix:///var/run/docker.sock"
   parallel:
