@@ -27,7 +27,7 @@ pub struct NodeRegistrationRequest {
     pub backups: HashMap<String, BackupStorage>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct NodeUpdateRequest {
     pub base_url: Url,
 
