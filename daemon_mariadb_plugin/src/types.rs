@@ -61,10 +61,10 @@ pub struct Plugin {
     pub license: License,
 
     /// Function to invoke when plugin is loaded.
-    pub init: *const InitFunc,
+    pub init: Option<extern "C" fn(*mut c_void) -> i32>,
 
     /// Function to invoke when plugin is unloaded.
-    pub deinit: *const DeinitFunc,
+    pub deinit: Option<extern "C" fn(*mut c_void) -> i32>,
 
     /// Version number of the plugin.
     pub version: c_uint,
@@ -92,8 +92,8 @@ impl Plugin {
             author: core::ptr::null(),
             descr: core::ptr::null(),
             license: License::Proprietary,
-            init: core::ptr::null(),
-            deinit: core::ptr::null(),
+            init: None,
+            deinit: None,
             version: 0,
             status_vars: core::ptr::null(),
             system_vars: core::ptr::null(),
@@ -102,12 +102,6 @@ impl Plugin {
         }
     }
 }
-
-/// Function to invoke when plugin is loaded.
-pub type InitFunc = extern "C" fn(*mut c_void) -> i32;
-
-/// Function to invoke when plugin is unloaded.
-pub type DeinitFunc = extern "C" fn(*mut c_void) -> i32;
 
 pub type AuthenticateFunc =
     extern "C" fn(vio: *mut PluginVIO, info: *mut ServerAuthInfo) -> AuthStatus;

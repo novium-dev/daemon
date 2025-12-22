@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::types::{
-    AuthHandler, AuthStatus, AuthenticateFunc, DeinitFunc, InitFunc, License, Plugin, PluginType,
-    PluginVIO, ServerAuthInfo,
+    AuthHandler, AuthStatus, AuthenticateFunc, License, Plugin, PluginType, PluginVIO,
+    ServerAuthInfo,
 };
 use crate::{MARIADB_PLUGIN_NAME, constants, mysql_declare_plugin, plugin};
 use constcat::concat_slices;
@@ -50,8 +50,8 @@ mysql_declare_plugin! {
         author: core::ptr::from_ref(b"Markus Probst\0").cast(),
         descr: core::ptr::from_ref(b"A authentication plugin\0").cast(),
         license: License::Gpl,
-        init: core::ptr::from_ref(&(init as InitFunc)),
-        deinit: core::ptr::from_ref(&(deinit as DeinitFunc)),
+        init: Some(init),
+        deinit: Some(deinit),
         version: 0x0001,
         status_vars: core::ptr::null(),
         system_vars: core::ptr::null(),

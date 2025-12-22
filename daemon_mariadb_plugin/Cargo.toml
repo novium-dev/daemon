@@ -36,3 +36,8 @@ features = ["rt-multi-thread"]
 [dependencies.daemon_common]
 workspace = true
 features = ["docker"]
+
+[build-dependencies.bindgen]
+version = "0.72.1"
+default-features = false
+features = ["logging", "prettyplease"]

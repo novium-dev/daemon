@@ -18,6 +18,10 @@ pub fn authenticate_proxy_mode(vio: &mut PluginVIO, info: &mut ServerAuthInfo) -
             {
                 println!("Unable to identify container: {err:?}");
             };
+            #[cfg(not(debug_assertions))]
+            {
+                let _ = err;
+            };
             AuthStatus::Error
         }
     }
