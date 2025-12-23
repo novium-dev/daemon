@@ -29,6 +29,8 @@ keys = [
     "dep:time",
     "dep:rcgen",
     "dep:rand",
+    "dep:rand_core",
+    "dep:chacha20",
     "dep:pkcs8",
 ]
 service = [
@@ -74,6 +76,14 @@ workspace = true
 optional = true
 
 [dependencies.rand]
+workspace = true
+optional = true
+
+[dependencies.rand_core]
+workspace = true
+optional = true
+
+[dependencies.chacha20]
 workspace = true
 optional = true
 
