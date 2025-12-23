@@ -30,13 +30,15 @@ ENV LLVM_CONFIG_PATH="/llvm-config-static.sh"
 
 COPY --from=planner /work/recipe.json recipe.json
 
-ARG FEATURES="ci"
+ARG PREPARE_FEATURES="ci"
 
-RUN cargo chef cook --release --recipe-path recipe.json --no-default-features --features "$FEATURES" --bin daemon --target x86_64-unknown-linux-musl
+RUN cargo chef cook --release --recipe-path recipe.json --no-default-features --features "$PREPARE_FEATURES" --bin daemon --target x86_64-unknown-linux-musl
 
 COPY --from=utils /usr/local/cargo/bin/cargo-sqlx /usr/local/cargo/bin/cargo-sqlx
 COPY --from=mariadb /var/lib/mysql /var/lib/mysql
 COPY . .
+
+ARG FEATURES="ci"
 
 # build
 RUN FEATURES="$FEATURES" ./scripts/docker/build_daemon.sh

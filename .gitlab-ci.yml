@@ -172,7 +172,7 @@ test:
         path: coverage.xml
     expire_in: 1 week
 
-deploy_default:
+deploy_docker:
   stage: deploy
   image:
     name: docker:latest
@@ -187,10 +187,15 @@ deploy_default:
   script:
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker pull $CI_REGISTRY_IMAGE:latest || true
-    - docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $CI_REGISTRY_IMAGE:latest --tag $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA --tag $CI_REGISTRY_IMAGE:latest .
-    - docker push $CI_REGISTRY_IMAGE:$CI_COMMIT_SHA
+    - docker pull $CI_REGISTRY_IMAGE:latest-no_tty_size || true
+    - docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $CI_REGISTRY_IMAGE:latest --cache-from $CI_REGISTRY_IMAGE:latest-no_tty_size --tag $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8} --tag $CI_REGISTRY_IMAGE:latest .
+    - docker push $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}
     - docker push $CI_REGISTRY_IMAGE:latest
+    - docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $CI_REGISTRY_IMAGE:latest --cache-from $CI_REGISTRY_IMAGE:latest-no_tty_size --tag $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}-no_tty_size --tag $CI_REGISTRY_IMAGE:latest-no_tty_size --build-arg FEATURES="ci,no_tty_size_please" .
+    - docker push $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}-no_tty_size
+    - docker push $CI_REGISTRY_IMAGE:latest-no_tty_size
   rules:
     - if: $CI_COMMIT_BRANCH == "prod" && $CI_COMMIT_REF_PROTECTED == "true"
       when: on_success
     - when: never
+
