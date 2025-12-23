@@ -54,6 +54,26 @@ stages:
       alias: db
       pull_policy: always
 
+.docker-deploy-default:
+  stage: deploy
+  image:
+    name: docker:latest
+    pull_policy: always
+  variables:
+    DOCKER_HOST: "unix:///var/run/docker.sock"
+  parallel:
+  needs: ["clippy", "deny", "test", "fmt"]
+  dependencies: []
+  before_script:
+    - docker info
+    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
+  rules:
+    - if: $CI_COMMIT_BRANCH == "prod" && $CI_COMMIT_REF_PROTECTED == "true"
+      when: on_success
+    - when: never
+
+
+
 cli_shared:
   extends: .rust-default
   stage: prepare
@@ -172,20 +192,9 @@ test:
         path: coverage.xml
     expire_in: 1 week
 
-deploy_docker:
-  stage: deploy
-  image:
-    name: docker:latest
-    pull_policy: always
-  variables:
-    DOCKER_HOST: "unix:///var/run/docker.sock"
-  parallel:
-  needs: ["clippy", "deny", "test", "fmt"]
-  dependencies: []
-  before_script:
-    - docker info
+deploy_daemon:
+  extends: .docker-deploy-default
   script:
-    - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
     - docker pull $CI_REGISTRY_IMAGE:latest || true
     - docker pull $CI_REGISTRY_IMAGE:latest-no_tty_size || true
     - docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $CI_REGISTRY_IMAGE:latest --cache-from $CI_REGISTRY_IMAGE:latest-no_tty_size --tag $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8} --tag $CI_REGISTRY_IMAGE:latest .
@@ -194,8 +203,13 @@ deploy_docker:
     - docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $CI_REGISTRY_IMAGE:latest --cache-from $CI_REGISTRY_IMAGE:latest-no_tty_size --tag $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}-no_tty_size --tag $CI_REGISTRY_IMAGE:latest-no_tty_size --build-arg FEATURES="ci,no_tty_size_please" .
     - docker push $CI_REGISTRY_IMAGE:${CI_COMMIT_SHA:0:8}-no_tty_size
     - docker push $CI_REGISTRY_IMAGE:latest-no_tty_size
-  rules:
-    - if: $CI_COMMIT_BRANCH == "prod" && $CI_COMMIT_REF_PROTECTED == "true"
-      when: on_success
-    - when: never
+
+
+deploy_mariadb:
+  extends: .docker-deploy-default
+  script:
+    - docker pull $CI_REGISTRY_IMAGE:mariadb-latest || true
+    - docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $CI_REGISTRY_IMAGE:mariadb-latest -f mariadb.Dockerfile --tag $CI_REGISTRY_IMAGE:mariadb-${CI_COMMIT_SHA:0:8} --tag $CI_REGISTRY_IMAGE:mariadb-latest .
+    - docker push $CI_REGISTRY_IMAGE:mariadb-${CI_COMMIT_SHA:0:8}
+    - docker push $CI_REGISTRY_IMAGE:mariadb-latest
 
