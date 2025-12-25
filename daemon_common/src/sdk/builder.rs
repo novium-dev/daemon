@@ -137,7 +137,7 @@ impl<T: DaemonSDKExtra + DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T
         tls.alpn_protocols = vec!["h2".into()];
         DaemonSDK {
             client: Client::builder()
-                .tls_built_in_root_certs(false)
+                .tls_certs_only([])
                 .https_only(true)
                 .use_preconfigured_tls(tls)
                 .with_server_name_resolver(Arc::new(DaemonSDKServerNameResolver(identifier)))

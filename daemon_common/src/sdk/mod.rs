@@ -18,8 +18,10 @@ use crate::service::{
     DaemonServices, DaemonServicesClientImpl, DaemonServicesURL, DaemonServicesURLWithUserKey,
 };
 use crate::user::UserKeyProvider;
-use reqwest::{Client, ResolveServerName, Url};
-use rustls::pki_types::{DnsName, ServerName};
+use reqwest::{
+    Client, Url,
+    tls::{DnsName, ResolveServerName, ServerName},
+};
 use uuid::Uuid;
 use zelus::sdk::ZelusClientImpl;
 
@@ -80,7 +82,7 @@ impl UserKeyProvider for DaemonSDK<WithUserKey> {
 pub(crate) struct DaemonSDKServerNameResolver(pub Uuid);
 
 impl ResolveServerName for DaemonSDKServerNameResolver {
-    fn resolve(&self, _uri: &Uri) -> Result<ServerName<'static>, Box<dyn Error + Sync + Send>> {
+    fn resolve(&self, _uri: &Uri) -> Result<ServerName, Box<dyn Error + Sync + Send>> {
         Ok(ServerName::DnsName(DnsName::try_from(format!(
             "node-{}",
             self.0
