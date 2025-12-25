@@ -137,9 +137,15 @@ impl<T: DaemonSDKExtra + DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T
         tls.alpn_protocols = vec!["h2".into()];
         DaemonSDK {
             client: Client::builder()
-                .tls_certs_only([])
+                .no_hickory_dns()
+                .zstd(true)
                 .https_only(true)
-                .use_preconfigured_tls(tls)
+                .http2_prior_knowledge()
+                .tls_backend_rustls()
+                .tls_certs_only([])
+                .tls_version_min(reqwest::tls::Version::TLS_1_3)
+                .tls_sni(true)
+                .tls_backend_preconfigured(tls)
                 .with_server_name_resolver(Arc::new(DaemonSDKServerNameResolver(identifier)))
                 .build()
                 .expect("Unable to build reqwest client"),
