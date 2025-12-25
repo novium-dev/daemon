@@ -10,7 +10,14 @@ workspace = true
 
 [package.metadata.deb]
 name = "novium-daemon"
-depends = ["novium-daemon-mariadb-plugin", "adduser (>=3.40)", "docker.io | docker-ce", "vim", "liblzma5", "init-system-helpers"]
+depends = [
+    "novium-daemon-mariadb-plugin",
+    "adduser (>=3.40)",
+    "docker.io | docker-ce",
+    "vim",
+    "liblzma5",
+    "init-system-helpers",
+]
 conflicts = "novium_daemon_trace"
 assets = [["target/release/daemon", "/usr/bin/novium_daemon", "755"]]
 maintainer-scripts = "debian/"
@@ -126,7 +133,7 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.55.0"
+version = "0.56.0"
 
 [dependencies.russh-sftp]
 version = "2.1.1"
@@ -165,6 +172,3 @@ version = "1.28.1"
 version = "0.72.1"
 default-features = false
 features = ["logging", "prettyplease"]
-
-
-

@@ -321,7 +321,14 @@ features = ["full"]
 
 [workspace.dependencies.tower-http]
 version = "0.6.8"
-features = ["cors", "auth", "trace"]
+features = [
+    "cors",
+    "auth",
+    "trace",
+    "compression-zstd",
+    "compression-br",
+    "compression-gzip",
+]
 
 [workspace.dependencies.sqlx]
 version = "0.8.6"

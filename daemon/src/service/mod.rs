@@ -17,6 +17,7 @@ use rustls::ServerConfig;
 use rustls::server::WebPkiClientVerifier;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
+use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 use utoipa::OpenApi;
@@ -55,9 +56,12 @@ impl<T: DaemonExtra> Daemon<T> {
             .allow_methods([axum::http::Method::GET])
             .allow_headers(tower_http::cors::AllowHeaders::any());
 
+        let compression = CompressionLayer::new().gzip(true).zstd(true).br(true);
+
         let (mut router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
             .merge(router.layer(axum::middleware::from_fn(middleware::middleware)))
             .merge(router_user.layer(cors))
+            .layer(compression)
             .split_for_parts();
 
         #[cfg(debug_assertions)]
