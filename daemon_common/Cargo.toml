@@ -13,18 +13,12 @@ crate-type = ["rlib", "staticlib"]
 
 [features]
 ssh = ["backend", "dep:serde"]
-docker = [
-    "dep:bollard",
-    "dep:tokio",
-    "tokio/fs",
-    "dep:lazy-regex"
-]
+docker = ["dep:bollard", "dep:tokio", "tokio/fs", "dep:lazy-regex"]
 keys = [
     "dep:ed25519-dalek",
     "dep:x509-parser",
     "dep:thiserror",
     "dep:pem",
-    "dep:rustls-pemfile",
     "dep:rustls",
     "dep:time",
     "dep:rcgen",
@@ -56,13 +50,7 @@ service = [
     "tokio-util/io-util",
 ]
 backend = ["dep:serde"]
-sdk = [
-    "service",
-    "keys",
-    "dep:reqwest",
-    "dep:either",
-    "dep:http"
-]
+sdk = ["service", "keys", "dep:reqwest", "dep:either", "dep:http"]
 default = ["service", "keys", "backend"]
 ci = ["default"]
 
@@ -153,10 +141,6 @@ optional = true
 version = "3.0.6"
 optional = true
 
-[dependencies.rustls-pemfile]
-workspace = true
-optional = true
-
 [dependencies.rustls]
 workspace = true
 optional = true
@@ -209,4 +193,3 @@ optional = true
 [dependencies.lazy-regex]
 workspace = true
 optional = true
-

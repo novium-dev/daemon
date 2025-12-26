@@ -5,9 +5,9 @@ use core::net::SocketAddr;
 use reqwest::Url;
 use russh::keys::PrivateKey;
 use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
+use rustls::pki_types::pem::PemObject as _;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::sign::CertifiedKey;
-use rustls_pemfile::Item;
 use serde::{Deserialize, Serialize, de, ser};
 use std::collections::{HashMap, HashSet};
 use std::io;
@@ -121,26 +121,10 @@ impl TlsConfig {
         let key = tokio::fs::read(&self.private_key).await?;
         let cert = tokio::fs::read(&self.certificate).await?;
 
-        let cert = rustls_pemfile::certs(&mut cert.as_ref())
-            .map(|it| it.map(|it| it.to_vec()))
-            .collect::<Result<Vec<_>, _>>()?;
-        // Check the entire PEM file for the key in case it is not first section
-        let mut key_vec: Vec<Vec<u8>> = rustls_pemfile::read_all(&mut key.as_ref())
-            .filter_map(|i| match i.ok()? {
-                Item::Sec1Key(key) => Some(key.secret_sec1_der().to_vec()),
-                Item::Pkcs1Key(key) => Some(key.secret_pkcs1_der().to_vec()),
-                Item::Pkcs8Key(key) => Some(key.secret_pkcs8_der().to_vec()),
-                _ => None,
-            })
-            .collect();
-
-        // Make sure file contains only one key
-        let Some(key) = key_vec.pop() else {
-            return Err(io::Error::other("private key format not supported"));
-        };
-
-        let cert = cert.into_iter().map(CertificateDer::from).collect();
-        let key = PrivateKeyDer::try_from(key).map_err(io::Error::other)?;
+        let key = PrivateKeyDer::from_pem_slice(&key).map_err(io::Error::other)?;
+        let cert = CertificateDer::pem_slice_iter(&cert)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(io::Error::other)?;
         CertifiedKey::from_der(
             cert,
             key,

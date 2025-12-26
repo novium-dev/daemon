@@ -11,14 +11,13 @@ use rcgen::{
     DnType, ExtendedKeyUsagePurpose, IsCa, Issuer, KeyPair, KeyUsagePurpose, PublicKey, SanType,
     string::Ia5String,
 };
-use rustls::pki_types::pem::SectionKind;
+use rustls::pki_types::pem::{PemObject as _, SectionKind};
 use rustls::pki_types::{
     CertificateDer, CertificateSigningRequestDer, DnsName, PrivateKeyDer, PrivatePkcs1KeyDer,
     PrivatePkcs8KeyDer, PrivateSec1KeyDer, ServerName, UnixTime,
 };
 use rustls::sign::CertifiedKey;
 use rustls::{DigitallySignedStruct, Error, RootCertStore, SignatureScheme};
-use rustls_pemfile::Item;
 use std::io;
 use std::sync::Arc;
 use time::{Duration, OffsetDateTime};
@@ -62,10 +61,10 @@ pub enum DaemonKeyError {
     Pkcs8(#[from] ed25519_dalek::pkcs8::Error),
     #[error("rustls error: {0}")]
     Rustls(#[from] rustls::Error),
+    #[error("rustls pki pem error: {0}")]
+    RustlsPkiPem(#[from] rustls::pki_types::pem::Error),
     #[error("x509 parsing error: {0}")]
     X509(#[from] asn1_rs::Err<x509_parser::error::X509Error>),
-    #[error("private key not present")]
-    PrivateKeyMissing,
     #[error("invalid key")]
     Invalid,
     #[error("unable to generate or parse key")]
@@ -80,10 +79,10 @@ pub enum BackendKeyError {
     Der(&'static str),
     #[error("rustls error: {0}")]
     Rustls(#[from] rustls::Error),
+    #[error("rustls pki pem error: {0}")]
+    RustlsPkiPem(#[from] rustls::pki_types::pem::Error),
     #[error("x509 parsing error: {0}")]
     X509(#[from] asn1_rs::Err<x509_parser::error::X509Error>),
-    #[error("private key not present")]
-    PrivateKeyMissing,
     #[error("invalid key")]
     Invalid,
     #[error("unable to generate or parse key")]
@@ -368,28 +367,12 @@ impl BackendKey {
     }
 
     pub fn parse<D: AsRef<[u8]>>(root: &DaemonRootKey, data: D) -> Result<Self, BackendKeyError> {
-        let cert = rustls_pemfile::certs(&mut data.as_ref()).collect::<Result<Vec<_>, _>>()?;
+        let data = data.as_ref();
+        let cert = CertificateDer::pem_slice_iter(data).collect::<Result<Vec<_>, _>>()?;
         let mut tls_certificate = cert.clone();
         tls_certificate.push(root.tls_ca.clone());
 
-        // Check the entire PEM file for the key in case it is not first section
-        let mut tls_privkeys: Vec<Vec<u8>> = rustls_pemfile::read_all(&mut data.as_ref())
-            .filter_map(|i| match i.ok()? {
-                Item::Sec1Key(key) => Some(key.secret_sec1_der().to_vec()),
-                Item::Pkcs1Key(key) => Some(key.secret_pkcs1_der().to_vec()),
-                Item::Pkcs8Key(key) => Some(key.secret_pkcs8_der().to_vec()),
-                Item::X509Certificate(_)
-                | Item::SubjectPublicKeyInfo(_)
-                | Item::Crl(_)
-                | Item::Csr(_)
-                | _ => None,
-            })
-            .collect();
-
-        let privkey = tls_privkeys
-            .pop()
-            .ok_or(BackendKeyError::PrivateKeyMissing)?;
-        let privkey = PrivateKeyDer::try_from(privkey).map_err(BackendKeyError::Der)?;
+        let privkey = PrivateKeyDer::from_pem_slice(data)?;
 
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
@@ -532,31 +515,14 @@ impl DaemonKey {
         x509
     }
 
-    pub fn parse(root: &DaemonRootKey, data: &[u8]) -> Result<Self, DaemonKeyError> {
-        #[expect(clippy::useless_asref, reason = "False positive")]
-        let cert = rustls_pemfile::certs(&mut data.as_ref()).collect::<Result<Vec<_>, _>>()?;
+    pub fn parse<D: AsRef<[u8]>>(root: &DaemonRootKey, data: D) -> Result<Self, DaemonKeyError> {
+        let data = data.as_ref();
+        let cert = CertificateDer::pem_slice_iter(data).collect::<Result<Vec<_>, _>>()?;
+
         let mut tls_certificate = cert.clone();
         tls_certificate.push(root.tls_ca.clone());
 
-        // Check the entire PEM file for the key in case it is not first section
-        #[expect(clippy::useless_asref, reason = "False positive")]
-        let mut tls_privkeys: Vec<Vec<u8>> = rustls_pemfile::read_all(&mut data.as_ref())
-            .filter_map(|i| match i.ok()? {
-                Item::Sec1Key(key) => Some(key.secret_sec1_der().to_vec()),
-                Item::Pkcs1Key(key) => Some(key.secret_pkcs1_der().to_vec()),
-                Item::Pkcs8Key(key) => Some(key.secret_pkcs8_der().to_vec()),
-                Item::X509Certificate(_)
-                | Item::SubjectPublicKeyInfo(_)
-                | Item::Crl(_)
-                | Item::Csr(_)
-                | _ => None,
-            })
-            .collect();
-
-        let privkey = tls_privkeys
-            .pop()
-            .ok_or(DaemonKeyError::PrivateKeyMissing)?;
-        let privkey = PrivateKeyDer::try_from(privkey).map_err(DaemonKeyError::Der)?;
+        let privkey = PrivateKeyDer::from_pem_slice(data)?;
 
         let tls_cert = CertifiedKey::from_der(
             tls_certificate,
