@@ -199,7 +199,7 @@ base64 = "0.22.1"
 rand_core = "=0.10.0-rc-2"
 rand = "=0.10.0-rc.5"
 chacha20 = "=0.10.0-rc.5"
-signal-hook = "0.3.18"
+signal-hook = "0.4.1"
 termion = "4.0.6"
 http = "1.4.0"
 async-trait = "0.1"
@@ -215,7 +215,7 @@ either = "1.15.0"
 tower-layer = "0.3.3"
 pastey = "0.2.1"
 itertools = "0.14.0"
-arc-swap = "1.7.1"
+arc-swap = "1.8.0"
 thiserror = "2.0.17"
 lazy-regex = "3.4.2"
 rand_core_old = { version = "=0.6.4", package = "rand_core" }
@@ -296,11 +296,11 @@ version = "0.8.0"
 features = ["tls-rustls"]
 
 [workspace.dependencies.axum]
-version = "0.8.7"
+version = "0.8.8"
 features = ["json", "macros", "http2", "ws"]
 
 [workspace.dependencies.axum-extra]
-version = "0.12.2"
+version = "0.12.3"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.clap]

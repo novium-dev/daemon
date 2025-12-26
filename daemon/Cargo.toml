@@ -59,7 +59,6 @@ uuid.workspace = true
 lazy-regex.workspace = true
 rand_core_old.workspace = true
 rand.workspace = true
-rand_core.workspace = true
 chacha20.workspace = true
 signal-hook.workspace = true
 termion.workspace = true
@@ -138,7 +137,7 @@ version = "0.56.0"
 version = "2.1.1"
 
 [dependencies.ratatui]
-version = "0.29.0"
+version = "0.30.0"
 features = ["crossterm"]
 
 [dependencies.crossterm]
@@ -146,7 +145,7 @@ version = "0.29.0"
 features = ["event-stream", "events"]
 
 [dependencies.rustix]
-version = "1.1.2"
+version = "1.1.3"
 features = ["thread"]
 
 [dependencies.zstd]
