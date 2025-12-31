@@ -182,8 +182,7 @@ version = "0.3.44"
 optional = true
 
 [dependencies.json-patch]
-git = "https://github.com/qu0b/json-patch.git"
-rev = "4eca239"
+version = "4.1.0"
 features = ["utoipa"]
 
 [dependencies.tokio-util]
