@@ -73,6 +73,20 @@ impl<T: DaemonExtra> Daemon<T> {
         key: Arc<DaemonKey>,
         extra: T,
     ) -> Result<Self, DaemonInitError> {
+        #[cfg(target_os = "macos")]
+        {
+            info!("==========================================================");
+            info!("THIS DAEMON IS RUNNING ON MACOS");
+            info!("THE DAEMON MIGHT BE VULNERABLE TO TOCTOU ATTACKS!");
+            info!("This can expose private information as well as give");
+            info!("an attacker full control of your system.");
+            info!("As a reminder: This software is provided AS-IS without");
+            info!("any warranty. Continue at your own risk.");
+            info!("==========================================================");
+            info!("Deamon startup will be delayed by 10 sec");
+            tokio::time::sleep(Duration::from_secs(10)).await;
+        }
+
         let servers = HashMap::new();
 
         info!("Connecting to Docker...");

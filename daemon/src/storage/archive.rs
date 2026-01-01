@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 use std::{fs, io, thread};
 use tar::{Archive, Builder};
 
+#[cfg(target_os = "linux")]
 fn chroot(dest: PathBuf) -> Result<(), io::Error> {
     use rustix::thread::*;
 
@@ -16,6 +17,14 @@ fn chroot(dest: PathBuf) -> Result<(), io::Error> {
     std::env::set_current_dir("/")?;
 
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn chroot_path(chroot_dest: &Path, target_dest: &PathBuf) -> PathBuf {
+    target_dest.strip_prefix("/").map_or_else(
+        |_err| chroot_dest.join(target_dest),
+        |relative| chroot_dest.join(relative),
+    )
 }
 
 pub trait TarSandboxedUnpackExt {
@@ -83,7 +92,12 @@ impl<R: Read + Send + 'static> TarSandboxedUnpackExt for Archive<R> {
 
         tokio::task::spawn_blocking(move || {
             thread::spawn(move || {
-                chroot(chroot_dst)?;
+                #[cfg(target_os = "linux")]
+                {
+                    chroot(chroot_dst)?;
+                };
+                #[cfg(target_os = "macos")]
+                let target_dst = chroot_path(&chroot_dst, &target_dst);
                 self.unpack(target_dst)?;
                 Ok(lock)
             })
@@ -160,7 +174,12 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
         let target_dst = PathBuf::from(target_dst);
 
         thread::spawn(move || {
-            chroot(chroot_dst)?;
+            #[cfg(target_os = "linux")]
+            {
+                chroot(chroot_dst)?;
+            };
+            #[cfg(target_os = "macos")]
+            let target_dst = chroot_path(&chroot_dst, &target_dst);
             append_dir_all(&mut self, &path, &target_dst, &exclude, follow_symlinks)?;
             if finish {
                 self.finish()?;
