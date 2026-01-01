@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    println!("cargo:rerun-if-changed=migrations");
     let output = Command::new("git")
         .args(["rev-parse", "--short", "HEAD"])
         .output()
