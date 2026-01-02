@@ -8,6 +8,7 @@ use cap_async_std::ambient_authority;
 use cap_async_std::fs::Dir;
 use core::sync::atomic::{AtomicU16, Ordering};
 use daemon_common::node::BackendAuthServerPermissions;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
 use russh::keys::{HashAlg, PublicKey};
 use russh::server::{Auth, Handler, Msg, Session};
@@ -369,6 +370,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                                 &*self.daemon.conn,
                                 &self.daemon.storages,
                                 identifier,
+                                StorageTask::Sftp,
                             )
                             .await
                             {
@@ -409,6 +411,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                                         &*self.daemon.conn,
                                         &self.daemon.storages,
                                         identifier,
+                                        StorageTask::Sftp,
                                     )
                                     .await
                                 {

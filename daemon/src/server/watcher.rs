@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
+use crate::sync::task::TaskOwnedRwLockReadGuard;
 use crate::utils::ChannelWriteData;
 use crate::{Daemon, DaemonExtra, ServerData};
 use bollard::container::LogOutput;
@@ -13,12 +14,12 @@ use core::ops::Add as _;
 use core::pin::Pin;
 use core::sync::atomic::{AtomicI64, Ordering};
 use core::time::Duration;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::ServerStats;
 use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::sync::OwnedRwLockReadGuard;
 use tokio::sync::broadcast::Sender;
 use tokio::time::Instant;
 
@@ -31,7 +32,7 @@ pub async fn attach(
     swap_max: Option<u32>,
     server_data: &ServerData,
     server_data_arc: Arc<Mutex<ServerData>>,
-    storage_lock: OwnedRwLockReadGuard<(), ()>,
+    storage_lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     storage_value: Arc<(AtomicI64, AtomicI64)>,
     storage_stats_lock: Arc<Mutex<()>>,
 ) -> Result<(), ServerStartError> {
@@ -101,7 +102,7 @@ pub async fn watch(
     + Unpin
     + 'static,
     server_data_arc: Arc<Mutex<ServerData>>,
-    storage_lock: OwnedRwLockReadGuard<(), ()>,
+    storage_lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     storage_value: Arc<(AtomicI64, AtomicI64)>,
     storage_stats_lock: Arc<Mutex<()>>,
 ) {

@@ -8,6 +8,7 @@ use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::StorageTask;
 use std::io;
 use std::os::unix::fs::MetadataExt as _;
 use std::path::PathBuf;
@@ -25,8 +26,14 @@ pub async fn list_backups<
     daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
 ) -> Result<Vec<BackupResponseEntry>, E> {
-    let StorageLockData { lock, .. } =
-        storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    let StorageLockData { lock, .. } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::BackupList,
+    )
+    .await?;
     let mut entries = Vec::new();
     for (storage, backup_storage) in &daemon.config.backup {
         let target_dir = PathBuf::from(backup_storage.path()).join(id.as_pathbuf());

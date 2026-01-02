@@ -19,6 +19,7 @@ use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
 use core::sync::atomic::AtomicU16;
 use core::time::Duration;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
@@ -198,6 +199,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
                     &*daemon.conn,
                     &daemon.storages,
                     StorageIdentifier::Primary(server_id),
+                    StorageTask::ServerRunning,
                 )
             );
             if let Ok(mut server_data_locked) = server_data_locked {

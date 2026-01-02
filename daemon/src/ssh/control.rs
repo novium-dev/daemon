@@ -3,7 +3,7 @@ use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
 use crate::ssh::handler::{DaemonChannel, DaemonSSHHandler};
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageError, storage_read};
+use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::{ChannelWriteData, SyncIOBridgeExt, from_mib};
 use crate::{Daemon, DaemonExtra, ServerData, utils};
 use chrono::{TimeZone as _, Utc};
@@ -13,6 +13,7 @@ use core::sync::atomic::{AtomicU16, Ordering};
 use core::time::Duration;
 use crossterm::terminal::ClearType;
 use daemon_common::node::BackendAuthServerPermissions;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::ServerStats;
 use num_traits::{FromPrimitive as _, ToPrimitive as _};
 use ratatui::backend::{Backend, CrosstermBackend, WindowSize};
@@ -1012,11 +1013,12 @@ async fn launch_selected(
         };
 
         if selected == start {
-            let Ok(storage) = storage_read::<StorageError>(
+            let Ok(storage) = storage_read_timeout::<StorageError>(
                 &daemon.config,
                 &*daemon.conn,
                 &daemon.storages,
                 StorageIdentifier::Primary(server_id),
+                StorageTask::ServerRunning,
             )
             .await
             else {

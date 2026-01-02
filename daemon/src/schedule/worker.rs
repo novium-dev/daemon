@@ -11,6 +11,7 @@ use crate::{Daemon, DaemonExtra};
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use core::time::Duration;
 use cron::Schedule;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::schedule::{ScheduleRunPolicy, ScheduleStep};
 use sqlx::__rt::timeout;
 use std::collections::HashSet;
@@ -123,6 +124,7 @@ async fn start(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStep
             &*daemon.conn,
             &daemon.storages,
             StorageIdentifier::Primary(server_id),
+            StorageTask::ServerRunning,
         )
     ) else {
         return ScheduleStepResult::Continue;

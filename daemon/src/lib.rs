@@ -23,6 +23,7 @@ mod websocket;
 use bollard::Docker;
 use core::pin::Pin;
 use core::sync::atomic::AtomicI64;
+use daemon_common::service::files::task::StorageTask;
 use ed25519_dalek::SigningKey;
 use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
@@ -30,7 +31,6 @@ use sqlx::{MySql, Pool};
 use std::collections::HashMap;
 use tokio::io::AsyncWrite;
 use tokio::sync::Mutex;
-use tokio::sync::RwLock;
 use tokio::sync::broadcast::Sender;
 use tokio::task::{AbortHandle, JoinSet};
 use url::Url;
@@ -38,6 +38,7 @@ use url::Url;
 use crate::config::DaemonConfig;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::StorageTokens;
+use crate::sync::task::TaskRwLock;
 use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
@@ -110,7 +111,7 @@ impl UserKeyProvider for Daemon<WithUserKey> {
 
 #[derive(Clone)]
 pub(crate) struct StorageData {
-    pub(crate) lock: Arc<RwLock<()>>,
+    pub(crate) lock: Arc<TaskRwLock<StorageTask, ()>>,
     pub(crate) value: Arc<(AtomicI64, AtomicI64)>,
     pub(crate) stats_lock: Arc<Mutex<()>>,
     pub(crate) notify: Sender<StorageNotification>,

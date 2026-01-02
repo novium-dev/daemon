@@ -3,6 +3,7 @@ use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
+use crate::sync::task::TaskOwnedRwLockReadGuard;
 use crate::utils::from_mib;
 use crate::{Daemon, DaemonExtra, ServerData, utils};
 use bollard::Docker;
@@ -18,6 +19,7 @@ use core::pin::Pin;
 use core::time::Duration;
 use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
+use daemon_common::service::files::task::StorageTask;
 use num_traits::cast::FromPrimitive as _;
 use ringbuffer::RingBuffer as _;
 use std::collections::HashMap;
@@ -27,7 +29,6 @@ use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio::sync::OwnedRwLockReadGuard;
 use tracing::warn;
 
 #[derive(Debug, thiserror::Error)]
@@ -79,7 +80,7 @@ impl FetchedServer {
             value: storage_value,
             stats_lock: storage_stats_lock,
             ..
-        }: StorageLockData<OwnedRwLockReadGuard<()>>,
+        }: StorageLockData<TaskOwnedRwLockReadGuard<StorageTask, ()>>,
         server_data_arc: Arc<Mutex<ServerData>>,
         daemon: &Daemon<impl DaemonExtra>,
     ) -> Result<(), ServerStartError> {
@@ -377,6 +378,7 @@ impl FetchedServer {
             &*daemon.conn,
             &daemon.storages,
             StorageIdentifier::Primary(server_id),
+            StorageTask::ServerRunning,
         )
         .await
         .map_err(ServerStartError::Storage)?;
@@ -398,7 +400,7 @@ impl FetchedServer {
         docker: Arc<Docker>,
         server_data: &'a mut ServerData,
         server_data_arc: Arc<Mutex<ServerData>>,
-        storage: StorageLockData<OwnedRwLockReadGuard<()>>,
+        storage: StorageLockData<TaskOwnedRwLockReadGuard<StorageTask, ()>>,
         daemon: &'a Daemon<impl DaemonExtra>,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
         Box::pin(self.start(docker, server_data, storage, server_data_arc, daemon))

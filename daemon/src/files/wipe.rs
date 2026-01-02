@@ -5,6 +5,7 @@ use core::sync::atomic::Ordering;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::StorageTask;
 use std::io;
 use tracing::error;
 
@@ -23,7 +24,14 @@ pub async fn wipe<
         storage: entry,
         value: storage_value,
         ..
-    } = storage_write_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_write_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::Wipe,
+    )
+    .await?;
     storage::delete(&entry, id)
         .await
         .inspect_err(|err| error!("Failed to wipe storage: {err:?}"))?;

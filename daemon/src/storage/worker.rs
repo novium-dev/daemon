@@ -8,6 +8,7 @@ use crate::utils::ChannelWriteData;
 use crate::{Daemon, DaemonExtra, StorageData};
 use core::sync::atomic::{AtomicI64, Ordering};
 use core::time::Duration;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::ServerStats;
 use sqlx::query;
 use std::collections::HashMap;
@@ -159,7 +160,7 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
         if !quota && last.elapsed().unwrap_or_default() > crate::common::STORAGE_SCAN_INTERVAL {
             last = SystemTime::now();
             for (id, (server_id, path, _, _, _, data, _)) in &storages {
-                let Ok(_read_guard) = data.lock.try_read() else {
+                let Ok(_read_guard) = data.lock.try_read(StorageTask::Scan) else {
                     continue;
                 };
                 match fs_extra::dir::get_size(path) {

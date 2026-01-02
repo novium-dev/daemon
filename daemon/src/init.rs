@@ -13,6 +13,7 @@ use core::fmt::{Debug, Display, Formatter};
 use core::mem;
 use core::time::Duration;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
+use daemon_common::service::files::task::StorageTask;
 use ed25519_dalek::SigningKey;
 use futures_util::{FutureExt as _, TryFutureExt as _};
 use libc::{SIGINT, SIGTERM};
@@ -360,6 +361,7 @@ impl<T: DaemonExtra> Daemon<T> {
                                 &*self.conn,
                                 &self.storages,
                                 StorageIdentifier::Primary(id),
+                                StorageTask::ServerRunning,
                             )
                             .await
                             {

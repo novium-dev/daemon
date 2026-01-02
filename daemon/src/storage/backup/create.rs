@@ -3,18 +3,22 @@ use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedAppendExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::sync::task::TaskOwnedRwLockReadGuard;
 use crate::{Daemon, DaemonExtra};
 use chrono::Utc;
+use core::sync::atomic::{AtomicU64, Ordering};
 use daemon_common::service::backup::error_backup_storage_incompatible::FromBackupStorageIncompatible;
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::backup::error_backup_storage_no_suitable_found::FromBackupStorageNoSuitableFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::{BackupLocation, StorageTask};
 use std::collections::HashSet;
 use std::io;
-use std::io::Write as _;
+use std::io::Write;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tracing::debug;
 
 /// Cancel safe
@@ -35,7 +39,17 @@ pub async fn create_backup_order<
         backup_exclude,
         storage,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::BackupCreate {
+            location: None,
+            progress: None,
+        },
+    )
+    .await?;
 
     let mut storages: Vec<(String, i8, &BackupEntry)> = daemon
         .config
@@ -46,16 +60,18 @@ pub async fn create_backup_order<
         .collect();
     storages.sort_by_key(|storage| storage.1);
     let mut suitable = None;
-    for (_, _order, entry) in storages {
+    for (storage_name, _order, entry) in storages {
         if compatible(&storage, entry) {
-            suitable = Some(entry);
+            suitable = Some((storage_name, entry));
             break;
         }
     }
     match suitable {
         None => Err(<E as FromBackupStorageNoSuitableFound>::from()),
-        Some(suitable) => {
-            let id = create_backup0::<E>(path, id, suitable, backup_exclude).await?;
+        Some((backup_storage, backup_entry)) => {
+            let (id, lock) =
+                create_backup0::<E>(path, id, backup_storage, backup_entry, lock, backup_exclude)
+                    .await?;
             drop(lock); // Ensure lock hasn't been unlocked until now
             Ok(id)
         }
@@ -97,26 +113,43 @@ pub async fn create_backup<
     id: StorageIdentifier,
     backup_storage: &String,
 ) -> Result<i64, E> {
+    let backup = state
+        .config
+        .backup
+        .get(backup_storage)
+        .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
+        .inspect_err(|_err| debug!("Backup storage does not exist: {backup_storage}"))?;
     let StorageLockData {
         path,
         lock,
         backup_exclude,
         storage,
         ..
-    } = storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
-
-    let backup = state
-        .config
-        .backup
-        .get(backup_storage)
-        .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
-        .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
+    } = storage_read_timeout::<E>(
+        &state.config,
+        &*state.conn,
+        &state.storages,
+        id,
+        StorageTask::BackupCreate {
+            location: None,
+            progress: None,
+        },
+    )
+    .await?;
 
     if !compatible(&storage, backup) {
         return Err(<E as FromBackupStorageIncompatible>::from());
     }
 
-    let id = create_backup0::<E>(path, id, backup, backup_exclude).await?;
+    let (id, lock) = create_backup0::<E>(
+        path,
+        id,
+        backup_storage.clone(),
+        backup,
+        lock,
+        backup_exclude,
+    )
+    .await?;
     drop(lock);
     Ok(id)
 }
@@ -125,9 +158,11 @@ pub async fn create_backup<
 async fn create_backup0<E: From<std::io::Error>>(
     path: String,
     id: StorageIdentifier,
+    storage: String,
     backup: &BackupEntry,
+    mut lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     mut exclude: HashSet<String>,
-) -> Result<i64, E> {
+) -> Result<(i64, TaskOwnedRwLockReadGuard<StorageTask, ()>), E> {
     exclude.insert(".tmp/".to_owned());
 
     let dir = PathBuf::from(path);
@@ -141,12 +176,25 @@ async fn create_backup0<E: From<std::io::Error>>(
             .inspect_err(|err| debug!("Backup creation failed (create_dir_all): {:?}", err))?;
     }
     let timestamp = Utc::now().timestamp_millis();
+
+    lock.task_mut(|task| {
+        let StorageTask::BackupCreate { location, .. } = task else {
+            unreachable!();
+        };
+        *location = Some(BackupLocation {
+            storage,
+            id: timestamp,
+        });
+    });
+
     match backup {
         BackupEntry::Archive { compression, .. } => {
-            tokio::task::spawn(create_archive_backup(
+            // TODO: Progress
+            lock = tokio::task::spawn(create_archive_backup(
                 dir,
                 target_dir,
                 timestamp,
+                lock,
                 exclude,
                 *compression,
             ))
@@ -164,7 +212,7 @@ async fn create_backup0<E: From<std::io::Error>>(
                 .inspect_err(|err| debug!("Backup creation failed (snapshot): {:?}", err))?;
         }
     }
-    Ok(timestamp)
+    Ok((timestamp, lock))
 }
 
 #[inline(always)]
@@ -172,25 +220,43 @@ async fn create_archive_backup(
     dir: PathBuf,
     target_dir: PathBuf,
     timestamp: i64,
+    lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     exclude: HashSet<String>,
     compression: ArchiveCompression,
-) -> Result<(), io::Error> {
+) -> Result<TaskOwnedRwLockReadGuard<StorageTask, ()>, io::Error> {
     let file = tokio::fs::OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
         .open(target_dir.join(format!("{}.tar{}", timestamp, compression.ext())))
         .await
-        .inspect_err(|err| debug!("Backup creation failed (open): {:?}", err))?;
+        .inspect_err(|err| debug!("Backup creation failed (open): {err:?}"))?;
+    let file = file.into_std().await;
+
+    let progress_arc = lock.task_mut(|task| {
+        let StorageTask::BackupCreate { progress, .. } = task else {
+            unreachable!();
+        };
+        let progress_arc = Arc::new(AtomicU64::new(0));
+        *progress = Some(Arc::clone(&progress_arc));
+        progress_arc
+    });
+    let wrapper = BackupCreateTarWriteProgressWrapper {
+        inner: file,
+        func: move |read| {
+            progress_arc.fetch_add(read as u64, Ordering::Relaxed);
+        },
+    };
+
     let encoder = compression
-        .create_encoder(file.into_std().await)
-        .inspect_err(|err| debug!("Backup creation failed (create_encoder): {:?}", err))?;
+        .create_encoder(wrapper)
+        .inspect_err(|err| debug!("Backup creation failed (create_encoder): {err:?}"))?;
     let mut archive = tar::Builder::new(encoder);
     archive.follow_symlinks(false);
     let (archive, ()) = archive
         .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true, false)
         .await
-        .inspect_err(|err| debug!("Backup creation failed (append_dir_all): {:?}", err))?;
+        .inspect_err(|err| debug!("Backup creation failed (append_dir_all): {err:?}"))?;
     tokio::task::spawn_blocking(move || {
         archive
             .into_inner()
@@ -199,8 +265,25 @@ async fn create_archive_backup(
             .flush()
     })
     .await
-    .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {:?}", err))
+    .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {err:?}"))
     .map_err(io::Error::from)?
-    .inspect_err(|err| debug!("Backup creation failed (flush): {:?}", err))?;
-    Ok(())
+    .inspect_err(|err| debug!("Backup creation failed (flush): {err:?}"))?;
+    Ok(lock)
+}
+
+struct BackupCreateTarWriteProgressWrapper<W: Write, F: FnMut(usize)> {
+    inner: W,
+    func: F,
+}
+
+impl<W: Write, F: FnMut(usize)> Write for BackupCreateTarWriteProgressWrapper<W, F> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let written = self.inner.write(buf)?;
+        (self.func)(written);
+        Ok(written)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.inner.flush()
+    }
 }
