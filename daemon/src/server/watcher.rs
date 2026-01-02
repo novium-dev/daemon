@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
-use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
 use crate::{Daemon, DaemonExtra, ServerData};
 use bollard::container::LogOutput;
@@ -18,6 +17,7 @@ use daemon_common::service::server::ServerStats;
 use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::sync::OwnedRwLockReadGuard;
 use tokio::sync::broadcast::Sender;
 use tokio::time::Instant;

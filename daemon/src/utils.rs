@@ -15,6 +15,7 @@ use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio_util::io::SyncIoBridge;
 use tracing::error;
 
@@ -45,27 +46,21 @@ pub async fn database<E: From<sqlx::Error>>(
 
 pub async fn server(
     conn: &Pool<MySql>,
-    servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
+    servers: &Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>,
     server_id: u32,
-) -> Result<Option<(FetchedServer, Arc<crate::sync::Mutex<ServerData>>)>, sqlx::Error> {
+) -> Result<Option<(FetchedServer, Arc<Mutex<ServerData>>)>, sqlx::Error> {
     let Some(server) = generic_server_select(conn, server_id).await? else {
         return Ok(None);
     };
-    let server_data = Arc::clone(
-        servers
-            .lock()
-            .await
-            .entry(server_id)
-            .or_insert_with(|| Arc::new(crate::sync::Mutex::new(ServerData::default()))),
-    );
+    let server_data = Arc::clone(servers.lock().await.entry(server_id).or_default());
     Ok(Some((server, server_data)))
 }
 
 pub async fn server_required<T: From<sqlx::Error> + FromServerNotFound>(
     conn: &Pool<MySql>,
-    servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
+    servers: &Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>,
     server_id: u32,
-) -> Result<(FetchedServer, Arc<crate::sync::Mutex<ServerData>>), T> {
+) -> Result<(FetchedServer, Arc<Mutex<ServerData>>), T> {
     server(conn, servers, server_id)
         .await?
         .ok_or_else(<T as FromServerNotFound>::from)

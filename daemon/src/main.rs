@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
 pub(crate) mod setup;
 

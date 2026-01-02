@@ -25,8 +25,6 @@ use utoipa_axum::router::OpenApiRouter;
 
 mod backup;
 mod database;
-#[cfg(feature = "trace_sync")]
-mod debug;
 mod files;
 pub mod middleware;
 mod network;
@@ -44,7 +42,7 @@ impl<T: DaemonExtra> Daemon<T> {
 
         let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
             ServerService, BackupService, FilesService, NetworkService,
-            ResourceService, DatabaseService, ScheduleService {"trace_sync" daemon_common::service::debug::DebugService}
+            ResourceService, DatabaseService, ScheduleService
         });
         let router = router.into_openapi();
         let router_user = router_user.into_openapi();

@@ -3,7 +3,6 @@ use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
-use crate::sync::Mutex;
 use crate::utils::from_mib;
 use crate::{Daemon, DaemonExtra, ServerData, utils};
 use bollard::Docker;
@@ -27,6 +26,7 @@ use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::sync::OwnedRwLockReadGuard;
 use tracing::warn;
 

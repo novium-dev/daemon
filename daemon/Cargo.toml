@@ -38,7 +38,6 @@ no_tty_size_please = []
 default = ["sentry", "btrfs", "bindgen/runtime"]
 full = ["default"]
 full_bypass = ["full", "ssh_debug_auth_bypass"]
-trace_sync = []
 ci = ["sentry", "btrfs", "bindgen/static"]
 
 [dependencies]

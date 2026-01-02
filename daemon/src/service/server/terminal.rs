@@ -1,12 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::ServerData;
-use crate::sync::Mutex;
 use crate::terminal::{TerminalData, new_session};
 use crate::utils::ChannelInterceptor;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bollard::Docker;
 use core::sync::atomic::AtomicU16;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 
 pub const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
 

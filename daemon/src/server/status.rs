@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::ServerData;
 use crate::server::{FetchedServer, ServerLock};
-use crate::sync::Mutex;
 use crate::utils::ChannelWriteData;
 use axum::extract::ws::Message;
 use bollard::Docker;
@@ -15,6 +14,7 @@ use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};

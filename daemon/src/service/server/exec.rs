@@ -2,7 +2,6 @@
 use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::service::server::terminal::WEBSOCKET_RESIZE_MAGIC;
-use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelInterceptor, ChannelWriteData};
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bollard::Docker;
@@ -14,6 +13,7 @@ use futures::Stream;
 use futures_util::StreamExt as _;
 use std::sync::Arc;
 use tokio::io::{AsyncWrite, AsyncWriteExt as _};
+use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 

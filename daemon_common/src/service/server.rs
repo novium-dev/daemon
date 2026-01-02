@@ -20,6 +20,8 @@ use zelus::define_query_variable;
 use zelus::responses::WebsocketResponse;
 use zelus::types::JsonVec;
 
+pub mod task;
+
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),
     image_missing_tag ("Server image does not have a tag" BAD_REQUEST),

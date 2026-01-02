@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
 pub mod config;
 mod database;
@@ -21,9 +20,6 @@ mod terminal;
 mod utils;
 mod websocket;
 
-use crate::sync::Mutex;
-use crate::sync::RwLock;
-use crate::sync::broadcast::Sender;
 use bollard::Docker;
 use core::pin::Pin;
 use core::sync::atomic::AtomicI64;
@@ -33,6 +29,9 @@ use ringbuffer::AllocRingBuffer;
 use sqlx::{MySql, Pool};
 use std::collections::HashMap;
 use tokio::io::AsyncWrite;
+use tokio::sync::Mutex;
+use tokio::sync::RwLock;
+use tokio::sync::broadcast::Sender;
 use tokio::task::{AbortHandle, JoinSet};
 use url::Url;
 

@@ -2,13 +2,13 @@
 use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
-use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use axum::extract::ws::WebSocket;
 use core::time::Duration;
 use sqlx::{MySql, Pool};
 use std::sync::Arc;
 use std::time::Instant;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, error, warn};

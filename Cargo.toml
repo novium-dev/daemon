@@ -217,7 +217,7 @@ pastey = "0.2.1"
 itertools = "0.14.0"
 arc-swap = "1.8.0"
 thiserror = "2.0.17"
-lazy-regex = "3.4.2"
+lazy-regex = "3.5.0"
 rand_core_old = { version = "=0.6.4", package = "rand_core" }
 
 [workspace.dependencies.daemon_common]
@@ -300,7 +300,7 @@ version = "0.8.8"
 features = ["json", "macros", "http2", "ws"]
 
 [workspace.dependencies.axum-extra]
-version = "0.12.3"
+version = "0.12.5"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.clap]

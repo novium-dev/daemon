@@ -4,7 +4,6 @@ use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
-use crate::sync::Mutex;
 use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, schedule, sql, storage};
 use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
 use bollard::query_parameters::{
@@ -23,6 +22,7 @@ use sqlx::query;
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::sync::Arc;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};

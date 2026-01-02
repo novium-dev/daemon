@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::config::{DaemonConfig, StorageEntry};
 use crate::storage::{StorageIdentifier, prepare};
-use crate::sync::Mutex;
-use crate::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use crate::utils::generic_server_select;
 use crate::{StorageData, StorageNotification};
 use arc_swap::ArcSwap;
@@ -20,7 +18,9 @@ use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::Arc;
 use std::time::SystemTime;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
+use tokio::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
 use uuid::Uuid;
 
 pub struct StorageLockData<T> {

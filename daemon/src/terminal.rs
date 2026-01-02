@@ -3,7 +3,6 @@
 use crate::server::FetchedServer;
 #[cfg(not(feature = "no_tty_size_please"))]
 use crate::server::stop::ServerStopError;
-use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};
 use bollard::Docker;
@@ -12,6 +11,7 @@ use core::time::Duration;
 use ringbuffer::RingBuffer as _;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt as _;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
