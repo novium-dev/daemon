@@ -4,7 +4,6 @@ use crate::server::status::InternalServerState;
 use crate::server::*;
 use async_trait::async_trait;
 use cap_async_std::fs::{Dir, MetadataExt as _};
-use core::fmt::Debug;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
@@ -16,7 +15,6 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tokio_util::io::SyncIoBridge;
 use tracing::error;
 
 pub fn from_mib(mib: impl Into<u64>) -> u64 {
@@ -230,27 +228,5 @@ impl<
         Self: Sized,
     {
         A::send_ping()
-    }
-}
-
-#[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "this is an exact copy of SyncIoBridge from upstream"
-)]
-struct SyncIoBridgeCopy<T> {
-    src: T,
-    rt: tokio::runtime::Handle,
-}
-
-pub trait SyncIOBridgeExt<T> {
-    fn inner_mut(&mut self) -> &mut T;
-}
-
-impl<T> SyncIOBridgeExt<T> for SyncIoBridge<T> {
-    fn inner_mut(&mut self) -> &mut T {
-        let transmuted = core::ptr::from_mut(self).cast::<SyncIoBridgeCopy<T>>();
-        // SAFETY: As long as the crate struct definition doesn't change, this is safe
-        unsafe { &mut (*transmuted).src }
     }
 }

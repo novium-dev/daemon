@@ -255,12 +255,6 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
             .map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
         debug!("Exec {server_id}");
 
-        if let Some(server_id) = server_id.strip_prefix("control ") {
-            return self
-                .ssh_control(channel_id, session, server_id.to_owned())
-                .await;
-        }
-
         let server = Self::find_server(auth, &server_id);
 
         self.ssh_terminal(channel_id, session, server).await
