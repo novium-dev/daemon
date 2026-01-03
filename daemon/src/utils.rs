@@ -46,9 +46,9 @@ pub async fn database<E: From<sqlx::Error>>(
 
 pub async fn server(
     conn: &Pool<MySql>,
-    servers: &Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>,
+    servers: &Mutex<HashMap<u32, Arc<ServerData>>>,
     server_id: u32,
-) -> Result<Option<(FetchedServer, Arc<Mutex<ServerData>>)>, sqlx::Error> {
+) -> Result<Option<(FetchedServer, Arc<ServerData>)>, sqlx::Error> {
     let Some(server) = generic_server_select(conn, server_id).await? else {
         return Ok(None);
     };
@@ -58,9 +58,9 @@ pub async fn server(
 
 pub async fn server_required<T: From<sqlx::Error> + FromServerNotFound>(
     conn: &Pool<MySql>,
-    servers: &Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>,
+    servers: &Mutex<HashMap<u32, Arc<ServerData>>>,
     server_id: u32,
-) -> Result<(FetchedServer, Arc<Mutex<ServerData>>), T> {
+) -> Result<(FetchedServer, Arc<ServerData>), T> {
     server(conn, servers, server_id)
         .await?
         .ok_or_else(<T as FromServerNotFound>::from)

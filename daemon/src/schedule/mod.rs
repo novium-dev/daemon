@@ -7,6 +7,7 @@ use cron::Schedule;
 use daemon_common::service::schedule::ScheduleRunPolicy;
 use sqlx::types::JsonValue;
 use sqlx::{query, query_scalar};
+use std::sync::Arc;
 use tracing::error;
 
 pub mod worker;
@@ -74,7 +75,17 @@ pub async fn init(state: &Daemon<impl DaemonExtra>) -> Result<(), sqlx::Error> {
             steps.push(step);
         }
 
-        let handle = set.spawn(task(server, state.clone(), policy, steps, cron, timezone));
+        let server_data = Arc::clone(state.servers.lock().await.entry(server).or_default());
+
+        let handle = set.spawn(task(
+            server,
+            server_data,
+            state.clone(),
+            policy,
+            steps,
+            cron,
+            timezone,
+        ));
         schedules
             .entry(server)
             .or_default()

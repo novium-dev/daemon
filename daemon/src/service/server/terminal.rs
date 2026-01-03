@@ -6,26 +6,23 @@ use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bollard::Docker;
 use core::sync::atomic::AtomicU16;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 pub const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
 
 pub(super) async fn terminal_websocket_handle(
     id: u32,
     docker: Arc<Docker>,
-    server_data_arc: Arc<Mutex<ServerData>>,
+    server_data: Arc<ServerData>,
     socket: WebSocket,
     cols: Arc<AtomicU16>,
     rows: Arc<AtomicU16>,
     write: bool,
 ) {
-    let server_data = server_data_arc.lock().await;
     let sender = Arc::clone(&server_data.sender);
     let attach_write = Arc::clone(&server_data.attach_write);
-    drop(server_data);
 
     #[cfg(not(feature = "no_tty_size_please"))]
-    let server_data_arc2 = Arc::clone(&server_data_arc);
+    let server_data2 = Arc::clone(&server_data);
     #[cfg(not(feature = "no_tty_size_please"))]
     let docker2 = Arc::clone(&docker);
     #[cfg(not(feature = "no_tty_size_please"))]
@@ -36,7 +33,7 @@ pub(super) async fn terminal_websocket_handle(
         id,
         ChannelInterceptor::new(socket, move |_socket, mut message| {
             #[cfg(not(feature = "no_tty_size_please"))]
-            let server_data_arc2 = Arc::clone(&server_data_arc2);
+            let server_data2 = Arc::clone(&server_data2);
             #[cfg(not(feature = "no_tty_size_please"))]
             let docker2 = Arc::clone(&docker2);
             #[cfg(not(feature = "no_tty_size_please"))]
@@ -66,12 +63,7 @@ pub(super) async fn terminal_websocket_handle(
                             cols2.store(new_cols, Ordering::Relaxed);
                             rows2.store(new_rows, Ordering::Relaxed);
                             tokio::task::spawn(async move {
-                                crate::terminal::update_size(
-                                    id,
-                                    &docker2,
-                                    Arc::clone(&server_data_arc2),
-                                )
-                                .await;
+                                crate::terminal::update_size(id, &docker2, &server_data2).await;
                             });
                         }
                     }
@@ -87,6 +79,6 @@ pub(super) async fn terminal_websocket_handle(
             write,
         },
         docker,
-        server_data_arc,
+        server_data,
     ));
 }

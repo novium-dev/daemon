@@ -30,6 +30,7 @@ use daemon_common::service::server::server_service_error::{
     ServerStatsUserError, ServerStatusError, ServerTerminalError, ServerTerminalUserError,
     StartServerError, StopServerError, UpdateServerError,
 };
+use daemon_common::service::server::task::ServerTask;
 use daemon_common::service::server::{
     ServerBuildImage, ServerBuildPayload, ServerFileWrite, ServerNetworkPayload,
     ServerPortEntryPayload, ServerResourcePayload,
@@ -99,12 +100,17 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
             server_required::<DeleteServerError>(&self.conn, &self.servers, server_id).await?;
 
         let daemon = self.clone();
-        match timeout(Duration::from_secs(10), server_data.lock_owned()).await {
-            Ok(server_data_locked) => tokio::task::spawn(async move {
-                match server.kill(&daemon.docker, server_data_locked).await {
+        match timeout(
+            Duration::from_secs(10),
+            Arc::clone(&server_data.lock).write_owned(ServerTask::Delete),
+        )
+        .await
+        {
+            Ok(lock) => tokio::task::spawn(async move {
+                match server.kill(&daemon.docker, &server_data, &lock).await {
                     Ok(()) | Err(ServerStopError::NotRunning) => {}
-                    Err(ServerStopError::Docker(docker)) => {
-                        warn!("Failed to kill server for deletion: {:?}", docker);
+                    Err(ServerStopError::Docker(err)) => {
+                        warn!("Failed to kill server for deletion: {err:?}");
                         return Err(DeleteServerError::DockerFailure);
                     }
                 }
@@ -143,6 +149,8 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
                         .remove(&StorageIdentifier::Primary(server_id));
                 });
 
+                drop(lock);
+
                 Ok(())
             })
             .await
@@ -154,28 +162,11 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         }
     }
 
-    async fn server_status(
-        &self,
-        server_id: u32,
-        precise: Option<bool>,
-    ) -> Result<PublicServerState, ServerStatusError> {
+    async fn server_status(&self, server_id: u32) -> Result<PublicServerState, ServerStatusError> {
         let (server, server_data) =
             server_required::<ServerStatusError>(&self.conn, &self.servers, server_id).await?;
 
-        let server_data = if precise.unwrap_or(true) {
-            let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
-            Some(server_data.map_err(|_elapsed| ServerStatusError::ServerMutexLocked)?)
-        } else {
-            None
-        };
-        match FetchedServer::state(
-            server.id,
-            server.locks,
-            &self.docker,
-            server_data.as_deref(),
-        )
-        .await
-        {
+        match FetchedServer::state(server.id, &server.locks, &self.docker, &server_data).await {
             Ok(state) => Ok(state.public()),
             Err(docker) => {
                 error!("Failed to retrieve server status: {:?}", docker);
@@ -192,8 +183,11 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
 
         let daemon = self.clone();
         tokio::task::spawn(async move {
-            let (server_data_locked, storage) = tokio::join!(
-                timeout(Duration::from_millis(100), server_data.lock()),
+            let (lock, storage) = tokio::join!(
+                timeout(
+                    Duration::from_millis(100),
+                    Arc::clone(&server_data.lock).write_owned(ServerTask::Start)
+                ),
                 storage_read_timeout::<StorageError>(
                     &daemon.config,
                     &*daemon.conn,
@@ -202,20 +196,20 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
                     StorageTask::ServerRunning,
                 )
             );
-            if let Ok(mut server_data_locked) = server_data_locked {
+            if let Ok(mut lock) = lock {
                 match storage {
                     Ok(storage) => {
                         if let Err(err) = server
                             .start(
                                 Arc::clone(&daemon.docker),
-                                &mut server_data_locked,
+                                server_data,
+                                &mut lock,
                                 storage,
-                                Arc::clone(&server_data),
                                 &daemon,
                             )
                             .await
                         {
-                            warn!("Failed to start server: {:?}", err);
+                            warn!("Failed to start server: {err:?}");
                         }
                     }
                     Err(StorageError::Timeout) => {
@@ -242,9 +236,13 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
 
         let daemon = self.clone();
         tokio::task::spawn(async move {
-            let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
-            if let Ok(server_data) = server_data
-                && let Err(err) = server.stop(&daemon.docker, server_data).await
+            let lock = timeout(
+                Duration::from_millis(100),
+                server_data.lock.read(ServerTask::Stop),
+            )
+            .await;
+            if let Ok(lock) = lock
+                && let Err(err) = server.stop(&daemon.docker, &server_data, &lock).await
             {
                 warn!("Failed to stop server: {err:?}");
             }
@@ -259,9 +257,13 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
 
         let daemon = self.clone();
         tokio::task::spawn(async move {
-            let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
-            if let Ok(server_data) = server_data
-                && let Err(err) = server.kill(&daemon.docker, server_data).await
+            let lock = timeout(
+                Duration::from_millis(100),
+                server_data.lock.read(ServerTask::Kill),
+            )
+            .await;
+            if let Ok(lock) = lock
+                && let Err(err) = server.kill(&daemon.docker, &server_data, &lock).await
             {
                 warn!("Failed to kill server: {err:?}");
             }
@@ -276,9 +278,13 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
 
         let state = self.clone();
         tokio::task::spawn(async move {
-            let server_data = timeout(Duration::from_millis(100), server_data.lock_owned()).await;
-            if let Ok(server_data) = server_data
-                && let Err(err) = server.restart(&state.docker, server_data).await
+            let lock = timeout(
+                Duration::from_millis(100),
+                server_data.lock.read(ServerTask::Restart),
+            )
+            .await;
+            if let Ok(lock) = lock
+                && let Err(err) = server.restart(&state.docker, &server_data, &lock).await
             {
                 warn!("Failed to restart server: {err:?}");
             }
@@ -293,11 +299,17 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
 
         let state = self.clone();
         tokio::task::spawn(async move {
-            let server_data = timeout(Duration::from_millis(100), server_data.lock()).await;
-            if let Ok(server_data) = server_data
-                && let Err(err) = server.exec(&state.docker, cmd, &server_data, false).await
+            let lock = timeout(
+                Duration::from_millis(100),
+                server_data.lock.read(ServerTask::ContainerCommand),
+            )
+            .await;
+            if let Ok(lock) = lock
+                && let Err(err) = server
+                    .exec(&state.docker, cmd, &server_data, &lock, false)
+                    .await
             {
-                warn!("Failed to execute command in server: {:?}", err);
+                warn!("Failed to execute command in server: {err:?}");
             }
         });
 

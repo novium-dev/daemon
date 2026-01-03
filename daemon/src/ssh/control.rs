@@ -15,6 +15,7 @@ use crossterm::terminal::ClearType;
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::ServerStats;
+use daemon_common::service::server::task::ServerTask;
 use num_traits::{FromPrimitive as _, ToPrimitive as _};
 use ratatui::backend::{Backend, CrosstermBackend, WindowSize};
 use ratatui::buffer::Cell;
@@ -32,7 +33,6 @@ use std::io::{ErrorKind, Write};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt as _, AsyncWrite};
 use tokio::runtime::Handle;
-use tokio::sync::Mutex;
 use tokio::sync::broadcast::error::TryRecvError;
 use tokio_util::io::SyncIoBridge;
 use tracing::{debug, error, warn};
@@ -148,7 +148,7 @@ fn new_control_session(
     name: &str,
     power: bool,
     mut stream: ChannelStream<Msg>,
-    server_data: &Mutex<ServerData>,
+    server_data: &ServerData,
     cols: &AtomicU16,
     rows: &AtomicU16,
 ) {
@@ -190,10 +190,7 @@ fn new_control_session(
     let mut last_cols = u16::MAX;
     let mut last_rows = u16::MAX;
 
-    let mut recv = {
-        let data = server_data.blocking_lock();
-        data.stats_sender.subscribe()
-    };
+    let mut recv = server_data.stats_sender.subscribe();
 
     let _ = terminal.backend_mut().0.write_all(b"\x1B[?1000h");
 
@@ -1005,14 +1002,15 @@ async fn launch_selected(
         }
     };
     tokio::task::spawn(async move {
-        let server_data_arc = Arc::clone(&server_data);
-        let Ok(mut server_data) =
-            tokio::time::timeout(Duration::from_millis(100), server_data.lock_owned()).await
-        else {
-            return;
-        };
-
         if selected == start {
+            let Ok(mut lock) = tokio::time::timeout(
+                Duration::from_millis(100),
+                Arc::clone(&server_data.lock).write_owned(ServerTask::Start),
+            )
+            .await
+            else {
+                return;
+            };
             let Ok(storage) = storage_read_timeout::<StorageError>(
                 &daemon.config,
                 &*daemon.conn,
@@ -1027,26 +1025,50 @@ async fn launch_selected(
             if let Err(err) = server
                 .start(
                     Arc::clone(&daemon.docker),
-                    &mut server_data,
+                    server_data,
+                    &mut lock,
                     storage,
-                    server_data_arc,
                     &daemon,
                 )
                 .await
             {
-                warn!("Failed to start server using ssh (control): {:?}", err);
+                warn!("Failed to start server using ssh (control): {err:?}");
             }
         } else if selected == stop {
-            if let Err(err) = server.stop(&daemon.docker, server_data).await {
-                warn!("Failed to stop server using ssh (control): {:?}", err);
+            let Ok(lock) = tokio::time::timeout(
+                Duration::from_millis(100),
+                server_data.lock.read(ServerTask::Stop),
+            )
+            .await
+            else {
+                return;
+            };
+            if let Err(err) = server.stop(&daemon.docker, &server_data, &lock).await {
+                warn!("Failed to stop server using ssh (control): {err:?}");
             }
         } else if selected == restart {
-            if let Err(err) = server.restart(&daemon.docker, server_data).await {
-                warn!("Failed to stop server using ssh (control): {:?}", err);
+            let Ok(lock) = tokio::time::timeout(
+                Duration::from_millis(100),
+                server_data.lock.read(ServerTask::Restart),
+            )
+            .await
+            else {
+                return;
+            };
+            if let Err(err) = server.restart(&daemon.docker, &server_data, &lock).await {
+                warn!("Failed to stop server using ssh (control): {err:?}");
             }
         } else if selected == kill {
-            if let Err(err) = server.kill(&daemon.docker, server_data).await {
-                warn!("Failed to kill server using ssh (control): {:?}", err);
+            let Ok(lock) = tokio::time::timeout(
+                Duration::from_millis(100),
+                server_data.lock.read(ServerTask::Kill),
+            )
+            .await
+            else {
+                return;
+            };
+            if let Err(err) = server.kill(&daemon.docker, &server_data, &lock).await {
+                warn!("Failed to kill server using ssh (control): {err:?}");
             }
         } else {
             // Nothing is selected, so nothing to do

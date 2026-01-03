@@ -14,6 +14,7 @@ use core::mem;
 use core::time::Duration;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use daemon_common::service::files::task::StorageTask;
+use daemon_common::service::server::task::ServerTask;
 use ed25519_dalek::SigningKey;
 use futures_util::{FutureExt as _, TryFutureExt as _};
 use libc::{SIGINT, SIGTERM};
@@ -278,7 +279,7 @@ impl<T: DaemonExtra> Daemon<T> {
                     id,
                     ..FetchedServer::default()
                 }
-                .stop(&docker, server.lock_owned().await)
+                .stop(&docker, &server, &server.lock.read(ServerTask::Stop).await)
                 .await;
             });
         }
@@ -344,7 +345,7 @@ impl<T: DaemonExtra> Daemon<T> {
                     }
                 }
                 if let Some(id) = id {
-                    let server_data_arc = Arc::clone(servers.entry(id).or_default());
+                    let server_data = Arc::clone(servers.entry(id).or_default());
 
                     match query!(
                         "SELECT `cpu`, `ram`, `swap` FROM `servers` WHERE `id` = ?",
@@ -354,8 +355,6 @@ impl<T: DaemonExtra> Daemon<T> {
                     .await
                     {
                         Ok(Some(row)) => {
-                            let server_data = server_data_arc.lock().await;
-
                             match storage_read::<StorageError>(
                                 &self.config,
                                 &*self.conn,
@@ -377,8 +376,7 @@ impl<T: DaemonExtra> Daemon<T> {
                                         row.cpu,
                                         row.ram,
                                         row.swap,
-                                        &server_data,
-                                        Arc::clone(&server_data_arc),
+                                        Arc::clone(&server_data),
                                         storage_lock,
                                         storage_value,
                                         storage_stats_lock,

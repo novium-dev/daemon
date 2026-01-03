@@ -10,6 +10,7 @@ use core::sync::atomic::{AtomicI64, Ordering};
 use core::time::Duration;
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::ServerStats;
+use daemon_common::service::server::task::ServerTask;
 use sqlx::query;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -96,10 +97,7 @@ async fn resolve(
         let servers = daemon.servers.lock().await;
         let server = servers.get(&id).cloned();
         drop(servers);
-        let sender = match server {
-            None => None,
-            Some(sender) => Some(Arc::clone(&sender.lock().await.stats_sender)),
-        };
+        let sender = server.map_or_else(|| None, |server| Some(Arc::clone(&server.stats_sender)));
         available.insert(
             identifier,
             (Some(id), path, cpu, ram, swap, storage_data, sender),
@@ -182,15 +180,15 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
                                     warn!("Unable to lock server {server_id}: {err:?}");
                                 }
                                 let servers = daemon.servers.blocking_lock();
-                                if let Some(server) = servers.get(&server_id).cloned() {
+                                if let Some(server_data) = servers.get(&server_id).cloned() {
                                     drop(servers);
                                     let docker = Arc::clone(&daemon.docker);
                                     tokio::task::spawn(async move {
-                                        let server_data = server.lock_owned().await;
+                                        let lock = server_data.lock.read(ServerTask::Stop).await;
                                         if let Err(err) = FetchedServer::stop(&FetchedServer {
                                             id: server_id,
                                             .. FetchedServer::default()
-                                        }, &docker, server_data).await {
+                                        }, &docker, &server_data, &lock).await {
                                             if matches!(err, ServerStopError::NotRunning) {
                                                 return;
                                             }
@@ -201,7 +199,7 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
                             } else if let Err(err) = Handle::current().block_on(query!("DELETE FROM `server_locks` WHERE `server` = ? AND `lock` = 'storage'", server_id)
                                     .execute(&*daemon.conn)) {
                                     warn!("Unable to unlock server {server_id}: {err:?}");
-                                } else {
+                            } else {
                                 // Sucessfully unlocked the server
                             }
                         }

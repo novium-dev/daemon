@@ -7,12 +7,13 @@ use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::server;
-use crate::{Daemon, DaemonExtra};
+use crate::{Daemon, DaemonExtra, ServerData};
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
 use core::time::Duration;
 use cron::Schedule;
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::schedule::{ScheduleRunPolicy, ScheduleStep};
+use daemon_common::service::server::task::ServerTask;
 use sqlx::__rt::timeout;
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,6 +23,7 @@ use tracing::error;
 
 pub async fn task(
     server_id: u32,
+    server_data: Arc<ServerData>,
     daemon: Daemon<impl DaemonExtra>,
     policy: ScheduleRunPolicy,
     steps: Vec<ScheduleStep>,
@@ -31,7 +33,7 @@ pub async fn task(
     drop(tokio::task::spawn(async move {
         while let Some(next) = determine_next_run(&schedule, &timezone) {
             tokio::time::sleep_until(next).await;
-            run(daemon.clone(), server_id, policy, &steps).await;
+            run(daemon.clone(), server_id, &server_data, policy, &steps).await;
         }
     }));
 }
@@ -56,19 +58,20 @@ fn determine_next_run(schedule: &Schedule, timezone: &(impl TimeZone + Copy)) ->
 async fn run(
     daemon: Daemon<impl DaemonExtra>,
     server_id: u32,
+    server_data: &ServerData,
     policy: ScheduleRunPolicy,
     steps: &Vec<ScheduleStep>,
 ) {
-    let running = match FetchedServer::state(server_id, HashSet::new(), &daemon.docker, None).await {
+    let lock = server_data.lock.read(ServerTask::ScheduleTaskRun).await;
+    let running = match FetchedServer::state(server_id, &HashSet::new(), &daemon.docker, server_data).await {
         Ok(
             InternalServerState::Running(_, _)
             | InternalServerState::Unhealthy(_, _)
             | InternalServerState::Starting(_, _)
-            // Technically not possible
             | InternalServerState::Restarting(_)
             | InternalServerState::Stopping(_)
         ) => true,
-        Ok(InternalServerState::Stopped | /* Technically not possible */ InternalServerState::Locked) => false,
+        Ok(InternalServerState::Stopped | /* Technically not possible */ InternalServerState::Locked | /* Technically not possible */ InternalServerState::Preparing) => false,
         Err(err) => {
             error!(
                 "Failed to check server state for schedule execution of server {server_id}: {err:?}"
@@ -82,6 +85,7 @@ async fn run(
         | (ScheduleRunPolicy::Stopped, false) => {}
         _ => return,
     }
+    drop(lock);
     for step in steps {
         if ScheduleStepResult::Interrupt
             == match step {
@@ -114,10 +118,10 @@ async fn start(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStep
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let (Ok(mut server_data_locked), storage) = tokio::join!(
+    let (Ok(mut lock), storage) = tokio::join!(
         timeout(
             Duration::from_millis(100),
-            Arc::clone(&server_data).lock_owned()
+            Arc::clone(&server_data.lock).write_owned(ServerTask::Start)
         ),
         storage_read_timeout::<StorageError>(
             &daemon.config,
@@ -144,9 +148,9 @@ async fn start(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStep
         match server
             .start(
                 Arc::clone(&state.docker),
-                &mut server_data_locked,
-                storage,
                 server_data,
+                &mut lock,
+                storage,
                 &state,
             )
             .await
@@ -167,9 +171,9 @@ async fn stop(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepR
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) = timeout(
+    let Ok(lock) = timeout(
         Duration::from_millis(100),
-        Arc::clone(&server_data).lock_owned(),
+        Arc::clone(&server_data.lock).read_owned(ServerTask::Stop),
     )
     .await
     else {
@@ -179,7 +183,7 @@ async fn stop(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepR
     // Ensure the stop doesn't get cancelled
     let state = daemon.clone();
     tokio::task::spawn(async move {
-        match server.stop(&state.docker, server_data_locked).await {
+        match server.stop(&state.docker, &server_data, &lock).await {
             Ok(()) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
             Err(_) => ScheduleStepResult::Interrupt,
         }
@@ -196,9 +200,9 @@ async fn restart(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleSt
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) = timeout(
+    let Ok(lock) = timeout(
         Duration::from_millis(100),
-        Arc::clone(&server_data).lock_owned(),
+        Arc::clone(&server_data.lock).read_owned(ServerTask::Restart),
     )
     .await
     else {
@@ -208,7 +212,7 @@ async fn restart(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleSt
     // Ensure the restart doesn't get cancelled
     let state = daemon.clone();
     tokio::task::spawn(async move {
-        match server.restart(&state.docker, server_data_locked).await {
+        match server.restart(&state.docker, &server_data, &lock).await {
             Ok(()) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
             Err(_) => ScheduleStepResult::Interrupt,
         }
@@ -225,9 +229,9 @@ async fn kill(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepR
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) = timeout(
+    let Ok(lock) = timeout(
         Duration::from_millis(100),
-        Arc::clone(&server_data).lock_owned(),
+        Arc::clone(&server_data.lock).read_owned(ServerTask::Kill),
     )
     .await
     else {
@@ -237,7 +241,7 @@ async fn kill(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepR
     // Ensure the kill doesn't get cancelled
     let state = daemon.clone();
     tokio::task::spawn(async move {
-        match server.kill(&state.docker, server_data_locked).await {
+        match server.kill(&state.docker, &server_data, &lock).await {
             Ok(()) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
             Err(_) => ScheduleStepResult::Interrupt,
         }
@@ -254,13 +258,13 @@ async fn exec(
 ) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
-        .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
+        .inspect_err(|err| error!("Unable to fetch server: {err:?}"))
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) = timeout(
+    let Ok(lock) = timeout(
         Duration::from_millis(100),
-        Arc::clone(&server_data).lock_owned(),
+        Arc::clone(&server_data.lock).read_owned(ServerTask::ContainerCommand),
     )
     .await
     else {
@@ -271,7 +275,7 @@ async fn exec(
     let state = daemon.clone();
     tokio::task::spawn(async move {
         match server
-            .exec(&state.docker, command, &server_data_locked, false)
+            .exec(&state.docker, command, &server_data, &lock, false)
             .await
         {
             Ok(_) | Err(ServerStopError::NotRunning) => ScheduleStepResult::Continue,
@@ -290,20 +294,20 @@ async fn terminal(
 ) -> ScheduleStepResult {
     let Ok(Some((_, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
-        .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
+        .inspect_err(|err| error!("Unable to fetch server: {err:?}"))
     else {
         return ScheduleStepResult::Interrupt;
     };
-    let Ok(server_data_locked) = timeout(
+    let Ok(lock) = timeout(
         Duration::from_millis(100),
-        Arc::clone(&server_data).lock_owned(),
+        server_data.lock.read(ServerTask::ScheduleTerminalCommand),
     )
     .await
     else {
         return ScheduleStepResult::Continue;
     };
 
-    match &mut *server_data_locked.attach_write.lock().await {
+    match &mut *server_data.attach_write.lock().await {
         None => ScheduleStepResult::Interrupt,
         Some(write) => {
             let mut content = "\x08".repeat(4096);
@@ -311,6 +315,7 @@ async fn terminal(
             content += "\n";
             let _ = write.write_all(content.as_bytes()).await;
             let _ = write.flush().await;
+            drop(lock);
             ScheduleStepResult::Continue
         }
     }

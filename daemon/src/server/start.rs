@@ -3,7 +3,7 @@ use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
-use crate::sync::task::TaskOwnedRwLockReadGuard;
+use crate::sync::task::{AnyTaskRwLockWriteGuard, TaskOwnedRwLockReadGuard};
 use crate::utils::from_mib;
 use crate::{Daemon, DaemonExtra, ServerData, utils};
 use bollard::Docker;
@@ -16,10 +16,12 @@ use cap_async_std::fs::{Dir, OpenOptions};
 use core::fmt::{Debug, Display, Formatter};
 use core::future::Future;
 use core::pin::Pin;
+use core::sync::atomic::Ordering;
 use core::time::Duration;
 use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
 use daemon_common::service::files::task::StorageTask;
+use daemon_common::service::server::task::ServerTask;
 use num_traits::cast::FromPrimitive as _;
 use ringbuffer::RingBuffer as _;
 use std::collections::HashMap;
@@ -28,7 +30,6 @@ use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use tracing::warn;
 
 #[derive(Debug, thiserror::Error)]
@@ -73,7 +74,8 @@ impl FetchedServer {
     pub(crate) async fn start(
         &self,
         docker: Arc<Docker>,
-        server_data: &mut ServerData,
+        server_data: Arc<ServerData>,
+        lock: &mut impl AnyTaskRwLockWriteGuard<ServerTask, ()>,
         StorageLockData {
             path: storage_path,
             lock: storage_lock,
@@ -81,10 +83,9 @@ impl FetchedServer {
             stats_lock: storage_stats_lock,
             ..
         }: StorageLockData<TaskOwnedRwLockReadGuard<StorageTask, ()>>,
-        server_data_arc: Arc<Mutex<ServerData>>,
         daemon: &Daemon<impl DaemonExtra>,
     ) -> Result<(), ServerStartError> {
-        if !Self::state(self.id, self.locks.clone(), &docker, Some(server_data))
+        if !Self::state(self.id, &self.locks, &docker, &server_data)
             .await
             .map_err(ServerStartError::Docker)?
             .start()
@@ -92,10 +93,18 @@ impl FetchedServer {
             return Err(ServerStartError::AlreadyRunning); // Containers are created with delete-on-exit.
         }
 
-        server_data.stop_command.clone_from(&self.stop_command);
+        let _ = &mut *lock;
 
-        server_data.stopping = false;
-        server_data.restart = false;
+        server_data
+            .stop_command
+            .lock()
+            .await
+            .clone_from(&self.stop_command);
+
+        server_data.stopping.store(false, Ordering::Relaxed);
+        server_data.restart.store(false, Ordering::Relaxed);
+
+        Self::update_status(self.id, &self.locks, &docker, &server_data).await;
 
         let buffer = Arc::clone(&server_data.buffer);
         let mut buffer = buffer.lock().await;
@@ -104,7 +113,7 @@ impl FetchedServer {
 
         let image = self
             .clone()
-            .prepare_image(daemon, &docker, &mut buffer, server_data)
+            .prepare_image(daemon, &docker, &mut buffer, &server_data)
             .await?;
 
         let storage_path_buf = PathBuf::from(&storage_path);
@@ -161,18 +170,13 @@ impl FetchedServer {
         );
 
         for network in &self.networks {
-            let ipv4_1 = (network.network_ipv4 >> 8u16) as u8;
-            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
-            let ipv4_2 = network.network_ipv4 as u8 | network.server_ipv4;
+            let ipv4_1 = (network.network_ipv4 >> 8u16) & 0xff;
+            let ipv4_2 = (network.network_ipv4 & 0xff) as u8 | network.server_ipv4;
 
-            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
-            let ipv6_1 = (network.server_ipv6 >> 12u64) as u16;
-            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
-            let ipv6_2 = (network.server_ipv6 >> 8u64) as u16;
-            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
-            let ipv6_3 = (network.server_ipv6 >> 4u64) as u16;
-            #[expect(clippy::cast_possible_truncation, reason = "intentional truncation")]
-            let ipv6_4 = network.server_ipv6 as u16;
+            let ipv6_1 = (network.server_ipv6 >> 12u64) & 0xffff;
+            let ipv6_2 = (network.server_ipv6 >> 8u64) & 0xffff;
+            let ipv6_3 = (network.server_ipv6 >> 4u64) & 0xffff;
+            let ipv6_4 = network.server_ipv6 & 0xffff;
             networks.insert(
                 format!("{}{}", crate::common::NETWORK_PREFIX, network.network_id),
                 EndpointSettings {
@@ -303,8 +307,8 @@ impl FetchedServer {
 
                         #[cfg(not(feature = "no_tty_size_please"))]
                         console_size: Some(vec![
-                            server_data.size.1 as usize,
-                            server_data.size.0 as usize,
+                            server_data.size.1.load(Ordering::Relaxed) as usize,
+                            server_data.size.0.load(Ordering::Relaxed) as usize,
                         ]),
 
                         ..HostConfig::default()
@@ -335,7 +339,6 @@ impl FetchedServer {
             self.ram,
             self.swap,
             server_data,
-            server_data_arc,
             storage_lock,
             storage_value,
             storage_stats_lock,
@@ -371,7 +374,7 @@ impl FetchedServer {
         else {
             return Err(ServerStartError::NotFound);
         };
-        let mut server_data_locked = server_data.lock().await;
+        let mut lock = server_data.lock.write(ServerTask::Start).await;
         tokio::time::sleep(duration).await;
         let storage = storage_read::<StorageError>(
             &daemon.config,
@@ -385,8 +388,8 @@ impl FetchedServer {
         server
             .start_pinned(
                 Arc::clone(&daemon.docker),
-                &mut server_data_locked,
                 Arc::clone(&server_data),
+                &mut lock,
                 storage,
                 &daemon,
             )
@@ -398,12 +401,12 @@ impl FetchedServer {
     fn start_pinned<'a>(
         &'a self,
         docker: Arc<Docker>,
-        server_data: &'a mut ServerData,
-        server_data_arc: Arc<Mutex<ServerData>>,
+        server_data: Arc<ServerData>,
+        lock: &'a mut impl AnyTaskRwLockWriteGuard<ServerTask, ()>,
         storage: StorageLockData<TaskOwnedRwLockReadGuard<StorageTask, ()>>,
         daemon: &'a Daemon<impl DaemonExtra>,
     ) -> Pin<Box<dyn Future<Output = Result<(), ServerStartError>> + Send + 'a>> {
-        Box::pin(self.start(docker, server_data, storage, server_data_arc, daemon))
+        Box::pin(self.start(docker, server_data, lock, storage, daemon))
         // It needs to be pinned to be called recursively
     }
 }

@@ -59,6 +59,15 @@ pub struct TaskOwnedRwLockWriteGuard<Task: Send + Sync + Clone + 'static, Data: 
     id: u64,
 }
 
+pub trait AnyTaskRwLockReadGuard<Task: Send + Sync + Clone + 'static, Data: Send + Sync>:
+    Send + Sync + Deref<Target = Data>
+{
+}
+pub trait AnyTaskRwLockWriteGuard<Task: Send + Sync + Clone + 'static, Data: Send + Sync>:
+    Send + Sync + Deref<Target = Data> + DerefMut
+{
+}
+
 impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Data> {
     pub fn new(data: Data) -> Self {
         Self {
@@ -195,6 +204,11 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLockReadGuard
     }
 }
 
+impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> AnyTaskRwLockReadGuard<Task, Data>
+    for TaskRwLockReadGuard<'_, Task, Data>
+{
+}
+
 impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> Deref
     for TaskRwLockReadGuard<'_, Task, Data>
 {
@@ -226,6 +240,16 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLockWriteGuar
         let mut task = self.task.write().expect("Unable to lock task");
         (func)(&mut task)
     }
+}
+
+impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> AnyTaskRwLockWriteGuard<Task, Data>
+    for TaskRwLockWriteGuard<'_, Task, Data>
+{
+}
+
+impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> AnyTaskRwLockReadGuard<Task, Data>
+    for TaskRwLockWriteGuard<'_, Task, Data>
+{
 }
 
 impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> Deref
@@ -269,6 +293,11 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskOwnedRwLockRead
     }
 }
 
+impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> AnyTaskRwLockReadGuard<Task, Data>
+    for TaskOwnedRwLockReadGuard<Task, Data>
+{
+}
+
 impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> Deref
     for TaskOwnedRwLockReadGuard<Task, Data>
 {
@@ -301,6 +330,16 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskOwnedRwLockWrit
         let mut task = self.task.write().expect("Unable to lock task");
         (func)(&mut task)
     }
+}
+
+impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> AnyTaskRwLockWriteGuard<Task, Data>
+    for TaskOwnedRwLockWriteGuard<Task, Data>
+{
+}
+
+impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> AnyTaskRwLockReadGuard<Task, Data>
+    for TaskOwnedRwLockWriteGuard<Task, Data>
+{
 }
 
 impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> Deref

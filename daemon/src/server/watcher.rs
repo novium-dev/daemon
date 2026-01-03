@@ -30,8 +30,7 @@ pub async fn attach(
     cpu_max: Option<f32>,
     ram_max: Option<u32>,
     swap_max: Option<u32>,
-    server_data: &ServerData,
-    server_data_arc: Arc<Mutex<ServerData>>,
+    server_data: Arc<ServerData>,
     storage_lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     storage_value: Arc<(AtomicI64, AtomicI64)>,
     storage_stats_lock: Arc<Mutex<()>>,
@@ -77,7 +76,7 @@ pub async fn attach(
         ram_max,
         swap_max,
         result2,
-        server_data_arc,
+        server_data,
         storage_lock,
         storage_value,
         storage_stats_lock,
@@ -101,7 +100,7 @@ pub async fn watch(
     + Send
     + Unpin
     + 'static,
-    server_data_arc: Arc<Mutex<ServerData>>,
+    server_data: Arc<ServerData>,
     storage_lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     storage_value: Arc<(AtomicI64, AtomicI64)>,
     storage_stats_lock: Arc<Mutex<()>>,
@@ -112,9 +111,7 @@ pub async fn watch(
     let mut next = Instant::now().add(Duration::from_millis(500));
     loop {
         if start.elapsed() > Duration::from_secs(60) && !reset_counter {
-            let mut server_data = server_data_arc.lock().await;
-            server_data.failure_counter = 0;
-            drop(server_data);
+            server_data.failure_counter.store(0, Ordering::Relaxed);
             reset_counter = true;
         }
         tokio::select! {
@@ -137,11 +134,10 @@ pub async fn watch(
             }
             _elapsed = tokio::time::sleep_until(next) => {
                 next = Instant::now().add(Duration::from_millis(500));
-                let stats_sender = stats_sender.clone();
                 let docker = Arc::clone(&daemon.docker);
-                let server_data_arc = Arc::clone(&server_data_arc);
+                let server_data = Arc::clone(&server_data);
                 tokio::task::spawn(async move {
-                    FetchedServer::update_status(server_id, HashSet::new(), &stats_sender, &docker, &server_data_arc).await;
+                    FetchedServer::update_status(server_id, &HashSet::new(), &docker, &server_data).await;
                 });
             }
         }
@@ -163,24 +159,26 @@ pub async fn watch(
     } else {
         false
     };
-    let mut server_data = server_data_arc.lock().await;
-    failure &= !server_data.stopping;
-    server_data.stopping = false;
+    failure &= !server_data.stopping.load(Ordering::SeqCst);
+    server_data.stopping.store(false, Ordering::SeqCst);
 
     let mut failure_exceeded = false;
-    if !server_data.restart && failure && start.elapsed() <= Duration::from_secs(60) {
-        server_data.failure_counter = server_data.failure_counter.saturating_add(1);
-        if server_data.failure_counter >= 3 {
+    if !server_data.restart.load(Ordering::SeqCst)
+        && failure
+        && start.elapsed() <= Duration::from_secs(60)
+    {
+        let old = server_data.failure_counter.fetch_add(1, Ordering::SeqCst);
+        if old >= 2 {
             failure = false;
             failure_exceeded = true;
-            server_data.failure_counter = 0;
+            server_data.failure_counter.store(0, Ordering::SeqCst);
         }
     }
-    server_data.restart |= failure;
+    server_data.restart.fetch_or(failure, Ordering::SeqCst);
 
-    let do_restart = server_data.restart;
+    let do_restart = server_data.restart.load(Ordering::SeqCst);
     if do_restart {
-        server_data.restart = false;
+        server_data.restart.store(false, Ordering::SeqCst);
         tokio::task::spawn(FetchedServer::queue_start(
             daemon.clone(),
             server_id,
@@ -221,9 +219,9 @@ pub async fn watch(
     drop(storage_stats_guard);
     if !do_restart {
         tokio::time::sleep(Duration::from_secs(1)).await;
-        FetchedServer::update_status0(
+        FetchedServer::update_status(
             server_id,
-            FetchedServer::resolve_locked(server_id, &daemon.conn).await,
+            &FetchedServer::resolve_locked(server_id, &daemon.conn).await,
             &daemon.docker,
             &server_data,
         )

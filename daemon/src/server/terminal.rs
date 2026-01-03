@@ -62,14 +62,16 @@ impl FetchedServer {
     pub(crate) async fn update_tty_size(
         id: u32,
         docker: &Docker,
-        server_data: &mut crate::ServerData,
+        server_data: &crate::ServerData,
         cols: u16,
         rows: u16,
     ) -> Result<(), ServerStopError> {
         use bollard::query_parameters::ResizeContainerTTYOptions;
+        use core::sync::atomic::Ordering;
 
-        server_data.size = (cols, rows);
-        if !Self::state(id, HashSet::new(), docker, Some(server_data))
+        server_data.size.0.store(cols, Ordering::SeqCst);
+        server_data.size.1.store(rows, Ordering::SeqCst);
+        if !Self::state(id, &HashSet::new(), docker, server_data)
             .await
             .map_err(ServerStopError::Docker)?
             .stop()

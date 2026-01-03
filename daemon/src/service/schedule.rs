@@ -18,7 +18,7 @@ impl<T: DaemonExtra> ScheduleService for Daemon<T> {
         server_id: u32,
         payload: SchedulePayload,
     ) -> Result<u32, CreateScheduleError> {
-        let _ =
+        let (_, server_data) =
             server_required::<CreateScheduleError>(&self.conn, &self.servers, server_id).await?;
         let mut conn = self.conn.acquire().await?;
 
@@ -53,6 +53,7 @@ impl<T: DaemonExtra> ScheduleService for Daemon<T> {
 
             let handle = daemon.schedule_task.lock().await.spawn(task(
                 server_id,
+                server_data,
                 daemon.clone(),
                 payload.policy,
                 payload.steps,
@@ -78,7 +79,7 @@ impl<T: DaemonExtra> ScheduleService for Daemon<T> {
         schedule_id: u32,
         payload: SchedulePayload,
     ) -> Result<(), UpdateScheduleError> {
-        let _ =
+        let (_, server_data) =
             server_required::<UpdateScheduleError>(&self.conn, &self.servers, server_id).await?;
         let mut conn = self.conn.acquire().await?;
 
@@ -131,6 +132,7 @@ impl<T: DaemonExtra> ScheduleService for Daemon<T> {
 
             let handle = daemon.schedule_task.lock().await.spawn(task(
                 server_id,
+                server_data,
                 daemon.clone(),
                 payload.policy,
                 payload.steps,

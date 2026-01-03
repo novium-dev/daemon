@@ -1,28 +1,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::ServerData;
 use crate::server::FetchedServer;
+use crate::sync::task::AnyTaskRwLockReadGuard;
 use bollard::Docker;
 use bollard::query_parameters::{KillContainerOptions, StopContainerOptions};
 use core::error::Error;
 use core::fmt::{Debug, Display, Formatter};
+use core::sync::atomic::Ordering;
+use daemon_common::service::server::task::ServerTask;
 use tokio::io::AsyncWriteExt as _;
-use tokio::sync::OwnedMutexGuard;
 
 impl FetchedServer {
     pub async fn stop(
         &self,
         docker: &Docker,
-        mut server_data: OwnedMutexGuard<ServerData>,
+        server_data: &ServerData,
+        lock: &impl AnyTaskRwLockReadGuard<ServerTask, ()>,
     ) -> Result<(), ServerStopError> {
-        if !Self::state(self.id, self.locks.clone(), docker, Some(&server_data))
+        if !Self::state(self.id, &self.locks, docker, server_data)
             .await
             .map_err(ServerStopError::Docker)?
             .stop()
         {
             return Err(ServerStopError::NotRunning);
         }
-        server_data.stopping = true;
-        if let Some(stop_command) = &server_data.stop_command {
+        server_data.stopping.store(true, Ordering::SeqCst);
+        if let Some(stop_command) = &*server_data.stop_command.lock().await {
             match &mut *server_data.attach_write.lock().await {
                 None => {}
                 Some(write) => {
@@ -34,49 +37,55 @@ impl FetchedServer {
                 }
             }
         }
-        Self::update_status0(self.id, self.locks.clone(), docker, &server_data).await;
-        drop(server_data);
+        Self::update_status(self.id, &self.locks, docker, server_data).await;
         docker
             .stop_container(&Self::container_name(self.id), None::<StopContainerOptions>)
             .await
             .map_err(ServerStopError::Docker)?;
+
+        let _ = lock;
+
         Ok(())
     }
 
     pub async fn kill(
         &self,
         docker: &Docker,
-        server_data: OwnedMutexGuard<ServerData>,
+        server_data: &ServerData,
+        lock: &impl AnyTaskRwLockReadGuard<ServerTask, ()>,
     ) -> Result<(), ServerStopError> {
-        if !Self::state(self.id, self.locks.clone(), docker, Some(&server_data))
+        if !Self::state(self.id, &self.locks, docker, server_data)
             .await
             .map_err(ServerStopError::Docker)?
             .kill()
         {
             return Err(ServerStopError::NotRunning);
         }
-        drop(server_data);
         docker
             .kill_container(&Self::container_name(self.id), None::<KillContainerOptions>)
             .await
             .map_err(ServerStopError::Docker)?;
+
+        let _ = lock;
+
         Ok(())
     }
 
     pub async fn restart(
         &self,
         docker: &Docker,
-        mut server_data: OwnedMutexGuard<ServerData>,
+        server_data: &ServerData,
+        lock: &impl AnyTaskRwLockReadGuard<ServerTask, ()>,
     ) -> Result<(), ServerStopError> {
-        if !Self::state(self.id, self.locks.clone(), docker, Some(&server_data))
+        if !Self::state(self.id, &self.locks, docker, server_data)
             .await
             .map_err(ServerStopError::Docker)?
             .stop()
         {
             return Err(ServerStopError::NotRunning);
         }
-        server_data.restart = true;
-        self.stop(docker, server_data).await
+        server_data.restart.store(true, Ordering::SeqCst);
+        self.stop(docker, server_data, lock).await
     }
 }
 

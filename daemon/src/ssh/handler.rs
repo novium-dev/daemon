@@ -223,14 +223,13 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                     #[cfg(not(feature = "no_tty_size_please"))]
                     Some(id) => {
                         let mut servers = self.daemon.servers.lock().await;
-                        let server_data_arc = Arc::clone(match servers.get(id) {
+                        let server_data = Arc::clone(match servers.get(id) {
                             None => servers.entry(*id).or_default(),
                             Some(server) => server,
                         });
                         drop(servers);
 
-                        crate::terminal::update_size(*id, &self.daemon.docker, server_data_arc)
-                            .await;
+                        crate::terminal::update_size(*id, &self.daemon.docker, &server_data).await;
                     }
                 }
                 session.channel_success(channel_id)

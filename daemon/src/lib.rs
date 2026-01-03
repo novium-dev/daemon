@@ -23,7 +23,11 @@ mod websocket;
 use bollard::Docker;
 use core::pin::Pin;
 use core::sync::atomic::AtomicI64;
+#[cfg(not(feature = "no_tty_size_please"))]
+use core::sync::atomic::AtomicU16;
+use core::sync::atomic::{AtomicBool, AtomicU8};
 use daemon_common::service::files::task::StorageTask;
+use daemon_common::service::server::task::ServerTask;
 use ed25519_dalek::SigningKey;
 use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
@@ -55,7 +59,7 @@ where
     T: DaemonExtra,
 {
     pub(crate) config: Arc<DaemonConfig>,
-    pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
+    pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<ServerData>>>>,
     pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, StorageData>>>,
     pub(crate) server_task_cancellable: Arc<Mutex<JoinSet<()>>>,
     pub(crate) server_task: Arc<Mutex<JoinSet<()>>>,
@@ -148,18 +152,19 @@ pub(crate) enum StorageNotification {
 pub(crate) type ServerContainerWrite = Pin<Box<dyn AsyncWrite + Send>>;
 
 pub(crate) struct ServerData {
-    pub(crate) restart: bool,
-    pub(crate) stopping: bool,
+    pub(crate) lock: Arc<TaskRwLock<ServerTask, ()>>,
+    pub(crate) restart: AtomicBool,
+    pub(crate) stopping: AtomicBool,
     #[cfg(not(feature = "no_tty_size_please"))]
-    pub(crate) size: (u16, u16),
+    pub(crate) size: (AtomicU16, AtomicU16),
     pub(crate) buffer: Arc<Mutex<AllocRingBuffer<u8>>>,
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) stats_sender: Arc<Sender<ChannelWriteData>>,
     #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) sessions: Arc<Mutex<HashMap<uuid::Uuid, terminal::TerminalSession>>>,
-    pub(crate) stop_command: Option<String>,
-    pub(crate) failure_counter: u8,
+    pub(crate) stop_command: Mutex<Option<String>>,
+    pub(crate) failure_counter: AtomicU8,
 }
 
 #[derive(Default)]
@@ -170,20 +175,21 @@ pub(crate) struct ServerScheduleData {
 impl Default for ServerData {
     fn default() -> Self {
         Self {
-            restart: false,
-            stopping: false,
+            lock: Arc::default(),
+            restart: AtomicBool::new(false),
+            stopping: AtomicBool::new(false),
             attach_write: Arc::new(Mutex::new(None)),
             sender: Arc::new(Sender::new(400)),
             stats_sender: Arc::new(Sender::new(400)),
             #[cfg(not(feature = "no_tty_size_please"))]
             sessions: Arc::new(Mutex::new(HashMap::new())),
             #[cfg(not(feature = "no_tty_size_please"))]
-            size: (170, 30),
+            size: (AtomicU16::new(170), AtomicU16::new(30)),
             buffer: Arc::new(Mutex::new(AllocRingBuffer::new(
                 crate::common::DAEMON_TERMINAL_BUFFER_LIMIT,
             ))),
-            stop_command: None,
-            failure_counter: 0,
+            stop_command: Mutex::default(),
+            failure_counter: AtomicU8::new(0),
         }
     }
 }

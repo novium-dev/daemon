@@ -8,7 +8,6 @@ use core::time::Duration;
 use sqlx::{MySql, Pool};
 use std::sync::Arc;
 use std::time::Instant;
-use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::{debug, error, warn};
@@ -16,12 +15,10 @@ use tracing::{debug, error, warn};
 pub(super) async fn stats_websocket_handle(
     id: u32,
     conn: Arc<Pool<MySql>>,
-    server_data_arc: Arc<Mutex<ServerData>>,
+    server_data: Arc<ServerData>,
     socket: WebSocket,
 ) {
-    let server_data = server_data_arc.lock().await;
     let stats_sender = Arc::clone(&server_data.stats_sender);
-    drop(server_data);
     tokio::task::spawn(new_stats_session(id, conn, socket, stats_sender));
 }
 

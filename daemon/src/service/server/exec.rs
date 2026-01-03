@@ -9,17 +9,17 @@ use bollard::container::LogOutput;
 use bollard::errors::Error;
 use core::pin::Pin;
 use core::time::Duration;
+use daemon_common::service::server::task::ServerTask;
 use futures::Stream;
 use futures_util::StreamExt as _;
 use std::sync::Arc;
 use tokio::io::{AsyncWrite, AsyncWriteExt as _};
-use tokio::sync::Mutex;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 
 pub(super) async fn exec_websocket_handle(
     server: FetchedServer,
-    server_data_arc: Arc<Mutex<ServerData>>,
+    server_data: Arc<ServerData>,
     docker: Arc<Docker>,
     command: Vec<String>,
     socket: WebSocket,
@@ -29,9 +29,12 @@ pub(super) async fn exec_websocket_handle(
     #[cfg(feature = "no_tty_size_please")]
     let _ = (cols, rows);
 
-    let server_data = server_data_arc.lock().await;
-    if let Ok(Some((id, output, input))) = server.exec(&docker, command, &server_data, true).await {
-        drop(server_data);
+    let lock = server_data.lock.read(ServerTask::ContainerCommand).await;
+    if let Ok(Some((id, output, input))) = server
+        .exec(&docker, command, &server_data, &lock, true)
+        .await
+    {
+        drop(lock);
 
         #[cfg(feature = "no_tty_size_please")]
         let _ = id;
@@ -117,7 +120,7 @@ async fn new_exec_session<
                         let result = state.write(ChannelWriteData::Terminal(data.into_bytes().to_vec())).await;
                         if let Err(err) = state.write_transform(result) {
                             if let ChannelError::IO(ref io) = err {
-                                warn!("Channel disconnected with error: {:?}", io);
+                                warn!("Channel disconnected with error: {io:?}");
                             }
                             drop(err);
                             state.close().await;
@@ -126,7 +129,7 @@ async fn new_exec_session<
                         state.flush().await;
                     }
                     Some(err) => {
-                        error!("Closing connection. Docker stream error: {:?}", err);
+                        error!("Closing connection. Docker stream error: {err:?}");
                         state.close().await;
                         return;
                     },
@@ -148,7 +151,7 @@ async fn new_exec_session<
                     },
                     Err(err) => {
                         if let ChannelError::IO(ref io) = err {
-                            warn!("Channel disconnected with error: {:?}", io);
+                            warn!("Channel disconnected with error: {io:?}");
                         }
                         drop(err);
                         state.close().await;

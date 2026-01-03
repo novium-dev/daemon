@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::ServerData;
 use crate::server::{FetchedServer, ServerLock};
+use crate::sync::task::TaskDescriptor;
 use crate::utils::ChannelWriteData;
 use axum::extract::ws::Message;
 use bollard::Docker;
@@ -8,39 +9,27 @@ use bollard::models::HealthStatusEnum;
 use bollard::query_parameters::{InspectContainerOptions, ListContainersOptions};
 use chrono::DateTime;
 use core::fmt::{Display, Formatter};
+use core::sync::atomic::Ordering;
 use daemon_common::service::server::PublicServerState;
+use daemon_common::service::server::task::ServerTask;
 use serde::{Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::io;
-use std::sync::Arc;
-use tokio::sync::Mutex;
-use tokio::sync::broadcast::Sender;
 use utoipa::openapi::{RefOr, Schema};
 use utoipa::{PartialSchema, ToSchema};
 
 impl FetchedServer {
     pub(crate) async fn update_status(
         id: u32,
-        locks: HashSet<ServerLock>,
-        stats_sender: &Sender<ChannelWriteData>,
-        docker: &Docker,
-        server_data_arc: &Arc<Mutex<ServerData>>,
-    ) {
-        if stats_sender.receiver_count() == 0 {
-            return;
-        }
-        let server_data = server_data_arc.lock().await;
-        Self::update_status0(id, locks, docker, &server_data).await;
-    }
-
-    pub(crate) async fn update_status0(
-        id: u32,
-        locks: HashSet<ServerLock>,
+        locks: &HashSet<ServerLock>,
         docker: &Docker,
         server_data: &ServerData,
     ) {
-        if let Ok(state) = Self::state(id, locks, docker, Some(server_data)).await {
+        if server_data.stats_sender.receiver_count() == 0 {
+            return;
+        }
+        if let Ok(state) = Self::state(id, locks, docker, server_data).await {
             let _ = server_data
                 .stats_sender
                 .send(ChannelWriteData::Status(state));
@@ -49,10 +38,22 @@ impl FetchedServer {
 
     pub(crate) async fn state(
         id: u32,
-        locks: HashSet<ServerLock>,
+        locks: &HashSet<ServerLock>,
         docker: &Docker,
-        server_data: Option<&ServerData>,
+        server_data: &ServerData,
     ) -> Result<InternalServerState, bollard::errors::Error> {
+        if server_data.lock.tasks().into_iter().any(|desc| {
+            matches!(
+                desc,
+                TaskDescriptor {
+                    data: ServerTask::Start,
+                    ..
+                }
+            )
+        }) {
+            return Ok(InternalServerState::Preparing);
+        }
+
         let list = docker
             .list_containers(Some(ListContainersOptions {
                 all: true,
@@ -96,10 +97,8 @@ impl FetchedServer {
                 } else {
                     InternalServerState::Locked
                 }
-            } else if let Some(server_data) = server_data
-                && server_data.stopping
-            {
-                if server_data.restart {
+            } else if server_data.stopping.load(Ordering::Relaxed) {
+                if server_data.restart.load(Ordering::Relaxed) {
                     InternalServerState::Restarting(created)
                 } else {
                     InternalServerState::Stopping(created)
@@ -137,6 +136,8 @@ impl FetchedServer {
 #[derive(Clone)]
 pub enum InternalServerState {
     Stopped,
+
+    Preparing,
 
     // Health-check enabled
     Starting(i64, Option<String>),
@@ -220,6 +221,7 @@ impl Display for InternalServerState {
             Self::Running(_, _) => "Running",
             Self::Stopping(_) => "Stopping",
             Self::Restarting(_) => "Restarting",
+            Self::Preparing => "Preparing",
             Self::Locked => "Locked",
         })
     }

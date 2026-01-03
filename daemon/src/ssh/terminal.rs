@@ -4,12 +4,10 @@ use crate::ssh::handler::{DaemonChannel, DaemonSSHHandler};
 use crate::terminal::{TerminalData, new_session};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
-use core::time::Duration;
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::ssh::DaemonBackendAuthServer;
 use russh::server::{Msg, Session};
 use russh::{ChannelId, ChannelStream};
-use sqlx::__rt::timeout;
 use std::io::{self, ErrorKind};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
@@ -44,7 +42,7 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
             }
         };
 
-        let server_data_arc = Arc::clone(
+        let server_data = Arc::clone(
             self.daemon
                 .servers
                 .lock()
@@ -52,66 +50,53 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
                 .entry(internal_server_id)
                 .or_default(),
         );
-        let server = timeout(Duration::from_millis(100), server_data_arc.lock()).await;
-        match server {
-            Ok(server_data) => {
-                let sender = Arc::clone(&server_data.sender);
-                let attach_write = Arc::clone(&server_data.attach_write);
+        let sender = Arc::clone(&server_data.sender);
+        let attach_write = Arc::clone(&server_data.attach_write);
 
-                match self.channels.get_mut(&channel_id) {
+        match self.channels.get_mut(&channel_id) {
+            None => {
+                debug!("Tried to access a non existent channel");
+                session.channel_failure(channel_id)
+            }
+            Some(DaemonChannel {
+                channel,
+                server_id,
+                cols,
+                rows,
+            }) => {
+                *server_id = Some(internal_server_id);
+                let Some(channel) = channel.take() else {
+                    debug!("Channel already taken");
+                    return session.channel_failure(channel_id);
+                };
+                let cols = match cols {
                     None => {
-                        debug!("Tried to access a non existent channel");
-                        session.channel_failure(channel_id)
+                        debug!("Size is None on exec");
+                        return session.channel_failure(channel_id);
                     }
-                    Some(DaemonChannel {
-                        channel,
-                        server_id,
+                    Some(cols) => Arc::clone(cols),
+                };
+                let rows = match rows {
+                    None => {
+                        debug!("Size is None on exec");
+                        return session.channel_failure(channel_id);
+                    }
+                    Some(rows) => Arc::clone(rows),
+                };
+                tokio::task::spawn(new_session(
+                    internal_server_id,
+                    (channel.into_stream(), [0u8; 2048]),
+                    TerminalData {
+                        sender,
+                        attach_write,
                         cols,
                         rows,
-                    }) => {
-                        *server_id = Some(internal_server_id);
-                        let Some(channel) = channel.take() else {
-                            debug!("Channel already taken");
-                            return session.channel_failure(channel_id);
-                        };
-                        let cols = match cols {
-                            None => {
-                                debug!("Size is None on exec");
-                                return session.channel_failure(channel_id);
-                            }
-                            Some(cols) => Arc::clone(cols),
-                        };
-                        let rows = match rows {
-                            None => {
-                                debug!("Size is None on exec");
-                                return session.channel_failure(channel_id);
-                            }
-                            Some(rows) => Arc::clone(rows),
-                        };
-                        drop(server_data);
-                        tokio::task::spawn(new_session(
-                            internal_server_id,
-                            (channel.into_stream(), [0u8; 2048]),
-                            TerminalData {
-                                sender,
-                                attach_write,
-                                cols,
-                                rows,
-                                write,
-                            },
-                            Arc::clone(&self.daemon.docker),
-                            Arc::clone(&server_data_arc),
-                        ));
-                        session.channel_success(channel_id)
-                    }
-                }
-            }
-            Err(_timeout) => {
-                debug!("Timed out on locking server data");
-                Err(russh::Error::IO(io::Error::new(
-                    ErrorKind::TimedOut,
-                    "Timed out locking server.",
-                )))
+                        write,
+                    },
+                    Arc::clone(&self.daemon.docker),
+                    Arc::clone(&server_data),
+                ));
+                session.channel_success(channel_id)
             }
         }
     }
