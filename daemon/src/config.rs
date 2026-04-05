@@ -165,7 +165,7 @@ impl SSHHostKey {
                     PrivateKey::decode_pem(&buffer)?
                 }
                 Err(err) if err.kind() == ErrorKind::NotFound => {
-                    let keypair = Ed25519Keypair::random(&mut rand_core_old::OsRng);
+                    let keypair = Ed25519Keypair::random(&mut rand::rng());
                     let mut file = OpenOptions::new()
                         .create(true)
                         .write(true)
@@ -187,7 +187,7 @@ impl SSHHostKey {
                     PrivateKey::decode_pem(&buffer)?
                 }
                 Err(err) if err.kind() == ErrorKind::NotFound => {
-                    let keypair = RsaKeypair::random(&mut rand_core_old::OsRng, 4096)?;
+                    let keypair = RsaKeypair::random(&mut rand::rng(), 4096)?;
                     let mut file = OpenOptions::new()
                         .create(true)
                         .write(true)
