@@ -180,7 +180,7 @@ impl FetchedServer {
                         if !progress_map.contains_key(&id) {
                             sort_vec.push(id.clone());
                         }
-                        progress_map.insert(id, (progress.progress, progress.status));
+                        progress_map.insert(id, (progress.progress, progress.status)); // TODO progress deprecated
 
                         let mut msg = format!(
                             "{}\r\n",

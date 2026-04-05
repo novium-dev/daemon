@@ -80,7 +80,7 @@ workspace = true
 optional = true
 
 [dependencies.x509-parser]
-version = "0.18.0"
+version = "0.18.1"
 default-features = false
 features = ["verify-aws"]
 optional = true
@@ -178,7 +178,7 @@ workspace = true
 optional = true
 
 [dependencies.time]
-version = "0.3.44"
+version = "0.3.47"
 optional = true
 
 [dependencies.json-patch]
