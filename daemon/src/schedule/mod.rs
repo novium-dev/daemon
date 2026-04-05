@@ -38,8 +38,8 @@ pub async fn init(state: &Daemon<impl DaemonExtra>) -> Result<(), sqlx::Error> {
             Ok(schedule) => schedule,
             Err(err) => {
                 error!(
-                    "Unable to parse cron schedule {:?} in {}: {:?}",
-                    schedule.schedule, schedule.id, err
+                    "Unable to parse cron schedule {:?} in {}: {err:?}",
+                    schedule.schedule, schedule.id
                 );
                 continue;
             }
@@ -65,10 +65,7 @@ pub async fn init(state: &Daemon<impl DaemonExtra>) -> Result<(), sqlx::Error> {
             let step = match serde_json::from_value(step) {
                 Ok(step) => step,
                 Err(err) => {
-                    error!(
-                        "Unable to parse schedule step in {}: {:?}",
-                        schedule.id, err
-                    );
+                    error!("Unable to parse schedule step in {}: {err:?}", schedule.id);
                     continue 'sched;
                 }
             };

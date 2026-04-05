@@ -171,10 +171,10 @@ impl ArchiveCompression {
         })
     }
 
-    pub(crate) fn create_encoder<W: Write + Send + 'static>(
+    pub(crate) fn create_encoder<'a, W: Write + Send + 'a>(
         &self,
         write: W,
-    ) -> Result<Box<dyn CompressionEncoder<W> + Send + 'static>, io::Error> {
+    ) -> Result<Box<dyn CompressionEncoder<W> + Send + 'a>, io::Error> {
         if !self.valid_level() {
             error!("Invalid level in compression tried to use: {:?}", self);
             return Err(io::Error::other("Invalid compression level"));

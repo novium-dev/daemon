@@ -136,8 +136,7 @@ async fn start(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStep
     let Err(StorageError::Timeout) = storage else {
         return ScheduleStepResult::Continue;
     };
-    let Ok(storage) =
-        storage.inspect_err(|err| error!("Unable to acquire storage lock: {:?}", err))
+    let Ok(storage) = storage.inspect_err(|err| error!("Unable to acquire storage lock: {err:?}"))
     else {
         return ScheduleStepResult::Interrupt;
     };
@@ -167,7 +166,7 @@ async fn start(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStep
 async fn stop(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepResult {
     let Ok(Some((server, server_data))) = server(&daemon.conn, &daemon.servers, server_id)
         .await
-        .inspect_err(|err| error!("Unable to fetch server: {:?}", err))
+        .inspect_err(|err| error!("Unable to fetch server: {err:?}"))
     else {
         return ScheduleStepResult::Interrupt;
     };
