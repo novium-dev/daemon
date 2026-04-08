@@ -301,6 +301,7 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
         )]),
         network: NetworkConfig::default(),
         mounts,
+        podman: false,
     };
 
     let host = ask_daemon_url();

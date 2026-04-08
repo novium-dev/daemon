@@ -28,6 +28,8 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub network: NetworkConfig,
     pub mounts: Vec<MountPoint>,
+    #[serde(default)]
+    pub podman: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -113,7 +113,7 @@ impl Network {
                             .disconnect_network(
                                 &format!("{}{}", crate::common::NETWORK_PREFIX, self.id),
                                 NetworkDisconnectRequest {
-                                    container: Some(container),
+                                    container,
                                     force: Some(true),
                                 },
                             )
