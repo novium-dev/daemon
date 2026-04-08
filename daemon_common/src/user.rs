@@ -8,8 +8,6 @@ use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier as _, Verifying
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::error;
 use utoipa::openapi::schema::SchemaType;
 use utoipa::openapi::{Object, Ref, RefOr, Schema, Type};
 use utoipa::{PartialSchema, ToSchema};
