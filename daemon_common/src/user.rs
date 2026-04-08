@@ -88,6 +88,9 @@ impl UserSignature {
         name: &str,
         extra: Option<String>,
     ) -> Result<(), E> {
+        tracing::info!(
+            "Verifying Content: {name}, Server ID: {server_id}, Node: {node_identifier}, Timestamp: {timestamp}, Extra Content: {extra:?}"
+        );
         let key = key
             .as_ref()
             .ok_or_else(<E as FromAuthSignatureInvalid>::from)?;
@@ -103,11 +106,20 @@ impl UserSignature {
             .as_bytes(),
             &self.0,
         )
+        .inspect_err(|_err| tracing::info!("Signature is invalid!"))
         .map_err(|_err| <E as FromAuthSignatureInvalid>::from())?;
+        tracing::info!("Signature is correct, checking validity...");
         let unix = Utc::now().timestamp();
+        tracing::info!(
+            "Provided timestamp: {timestamp}, Current timestamp: {unix}. Threshold: {}",
+            Self::THRESHOLD
+        );
         if timestamp.saturating_add(Self::THRESHOLD) <= unix {
+            tracing::info!("Signature is expired");
             return Err(<E as FromAuthSignatureExpired>::from());
         }
+        tracing::info!("Signature is valid");
+
         Ok(())
     }
 
