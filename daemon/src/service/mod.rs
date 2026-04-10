@@ -53,7 +53,7 @@ impl<T: DaemonExtra> Daemon<T> {
             .allow_origin(tower_http::cors::AllowOrigin::exact(
                 self.config.origin.clone(),
             ))
-            .allow_methods([axum::http::Method::GET])
+            .allow_methods([axum::http::Method::GET, axum::http::Method::PUT])
             .allow_headers(tower_http::cors::AllowHeaders::any());
 
         let compression = CompressionLayer::new().gzip(true).zstd(true).br(true);
