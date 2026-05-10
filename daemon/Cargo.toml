@@ -130,10 +130,10 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.60.0"
+version = "0.60.2"
 
 [dependencies.russh-sftp]
-version = "2.1.1"
+version = "2.1.2"
 
 [dependencies.ratatui]
 version = "0.30.0"

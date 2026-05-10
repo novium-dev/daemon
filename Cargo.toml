@@ -248,7 +248,7 @@ git = "https://github.com/0xIO32/reqwest.git"
 features = ["http2", "json", "stream", "zstd"]
 
 [workspace.dependencies.sentry]
-version = "0.47.0"
+version = "0.48.1"
 default-features = false
 features = [
 	"backtrace",
@@ -366,7 +366,7 @@ features = ["serde"]
 
 [workspace.dependencies.rcgen]
 # See https://github.com/rustls/rcgen/issues/400
-version = "=0.14.5"
+version = "=0.14.7"
 default-features = false
 features = ["crypto", "pem", "x509-parser", "aws_lc_rs"]
 
