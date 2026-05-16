@@ -177,7 +177,7 @@ pub(crate) fn update(mut file: File, backend_url: Option<Url>, code: Option<Stri
 
     let request = config_to_update_request(url, config);
     Client::default()
-        .post(backend.join("/api/internal/daemon/update").unwrap())
+        .post(backend.join("/internal/daemon/update").unwrap())
         .bearer_auth(code)
         .json(&request)
         .send()
@@ -350,7 +350,7 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
     let request =
         config_to_register_request(host, config, &temp_key.cert[0], &csr, skip_mariadb_plugin);
     let response = Client::default()
-        .post(backend.join("/api/internal/daemon/register").unwrap())
+        .post(backend.join("/internal/daemon/register").unwrap())
         .bearer_auth(code)
         .json(&request)
         .send()
@@ -533,7 +533,7 @@ fn hostname() -> String {
 
 fn read_root_key(url: Url, code: String) -> Result<Option<(DaemonRootKey, bool)>, anyhow::Error> {
     let response = Client::default()
-        .get(url.join("/api/internal/daemon/root_key").unwrap())
+        .get(url.join("/internal/daemon/root_key").unwrap())
         .bearer_auth(code)
         .send()?;
     if response.status() == axum::http::StatusCode::UNAUTHORIZED {
