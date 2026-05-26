@@ -5,7 +5,7 @@ stages:
 
 .rust-default:
   image:
-    name: rust:1.92.0-alpine
+    name: rust:1.96.0-alpine
     pull_policy: if-not-present
   parallel:
   interruptible: true
@@ -23,7 +23,7 @@ stages:
 
 .rust-build-default:
   image:
-    name: rust:1.92.0-alpine
+    name: rust:1.96.0-alpine
     pull_policy: if-not-present
   parallel:
   interruptible: true
