@@ -36,7 +36,6 @@ mod server;
 mod setup;
 
 impl<T: DaemonExtra> Daemon<T> {
-    #[expect(clippy::needless_for_each, reason = "caused by OpenApi derive macro")]
     pub fn router(&self) -> Router {
         #[derive(OpenApi)]
         #[openapi()]
