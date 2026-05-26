@@ -19,7 +19,7 @@ stages:
     FF_SCRIPT_SECTIONS: "true"
   before_script:
     - rustc --version && cargo --version
-    - apk add --no-cache musl-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+    - apk add --no-cache git musl-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 .rust-build-default:
   image:
