@@ -192,7 +192,7 @@ little_endian_bytes = "deny"
 
 
 [workspace.dependencies]
-bollard = { git = "https://github.com/fussybeaver/bollard.git", rev = "dca659509a12544cabe418c7832f1ac741c88d2c" }
+bollard = "0.21.0"
 libc = "0.2"
 toml = "1.1.2"
 base64 = "0.22.1"
