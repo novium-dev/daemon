@@ -84,8 +84,8 @@ impl<T: DaemonExtra> Daemon<T> {
             info!("any warranty. Continue at your own risk.");
             info!("==========================================================");
             info!("Deamon startup will be delayed by 10 sec");
-            tokio::time::sleep(Duration::from_secs(10)).await;
-        }
+            //tokio::time::sleep(Duration::from_secs(10)).await;
+        };
 
         let servers = HashMap::new();
 
