@@ -461,9 +461,7 @@ impl DaemonKey {
 
         params
             .subject_alt_names
-            .push(SanType::DnsName(Ia5String::try_from(
-                format!("node-{id}"),
-            )?));
+            .push(SanType::DnsName(Ia5String::try_from(format!("node-{id}"))?));
 
         params.not_after = OffsetDateTime::now_utc().saturating_add(Duration::minutes(30));
         params.not_before = OffsetDateTime::now_utc();
