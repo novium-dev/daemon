@@ -462,7 +462,7 @@ impl DaemonKey {
         params
             .subject_alt_names
             .push(SanType::DnsName(Ia5String::try_from(
-                format!("node-{id}",),
+                format!("node-{id}"),
             )?));
 
         params.not_after = OffsetDateTime::now_utc().saturating_add(Duration::minutes(30));
