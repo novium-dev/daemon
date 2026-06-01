@@ -9,6 +9,7 @@ use core::error::Error as _;
 use crc64::crc64;
 pub use json_patch::Patch;
 use serde::{Deserialize, Serialize};
+use serde_json::Map;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::SeekFrom;
@@ -586,7 +587,7 @@ impl ServerFileWrite {
                         let mut content = String::new();
                         read.read_to_string(&mut content)?;
                         if content.trim().is_empty() {
-                            Ok(serde_json::Value::Object(Default::default()))
+                            Ok(serde_json::Value::Object(Map::default()))
                         } else {
                             toml::from_str(&content).map_err(io::Error::other)
                         }
@@ -703,27 +704,30 @@ fn xml_element_at_path_mut<'a>(
 ) -> &'a mut xmltree::Element {
     let mut element = root;
     let path = if path.first() == Some(&element.name) {
-        &path[1..]
+        path.get(1..).unwrap_or_default()
     } else {
         path
     };
 
     for name in path {
-        let index = element
-            .children
-            .iter()
-            .position(
-                |child| matches!(child, xmltree::XMLNode::Element(child) if child.name == *name),
-            )
-            .unwrap_or_else(|| {
-                element
-                    .children
-                    .push(xmltree::XMLNode::Element(xmltree::Element::new(name)));
-                element.children.len() - 1
-            });
-        element = element.children[index]
-            .as_mut_element()
-            .expect("inserted XML child should be an element");
+        if let Some(index) = element.children.iter().position(
+            |child| matches!(child, xmltree::XMLNode::Element(child) if child.name == *name),
+        ) {
+            element = element
+                .children
+                .get_mut(index)
+                .and_then(xmltree::XMLNode::as_mut_element)
+                .expect("located XML child should be an element");
+        } else {
+            element
+                .children
+                .push(xmltree::XMLNode::Element(xmltree::Element::new(name)));
+            element = element
+                .children
+                .last_mut()
+                .and_then(xmltree::XMLNode::as_mut_element)
+                .expect("inserted XML child should be an element");
+        }
     }
     element
 }
