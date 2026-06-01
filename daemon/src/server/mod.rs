@@ -173,6 +173,24 @@ impl Server {
                         },
                     );
                 }
+                "ini" => {
+                    if let ServerFileWrite::Ini { content } = files_write
+                        .entry(entry.file.clone())
+                        .or_insert_with(|| ServerFileWrite::Ini {
+                            content: HashMap::new(),
+                        })
+                    {
+                        let (section, key): (String, String) =
+                            serde_json::from_str(entry.key.as_deref().ok_or(
+                                sqlx::Error::Decode(Box::new(io::Error::other("ini key is null!"))),
+                            )?)
+                            .map_err(|err| sqlx::Error::Decode(Box::new(err)))?;
+                        content
+                            .entry(section)
+                            .or_insert_with(HashMap::new)
+                            .insert(key, entry.value);
+                    }
+                }
                 "json" => {
                     if let ServerFileWrite::Json { set } = files_write
                         .entry(entry.file.clone())
@@ -194,6 +212,24 @@ impl Server {
                                 .map_err(|err| sqlx::Error::Decode(Box::new(err)))?,
                         );
                     }
+                }
+                "toml" => {
+                    files_write.insert(
+                        entry.file.clone(),
+                        ServerFileWrite::Toml {
+                            set: serde_json::from_str(&entry.value)
+                                .map_err(|err| sqlx::Error::Decode(Box::new(err)))?,
+                        },
+                    );
+                }
+                "xml" => {
+                    files_write.insert(
+                        entry.file.clone(),
+                        ServerFileWrite::Xml {
+                            set: serde_json::from_str(&entry.value)
+                                .map_err(|err| sqlx::Error::Decode(Box::new(err)))?,
+                        },
+                    );
                 }
                 _ => {}
             }
