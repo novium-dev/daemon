@@ -291,7 +291,6 @@ impl FetchedServer {
                             })
                             .unwrap_or_default(),
 
-                        #[cfg(not(feature = "no_tty_size_please"))]
                         console_size: Some(vec![
                             server_data.size.1 as usize,
                             server_data.size.0 as usize,

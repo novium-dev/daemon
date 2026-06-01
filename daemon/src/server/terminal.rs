@@ -1,12 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
-#[cfg(not(feature = "no_tty_size_please"))]
 use crate::server::stop::ServerStopError;
 use crate::utils::ChannelWriteData;
-#[cfg(not(feature = "no_tty_size_please"))]
 use bollard::Docker;
 use ringbuffer::AllocRingBuffer;
-#[cfg(not(feature = "no_tty_size_please"))]
 use std::collections::HashSet;
 use termion::color;
 use termion::color::Fg;
@@ -39,7 +36,6 @@ impl FetchedServer {
         );
     }
 
-    #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) async fn update_exec_tty_size(
         id: String,
         docker: &Docker,
@@ -58,7 +54,6 @@ impl FetchedServer {
             .map_err(ServerStopError::Docker)
     }
 
-    #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) async fn update_tty_size(
         id: u32,
         docker: &Docker,

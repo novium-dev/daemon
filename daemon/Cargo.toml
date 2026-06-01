@@ -33,7 +33,6 @@ features = ["trace_sync"]
 ssh_debug_auth_bypass = []
 btrfs = []
 sentry = ["dep:sentry"]
-no_tty_size_please = []
 
 default = ["sentry", "btrfs", "bindgen/runtime"]
 full = ["default"]
