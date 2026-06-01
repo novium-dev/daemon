@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#[cfg(not(feature = "no_tty_size_please"))]
 use crate::server::FetchedServer;
-#[cfg(not(feature = "no_tty_size_please"))]
 use crate::server::stop::ServerStopError;
 use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
@@ -17,9 +15,15 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 
-#[cfg(not(feature = "no_tty_size_please"))]
+#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+pub enum TerminalSessionOrigin {
+    Ssh,
+    Web,
+}
+
 pub struct TerminalSession {
     pub time: Instant,
+    pub origin: TerminalSessionOrigin,
     pub cols: Arc<AtomicU16>,
     pub rows: Arc<AtomicU16>,
 }
@@ -29,6 +33,7 @@ pub struct TerminalData {
     pub attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub cols: Arc<AtomicU16>,
     pub rows: Arc<AtomicU16>,
+    pub origin: TerminalSessionOrigin,
     pub write: bool,
 }
 
@@ -44,18 +49,15 @@ pub async fn new_session<
         sender,
         attach_write,
         rows,
+        origin,
         cols,
         write,
     }: TerminalData,
     docker: Arc<Docker>,
     server_data_arc: Arc<Mutex<ServerData>>,
 ) {
-    #[cfg(feature = "no_tty_size_please")]
-    let _ = (id, cols, rows, docker);
-
     let server_data = server_data_arc.lock().await;
     let buffer = Arc::clone(&server_data.buffer);
-    #[cfg(not(feature = "no_tty_size_please"))]
     let (sessions_arc, session_id) = {
         let sessions_arc = Arc::clone(&server_data.sessions);
         drop(server_data);
@@ -65,6 +67,7 @@ pub async fn new_session<
             session_id,
             TerminalSession {
                 time: Instant::now(),
+                origin,
                 cols: Arc::clone(&cols),
                 rows: Arc::clone(&rows),
             },
@@ -72,10 +75,6 @@ pub async fn new_session<
         drop(sessions);
         update_size(id, &docker, Arc::clone(&server_data_arc)).await;
         (sessions_arc, session_id)
-    };
-    #[cfg(feature = "no_tty_size_please")]
-    {
-        drop(server_data);
     };
 
     let buffer = buffer.lock().await;
@@ -93,7 +92,6 @@ pub async fn new_session<
             if ping_sent {
                 debug!("Closing connection. Terminal session timed out");
                 state.close().await;
-                #[cfg(not(feature = "no_tty_size_please"))]
                 {
                     let mut sessions = sessions_arc.lock().await;
                     sessions.remove(&session_id);
@@ -123,7 +121,6 @@ pub async fn new_session<
                                 }
                                 drop(err);
                                 state.close().await;
-                                #[cfg(not(feature = "no_tty_size_please"))]
                                 {
                                     let mut sessions = sessions_arc.lock().await;
                                     sessions.remove(&session_id);
@@ -137,7 +134,6 @@ pub async fn new_session<
                         Err(RecvError::Lagged(_)) => {},
                         Err(RecvError::Closed) => {
                             error!("Closing connection. Internal Sender disconnected");
-                            #[cfg(not(feature = "no_tty_size_please"))]
                             {
                                 let mut sessions = sessions_arc.lock().await;
                                 sessions.remove(&session_id);
@@ -171,7 +167,6 @@ pub async fn new_session<
                             }
                             drop(err);
                             state.close().await;
-                            #[cfg(not(feature = "no_tty_size_please"))]
                             {
                                 let mut sessions = sessions_arc.lock().await;
                                 sessions.remove(&session_id);
@@ -187,12 +182,11 @@ pub async fn new_session<
     }
 }
 
-#[cfg(not(feature = "no_tty_size_please"))]
 pub async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex<ServerData>>) {
     let mut server_data = server_data.lock().await;
     let sessions = server_data.sessions.lock().await;
     let mut sessions_vec: Vec<_> = sessions.iter().collect();
-    sessions_vec.sort_by_key(|(_id, TerminalSession { time, .. })| time);
+    sessions_vec.sort_by_key(|(_id, TerminalSession { origin, time, .. })| (*origin, *time));
     for (_id, TerminalSession { cols, rows, .. }) in sessions_vec {
         use core::sync::atomic::Ordering;
         let cols = cols.load(Ordering::Relaxed);
