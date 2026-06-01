@@ -9,10 +9,12 @@ use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::io;
+use std::io::ErrorKind;
 use std::os::unix::fs::MetadataExt as _;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tokio::fs::File;
-use tracing::error;
+use tokio::fs::ReadDir;
+use tracing::{debug, error};
 
 /// Cancel safe
 pub async fn list_backups<
@@ -32,9 +34,9 @@ pub async fn list_backups<
         let target_dir = PathBuf::from(backup_storage.path()).join(id.as_pathbuf());
         match backup_storage {
             BackupEntry::Archive { compression, .. } => {
-                let mut readdir = tokio::fs::read_dir(&target_dir)
-                    .await
-                    .inspect_err(|err| error!("Failed to list backups (read_dir): {err:?}"))?;
+                let Some(mut readdir) = read_backup_dir(&target_dir).await? else {
+                    continue;
+                };
                 while let Some(entry) = readdir
                     .next_entry()
                     .await
@@ -79,7 +81,9 @@ pub async fn list_backups<
             #[cfg(feature = "btrfs")]
             BackupEntry::Btrfs { quota, .. } => {
                 use std::collections::HashMap;
-                let mut readdir = tokio::fs::read_dir(&target_dir).await?;
+                let Some(mut readdir) = read_backup_dir(&target_dir).await? else {
+                    continue;
+                };
 
                 let mut quotas = HashMap::new();
                 if *quota {
@@ -156,4 +160,18 @@ pub async fn list_backups<
     }
     drop(lock);
     Ok(entries)
+}
+
+async fn read_backup_dir(target_dir: &Path) -> Result<Option<ReadDir>, io::Error> {
+    match tokio::fs::read_dir(target_dir).await {
+        Ok(read_dir) => Ok(Some(read_dir)),
+        Err(err) if err.kind() == ErrorKind::NotFound => {
+            debug!("Backup directory does not exist: {target_dir:?}");
+            Ok(None)
+        }
+        Err(err) => {
+            error!("Failed to list backups (read_dir): {err:?}");
+            Err(err)
+        }
+    }
 }
