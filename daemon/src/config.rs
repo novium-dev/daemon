@@ -23,6 +23,8 @@ pub struct DaemonConfig {
     pub storage: HashMap<String, StorageEntry>,
     pub backup: HashMap<String, BackupEntry>,
     pub database: String,
+    #[serde(default)]
+    pub postgres: Option<PostgresConfig>,
     pub tls: Option<TlsConfig>,
     pub ssh: Option<SSHConfig>,
     #[serde(default)]
@@ -155,6 +157,11 @@ impl Default for ValkeyConfig {
             image: "valkey/valkey:latest".to_owned(),
         }
     }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct PostgresConfig {
+    pub database: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

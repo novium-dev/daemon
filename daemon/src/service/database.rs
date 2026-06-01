@@ -12,7 +12,7 @@ use daemon_common::service::database::database_service_error::{
 use daemon_common::service::database::{
     DatabaseType, DatabaseUserPayload, DatabaseUserPermissions,
 };
-use sqlx::{Connection as _, query};
+use sqlx::{Connection as _, PgConnection, query};
 use std::collections::HashMap;
 use tracing::{debug, error};
 
@@ -31,8 +31,21 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
         let database_type_sql = match database_type {
             DatabaseType::Mysql => "mysql",
             DatabaseType::Redis => "redis",
+            DatabaseType::Postgres => "postgres",
         };
         let redis_database_limit = redis_database_limit.map(u32::from);
+        let postgres_url = if database_type == DatabaseType::Postgres {
+            Some(
+                self.config
+                    .postgres
+                    .as_ref()
+                    .ok_or(CreateDatabaseError::DatabaseNotConfigured)?
+                    .database
+                    .clone(),
+            )
+        } else {
+            None
+        };
 
         let mut conn1 = self.conn.acquire().await?;
         let mut conn2 = self.conn.acquire().await?;
@@ -68,6 +81,20 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
                                 error!("Unable to execute database creation statement: {:?}", err);
                             })?;
                         }
+                        if database_type == DatabaseType::Postgres {
+                            let mut postgres = PgConnection::connect(
+                                postgres_url
+                                    .as_deref()
+                                    .expect("postgres url checked before task spawn"),
+                            )
+                            .await?;
+                            sqlx::query(&format!(
+                                "CREATE DATABASE {}",
+                                postgres_database_name(database_id, &name_suffix)
+                            ))
+                            .execute(&mut postgres)
+                            .await?;
+                        }
 
                         Ok::<_, CreateDatabaseError>(database_id)
                     })
@@ -89,6 +116,9 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
             return Err(UpdateDatabaseError::DatabaseNotFound);
         };
         if database.database_type == DatabaseType::Redis && !users.is_empty() {
+            return Err(UpdateDatabaseError::DatabaseUnsupportedAuth);
+        }
+        if database.database_type == DatabaseType::Postgres {
             return Err(UpdateDatabaseError::DatabaseUnsupportedAuth);
         }
         if database.database_type == DatabaseType::Redis {
@@ -199,6 +229,48 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
 
             return Ok(());
         }
+        if database.database_type == DatabaseType::Postgres {
+            let postgres_url = self
+                .config
+                .postgres
+                .as_ref()
+                .ok_or(DeleteDatabaseError::DatabaseNotConfigured)?
+                .database
+                .clone();
+            let mut postgres = PgConnection::connect(&postgres_url).await?;
+            sqlx::query(&format!(
+                "DROP DATABASE IF EXISTS {}",
+                postgres_database_name(database_id, &database.name_suffix)
+            ))
+            .execute(&mut postgres)
+            .await?;
+
+            let mut conn = self.conn.acquire().await?;
+            conn.transaction(|tx| {
+                Box::pin(async move {
+                    query!(
+                        "DELETE FROM `database_passwordless` WHERE `database` = ?",
+                        database_id
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                    query!(
+                        "DELETE FROM `database_user` WHERE `database` = ?",
+                        database_id
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                    query!("DELETE FROM `databases` WHERE `id` = ?", database_id)
+                        .execute(&mut **tx)
+                        .await?;
+
+                    Ok::<_, DeleteDatabaseError>(())
+                })
+            })
+            .await?;
+
+            return Ok(());
+        }
 
         let (name_suffix, mut database) = DatabaseState::from_fetched_database(database);
 
@@ -237,6 +309,15 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
         .expect("delete database task panicked")?;
         Ok(())
     }
+}
+
+fn postgres_database_name(database_id: u32, name_suffix: &str) -> String {
+    format!(
+        "{}{}_{}",
+        crate::common::POSTGRES_DATABASE_PREFIX,
+        database_id,
+        name_suffix
+    )
 }
 
 pub trait FromFetchedDatabaseExtension {

@@ -14,6 +14,7 @@ define_error!(database {
     invalid_hash ("The sql password hash is invalid" BAD_REQUEST),
     permissionless_entry ("One permission entry doesn't have privileges" BAD_REQUEST),
     unsupported_auth ("This database type does not support user authentication" BAD_REQUEST),
+    not_configured ("This database type is not configured on this daemon" BAD_REQUEST),
 });
 define_path_variable!(database_id "The database id");
 
@@ -21,7 +22,7 @@ define_path_variable!(database_id "The database id");
 pub trait DatabaseService {
     /// Creates a new database
     #[route("", method = PUT)]
-    #[error(database::invalid_identifier, sql::failure <- [sql:*])]
+    #[error(database::{invalid_identifier, not_configured}, sql::failure <- [sql:*])]
     #[example("examples/database.create.json")]
     async fn create_database(
         &self,
@@ -43,7 +44,7 @@ pub trait DatabaseService {
 
     /// Updates an existing database
     #[route("/{database_id}", method = DELETE)]
-    #[error(database::not_found, sql::failure <- [sql:*])]
+    #[error(database::{not_found, not_configured}, sql::failure <- [sql:*])]
     async fn delete_database(&self, database_id: u32) -> Result<(), _>;
 }
 
@@ -61,6 +62,7 @@ pub enum DatabaseType {
     #[default]
     Mysql,
     Redis,
+    Postgres,
 }
 
 bitflags! {

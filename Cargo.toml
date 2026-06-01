@@ -337,6 +337,7 @@ features = [
 	"tls-rustls-aws-lc-rs",
 	"json",
 	"mysql",
+	"postgres",
 	"chrono",
 	"bigdecimal",
 	"uuid",

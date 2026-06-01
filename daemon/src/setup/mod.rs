@@ -268,6 +268,7 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
 
     let config = DaemonConfig {
         database: mysql,
+        postgres: None,
         listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 3000)]),
         backend_url: backend.join("/").unwrap(),
         origin: HeaderValue::from_str(&backend.join("/").unwrap().to_string()).unwrap(),

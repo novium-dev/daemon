@@ -66,6 +66,7 @@ impl Database {
             name_suffix: self.name_suffix,
             database_type: match self.r#type.as_str() {
                 "redis" => DatabaseType::Redis,
+                "postgres" => DatabaseType::Postgres,
                 _ => DatabaseType::Mysql,
             },
             redis_database_limit: self.redis_database_limit,
@@ -85,7 +86,7 @@ impl Database {
     pub(crate) fn validate_sql_string<E: FromDatabaseInvalidIdentifier>(
         str: &str,
     ) -> Result<(), E> {
-        if regex!("[a-zA-Z0-9_]+").is_match(str) && str.len() <= 32 {
+        if regex!("^[a-zA-Z0-9_]+$").is_match(str) && str.len() <= 32 {
             Ok(())
         } else {
             Err(E::from())
