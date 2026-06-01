@@ -217,9 +217,6 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                 rows.store(row_height, Ordering::Relaxed);
                 match server_id {
                     None => {}
-                    #[cfg(feature = "no_tty_size_please")]
-                    Some(_) => {}
-                    #[cfg(not(feature = "no_tty_size_please"))]
                     Some(id) => {
                         let mut servers = self.daemon.servers.lock().await;
                         let server_data_arc = Arc::clone(match servers.get(id) {

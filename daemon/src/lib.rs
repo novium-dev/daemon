@@ -150,13 +150,11 @@ pub(crate) type ServerContainerWrite = Pin<Box<dyn AsyncWrite + Send>>;
 pub(crate) struct ServerData {
     pub(crate) restart: bool,
     pub(crate) stopping: bool,
-    #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) size: (u16, u16),
     pub(crate) buffer: Arc<Mutex<AllocRingBuffer<u8>>>,
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) stats_sender: Arc<Sender<ChannelWriteData>>,
-    #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) sessions: Arc<Mutex<HashMap<uuid::Uuid, terminal::TerminalSession>>>,
     pub(crate) stop_command: Option<String>,
     pub(crate) failure_counter: u8,
@@ -175,9 +173,7 @@ impl Default for ServerData {
             attach_write: Arc::new(Mutex::new(None)),
             sender: Arc::new(Sender::new(400)),
             stats_sender: Arc::new(Sender::new(400)),
-            #[cfg(not(feature = "no_tty_size_please"))]
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            #[cfg(not(feature = "no_tty_size_please"))]
             size: (170, 30),
             buffer: Arc::new(Mutex::new(AllocRingBuffer::new(
                 crate::common::DAEMON_TERMINAL_BUFFER_LIMIT,
