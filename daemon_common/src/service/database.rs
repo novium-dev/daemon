@@ -28,7 +28,7 @@ pub trait DatabaseService {
         &self,
         name_suffix: String,
         database_type: Option<DatabaseType>,
-        redis_database_limit: Option<u16>,
+        redis_memory_mib: Option<u32>,
     ) -> Result<u32, _>;
 
     /// Updates an existing database

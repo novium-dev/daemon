@@ -1,5 +1,5 @@
 {
   "name_suffix": "luckperms",
   "database_type": "mysql",
-  "redis_database_limit": null
+  "redis_memory_mib": null
 }

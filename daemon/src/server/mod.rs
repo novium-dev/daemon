@@ -246,7 +246,7 @@ impl Server {
     SELECT
         `databases`.`id`,
         `databases`.`name_suffix`,
-        `databases`.`redis_database_limit` AS `database_limit`
+        `databases`.`redis_memory_mib`
     FROM `database_passwordless`
     INNER JOIN `databases`
         ON `databases`.`id` = `database_passwordless`.`database`
@@ -298,7 +298,7 @@ impl Server {
 pub struct RedisDatabase {
     pub id: u32,
     pub name_suffix: String,
-    pub database_limit: Option<u32>,
+    pub redis_memory_mib: Option<u32>,
 }
 
 #[derive(sqlx::FromRow)]

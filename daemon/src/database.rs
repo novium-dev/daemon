@@ -16,14 +16,14 @@ pub struct Database {
     pub id: u32,
     pub name_suffix: String,
     pub r#type: String,
-    pub redis_database_limit: Option<u32>,
+    pub redis_memory_mib: Option<u32>,
 }
 
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct FetchedDatabase {
     pub name_suffix: String,
     pub database_type: DatabaseType,
-    pub redis_database_limit: Option<u32>,
+    pub redis_memory_mib: Option<u32>,
     pub passwordless: HashMap<u32, i8>,
     pub users: HashMap<String, DatabaseUser>,
 }
@@ -69,7 +69,7 @@ impl Database {
                 "postgres" => DatabaseType::Postgres,
                 _ => DatabaseType::Mysql,
             },
-            redis_database_limit: self.redis_database_limit,
+            redis_memory_mib: self.redis_memory_mib,
             passwordless,
             users,
         })

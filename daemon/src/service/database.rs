@@ -22,7 +22,7 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
         &self,
         name_suffix: String,
         database_type: Option<DatabaseType>,
-        redis_database_limit: Option<u16>,
+        redis_memory_mib: Option<u32>,
     ) -> Result<u32, CreateDatabaseError> {
         Database::validate_sql_string::<CreateDatabaseError>(&name_suffix)
             .inspect_err(|_err| debug!("Validation of name suffix failed: {:?}", name_suffix))?;
@@ -33,7 +33,6 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
             DatabaseType::Redis => "redis",
             DatabaseType::Postgres => "postgres",
         };
-        let redis_database_limit = redis_database_limit.map(u32::from);
         let postgres_url = if database_type == DatabaseType::Postgres {
             Some(
                 self.config
@@ -54,10 +53,10 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
                 .transaction(move |tx| {
                     Box::pin(async move {
                         let database_id = query!(
-                            "INSERT INTO `databases` (`name_suffix`, `type`, `redis_database_limit`) VALUES (?, ?, ?)",
+                            "INSERT INTO `databases` (`name_suffix`, `type`, `redis_memory_mib`) VALUES (?, ?, ?)",
                             name_suffix,
                             database_type_sql,
-                            redis_database_limit
+                            redis_memory_mib
                         )
                         .execute(&mut **tx)
                         .await?

@@ -399,9 +399,9 @@ impl FetchedServer {
                 "--appendonly".to_owned(),
                 "no".to_owned(),
             ];
-            if let Some(limit) = redis.database_limit {
-                cmd.push("--databases".to_owned());
-                cmd.push(limit.to_string());
+            if let Some(memory_mib) = redis.redis_memory_mib {
+                cmd.push("--maxmemory".to_owned());
+                cmd.push(from_mib(memory_mib).to_string());
             }
 
             let endpoints_config = networks
