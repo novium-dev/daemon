@@ -242,7 +242,17 @@ impl Server {
 
         let redis = query_as!(
             RedisDatabase,
-            "SELECT `databases`.`id`, `databases`.`name_suffix`, `databases`.`redis_database_limit` FROM `database_passwordless` INNER JOIN `databases` ON `databases`.`id` = `database_passwordless`.`database` WHERE `database_passwordless`.`server` = ? AND `databases`.`type` = 'redis'",
+            r#"
+    SELECT
+        `databases`.`id`,
+        `databases`.`name_suffix`,
+        `databases`.`redis_database_limit` AS `database_limit`
+    FROM `database_passwordless`
+    INNER JOIN `databases`
+        ON `databases`.`id` = `database_passwordless`.`database`
+    WHERE `database_passwordless`.`server` = ?
+      AND `databases`.`type` = 'redis'
+    "#,
             self.id
         )
         .fetch_all(conn)
@@ -288,7 +298,7 @@ impl Server {
 pub struct RedisDatabase {
     pub id: u32,
     pub name_suffix: String,
-    pub redis_database_limit: Option<u32>,
+    pub database_limit: Option<u32>,
 }
 
 #[derive(sqlx::FromRow)]

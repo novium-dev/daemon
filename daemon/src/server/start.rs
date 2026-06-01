@@ -399,7 +399,7 @@ impl FetchedServer {
                 "--appendonly".to_owned(),
                 "no".to_owned(),
             ];
-            if let Some(limit) = redis.redis_database_limit {
+            if let Some(limit) = redis.database_limit {
                 cmd.push("--databases".to_owned());
                 cmd.push(limit.to_string());
             }
