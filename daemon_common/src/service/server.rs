@@ -337,10 +337,21 @@ pub struct PublicServerState {
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "filetype", rename_all = "snake_case")]
 pub enum ServerFileWrite {
-    Write { data: Vec<u8> },
-    JavaProperties { content: HashMap<String, String> },
-    Json { set: Vec<PatchSet> },
-    Yaml { set: Vec<PatchSet> },
+    Write {
+        data: Vec<u8>,
+    },
+    JavaProperties {
+        content: HashMap<String, String>,
+    },
+    Ini {
+        content: HashMap<String, HashMap<String, String>>,
+    },
+    Json {
+        set: Vec<PatchSet>,
+    },
+    Yaml {
+        set: Vec<PatchSet>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
@@ -422,6 +433,44 @@ impl ServerFileWrite {
                 })
                 .await
                 .inspect_err(|err| error!("Failed to write properties (task): {:?}", err))
+                .map_err(<io::Error as From<JoinError>>::from)??;
+            }
+            Self::Ini { content } => {
+                let content = content.clone();
+                let mut file = file.into_std().await;
+                tokio::task::spawn_blocking(move || {
+                    let mut current = ini::Ini::read_from(&mut file)
+                        .inspect_err(|err| debug!("Failed to read ini file: {:?}", err))
+                        .unwrap_or_default();
+                    for (section, values) in content {
+                        let mut section = if section.is_empty() {
+                            current.with_general_section()
+                        } else {
+                            current.with_section(Some(section))
+                        };
+                        for (key, val) in values {
+                            section.set(key, val);
+                        }
+                    }
+
+                    file.set_len(0)
+                        .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
+                    file.seek(SeekFrom::Start(0))
+                        .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
+                    current
+                        .write_to(&mut file)
+                        .inspect_err(|err| warn!("Failed to write ini: {:?}", err))
+                        .map_err(|err| {
+                            if err.kind() == ErrorKind::QuotaExceeded {
+                                <E as FromStorageQuotaReached>::from()
+                            } else {
+                                <E as From<io::Error>>::from(err)
+                            }
+                        })?;
+                    Ok::<_, E>(())
+                })
+                .await
+                .inspect_err(|err| error!("Failed to write ini (task): {:?}", err))
                 .map_err(<io::Error as From<JoinError>>::from)??;
             }
             Self::Json { set } => {

@@ -39,6 +39,7 @@ service = [
     "dep:serde",
     "dep:crc64",
     "dep:java-properties",
+    "dep:ini",
     "dep:utoipa",
     "dep:chrono",
     "dep:tracing",
@@ -146,6 +147,10 @@ workspace = true
 optional = true
 
 [dependencies.java-properties]
+workspace = true
+optional = true
+
+[dependencies.ini]
 workspace = true
 optional = true
 

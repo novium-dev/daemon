@@ -564,6 +564,16 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                             .inspect_err(|err| error!("Unable to insert properties server write operation: {err:?}"))?;
                     }
                 }
+                ServerFileWrite::Ini { content } => {
+                    for (section, values) in content {
+                        for (key, value) in values {
+                            query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `key`, `value`) VALUES (?, ?, 'ini', ?, ?)", server_id, path, serde_json::to_string(&(section, key)).expect("Unable to serialize ini key"), value)
+                                .execute(&mut **tx)
+                                .await
+                                .inspect_err(|err| error!("Unable to insert ini server write operation: {err:?}"))?;
+                        }
+                    }
+                }
                 ServerFileWrite::Json { set } => {
                     for patch in set {
                         query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'json', ?)", server_id, path, serde_json::to_string(patch).expect("Unable to serialize patch"))
