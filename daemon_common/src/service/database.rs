@@ -13,6 +13,7 @@ define_error!(database {
     invalid_identifier ("The sql identifier is invalid" BAD_REQUEST),
     invalid_hash ("The sql password hash is invalid" BAD_REQUEST),
     permissionless_entry ("One permission entry doesn't have privileges" BAD_REQUEST),
+    unsupported_auth ("This database type does not support user authentication" BAD_REQUEST),
 });
 define_path_variable!(database_id "The database id");
 
@@ -22,11 +23,16 @@ pub trait DatabaseService {
     #[route("", method = PUT)]
     #[error(database::invalid_identifier, sql::failure <- [sql:*])]
     #[example("examples/database.create.json")]
-    async fn create_database(&self, name_suffix: String) -> Result<u32, _>;
+    async fn create_database(
+        &self,
+        name_suffix: String,
+        database_type: Option<DatabaseType>,
+        redis_database_limit: Option<u16>,
+    ) -> Result<u32, _>;
 
     /// Updates an existing database
     #[route("/{database_id}", method = PATCH)]
-    #[error(database::{not_found, invalid_identifier, invalid_hash, permissionless_entry}, sql::failure <- [sql:*])]
+    #[error(database::{not_found, invalid_identifier, invalid_hash, permissionless_entry, unsupported_auth}, sql::failure <- [sql:*])]
     #[example("examples/database.update.json")]
     async fn update_database(
         &self,
@@ -45,6 +51,16 @@ pub trait DatabaseService {
 pub struct DatabaseUserPayload {
     pub password_hash: String,
     pub permissions: DatabaseUserPermissions,
+}
+
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, Eq, PartialEq, Hash, Default, utoipa::ToSchema,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum DatabaseType {
+    #[default]
+    Mysql,
+    Redis,
 }
 
 bitflags! {

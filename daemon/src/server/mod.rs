@@ -52,6 +52,7 @@ pub struct FetchedServer {
     pub ipv6_suffix: Option<u64>,
 
     pub networks: Vec<AssignedNetwork>,
+    pub redis: Vec<RedisDatabase>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
@@ -239,6 +240,14 @@ impl Server {
             .fetch_all(conn)
             .await?;
 
+        let redis = query_as!(
+            RedisDatabase,
+            "SELECT `databases`.`id`, `databases`.`name_suffix`, `databases`.`redis_database_limit` FROM `database_passwordless` INNER JOIN `databases` ON `databases`.`id` = `database_passwordless`.`database` WHERE `database_passwordless`.`server` = ? AND `databases`.`type` = 'redis'",
+            self.id
+        )
+        .fetch_all(conn)
+        .await?;
+
         Ok(FetchedServer {
             id: self.id,
             build,
@@ -270,8 +279,16 @@ impl Server {
             ipv6_suffix: self.ipv6_suffix,
 
             networks,
+            redis,
         })
     }
+}
+
+#[derive(Debug, Clone, sqlx::FromRow)]
+pub struct RedisDatabase {
+    pub id: u32,
+    pub name_suffix: String,
+    pub redis_database_limit: Option<u32>,
 }
 
 #[derive(sqlx::FromRow)]

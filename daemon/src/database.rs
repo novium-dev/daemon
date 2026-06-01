@@ -4,7 +4,9 @@ use crate::sql::MultiTransactionApply;
 use daemon_common::service::database::error_database_invalid_hash::FromDatabaseInvalidHash;
 use daemon_common::service::database::error_database_invalid_identifier::FromDatabaseInvalidIdentifier;
 use daemon_common::service::database::error_database_permissionless_entry::FromDatabasePermissionlessEntry;
-use daemon_common::service::database::{DatabaseUserPayload, DatabaseUserPermissions};
+use daemon_common::service::database::{
+    DatabaseType, DatabaseUserPayload, DatabaseUserPermissions,
+};
 use lazy_regex::regex;
 use sqlx::{Error, Executor, MySql, query, query_as};
 use std::collections::{HashMap, HashSet};
@@ -13,11 +15,15 @@ use std::collections::{HashMap, HashSet};
 pub struct Database {
     pub id: u32,
     pub name_suffix: String,
+    pub r#type: String,
+    pub redis_database_limit: Option<u32>,
 }
 
 #[derive(Clone, Default, Eq, PartialEq)]
 pub struct FetchedDatabase {
     pub name_suffix: String,
+    pub database_type: DatabaseType,
+    pub redis_database_limit: Option<u32>,
     pub passwordless: HashMap<u32, i8>,
     pub users: HashMap<String, DatabaseUser>,
 }
@@ -58,6 +64,11 @@ impl Database {
 
         Ok(FetchedDatabase {
             name_suffix: self.name_suffix,
+            database_type: match self.r#type.as_str() {
+                "redis" => DatabaseType::Redis,
+                _ => DatabaseType::Mysql,
+            },
+            redis_database_limit: self.redis_database_limit,
             passwordless,
             users,
         })

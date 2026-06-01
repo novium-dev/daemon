@@ -10,7 +10,9 @@ use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, EndpointSettings, HostConfig, NetworkingConfig, PortBinding,
 };
-use bollard::query_parameters::{CreateContainerOptions, StartContainerOptions};
+use bollard::query_parameters::{
+    CreateContainerOptions, CreateImageOptions, RemoveContainerOptions, StartContainerOptions,
+};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, OpenOptions};
 use core::fmt::{Debug, Display, Formatter};
@@ -19,8 +21,10 @@ use core::pin::Pin;
 use core::time::Duration;
 use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
+use futures_util::StreamExt as _;
 use num_traits::cast::FromPrimitive as _;
 use ringbuffer::RingBuffer as _;
+use sqlx::{MySql, Pool, query_scalar};
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
@@ -201,6 +205,11 @@ impl FetchedServer {
             });
         }
 
+        if !self.redis.is_empty() {
+            Self::log(&server_data.sender, &mut buffer, "Starting Valkey...");
+            self.start_valkey(&docker, daemon, &networks).await?;
+        }
+
         Self::log(&server_data.sender, &mut buffer, "Creating Environment...");
 
         let mut env: HashMap<String, String> =
@@ -333,6 +342,161 @@ impl FetchedServer {
         .await?;
 
         Ok(())
+    }
+
+    pub(crate) fn valkey_container_name(server_id: u32, database_id: u32) -> String {
+        format!(
+            "{}valkey_{}_{}",
+            crate::common::CONTAINER_PREFIX,
+            server_id,
+            database_id
+        )
+    }
+
+    pub(crate) fn valkey_hostname(database_id: u32) -> String {
+        format!("valkey-{database_id}")
+    }
+
+    async fn start_valkey(
+        &self,
+        docker: &Docker,
+        daemon: &Daemon<impl DaemonExtra>,
+        networks: &HashMap<String, EndpointSettings>,
+    ) -> Result<(), ServerStartError> {
+        let image = daemon.config.valkey.image.clone();
+        if docker.inspect_image(&image).await.is_err() {
+            let mut pull = docker.create_image(
+                Some(CreateImageOptions {
+                    from_image: Some(image.clone()),
+                    ..CreateImageOptions::default()
+                }),
+                None,
+                None,
+            );
+            while let Some(status) = pull.next().await {
+                status.map_err(ServerStartError::Docker)?;
+            }
+        }
+
+        for redis in &self.redis {
+            let container_name = Self::valkey_container_name(self.id, redis.id);
+            let _ = docker
+                .remove_container(
+                    &container_name,
+                    Some(RemoveContainerOptions {
+                        force: true,
+                        ..RemoveContainerOptions::default()
+                    }),
+                )
+                .await;
+
+            let mut cmd = vec![
+                "valkey-server".to_owned(),
+                "--protected-mode".to_owned(),
+                "no".to_owned(),
+                "--save".to_owned(),
+                String::new(),
+                "--appendonly".to_owned(),
+                "no".to_owned(),
+            ];
+            if let Some(limit) = redis.redis_database_limit {
+                cmd.push("--databases".to_owned());
+                cmd.push(limit.to_string());
+            }
+
+            let endpoints_config = networks
+                .keys()
+                .map(|network| {
+                    (
+                        network.clone(),
+                        EndpointSettings {
+                            aliases: Some(vec![
+                                Self::valkey_hostname(redis.id),
+                                format!("valkey-{}-{}", redis.id, redis.name_suffix),
+                            ]),
+                            ..EndpointSettings::default()
+                        },
+                    )
+                })
+                .collect();
+
+            docker
+                .create_container(
+                    Some(CreateContainerOptions {
+                        name: Some(container_name.clone()),
+                        ..CreateContainerOptions::default()
+                    }),
+                    ContainerCreateBody {
+                        image: Some(image.clone()),
+                        cmd: Some(cmd),
+                        exposed_ports: Some(vec!["6379/tcp".to_owned()]),
+                        networking_config: Some(NetworkingConfig {
+                            endpoints_config: Some(endpoints_config),
+                        }),
+                        host_config: Some(HostConfig {
+                            auto_remove: Some(true),
+                            readonly_rootfs: Some(true),
+                            tmpfs: Some(HashMap::from([(
+                                "/data".to_owned(),
+                                "rw,noexec,nosuid,size=64m".to_owned(),
+                            )])),
+                            ..HostConfig::default()
+                        }),
+                        ..ContainerCreateBody::default()
+                    },
+                )
+                .await
+                .map_err(ServerStartError::Docker)?;
+
+            docker
+                .start_container(&container_name, None::<StartContainerOptions>)
+                .await
+                .map_err(ServerStartError::Docker)?;
+        }
+
+        Ok(())
+    }
+
+    pub(crate) async fn stop_valkey(&self, docker: &Docker) {
+        for redis in &self.redis {
+            let _ = docker
+                .remove_container(
+                    &Self::valkey_container_name(self.id, redis.id),
+                    Some(RemoveContainerOptions {
+                        force: true,
+                        ..RemoveContainerOptions::default()
+                    }),
+                )
+                .await;
+        }
+    }
+
+    pub(crate) async fn stop_valkey_for_server(
+        docker: &Docker,
+        conn: &Pool<MySql>,
+        server_id: u32,
+    ) {
+        let Ok(redis_ids) = query_scalar!(
+            "SELECT `database` FROM `database_passwordless` INNER JOIN `databases` ON `databases`.`id` = `database_passwordless`.`database` WHERE `database_passwordless`.`server` = ? AND `databases`.`type` = 'redis'",
+            server_id
+        )
+        .fetch_all(conn)
+        .await
+        else {
+            return;
+        };
+
+        for redis_id in redis_ids {
+            let _ = docker
+                .remove_container(
+                    &Self::valkey_container_name(server_id, redis_id),
+                    Some(RemoveContainerOptions {
+                        force: true,
+                        ..RemoveContainerOptions::default()
+                    }),
+                )
+                .await;
+        }
     }
 
     pub(crate) async fn queue_start(

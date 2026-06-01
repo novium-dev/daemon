@@ -1,22 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::database::{Database, DatabasePayloadFunctionExt as _, DatabaseState, FetchedDatabase};
+use crate::server::FetchedServer;
 use crate::utils::database;
 use crate::{Daemon, DaemonExtra, sql};
 use async_trait::async_trait;
+use bollard::query_parameters::RemoveContainerOptions;
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::database::database_service_error::{
     CreateDatabaseError, DeleteDatabaseError, UpdateDatabaseError,
 };
-use daemon_common::service::database::{DatabaseUserPayload, DatabaseUserPermissions};
+use daemon_common::service::database::{
+    DatabaseType, DatabaseUserPayload, DatabaseUserPermissions,
+};
 use sqlx::{Connection as _, query};
 use std::collections::HashMap;
 use tracing::{debug, error};
 
 #[async_trait]
 impl<T: DaemonExtra> DatabaseService for Daemon<T> {
-    async fn create_database(&self, name_suffix: String) -> Result<u32, CreateDatabaseError> {
+    async fn create_database(
+        &self,
+        name_suffix: String,
+        database_type: Option<DatabaseType>,
+        redis_database_limit: Option<u16>,
+    ) -> Result<u32, CreateDatabaseError> {
         Database::validate_sql_string::<CreateDatabaseError>(&name_suffix)
             .inspect_err(|_err| debug!("Validation of name suffix failed: {:?}", name_suffix))?;
+
+        let database_type = database_type.unwrap_or_default();
+        let database_type_sql = match database_type {
+            DatabaseType::Mysql => "mysql",
+            DatabaseType::Redis => "redis",
+        };
+        let redis_database_limit = redis_database_limit.map(u32::from);
 
         let mut conn1 = self.conn.acquire().await?;
         let mut conn2 = self.conn.acquire().await?;
@@ -25,29 +41,33 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
                 .transaction(move |tx| {
                     Box::pin(async move {
                         let database_id = query!(
-                            "INSERT INTO `databases` (`name_suffix`) VALUES (?)",
-                            name_suffix
+                            "INSERT INTO `databases` (`name_suffix`, `type`, `redis_database_limit`) VALUES (?, ?, ?)",
+                            name_suffix,
+                            database_type_sql,
+                            redis_database_limit
                         )
                         .execute(&mut **tx)
                         .await?
                         .last_insert_id() as u32;
 
-                        sql::create_database(format!(
-                            "{}{}_{}",
-                            crate::common::MARIADB_DATABASE_PREFIX,
-                            database_id,
-                            name_suffix
-                        ))
-                        .prepare(&mut *conn2)
-                        .await
-                        .inspect_err(|err| {
-                            error!("Unable to prepare database creation statement: {:?}", err);
-                        })?
-                        .execute(&mut *conn2)
-                        .await
-                        .inspect_err(|err| {
-                            error!("Unable to execute database creation statement: {:?}", err);
-                        })?;
+                        if database_type == DatabaseType::Mysql {
+                            sql::create_database(format!(
+                                "{}{}_{}",
+                                crate::common::MARIADB_DATABASE_PREFIX,
+                                database_id,
+                                name_suffix
+                            ))
+                            .prepare(&mut *conn2)
+                            .await
+                            .inspect_err(|err| {
+                                error!("Unable to prepare database creation statement: {:?}", err);
+                            })?
+                            .execute(&mut *conn2)
+                            .await
+                            .inspect_err(|err| {
+                                error!("Unable to execute database creation statement: {:?}", err);
+                            })?;
+                        }
 
                         Ok::<_, CreateDatabaseError>(database_id)
                     })
@@ -68,6 +88,45 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
         else {
             return Err(UpdateDatabaseError::DatabaseNotFound);
         };
+        if database.database_type == DatabaseType::Redis && !users.is_empty() {
+            return Err(UpdateDatabaseError::DatabaseUnsupportedAuth);
+        }
+        if database.database_type == DatabaseType::Redis {
+            for permissions in passwordless.values() {
+                if permissions.is_empty() {
+                    return Err(UpdateDatabaseError::DatabasePermissionlessEntry);
+                }
+            }
+
+            let mut conn = self.conn.acquire().await?;
+            conn.transaction(|tx| {
+                Box::pin(async move {
+                    query!(
+                        "DELETE FROM `database_passwordless` WHERE `database` = ?",
+                        database_id
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+
+                    for (server, permissions) in passwordless {
+                        query!(
+                            "INSERT INTO `database_passwordless` (`database`, `server`, `permissions`) VALUES (?, ?, ?)",
+                            database_id,
+                            server,
+                            permissions.bits()
+                        )
+                        .execute(&mut **tx)
+                        .await?;
+                    }
+
+                    Ok::<_, UpdateDatabaseError>(())
+                })
+            })
+            .await?;
+
+            return Ok(());
+        }
+
         let payload = DatabaseState {
             users,
             passwordless,
@@ -94,6 +153,53 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
         else {
             return Err(DeleteDatabaseError::DatabaseNotFound);
         };
+        if database.database_type == DatabaseType::Redis {
+            let server_ids = query!(
+                "SELECT `server` FROM `database_passwordless` WHERE `database` = ?",
+                database_id
+            )
+            .fetch_all(&*self.conn)
+            .await?;
+            for row in server_ids {
+                let _ = self
+                    .docker
+                    .remove_container(
+                        &FetchedServer::valkey_container_name(row.server, database_id),
+                        Some(RemoveContainerOptions {
+                            force: true,
+                            ..RemoveContainerOptions::default()
+                        }),
+                    )
+                    .await;
+            }
+
+            let mut conn = self.conn.acquire().await?;
+            conn.transaction(|tx| {
+                Box::pin(async move {
+                    query!(
+                        "DELETE FROM `database_passwordless` WHERE `database` = ?",
+                        database_id
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                    query!(
+                        "DELETE FROM `database_user` WHERE `database` = ?",
+                        database_id
+                    )
+                    .execute(&mut **tx)
+                    .await?;
+                    query!("DELETE FROM `databases` WHERE `id` = ?", database_id)
+                        .execute(&mut **tx)
+                        .await?;
+
+                    Ok::<_, DeleteDatabaseError>(())
+                })
+            })
+            .await?;
+
+            return Ok(());
+        }
+
         let (name_suffix, mut database) = DatabaseState::from_fetched_database(database);
 
         let mut conn1 = self.conn.acquire().await?;

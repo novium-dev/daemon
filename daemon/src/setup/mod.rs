@@ -48,7 +48,9 @@
 )]
 
 use crate::config::{ArchiveCompression, CompressionLevel};
-use crate::config::{BackupEntry, DaemonConfig, MountPoint, NetworkConfig, StorageEntry};
+use crate::config::{
+    BackupEntry, DaemonConfig, MountPoint, NetworkConfig, StorageEntry, ValkeyConfig,
+};
 use async_trait::async_trait;
 use axum::http::HeaderValue;
 use axum_server::Server;
@@ -300,6 +302,7 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
             },
         )]),
         network: NetworkConfig::default(),
+        valkey: ValkeyConfig::default(),
         mounts,
         podman: false,
     };

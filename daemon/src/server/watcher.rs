@@ -146,6 +146,7 @@ pub async fn watch(
         }
     }
     drop(storage_lock);
+    FetchedServer::stop_valkey_for_server(&daemon.docker, &daemon.conn, server_id).await;
     let mut failure = if let Ok(inspection) = daemon
         .docker
         .inspect_container(

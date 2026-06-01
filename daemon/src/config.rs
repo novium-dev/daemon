@@ -27,6 +27,8 @@ pub struct DaemonConfig {
     pub ssh: Option<SSHConfig>,
     #[serde(default)]
     pub network: NetworkConfig,
+    #[serde(default)]
+    pub valkey: ValkeyConfig,
     pub mounts: Vec<MountPoint>,
     #[serde(default)]
     pub podman: bool,
@@ -140,6 +142,19 @@ impl TlsConfig {
 #[expect(clippy::empty_structs_with_brackets, reason = "not yet implemented")]
 pub struct NetworkConfig {
     // TODO: Assign dedicated ipv6 address to container, see #312
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct ValkeyConfig {
+    pub image: String,
+}
+
+impl Default for ValkeyConfig {
+    fn default() -> Self {
+        Self {
+            image: "valkey/valkey:latest".to_owned(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

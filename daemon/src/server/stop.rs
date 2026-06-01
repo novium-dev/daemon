@@ -40,6 +40,7 @@ impl FetchedServer {
             .stop_container(&Self::container_name(self.id), None::<StopContainerOptions>)
             .await
             .map_err(ServerStopError::Docker)?;
+        self.stop_valkey(docker).await;
         Ok(())
     }
 
@@ -60,6 +61,7 @@ impl FetchedServer {
             .kill_container(&Self::container_name(self.id), None::<KillContainerOptions>)
             .await
             .map_err(ServerStopError::Docker)?;
+        self.stop_valkey(docker).await;
         Ok(())
     }
 
