@@ -213,6 +213,24 @@ impl Server {
                         );
                     }
                 }
+                "toml" => {
+                    files_write.insert(
+                        entry.file.clone(),
+                        ServerFileWrite::Toml {
+                            set: serde_json::from_str(&entry.value)
+                                .map_err(|err| sqlx::Error::Decode(Box::new(err)))?,
+                        },
+                    );
+                }
+                "xml" => {
+                    files_write.insert(
+                        entry.file.clone(),
+                        ServerFileWrite::Xml {
+                            set: serde_json::from_str(&entry.value)
+                                .map_err(|err| sqlx::Error::Decode(Box::new(err)))?,
+                        },
+                    );
+                }
                 _ => {}
             }
         }

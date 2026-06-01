@@ -590,6 +590,18 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                             .inspect_err(|err| error!("Unable to insert yaml server write operation: {err:?}"))?;
                     }
                 }
+                ServerFileWrite::Toml { set } => {
+                    query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'toml', ?)", server_id, path, serde_json::to_string(set).expect("Unable to serialize toml patches"))
+                        .execute(&mut **tx)
+                        .await
+                        .inspect_err(|err| error!("Unable to insert toml server write operation: {err:?}"))?;
+                }
+                ServerFileWrite::Xml { set } => {
+                    query!("INSERT INTO `server_file_writes` (`server`, `file`, `filetype`, `value`) VALUES (?, ?, 'xml', ?)", server_id, path, serde_json::to_string(set).expect("Unable to serialize xml patches"))
+                        .execute(&mut **tx)
+                        .await
+                        .inspect_err(|err| error!("Unable to insert xml server write operation: {err:?}"))?;
+                }
             }
         }
 
