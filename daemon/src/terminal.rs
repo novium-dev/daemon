@@ -15,7 +15,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
 use tracing::{debug, error, warn};
 
-#[derive(Clone, Copy, Eq, PartialEq, Ord, PartialOrd)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum TerminalSessionOrigin {
     Ssh,
     Web,
@@ -186,7 +186,11 @@ pub async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex<Server
     let mut server_data = server_data.lock().await;
     let sessions = server_data.sessions.lock().await;
     let mut sessions_vec: Vec<_> = sessions.iter().collect();
-    sessions_vec.sort_by_key(|(_id, TerminalSession { origin, time, .. })| (*origin, *time));
+    sessions_vec.sort_by_key(|(_id, TerminalSession { time, .. })| *time);
+    sessions_vec.sort_by_key(|(_id, TerminalSession { origin, .. })| match origin {
+        TerminalSessionOrigin::Ssh => 0u8,
+        TerminalSessionOrigin::Web => 1u8,
+    });
     for (_id, TerminalSession { cols, rows, .. }) in sessions_vec {
         use core::sync::atomic::Ordering;
         let cols = cols.load(Ordering::Relaxed);
