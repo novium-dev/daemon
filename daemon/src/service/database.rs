@@ -190,7 +190,7 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
             .fetch_all(&*self.conn)
             .await?;
             for row in server_ids {
-                if let Err(e) = self
+                if let Err(err) = self
                     .docker
                     .remove_container(
                         &FetchedServer::valkey_container_name(row.server, database_id),
@@ -203,7 +203,7 @@ impl<T: DaemonExtra> DatabaseService for Daemon<T> {
                 {
                     error!(
                         "Failed to remove Valkey container for server {} database {}: {:?}",
-                        row.server, database_id, e
+                        row.server, database_id, err
                     );
                 }
             }
