@@ -5,7 +5,7 @@ use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::sync::Mutex;
-use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, schedule, sql, storage};
+use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, storage};
 use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
 use bollard::query_parameters::{
     InspectNetworkOptions, KillContainerOptions, ListContainersOptions,
@@ -19,14 +19,23 @@ use futures_util::{FutureExt as _, TryFutureExt as _};
 use libc::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
 use sqlx::mysql::MySqlPoolOptions;
-use sqlx::query;
+use sqlx::{query, MySql, Pool};
 use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::sync::Arc;
+use sqlx::migrate::Migrator;
 use tokio::sync::broadcast::Sender;
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
 use url::Url;
+
+static MIGRATOR: Migrator = sqlx::migrate!();
+
+pub async fn migrate_db(pool: &Pool<MySql>) -> Result<(), sqlx::Error> {
+    MIGRATOR.run(pool).await?;
+
+    Ok(())
+}
 
 #[derive(Debug)]
 pub enum DaemonInitError {
@@ -220,8 +229,6 @@ impl<T: DaemonExtra> Daemon<T> {
             server_task: Arc::default(),
             server_task_cancellable: Arc::default(),
             shutdown_task: Arc::default(),
-            schedule_task: Arc::default(),
-            schedules: Arc::default(),
             docker: Arc::new(docker),
             conn: Arc::new(conn),
             client: Arc::default(),
@@ -230,7 +237,8 @@ impl<T: DaemonExtra> Daemon<T> {
             root,
             key,
         };
-        sql::init(&daemon.conn)
+
+        migrate_db(&daemon.conn)
             .await
             .inspect_err(|err| error!("Failed to initialize sql: {:?}", err))
             .map_err(DaemonInitError::Sql)?;
@@ -238,11 +246,6 @@ impl<T: DaemonExtra> Daemon<T> {
         daemon.reattach_container().await;
 
         info!("Running schedules...");
-
-        schedule::init(&daemon)
-            .await
-            .inspect_err(|err| error!("Failed to run schedules: {:?}", err))
-            .map_err(DaemonInitError::Sql)?;
 
         daemon.server_task_cancellable.lock().await.spawn(
             ctlsock::run(daemon.clone())
@@ -271,8 +274,6 @@ impl<T: DaemonExtra> Daemon<T> {
             .join_all()
             .await;
         debug!("Server tasks down");
-        self.schedule_task.lock().await.shutdown().await;
-        debug!("Stopped schedules");
         let servers = self.servers.lock().await;
         let mut set = JoinSet::new();
         for (server_id, server) in &*servers {

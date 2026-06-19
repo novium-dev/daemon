@@ -12,7 +12,7 @@ use crate::service::server::terminal::terminal_websocket_handle;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::server_required;
-use crate::{Daemon, DaemonExtra, sql, storage};
+use crate::{Daemon, DaemonExtra, storage};
 use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
 use base64::Engine as _;
@@ -109,26 +109,11 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
                 }
                 let mut conn = daemon.conn.acquire().await?;
 
-                sql::drop_user(format!("server_{server_id}"), "%")
-                    .prepare(&mut *conn)
-                    .await?
-                    .execute(&mut *conn)
-                    .await?;
-
                 query!("DELETE FROM `servers` WHERE `id` = ?", server_id)
                     .execute(&mut *conn)
                     .await?;
 
                 daemon.servers.lock().await.remove(&server_id);
-
-                let mut schedules = daemon.schedules.lock().await;
-                if let Some(schedules) = schedules.remove(&server_id) {
-                    let mut schedules = schedules.lock().await;
-                    for (_, handle) in schedules.schedules.drain() {
-                        handle.abort();
-                    }
-                }
-                drop(schedules);
 
                 tokio::task::spawn(async move {
                     if let Some(storage) = daemon.config.storage.get(&server.storage) {

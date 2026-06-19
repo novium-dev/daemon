@@ -5,7 +5,6 @@ pub mod config;
 mod server;
 
 mod files;
-mod sql;
 mod ssh;
 mod storage;
 
@@ -13,7 +12,6 @@ mod ctlsock;
 pub mod init;
 pub mod key;
 mod network;
-mod schedule;
 mod service;
 pub mod sync;
 mod terminal;
@@ -32,7 +30,7 @@ use ringbuffer::AllocRingBuffer;
 use sqlx::{MySql, Pool};
 use std::collections::HashMap;
 use tokio::io::AsyncWrite;
-use tokio::task::{AbortHandle, JoinSet};
+use tokio::task::JoinSet;
 use url::Url;
 
 use crate::config::DaemonConfig;
@@ -60,8 +58,6 @@ where
     pub(crate) server_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) shutdown_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) shutdown_channel: Arc<Sender<()>>,
-    pub(crate) schedule_task: Arc<Mutex<JoinSet<()>>>,
-    pub(crate) schedules: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerScheduleData>>>>>,
     pub(crate) docker: Arc<Docker>,
     pub(crate) conn: Arc<Pool<MySql>>,
     pub(crate) client: Arc<Client>,
@@ -158,12 +154,6 @@ pub(crate) struct ServerData {
     pub(crate) stop_command: Option<String>,
     pub(crate) failure_counter: u8,
 }
-
-#[derive(Default)]
-pub(crate) struct ServerScheduleData {
-    pub(crate) schedules: HashMap<u32, AbortHandle>,
-}
-
 impl Default for ServerData {
     fn default() -> Self {
         Self {

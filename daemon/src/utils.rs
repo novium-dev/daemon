@@ -16,31 +16,9 @@ use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tokio_util::io::SyncIoBridge;
-use tracing::error;
 
 pub fn from_mib(mib: impl Into<u64>) -> u64 {
     mib.into().saturating_mul(0x0010_0000)
-}
-
-pub async fn database<E: From<sqlx::Error>>(
-    conn: impl Executor<'_, Database = MySql> + Copy,
-    database_id: u32,
-) -> Result<Option<crate::database::FetchedDatabase>, E> {
-    let Some(database) = query_as!(
-        crate::database::Database,
-        "SELECT * FROM `databases` WHERE `id` = ? LIMIT 1",
-        database_id
-    )
-    .fetch_optional(conn)
-    .await
-    .inspect_err(|err| error!("Unable to resolve database: {:?}", err))?
-    else {
-        return Ok(None);
-    };
-
-    Ok(Some(database.fetched(conn).await.inspect_err(|err| {
-        error!("Unable to fetch database: {err:?}");
-    })?))
 }
 
 pub async fn server(

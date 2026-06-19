@@ -10,7 +10,6 @@ use daemon_common::service::files::FilesService;
 use daemon_common::service::framework_router;
 use daemon_common::service::network::NetworkService;
 use daemon_common::service::resource::ResourceService;
-use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
 use rustls::ServerConfig;
 use rustls::server::WebPkiClientVerifier;
@@ -29,7 +28,6 @@ mod files;
 pub mod middleware;
 mod network;
 mod resource;
-mod schedule;
 mod server;
 mod setup;
 
@@ -41,7 +39,7 @@ impl<T: DaemonExtra> Daemon<T> {
 
         let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
             ServerService, BackupService, FilesService, NetworkService,
-            ResourceService, ScheduleService {"trace_sync" daemon_common::service::debug::DebugService}
+            ResourceService {"trace_sync" daemon_common::service::debug::DebugService}
         });
         let router = router.into_openapi();
         let router_user = router_user.into_openapi();

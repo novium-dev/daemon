@@ -8,7 +8,6 @@ use crate::service::files::{
 };
 use crate::service::network::{NetworkService, NetworkServiceClientImpl, NetworkServiceURL};
 use crate::service::resource::{ResourceService, ResourceServiceClientImpl, ResourceServiceURL};
-use crate::service::schedule::{ScheduleService, ScheduleServiceClientImpl, ScheduleServiceURL};
 use crate::service::server::{
     ServerService, ServerServiceClientImpl, ServerServiceURL, ServerServiceUserKeyExtension,
 };
@@ -31,7 +30,6 @@ pub mod debug;
 pub mod files;
 pub mod network;
 pub mod resource;
-pub mod schedule;
 pub mod server;
 pub mod setup;
 
@@ -105,7 +103,6 @@ pub trait DaemonServices:
     + FilesService
     + NetworkService
     + ResourceService
-    + ScheduleService
     + SetupService
 {
     fn id(&self) -> Uuid;
@@ -116,7 +113,6 @@ pub trait DaemonServicesClientImpl:
     + FilesServiceClientImpl
     + NetworkServiceClientImpl
     + ResourceServiceClientImpl
-    + ScheduleServiceClientImpl
     + SetupServiceClientImpl
 {
 }
@@ -128,7 +124,6 @@ pub trait DaemonServicesURL:
     + FilesServiceURL
     + NetworkServiceURL
     + ResourceServiceURL
-    + ScheduleServiceURL
     + SetupServiceURL
 {
 }
