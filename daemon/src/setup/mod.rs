@@ -102,7 +102,7 @@ struct HostPortValidator;
 #[derive(Clone)]
 struct RegexValidator(&'static Regex);
 
-pub(crate) fn setup(backend_url: Option<Url>, code: Option<String>, skip_mariadb_plugin: bool) {
+pub(crate) fn setup(backend_url: Option<Url>, code: Option<String>) {
     info!("Starting Setup Wizard...");
 
     match File::open("config.toml") {
@@ -117,12 +117,12 @@ pub(crate) fn setup(backend_url: Option<Url>, code: Option<String>, skip_mariadb
                 .unwrap()
                 .eq("New")
             {
-                new(backend_url, code, skip_mariadb_plugin)
+                new(backend_url, code)
             } else {
                 update(file, backend_url, code)
             }
         }
-        Err(_) => new(backend_url, code, skip_mariadb_plugin),
+        Err(_) => new(backend_url, code),
     }
 }
 
@@ -228,7 +228,7 @@ fn test_host(config: &DaemonConfig, root: Arc<DaemonRootKey>, key: Arc<DaemonKey
     thread::sleep(Duration::from_secs(5));
 }
 
-pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_plugin: bool) {
+pub(crate) fn new(backend_url: Option<Url>, code: Option<String>) {
     let (backend, code) = default(backend_url, code);
 
     println!("Retrieving daemon root key...");
@@ -291,7 +291,7 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
         )]),
         backup: HashMap::from_iter([(
             "local".to_string(),
-            crate::config::BackupEntry::Archive {
+            BackupEntry::Archive {
                 path: "./backups".to_string(),
                 compression: ArchiveCompression::Zstd {
                     level: CompressionLevel::Best,
@@ -348,7 +348,7 @@ pub(crate) fn new(backend_url: Option<Url>, code: Option<String>, skip_mariadb_p
     test_host(&config, root.clone(), temp_key.clone(), Uuid::nil());
 
     let request =
-        config_to_register_request(host, config, &temp_key.cert[0], &csr, skip_mariadb_plugin);
+        config_to_register_request(host, config, &temp_key.cert[0], &csr);
     let response = Client::default()
         .post(backend.join("/internal/daemon/register").unwrap())
         .bearer_auth(code)
@@ -415,35 +415,8 @@ fn config_to_register_request(
     config: DaemonConfig,
     cert: &CertificateDer<'static>,
     csr: &CertificateSigningRequestDer<'static>,
-    no_plugin: bool,
 ) -> NodeRegistrationRequest {
     let ssh_host = ask_ssh(&config);
-
-    if !no_plugin {
-        let mysql2 = config.database.clone();
-        Handle::current()
-            .block_on(async {
-                let mut conn = MySqlConnection::connect(&mysql2).await?;
-
-                let plugins: HashSet<String> =
-                    query_scalar!("SELECT `PLUGIN_NAME` FROM `information_schema`.`plugins`")
-                        .fetch_all(&mut conn)
-                        .await?
-                        .into_iter()
-                        .collect();
-
-                if !plugins.contains(crate::common::MARIADB_PLUGIN_NAME) {
-                    println!("MariaDB Authentication plugin missing! Trying to install it...");
-                    let mut query = QueryBuilder::new("INSTALL PLUGIN ");
-                    query.push(crate::common::MARIADB_PLUGIN_NAME);
-                    query.push("  SONAME 'libdaemon_mariadb_plugin.so'");
-                    query.build().execute(&mut conn).await?;
-                }
-
-                Ok::<(), Box<dyn Error + Send + Sync>>(())
-            })
-            .unwrap();
-    }
 
     NodeRegistrationRequest {
         base_url: url.clone(),

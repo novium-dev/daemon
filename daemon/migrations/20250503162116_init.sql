@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS `server_file_writes`
 (
   `server` INT(255) UNSIGNED NOT NULL,
   `file` VARCHAR(255) NOT NULL,
-  `filetype` ENUM('write', 'properties', 'json', 'yaml') NOT NULL,
+  `filetype` ENUM('write', 'properties', 'ini', 'json', 'yaml', 'toml', 'xml') NOT NULL,
   `key` VARCHAR(255) NOT NULL DEFAULT '',
   `value` TEXT NOT NULL,
   PRIMARY KEY (`server`, `file`, `key`),
@@ -154,27 +154,4 @@ CREATE TABLE IF NOT EXISTS `schedule_steps` (
     `index` INT UNSIGNED NOT NULL,
     `value` JSON NOT NULL, -- I do not like json in sql, but its the best way here I guess
     FOREIGN KEY (`schedule`) REFERENCES `schedules`(`id`) ON DELETE CASCADE
-) ENGINE=INNODB;
-
-CREATE TABLE IF NOT EXISTS `databases`
-(
-  `id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `name_suffix` VARCHAR(255) NOT NULL
-) ENGINE=INNODB;
-
-CREATE TABLE IF NOT EXISTS `database_passwordless`
-(
-  `database` INT(255) UNSIGNED NOT NULL,
-  `server` INT(255) UNSIGNED NOT NULL,
-  `permissions` TINYINT NOT NULL,
-  PRIMARY KEY (`database`, `server`)
-) ENGINE=INNODB;
-
-CREATE TABLE IF NOT EXISTS `database_user`
-(
-  `database` INT(255) UNSIGNED NOT NULL,
-  `name_suffix` VARCHAR(255) NOT NULL,
-  `password_hash` VARCHAR(255) NOT NULL,
-  `permissions` TINYINT NOT NULL,
-  PRIMARY KEY (`database`, `name_suffix`)
 ) ENGINE=INNODB;

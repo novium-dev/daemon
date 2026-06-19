@@ -41,15 +41,6 @@ fn main() {
                         .help("The registration code")
                         .action(ArgAction::Set)
                         .required(false),
-                )
-                .arg(
-                    Arg::new("skip-mariadb-plugin")
-                        .short(None)
-                        .long("skip-mariadb-plugin")
-                        .env("SKIP_MARIADB_PLUGIN")
-                        .help("Skips the mariadb plugin install step")
-                        .action(ArgAction::SetTrue)
-                        .required(false),
                 ),
         )
         .arg(
@@ -132,8 +123,7 @@ async fn main0(matches: ArgMatches) {
                     .expect("Unable to get matches for subcommand setup");
                 let backend = setup_matches.get_one("backend");
                 let code = setup_matches.get_one("code");
-                let skip_mariadb_plugin = setup_matches.get_flag("skip-mariadb-plugin");
-                setup::setup(backend.cloned(), code.cloned(), skip_mariadb_plugin);
+                setup::setup(backend.cloned(), code.cloned());
             })
             .await
             .expect("Setup wizard failed");

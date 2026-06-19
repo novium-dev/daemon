@@ -2,7 +2,6 @@
 #![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
 pub mod config;
-mod database;
 mod server;
 
 mod files;

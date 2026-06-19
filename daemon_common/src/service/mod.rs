@@ -2,7 +2,6 @@
 use crate::service::backup::{
     BackupService, BackupServiceClientImpl, BackupServiceURL, BackupServiceUserKeyExtension,
 };
-use crate::service::database::{DatabaseService, DatabaseServiceClientImpl, DatabaseServiceURL};
 use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 use crate::service::files::{
     FilesService, FilesServiceClientImpl, FilesServiceURL, FilesServiceUserKeyExtension,
@@ -28,7 +27,6 @@ pub use zelus::sdk::ZelusClientImpl;
 pub use zelus::types::{DataStream, JsonVec};
 
 pub mod backup;
-pub mod database;
 pub mod debug;
 pub mod files;
 pub mod network;
@@ -107,7 +105,6 @@ pub trait DaemonServices:
     + FilesService
     + NetworkService
     + ResourceService
-    + DatabaseService
     + ScheduleService
     + SetupService
 {
@@ -119,7 +116,6 @@ pub trait DaemonServicesClientImpl:
     + FilesServiceClientImpl
     + NetworkServiceClientImpl
     + ResourceServiceClientImpl
-    + DatabaseServiceClientImpl
     + ScheduleServiceClientImpl
     + SetupServiceClientImpl
 {
@@ -132,7 +128,6 @@ pub trait DaemonServicesURL:
     + FilesServiceURL
     + NetworkServiceURL
     + ResourceServiceURL
-    + DatabaseServiceURL
     + ScheduleServiceURL
     + SetupServiceURL
 {

@@ -6,7 +6,6 @@ use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use axum_server::{Handle, Server};
 use core::time::Duration;
 use daemon_common::service::backup::BackupService;
-use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::framework_router;
 use daemon_common::service::network::NetworkService;
@@ -24,7 +23,6 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
 mod backup;
-mod database;
 #[cfg(feature = "trace_sync")]
 mod debug;
 mod files;
@@ -43,7 +41,7 @@ impl<T: DaemonExtra> Daemon<T> {
 
         let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
             ServerService, BackupService, FilesService, NetworkService,
-            ResourceService, DatabaseService, ScheduleService {"trace_sync" daemon_common::service::debug::DebugService}
+            ResourceService, ScheduleService {"trace_sync" daemon_common::service::debug::DebugService}
         });
         let router = router.into_openapi();
         let router_user = router_user.into_openapi();
