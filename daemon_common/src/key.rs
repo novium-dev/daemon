@@ -622,6 +622,8 @@ impl ServerCertVerifier for DaemonKeyVerifier {
 
 #[cfg(test)]
 mod tests {
+    #![allow(clippy::unwrap_used)]
+
     use crate::key::{BackendKey, DaemonKey, DaemonRootKey};
     use ed25519_dalek::SigningKey;
     use rcgen::{CertificateSigningRequestParams, KeyPair};

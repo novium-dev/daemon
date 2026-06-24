@@ -56,7 +56,6 @@ pub async fn new_session<
     docker: Arc<Docker>,
     server_data: Arc<ServerData>,
 ) {
-    let server_data = server_data_arc.lock().await;
     let buffer = Arc::clone(&server_data.buffer);
     let (sessions_arc, session_id) = {
         let sessions_arc = Arc::clone(&server_data.sessions);

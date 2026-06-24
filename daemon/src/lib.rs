@@ -23,7 +23,6 @@ mod websocket;
 use bollard::Docker;
 use core::pin::Pin;
 use core::sync::atomic::AtomicI64;
-#[cfg(not(feature = "no_tty_size_please"))]
 use core::sync::atomic::AtomicU16;
 use core::sync::atomic::{AtomicBool, AtomicU8};
 use daemon_common::service::files::task::StorageTask;
@@ -180,7 +179,7 @@ impl Default for ServerData {
             sender: Arc::new(Sender::new(400)),
             stats_sender: Arc::new(Sender::new(400)),
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            
+
             size: (AtomicU16::new(170), AtomicU16::new(30)),
             buffer: Arc::new(Mutex::new(AllocRingBuffer::new(
                 crate::common::DAEMON_TERMINAL_BUFFER_LIMIT,
