@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::DaemonExtra;
 use crate::ssh::handler::{DaemonChannel, DaemonSSHHandler};
-use crate::terminal::{TerminalData, new_session};
+use crate::terminal::{TerminalData, TerminalSessionOrigin, new_session};
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
 use daemon_common::node::BackendAuthServerPermissions;
@@ -91,6 +91,7 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
                         attach_write,
                         cols,
                         rows,
+                        origin: TerminalSessionOrigin::Ssh,
                         write,
                     },
                     Arc::clone(&self.daemon.docker),

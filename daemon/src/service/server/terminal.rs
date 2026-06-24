@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::ServerData;
-use crate::terminal::{TerminalData, new_session};
+use crate::terminal::{TerminalData, TerminalSessionOrigin, new_session};
 use crate::utils::ChannelInterceptor;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
 use bollard::Docker;
@@ -21,36 +21,25 @@ pub(super) async fn terminal_websocket_handle(
     let sender = Arc::clone(&server_data.sender);
     let attach_write = Arc::clone(&server_data.attach_write);
 
-    #[cfg(not(feature = "no_tty_size_please"))]
+    
     let server_data2 = Arc::clone(&server_data);
-    #[cfg(not(feature = "no_tty_size_please"))]
     let docker2 = Arc::clone(&docker);
-    #[cfg(not(feature = "no_tty_size_please"))]
     let cols2 = Arc::clone(&cols);
-    #[cfg(not(feature = "no_tty_size_please"))]
     let rows2 = Arc::clone(&rows);
     tokio::task::spawn(new_session(
         id,
         ChannelInterceptor::new(socket, move |_socket, mut message| {
-            #[cfg(not(feature = "no_tty_size_please"))]
+            
             let server_data2 = Arc::clone(&server_data2);
-            #[cfg(not(feature = "no_tty_size_please"))]
             let docker2 = Arc::clone(&docker2);
-            #[cfg(not(feature = "no_tty_size_please"))]
             let cols2 = Arc::clone(&cols2);
-            #[cfg(not(feature = "no_tty_size_please"))]
             let rows2 = Arc::clone(&rows2);
 
             Box::pin(async move {
                 if let Some(Ok(Message::Text(data))) = &mut message {
                     let data_str = data.to_string();
-                    #[cfg_attr(
-                        feature = "no_tty_size_please",
-                        expect(unused_variables, reason = "unused data2")
-                    )]
                     if let Some(data2) = data_str.strip_prefix(WEBSOCKET_RESIZE_MAGIC) {
                         *data = Utf8Bytes::default();
-                        #[cfg(not(feature = "no_tty_size_please"))]
                         if let Some((new_cols, new_rows)) = data2.split_once(':') {
                             use core::sync::atomic::Ordering;
 
@@ -76,6 +65,7 @@ pub(super) async fn terminal_websocket_handle(
             attach_write,
             cols,
             rows,
+            origin: TerminalSessionOrigin::Web,
             write,
         },
         docker,

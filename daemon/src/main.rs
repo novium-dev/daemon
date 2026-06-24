@@ -195,6 +195,10 @@ async fn run() {
     daemon.await_shutdown().await;
 }
 
+#[expect(
+    clippy::missing_const_for_fn,
+    reason = "function performs non-const Linux capability setup behind cfg"
+)]
 fn cap_setup() {
     #[cfg(target_os = "linux")]
     {

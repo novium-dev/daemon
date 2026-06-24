@@ -26,9 +26,6 @@ pub(super) async fn exec_websocket_handle(
     cols: u16,
     rows: u16,
 ) {
-    #[cfg(feature = "no_tty_size_please")]
-    let _ = (cols, rows);
-
     let lock = server_data.lock.read(ServerTask::ContainerCommand).await;
     if let Ok(Some((id, output, input))) = server
         .exec(&docker, command, &server_data, &lock, true)
@@ -36,30 +33,18 @@ pub(super) async fn exec_websocket_handle(
     {
         drop(lock);
 
-        #[cfg(feature = "no_tty_size_please")]
-        let _ = id;
-
-        #[cfg(not(feature = "no_tty_size_please"))]
         let _ = FetchedServer::update_exec_tty_size(id.clone(), &docker, cols, rows).await;
 
-        #[cfg(not(feature = "no_tty_size_please"))]
         let docker2 = Arc::clone(&docker);
         tokio::task::spawn(new_exec_session(
             ChannelInterceptor::new(socket, move |_socket, mut message| {
-                #[cfg(not(feature = "no_tty_size_please"))]
                 let docker2 = Arc::clone(&docker2);
-                #[cfg(not(feature = "no_tty_size_please"))]
                 let id = id.clone();
                 Box::pin(async move {
                     if let Some(Ok(Message::Text(data))) = &mut message {
                         let data_str = data.to_string();
-                        #[cfg_attr(
-                            feature = "no_tty_size_please",
-                            expect(unused_variables, reason = "data2 is unused")
-                        )]
                         if let Some(data2) = data_str.strip_prefix(WEBSOCKET_RESIZE_MAGIC) {
                             *data = Utf8Bytes::default();
-                            #[cfg(not(feature = "no_tty_size_please"))]
                             if let Some((new_cols, new_rows)) = data2.split_once(':') {
                                 let Ok(new_cols) = new_cols.parse() else {
                                     return message;

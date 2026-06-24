@@ -9,6 +9,7 @@ use core::error::Error as _;
 use crc64::crc64;
 pub use json_patch::Patch;
 use serde::{Deserialize, Serialize};
+use serde_json::Map;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 use std::io::SeekFrom;
@@ -333,10 +334,27 @@ pub struct PublicServerState {
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(tag = "filetype", rename_all = "snake_case")]
 pub enum ServerFileWrite {
-    Write { data: Vec<u8> },
-    JavaProperties { content: HashMap<String, String> },
-    Json { set: Vec<PatchSet> },
-    Yaml { set: Vec<PatchSet> },
+    Write {
+        data: Vec<u8>,
+    },
+    JavaProperties {
+        content: HashMap<String, String>,
+    },
+    Ini {
+        content: HashMap<String, HashMap<String, String>>,
+    },
+    Json {
+        set: Vec<PatchSet>,
+    },
+    Yaml {
+        set: Vec<PatchSet>,
+    },
+    Toml {
+        set: Vec<PatchSet>,
+    },
+    Xml {
+        set: Vec<XmlSet>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
@@ -350,6 +368,20 @@ pub struct PatchSet {
 pub enum PatchEntry {
     Normal { patch: Patch },
     Merge { patch: Value },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct XmlSet {
+    pub path: Vec<String>,
+    pub patch: XmlPatchEntry,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(tag = "patchtype", rename_all = "snake_case")]
+pub enum XmlPatchEntry {
+    Text { value: String },
+    Cdata { value: String },
+    Attribute { name: String, value: String },
 }
 
 impl ServerFileWrite {
@@ -418,6 +450,44 @@ impl ServerFileWrite {
                 })
                 .await
                 .inspect_err(|err| error!("Failed to write properties (task): {:?}", err))
+                .map_err(<io::Error as From<JoinError>>::from)??;
+            }
+            Self::Ini { content } => {
+                let content = content.clone();
+                let mut file = file.into_std().await;
+                tokio::task::spawn_blocking(move || {
+                    let mut current = ini::Ini::read_from(&mut file)
+                        .inspect_err(|err| debug!("Failed to read ini file: {:?}", err))
+                        .unwrap_or_default();
+                    for (section, values) in content {
+                        let mut section = if section.is_empty() {
+                            current.with_general_section()
+                        } else {
+                            current.with_section(Some(section))
+                        };
+                        for (key, val) in values {
+                            section.set(key, val);
+                        }
+                    }
+
+                    file.set_len(0)
+                        .inspect_err(|err| error!("Failed to truncate file: {:?}", err))?;
+                    file.seek(SeekFrom::Start(0))
+                        .inspect_err(|err| error!("Failed to seek file: {:?}", err))?;
+                    current
+                        .write_to(&mut file)
+                        .inspect_err(|err| warn!("Failed to write ini: {:?}", err))
+                        .map_err(|err| {
+                            if err.kind() == ErrorKind::QuotaExceeded {
+                                <E as FromStorageQuotaReached>::from()
+                            } else {
+                                <E as From<io::Error>>::from(err)
+                            }
+                        })?;
+                    Ok::<_, E>(())
+                })
+                .await
+                .inspect_err(|err| error!("Failed to write ini (task): {:?}", err))
                 .map_err(<io::Error as From<JoinError>>::from)??;
             }
             Self::Json { set } => {
@@ -505,9 +575,167 @@ impl ServerFileWrite {
                     }
                 })?;
             }
+            Self::Toml { set } => {
+                let (file, mut parsed): (_, serde_json::Value) = io_sync(
+                    |read| {
+                        use std::io::Read as _;
+
+                        let mut content = String::new();
+                        read.read_to_string(&mut content)?;
+                        if content.trim().is_empty() {
+                            Ok(serde_json::Value::Object(Map::default()))
+                        } else {
+                            toml::from_str(&content).map_err(io::Error::other)
+                        }
+                    },
+                    file,
+                )
+                .await?;
+
+                for patch in set {
+                    let mut copy = parsed.clone();
+                    if json_patch::patch(&mut copy, &patch.condition).is_err() {
+                        continue;
+                    }
+                    match &patch.patch {
+                        PatchEntry::Normal { patch } => {
+                            json_patch::patch(&mut parsed, patch)
+                                .map_err(|_err| <E as FromStoragePatchFailed>::from())?;
+                        }
+                        PatchEntry::Merge { patch } => {
+                            json_patch::merge(&mut parsed, patch);
+                        }
+                    }
+                }
+
+                io_sync_seek_truncate(
+                    move |write| {
+                        use std::io::Write as _;
+
+                        write.write_all(
+                            toml::to_string_pretty(&parsed)
+                                .map_err(io::Error::other)?
+                                .as_bytes(),
+                        )
+                    },
+                    file,
+                )
+                .await
+                .map_err(|err| {
+                    if err.kind() == ErrorKind::QuotaExceeded {
+                        <E as FromStorageQuotaReached>::from()
+                    } else {
+                        <E as From<io::Error>>::from(err)
+                    }
+                })?;
+            }
+            Self::Xml { set } => {
+                let root_name = set
+                    .iter()
+                    .find_map(|set| set.path.first())
+                    .map_or("root", String::as_str)
+                    .to_owned();
+                let (file, mut parsed): (_, xmltree::Element) = io_sync(
+                    move |read| {
+                        use std::io::Read as _;
+
+                        let mut content = String::new();
+                        read.read_to_string(&mut content)?;
+                        if content.trim().is_empty() {
+                            Ok(xmltree::Element::new(&root_name))
+                        } else {
+                            xmltree::Element::parse(content.as_bytes()).map_err(io::Error::other)
+                        }
+                    },
+                    file,
+                )
+                .await?;
+
+                for set in set {
+                    xml_apply_set(&mut parsed, set)
+                        .map_err(|()| <E as FromStoragePatchFailed>::from())?;
+                }
+
+                io_sync_seek_truncate(
+                    move |write| parsed.write(write).map_err(io::Error::other),
+                    file,
+                )
+                .await
+                .map_err(|err| {
+                    if err.kind() == ErrorKind::QuotaExceeded {
+                        <E as FromStorageQuotaReached>::from()
+                    } else {
+                        <E as From<io::Error>>::from(err)
+                    }
+                })?;
+            }
         }
         Ok(())
     }
+}
+
+fn xml_apply_set(root: &mut xmltree::Element, set: &XmlSet) -> Result<(), ()> {
+    if set.path.is_empty() {
+        return Err(());
+    }
+
+    let element = xml_element_at_path_mut(root, &set.path);
+    match &set.patch {
+        XmlPatchEntry::Text { value } => {
+            xml_set_text(element, xmltree::XMLNode::Text(value.clone()));
+        }
+        XmlPatchEntry::Cdata { value } => {
+            xml_set_text(element, xmltree::XMLNode::CData(value.clone()));
+        }
+        XmlPatchEntry::Attribute { name, value } => {
+            element.attributes.insert(name.clone(), value.clone());
+        }
+    }
+    Ok(())
+}
+
+fn xml_element_at_path_mut<'a>(
+    root: &'a mut xmltree::Element,
+    path: &[String],
+) -> &'a mut xmltree::Element {
+    let mut element = root;
+    let path = if path.first() == Some(&element.name) {
+        path.get(1..).unwrap_or_default()
+    } else {
+        path
+    };
+
+    for name in path {
+        if let Some(index) = element.children.iter().position(
+            |child| matches!(child, xmltree::XMLNode::Element(child) if child.name == *name),
+        ) {
+            element = element
+                .children
+                .get_mut(index)
+                .and_then(xmltree::XMLNode::as_mut_element)
+                .expect("located XML child should be an element");
+        } else {
+            element
+                .children
+                .push(xmltree::XMLNode::Element(xmltree::Element::new(name)));
+            element = element
+                .children
+                .last_mut()
+                .and_then(xmltree::XMLNode::as_mut_element)
+                .expect("inserted XML child should be an element");
+        }
+    }
+    element
+}
+
+fn xml_set_text(element: &mut xmltree::Element, node: xmltree::XMLNode) {
+    element.children.retain(|child| {
+        !matches!(
+            child,
+            xmltree::XMLNode::Text(_) | xmltree::XMLNode::CData(_)
+        )
+    });
+    element.children.push(node);
 }
 
 #[derive(Default, Copy, Clone, Serialize, Deserialize)]

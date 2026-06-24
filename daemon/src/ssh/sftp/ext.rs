@@ -36,8 +36,8 @@ impl IntoFileAttributes for Metadata {
             size: Some(self.size()),
             uid: Some(self.uid()),
             gid: Some(self.gid()),
-            atime: self.atime().try_into().map(Some).unwrap_or(None),
-            mtime: self.mtime().try_into().map(Some).unwrap_or(None),
+            atime: self.atime().try_into().ok(),
+            mtime: self.mtime().try_into().ok(),
             user: None,
             group: None,
         }

@@ -3,6 +3,7 @@ use crate::{Daemon, DaemonExtra, GIT_HASH, common};
 use core::time::Duration;
 use russh::server::*;
 use russh::*;
+use std::borrow::Cow;
 use std::sync::Arc;
 use tracing::error;
 
@@ -22,7 +23,11 @@ impl<T: DaemonExtra> Daemon<T> {
             methods.push(MethodKind::Password);
             let ssh_config = Arc::new(Config {
                 keys,
-                server_id: SshId::Standard(format!("{}{}", common::SSH_BANNER_PREFIX, GIT_HASH)),
+                server_id: SshId::Standard(Cow::Owned(format!(
+                    "{}{}",
+                    common::SSH_BANNER_PREFIX,
+                    GIT_HASH
+                ))),
                 methods,
                 ..Config::default()
             });

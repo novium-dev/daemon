@@ -33,7 +33,6 @@ features = ["trace_sync"]
 ssh_debug_auth_bypass = []
 btrfs = []
 sentry = ["dep:sentry"]
-no_tty_size_please = []
 
 default = ["sentry", "btrfs", "bindgen/runtime"]
 full = ["default"]
@@ -56,7 +55,6 @@ tracing.workspace = true
 tracing-subscriber.workspace = true
 uuid.workspace = true
 lazy-regex.workspace = true
-rand_core_old.workspace = true
 rand.workspace = true
 chacha20.workspace = true
 signal-hook.workspace = true
@@ -81,8 +79,8 @@ tokio-rustls.workspace = true
 thiserror.workspace = true
 http-body-util = "0.1.3"
 
-sysinfo = "0.37.2"
-inquire = "0.9.1"
+sysinfo = "0.38.4"
+inquire = "0.9.4"
 num-traits = "0.2.19"
 ringbuffer = "0.16.0"
 fs_extra = "1.3.0"
@@ -99,7 +97,7 @@ workspace = true
 features = ["full"]
 
 [dependencies.anyhow]
-version = "1.0.100"
+version = "1.0.102"
 features = ["std"]
 
 [dependencies.sentry]
@@ -119,7 +117,7 @@ workspace = true
 features = ["docker", "service", "ssh", "keys"]
 
 [dependencies.tar]
-version = "0.4.44"
+version = "0.4.45"
 
 [dependencies.reqwest]
 workspace = true
@@ -130,13 +128,13 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.56.0"
+version = "0.60.2"
 
 [dependencies.russh-sftp]
-version = "2.1.1"
+version = "2.1.2"
 
 [dependencies.rustix]
-version = "1.1.3"
+version = "1.1.4"
 features = ["thread"]
 
 [dependencies.zstd]
@@ -144,14 +142,14 @@ version = "0.13.3"
 features = []
 
 [dependencies.flate2]
-version = "1.1.5"
+version = "1.1.9"
 features = ["zlib"]
 
 [dependencies.bzip2]
 version = "0.6.1"
 
 [dependencies.liblzma]
-version = "0.4.5"
+version = "0.4.6"
 features = []
 
 [dependencies.lz4]

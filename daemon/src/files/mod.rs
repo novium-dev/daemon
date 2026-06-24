@@ -52,10 +52,6 @@ async fn storage_path_root(
     ))
 }
 
-#[expect(
-    clippy::assigning_clones,
-    reason = "false positive, already borrowed immutable"
-)]
 async fn storage_path(
     id: StorageIdentifier,
     storage: &StorageEntry,

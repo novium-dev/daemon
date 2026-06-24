@@ -10,7 +10,7 @@ RUN apt update \
 COPY . /work
 WORKDIR /work
 
-ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C linker-plugin-lto -C lto=thin -C embed-bitcode -C link-arg=-Wl,--icf=safe"
+ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C link-arg=-Wl,--icf=safe"
 
 RUN CC="clang-21" CXX="clang++-21" LD="ld.lld-21" RUSTFLAGS="-C linker=clang-21 -C link-arg=-fuse-ld=lld $FLAGS" cargo build --target x86_64-unknown-linux-gnu --release -p daemon_mariadb_plugin
 

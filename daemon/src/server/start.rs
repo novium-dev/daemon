@@ -251,16 +251,7 @@ impl FetchedServer {
 
                     stop_timeout: Some(i64::from(self.stop_timeout)),
 
-                    #[expect(
-                        clippy::zero_sized_map_values,
-                        reason = "needed because of struct value"
-                    )]
-                    exposed_ports: Some(
-                        ports
-                            .keys()
-                            .map(|str| (str.clone(), HashMap::new()))
-                            .collect(),
-                    ),
+                    exposed_ports: Some(ports.keys().cloned().collect()),
 
                     host_config: Some(HostConfig {
                         readonly_rootfs: Some(true),
@@ -305,7 +296,6 @@ impl FetchedServer {
                             })
                             .unwrap_or_default(),
 
-                        #[cfg(not(feature = "no_tty_size_please"))]
                         console_size: Some(vec![
                             server_data.size.1.load(Ordering::Relaxed) as usize,
                             server_data.size.0.load(Ordering::Relaxed) as usize,

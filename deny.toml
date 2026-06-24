@@ -24,6 +24,7 @@ allow-git = [
   "https://github.com/0xIO32/reqwest.git",
   "https://github.com/rustls/hyper-rustls.git?rev=5e9b69b4128abfc147e8b6fa55977eac4c3f575c",
   "https://github.com/acatton/serde-yaml-ng.git?rev=3628102977f3ec9e02b95ef32fcec30b3df91390",
+  "https://github.com/fussybeaver/bollard.git?rev=dca659509a12544cabe418c7832f1ac741c88d2c",
 ]
 
 [licenses]
@@ -40,7 +41,6 @@ allow = [
   "Zlib",
   "AGPL-3.0-only",
   "CDLA-Permissive-2.0",
-  "OpenSSL",
 
   "bzip2-1.0.6" # No osi approvel yet?
 ]

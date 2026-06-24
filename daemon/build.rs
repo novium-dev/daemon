@@ -19,11 +19,7 @@ fn main() {
     if let Ok(env) = std::env::var("DAEMON_DATABASE_URL") {
         println!("cargo:rustc-env=DATABASE_URL={env}");
     } else {
-        #[cfg(not(target_os = "macos"))]
         println!("cargo:rustc-env=DATABASE_URL=mysql://root@localhost/daemon");
-
-        #[cfg(target_os = "macos")]
-        println!("cargo:rustc-env=DATABASE_URL=mysql://root@mariadb.mac.orb.local/daemon");
     }
 
     #[cfg(feature = "btrfs")]

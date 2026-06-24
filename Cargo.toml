@@ -192,33 +192,34 @@ little_endian_bytes = "deny"
 
 
 [workspace.dependencies]
+bollard = "0.21.0"
 libc = "0.2"
-bollard = "0.19.4"
-toml = "0.9.10"
+toml = "1.1.2"
+xmltree = "0.12.0"
 base64 = "0.22.1"
-rand_core = "=0.10.0-rc-2"
-rand = "=0.10.0-rc.5"
-chacha20 = "=0.10.0-rc.5"
-signal-hook = "0.4.1"
+rand_core = "0.10.0"
+rand = "0.10.0"
+chacha20 = "0.10.0"
+signal-hook = "0.4.4"
 termion = "4.0.6"
 http = "1.4.0"
 async-trait = "0.1"
 tracing = "0.1.44"
-tracing-subscriber = "0.3.22"
+tracing-subscriber = "0.3.23"
 hex = "0.4.3"
 java-properties = "2.0.0"
-futures = "0.3.31"
-anyhow = "1.0.100"
-bytes = "1.11.0"
-futures-util = "0.3.31"
+ini = { package = "rust-ini", version = "0.21.3" }
+futures = "0.3.32"
+anyhow = "1.0.102"
+bytes = "1.11.1"
+futures-util = "0.3.32"
 either = "1.15.0"
 tower-layer = "0.3.3"
 pastey = "0.2.1"
 itertools = "0.14.0"
-arc-swap = "1.8.0"
-thiserror = "2.0.17"
-lazy-regex = "3.5.0"
-rand_core_old = { version = "=0.6.4", package = "rand_core" }
+arc-swap = "1.9.1"
+thiserror = "2.0.18"
+lazy-regex = "3.6.0"
 
 [workspace.dependencies.daemon_common]
 path = "daemon_common"
@@ -230,7 +231,7 @@ default-features = false
 features = ["error", "sqlx", "io"]
 
 [workspace.dependencies.rustls]
-version = "0.23.35"
+version = "0.23.37"
 #default-features = false
 #features = [
 #  "ring",
@@ -249,24 +250,24 @@ git = "https://github.com/0xIO32/reqwest.git"
 features = ["http2", "json", "stream", "zstd"]
 
 [workspace.dependencies.sentry]
-version = "0.46.0"
+version = "0.48.1"
 default-features = false
 features = [
-    "backtrace",
-    "contexts",
-    "debug-images",
-    "panic",
-    "rustls",
-    "log",
-    "tower",
-    "tower-axum-matched-path",
-    "tracing",
-    "reqwest",
+	"backtrace",
+	"contexts",
+	"debug-images",
+	"panic",
+	"rustls",
+	"log",
+	"tower",
+	"tower-axum-matched-path",
+	"tracing",
+	"reqwest",
 ]
 
 
 [workspace.dependencies.cron]
-version = "0.15.0"
+version = "0.16.0"
 features = ["serde"]
 
 [workspace.dependencies.chrono-tz]
@@ -274,7 +275,7 @@ version = "0.10.4"
 features = ["serde"]
 
 [workspace.dependencies.bitflags]
-version = "2.10.0"
+version = "2.11.0"
 features = ["serde"]
 
 [workspace.dependencies.serde]
@@ -286,10 +287,10 @@ version = "1.0"
 features = ["preserve_order"]
 
 [workspace.dependencies.tokio]
-version = "1.49.0"
+version = "1.51.0"
 
 [workspace.dependencies.tokio-util]
-version = "0.7.17"
+version = "0.7.18"
 
 [workspace.dependencies.axum-server]
 version = "0.8.0"
@@ -304,7 +305,7 @@ version = "0.12.5"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.clap]
-version = "4.5.54"
+version = "4.6.0"
 features = ["color", "env", "cargo"]
 
 [workspace.dependencies.utoipa]
@@ -315,59 +316,59 @@ features = ["macros", "preserve_path_order", "url"]
 version = "0.2.0"
 
 [workspace.dependencies.tower]
-version = "0.5.2"
+version = "0.5.3"
 features = ["full"]
 
 [workspace.dependencies.tower-http]
 version = "0.6.8"
 features = [
-    "cors",
-    "auth",
-    "trace",
-    "compression-zstd",
-    "compression-br",
-    "compression-gzip",
+	"cors",
+	"auth",
+	"trace",
+	"compression-zstd",
+	"compression-br",
+	"compression-gzip",
 ]
 
 [workspace.dependencies.sqlx]
 version = "0.8.6"
 features = [
-    "runtime-tokio",
-    "tls-rustls-aws-lc-rs",
-    "json",
-    "mysql",
-    "chrono",
-    "bigdecimal",
-    "uuid",
+	"runtime-tokio",
+	"tls-rustls-aws-lc-rs",
+	"json",
+	"mysql",
+	"chrono",
+	"bigdecimal",
+	"uuid",
 ]
 
 [workspace.dependencies.chrono]
-version = "0.4.42"
+version = "0.4.44"
 features = ["serde"]
 
 [workspace.dependencies.uuid]
-version = "1.19.0"
+version = "1.23.0"
 features = ["serde", "v4"]
 
 [workspace.dependencies.pkcs8]
-version = "0.11.0-rc.8"
+version = "0.11.0-rc.11"
 features = ["pem", "std"]
 
 [workspace.dependencies.ed25519-dalek]
-version = "3.0.0-pre.3"
+version = "3.0.0-pre.6"
 features = ["serde", "rand_core", "pkcs8", "pem"]
 
 [workspace.dependencies.url]
-version = "2.5.7"
+version = "2.5.8"
 features = ["serde"]
 
 [workspace.dependencies.indexmap]
-version = "2.12.1"
+version = "2.13.1"
 features = ["serde"]
 
 [workspace.dependencies.rcgen]
 # See https://github.com/rustls/rcgen/issues/400
-version = "=0.14.5"
+version = "=0.14.7"
 default-features = false
 features = ["crypto", "pem", "x509-parser", "aws_lc_rs"]
 

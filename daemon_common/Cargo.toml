@@ -35,10 +35,13 @@ service = [
     "dep:serde_json",
     "dep:tokio",
     "dep:serde_yaml_ng",
+    "dep:toml",
+    "dep:xmltree",
     "dep:axum",
     "dep:serde",
     "dep:crc64",
     "dep:java-properties",
+    "dep:ini",
     "dep:utoipa",
     "dep:chrono",
     "dep:tracing",
@@ -80,7 +83,7 @@ workspace = true
 optional = true
 
 [dependencies.x509-parser]
-version = "0.18.0"
+version = "0.18.1"
 default-features = false
 features = ["verify-aws"]
 optional = true
@@ -125,6 +128,14 @@ optional = true
 workspace = true
 optional = true
 
+[dependencies.toml]
+workspace = true
+optional = true
+
+[dependencies.xmltree]
+workspace = true
+optional = true
+
 [dependencies.rcgen]
 workspace = true
 optional = true
@@ -146,6 +157,10 @@ workspace = true
 optional = true
 
 [dependencies.java-properties]
+workspace = true
+optional = true
+
+[dependencies.ini]
 workspace = true
 optional = true
 
@@ -178,7 +193,7 @@ workspace = true
 optional = true
 
 [dependencies.time]
-version = "0.3.44"
+version = "0.3.47"
 optional = true
 
 [dependencies.json-patch]

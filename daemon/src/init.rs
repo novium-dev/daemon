@@ -86,15 +86,22 @@ impl<T: DaemonExtra> Daemon<T> {
             info!("any warranty. Continue at your own risk.");
             info!("==========================================================");
             info!("Deamon startup will be delayed by 10 sec");
-            tokio::time::sleep(Duration::from_secs(10)).await;
-        }
+            //tokio::time::sleep(Duration::from_secs(10)).await;
+        };
 
         let servers = HashMap::new();
 
-        info!("Connecting to Docker...");
-        let docker = bollard::Docker::connect_with_local_defaults()
-            .inspect_err(|err| error!("Failed to connect to docker: {err:?}"))
-            .map_err(DaemonInitError::Docker)?;
+        let docker = if config.podman {
+            info!("Connecting to Podman...");
+            bollard::Docker::connect_with_podman_defaults()
+                .inspect_err(|err| error!("Failed to connect to podman: {err:?}"))
+                .map_err(DaemonInitError::Docker)?
+        } else {
+            info!("Connecting to Docker...");
+            bollard::Docker::connect_with_local_defaults()
+                .inspect_err(|err| error!("Failed to connect to docker: {err:?}"))
+                .map_err(DaemonInitError::Docker)?
+        };
 
         match docker
             .inspect_network(

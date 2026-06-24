@@ -110,7 +110,7 @@ pub async fn watch(
     let storage_stats_guard = storage_stats_lock.lock().await;
     let mut next = Instant::now().add(Duration::from_millis(500));
     loop {
-        if start.elapsed() > Duration::from_secs(60) && !reset_counter {
+        if start.elapsed() > Duration::from_mins(1) && !reset_counter {
             server_data.failure_counter.store(0, Ordering::Relaxed);
             reset_counter = true;
         }
@@ -165,7 +165,7 @@ pub async fn watch(
     let mut failure_exceeded = false;
     if !server_data.restart.load(Ordering::SeqCst)
         && failure
-        && start.elapsed() <= Duration::from_secs(60)
+        && start.elapsed() <= Duration::from_mins(1)
     {
         let old = server_data.failure_counter.fetch_add(1, Ordering::SeqCst);
         if old >= 2 {

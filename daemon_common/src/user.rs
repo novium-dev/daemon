@@ -3,12 +3,11 @@ use crate::user::error_auth_signature_expired::FromAuthSignatureExpired;
 use crate::user::error_auth_signature_invalid::FromAuthSignatureInvalid;
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
+use chrono::Utc;
 use ed25519_dalek::{Signature, Signer as _, SigningKey, Verifier as _, VerifyingKey};
 use serde::de::Error as _;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::borrow::Cow;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tracing::error;
 use utoipa::openapi::schema::SchemaType;
 use utoipa::openapi::{Object, Ref, RefOr, Schema, Type};
 use utoipa::{PartialSchema, ToSchema};
@@ -53,7 +52,7 @@ macro_rules! signature_impl {
 }
 
 impl UserSignature {
-    const THRESHOLD: i128 = 60_000;
+    const THRESHOLD: i64 = 60_000;
 
     fn new(
         key: &SigningKey,
@@ -103,15 +102,8 @@ impl UserSignature {
             &self.0,
         )
         .map_err(|_err| <E as FromAuthSignatureInvalid>::from())?;
-        let unix = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .inspect_err(|err| error!("Time error: {:?}", err))
-            .map_err(|_err| <E as FromAuthSignatureExpired>::from())?;
-        if i128::from(timestamp)
-            .saturating_add(Self::THRESHOLD)
-            .unsigned_abs()
-            <= unix.as_millis()
-        {
+        let unix = Utc::now().timestamp();
+        if timestamp.saturating_add(Self::THRESHOLD) <= unix {
             return Err(<E as FromAuthSignatureExpired>::from());
         }
         Ok(())

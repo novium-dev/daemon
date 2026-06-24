@@ -155,13 +155,11 @@ pub(crate) struct ServerData {
     pub(crate) lock: Arc<TaskRwLock<ServerTask, ()>>,
     pub(crate) restart: AtomicBool,
     pub(crate) stopping: AtomicBool,
-    #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) size: (AtomicU16, AtomicU16),
     pub(crate) buffer: Arc<Mutex<AllocRingBuffer<u8>>>,
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) stats_sender: Arc<Sender<ChannelWriteData>>,
-    #[cfg(not(feature = "no_tty_size_please"))]
     pub(crate) sessions: Arc<Mutex<HashMap<uuid::Uuid, terminal::TerminalSession>>>,
     pub(crate) stop_command: Mutex<Option<String>>,
     pub(crate) failure_counter: AtomicU8,
@@ -181,9 +179,8 @@ impl Default for ServerData {
             attach_write: Arc::new(Mutex::new(None)),
             sender: Arc::new(Sender::new(400)),
             stats_sender: Arc::new(Sender::new(400)),
-            #[cfg(not(feature = "no_tty_size_please"))]
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            #[cfg(not(feature = "no_tty_size_please"))]
+            
             size: (AtomicU16::new(170), AtomicU16::new(30)),
             buffer: Arc::new(Mutex::new(AllocRingBuffer::new(
                 crate::common::DAEMON_TERMINAL_BUFFER_LIMIT,

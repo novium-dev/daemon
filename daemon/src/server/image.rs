@@ -180,7 +180,7 @@ impl FetchedServer {
                         if !progress_map.contains_key(&id) {
                             sort_vec.push(id.clone());
                         }
-                        progress_map.insert(id, (progress.progress, progress.status));
+                        progress_map.insert(id, (progress.progress_detail, progress.status)); // TODO progress deprecated
 
                         let mut msg = format!(
                             "{}\r\n",
@@ -204,9 +204,26 @@ impl FetchedServer {
                             if let Some(status) = status {
                                 msg_intermediate += ": ";
                                 msg_intermediate += status;
-                                if let Some(progress) = progress {
-                                    msg_intermediate += " ";
-                                    msg_intermediate += progress;
+                                if let Some(progress) = progress
+                                    && let Some(current) = progress.current
+                                    && let Some(total) = progress.total
+                                {
+                                    #[expect(clippy::integer_division)]
+                                    #[expect(clippy::cast_precision_loss)]
+                                    let mut percentage =
+                                        ((current as f64 / total as f64) * 100f64) as i32 / 2i32;
+                                    if percentage > 50i32 {
+                                        percentage = 50i32;
+                                    }
+                                    let percentage =
+                                        usize::try_from(percentage).unwrap_or_default();
+
+                                    msg_intermediate += " [";
+                                    msg_intermediate.push_str(&"=".repeat(percentage));
+                                    msg_intermediate += ">";
+                                    msg_intermediate
+                                        .push_str(&" ".repeat(50usize.saturating_sub(percentage)));
+                                    msg_intermediate += "]";
                                 }
                                 last_progress.push(msg_intermediate);
                             }
