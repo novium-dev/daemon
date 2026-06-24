@@ -10,7 +10,7 @@ use crate::service::server::exec::exec_websocket_handle;
 use crate::service::server::stats::stats_websocket_handle;
 use crate::service::server::terminal::terminal_websocket_handle;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageError, storage_read_timeout};
+use crate::storage::sync::{StorageError, storage_lock, storage_read_timeout};
 use crate::utils::server_required;
 use crate::{Daemon, DaemonExtra, sql, storage};
 use async_trait::async_trait;
@@ -382,9 +382,19 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
     ) -> Result<WebsocketResponse, ServerStatsError> {
         let (_, server_data) =
             server_required::<ServerStatsError>(&self.conn, &self.servers, server_id).await?;
+
+        let (_, storage_lock, _, _, _, _, _, _) = storage_lock(
+            &self.config,
+            &*self.conn,
+            &self.storages,
+            StorageIdentifier::Primary(server_id),
+        )
+        .await?
+        .ok_or(ServerStatsError::ServerNotFound)?;
+
         let conn = Arc::clone(&self.conn);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
-            stats_websocket_handle(server_id, conn, server_data, socket)
+            stats_websocket_handle(server_id, conn, storage_lock, server_data, socket)
         })))
     }
 
@@ -404,9 +414,19 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
 
         let (_, server_data) =
             server_required::<ServerStatsUserError>(&self.conn, &self.servers, server_id).await?;
+
+        let (_, storage_lock, _, _, _, _, _, _) = storage_lock(
+            &self.config,
+            &*self.conn,
+            &self.storages,
+            StorageIdentifier::Primary(server_id),
+        )
+        .await?
+        .ok_or(ServerStatsUserError::ServerNotFound)?;
+
         let conn = Arc::clone(&self.conn);
         Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
-            stats_websocket_handle(server_id, conn, server_data, socket)
+            stats_websocket_handle(server_id, conn, storage_lock, server_data, socket)
         })))
     }
 

@@ -4,29 +4,32 @@ use core::{
 };
 use std::{collections::BTreeMap, sync::Arc};
 
-use tokio::{
-    sync::{
-        OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
-        TryLockError,
-    },
-    time::Instant,
+use chrono::{DateTime, Utc};
+use serde::Serialize;
+use tokio::sync::{
+    OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
+    TryLockError,
+    broadcast::{Receiver, Sender},
 };
 
 struct TaskDesc<Task: Send + Sync + Clone + 'static> {
-    instant: Instant,
+    time: DateTime<Utc>,
     write: bool,
     data: Arc<std::sync::RwLock<Task>>,
 }
 
-pub struct TaskDescriptor<Task: Send + Sync + Clone + 'static> {
+#[derive(Clone, Serialize)]
+pub struct TaskDescriptor<Task: Send + Sync + 'static> {
     pub id: u64,
-    pub instant: Instant,
+    pub time: DateTime<Utc>,
     pub write: bool,
+    #[serde(flatten)]
     pub data: Task,
 }
 
 pub struct TaskRwLock<Task: Send + Sync + Clone + 'static, Data: Send + Sync> {
     inner: Arc<RwLock<Data>>,
+    dirty: Sender<()>,
     tasks: std::sync::RwLock<BTreeMap<u64, TaskDesc<Task>>>,
     counter: AtomicU64,
 }
@@ -35,6 +38,7 @@ pub struct TaskRwLockReadGuard<'a, Task: Send + Sync + Clone + 'static, Data: Se
     inner: RwLockReadGuard<'a, Data>,
     tasks: &'a std::sync::RwLock<BTreeMap<u64, TaskDesc<Task>>>,
     task: Arc<std::sync::RwLock<Task>>,
+    dirty: &'a Sender<()>,
     id: u64,
 }
 
@@ -42,6 +46,7 @@ pub struct TaskRwLockWriteGuard<'a, Task: Send + Sync + Clone + 'static, Data: S
     inner: RwLockWriteGuard<'a, Data>,
     tasks: &'a std::sync::RwLock<BTreeMap<u64, TaskDesc<Task>>>,
     task: Arc<std::sync::RwLock<Task>>,
+    dirty: &'a Sender<()>,
     id: u64,
 }
 
@@ -49,6 +54,7 @@ pub struct TaskOwnedRwLockReadGuard<Task: Send + Sync + Clone + 'static, Data: S
     inner: OwnedRwLockReadGuard<Data>,
     lock: Arc<TaskRwLock<Task, Data>>,
     task: Arc<std::sync::RwLock<Task>>,
+    dirty: Sender<()>,
     id: u64,
 }
 
@@ -56,6 +62,7 @@ pub struct TaskOwnedRwLockWriteGuard<Task: Send + Sync + Clone + 'static, Data: 
     inner: OwnedRwLockWriteGuard<Data>,
     lock: Arc<TaskRwLock<Task, Data>>,
     task: Arc<std::sync::RwLock<Task>>,
+    dirty: Sender<()>,
     id: u64,
 }
 
@@ -72,9 +79,14 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
     pub fn new(data: Data) -> Self {
         Self {
             inner: Arc::new(RwLock::new(data)),
+            dirty: Sender::new(1),
             counter: AtomicU64::default(),
             tasks: std::sync::RwLock::default(),
         }
+    }
+
+    pub fn dirty_receiver(&self) -> Receiver<()> {
+        self.dirty.subscribe()
     }
 
     pub fn tasks(&self) -> Vec<TaskDescriptor<Task>> {
@@ -84,7 +96,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
             .iter()
             .map(|(id, task)| TaskDescriptor {
                 id: *id,
-                instant: task.instant,
+                time: task.time,
                 write: task.write,
                 data: task.data.read().expect("Unable to lock task").clone(),
             })
@@ -97,11 +109,12 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
         self.tasks.write().expect("Unable to lock tasks").insert(
             id,
             TaskDesc {
-                instant: Instant::now(),
+                time: Utc::now(),
                 write,
                 data: Arc::clone(&task),
             },
         );
+        let _ = self.dirty.send(());
         (id, task)
     }
 
@@ -113,6 +126,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
             inner,
             tasks: &self.tasks,
             task,
+            dirty: &self.dirty,
             id,
         }
     }
@@ -125,6 +139,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
             inner,
             tasks: &self.tasks,
             task,
+            dirty: &self.dirty,
             id,
         }
     }
@@ -140,6 +155,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
             inner,
             tasks: &self.tasks,
             task,
+            dirty: &self.dirty,
             id,
         })
     }
@@ -155,6 +171,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
             inner,
             tasks: &self.tasks,
             task,
+            dirty: &self.dirty,
             id,
         })
     }
@@ -165,6 +182,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
 
         TaskOwnedRwLockReadGuard {
             inner,
+            dirty: self.dirty.clone(),
             lock: self,
             task,
             id,
@@ -177,6 +195,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
 
         TaskOwnedRwLockWriteGuard {
             inner,
+            dirty: self.dirty.clone(),
             lock: self,
             task,
             id,
@@ -200,7 +219,10 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLockReadGuard
 
     pub fn task_mut<F: for<'a> FnOnce(&'a mut Task) -> R, R>(&self, func: F) -> R {
         let mut task = self.task.write().expect("Unable to lock task");
-        (func)(&mut task)
+        let result = (func)(&mut task);
+        drop(task);
+        let _ = self.dirty.send(());
+        result
     }
 }
 
@@ -238,7 +260,10 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLockWriteGuar
 
     pub fn task_mut<F: for<'a> FnOnce(&'a mut Task) -> R, R>(&self, func: F) -> R {
         let mut task = self.task.write().expect("Unable to lock task");
-        (func)(&mut task)
+        let result = (func)(&mut task);
+        drop(task);
+        let _ = self.dirty.send(());
+        result
     }
 }
 
@@ -289,7 +314,10 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskOwnedRwLockRead
 
     pub fn task_mut<F: for<'a> FnOnce(&'a mut Task) -> R, R>(&self, func: F) -> R {
         let mut task = self.task.write().expect("Unable to lock task");
-        (func)(&mut task)
+        let result = (func)(&mut task);
+        drop(task);
+        let _ = self.dirty.send(());
+        result
     }
 }
 
@@ -328,7 +356,10 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskOwnedRwLockWrit
 
     pub fn task_mut<F: for<'a> FnOnce(&'a mut Task) -> R, R>(&self, func: F) -> R {
         let mut task = self.task.write().expect("Unable to lock task");
-        (func)(&mut task)
+        let result = (func)(&mut task);
+        drop(task);
+        let _ = self.dirty.send(());
+        result
     }
 }
 

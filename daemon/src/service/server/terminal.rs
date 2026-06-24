@@ -21,7 +21,6 @@ pub(super) async fn terminal_websocket_handle(
     let sender = Arc::clone(&server_data.sender);
     let attach_write = Arc::clone(&server_data.attach_write);
 
-    
     let server_data2 = Arc::clone(&server_data);
     let docker2 = Arc::clone(&docker);
     let cols2 = Arc::clone(&cols);
@@ -29,7 +28,6 @@ pub(super) async fn terminal_websocket_handle(
     tokio::task::spawn(new_session(
         id,
         ChannelInterceptor::new(socket, move |_socket, mut message| {
-            
             let server_data2 = Arc::clone(&server_data2);
             let docker2 = Arc::clone(&docker2);
             let cols2 = Arc::clone(&cols2);

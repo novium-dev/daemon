@@ -3,7 +3,10 @@
 use core::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-#[derive(Clone)]
+use serde::Serialize;
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "snake_case", tag = "type")]
 pub enum StorageTask {
     BackupRestore {
         location: BackupLocation,
@@ -34,7 +37,8 @@ pub enum StorageTask {
     ServerRunning,
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Serialize)]
+#[serde(rename_all = "snake_case", tag = "type")]
 pub enum FileOperationKind {
     ArchiveCreate,
     ArchiveUnpack,
@@ -51,7 +55,7 @@ pub enum FileOperationKind {
     WriteByTemplate,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 pub struct BackupLocation {
     pub storage: String,
     pub id: i64,

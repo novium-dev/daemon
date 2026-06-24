@@ -91,7 +91,7 @@ impl StorageTokens {
 }
 
 /// Cancel safe
-async fn storage_lock(
+pub(crate) async fn storage_lock(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
