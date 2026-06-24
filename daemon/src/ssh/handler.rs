@@ -10,7 +10,8 @@ use core::sync::atomic::{AtomicU16, Ordering};
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
-use russh::keys::{HashAlg, PublicKey};
+use russh::keys::PublicKey;
+use russh::keys::ssh_key::Fingerprint;
 use russh::server::{Auth, Handler, Msg, Session};
 use russh::{Channel, ChannelId, Pty};
 use std::collections::HashMap;
@@ -30,10 +31,7 @@ pub struct DaemonChannel {
 pub struct DaemonSSHHandler<T: DaemonExtra> {
     pub daemon: Daemon<T>,
     pub channels: HashMap<ChannelId, DaemonChannel>,
-    pub publickey_cache: InvalidationCacheMap<
-        (String, [u8; HashAlg::Sha512.digest_size()]),
-        DaemonBackendAuthResponse,
-    >,
+    pub publickey_cache: InvalidationCacheMap<(String, Fingerprint), DaemonBackendAuthResponse>,
     pub auth: Option<DaemonBackendAuthResponse>,
 }
 
