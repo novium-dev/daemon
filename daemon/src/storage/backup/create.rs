@@ -189,7 +189,6 @@ async fn create_backup0<E: From<std::io::Error>>(
 
     match backup {
         BackupEntry::Archive { compression, .. } => {
-            // TODO: Progress
             lock = tokio::task::spawn(create_archive_backup(
                 dir,
                 target_dir,
