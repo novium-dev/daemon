@@ -10,7 +10,7 @@ use daemon_common::service::backup::error_backup_storage_location_not_found::Fro
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
-use daemon_common::service::files::task::{BackupLocation, StorageTask};
+use daemon_common::service::files::task::{AtomicProgress, BackupLocation, StorageTask};
 use std::io;
 use std::io::ErrorKind;
 use std::io::Read;
@@ -116,14 +116,19 @@ async fn restore_backup0<E: From<io::Error>>(
                 let StorageTask::BackupRestore { progress, .. } = task else {
                     unreachable!();
                 };
-                let progress_arc = Arc::new((AtomicU64::new(0), AtomicU64::new(meta.len())));
+                let progress_arc = Arc::new(AtomicProgress {
+                    current: AtomicU64::new(0),
+                    max: AtomicU64::new(meta.len()),
+                });
                 *progress = Some(Arc::clone(&progress_arc));
                 progress_arc
             });
             let wrapper = BackupRestoreTarReadProgressWrapper {
                 inner: file,
                 func: move |read| {
-                    progress_arc.0.fetch_add(read as u64, Ordering::Relaxed);
+                    progress_arc
+                        .current
+                        .fetch_add(read as u64, Ordering::Relaxed);
                 },
             };
 
