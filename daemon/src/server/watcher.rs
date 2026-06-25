@@ -159,26 +159,24 @@ pub async fn watch(
     } else {
         false
     };
-    failure &= !server_data.stopping.load(Ordering::SeqCst);
-    server_data.stopping.store(false, Ordering::SeqCst);
+    failure &= !server_data.stopping.fetch_and(false, Ordering::Relaxed);
 
     let mut failure_exceeded = false;
-    if !server_data.restart.load(Ordering::SeqCst)
+    if !server_data.restart.load(Ordering::Relaxed)
         && failure
         && start.elapsed() <= Duration::from_mins(1)
     {
-        let old = server_data.failure_counter.fetch_add(1, Ordering::SeqCst);
+        let old = server_data.failure_counter.fetch_add(1, Ordering::Relaxed);
         if old >= 2 {
             failure = false;
             failure_exceeded = true;
-            server_data.failure_counter.store(0, Ordering::SeqCst);
+            server_data.failure_counter.store(0, Ordering::Relaxed);
         }
     }
-    server_data.restart.fetch_or(failure, Ordering::SeqCst);
+    server_data.restart.fetch_or(failure, Ordering::Relaxed);
 
-    let do_restart = server_data.restart.load(Ordering::SeqCst);
+    let do_restart = server_data.restart.fetch_and(false, Ordering::Relaxed);
     if do_restart {
-        server_data.restart.store(false, Ordering::SeqCst);
         tokio::task::spawn(FetchedServer::queue_start(
             daemon.clone(),
             server_id,

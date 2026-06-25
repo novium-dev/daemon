@@ -93,7 +93,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
     }
 
     fn insert_task(&self, task: Task, write: bool) -> (u64, Arc<std::sync::RwLock<Task>>) {
-        let id = self.counter.fetch_add(1, Ordering::SeqCst);
+        let id = self.counter.fetch_add(1, Ordering::Relaxed);
         let task = Arc::new(std::sync::RwLock::new(task));
         self.tasks.write().expect("Unable to lock tasks").insert(
             id,

@@ -154,7 +154,7 @@ pub(crate) struct ServerData {
     pub(crate) lock: Arc<TaskRwLock<ServerTask, ()>>,
     pub(crate) restart: AtomicBool,
     pub(crate) stopping: AtomicBool,
-    pub(crate) size: (AtomicU16, AtomicU16),
+    pub(crate) size: (AtomicU16, AtomicU16), // TODO: RwLock, possible race condition + store after completion
     pub(crate) buffer: Arc<Mutex<AllocRingBuffer<u8>>>,
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,

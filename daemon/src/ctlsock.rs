@@ -69,7 +69,7 @@ async fn restart(
             );
         }
         Some(server) => {
-            server.restart.store(true, Ordering::SeqCst);
+            server.restart.store(true, Ordering::Relaxed);
         }
     }
 

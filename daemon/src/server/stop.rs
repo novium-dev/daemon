@@ -24,7 +24,7 @@ impl FetchedServer {
         {
             return Err(ServerStopError::NotRunning);
         }
-        server_data.stopping.store(true, Ordering::SeqCst);
+        server_data.stopping.store(true, Ordering::Relaxed);
         if let Some(stop_command) = &*server_data.stop_command.lock().await {
             match &mut *server_data.attach_write.lock().await {
                 None => {}
@@ -84,7 +84,7 @@ impl FetchedServer {
         {
             return Err(ServerStopError::NotRunning);
         }
-        server_data.restart.store(true, Ordering::SeqCst);
+        server_data.restart.store(true, Ordering::Relaxed);
         self.stop(docker, server_data, lock).await
     }
 }

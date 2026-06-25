@@ -64,8 +64,8 @@ impl FetchedServer {
         use bollard::query_parameters::ResizeContainerTTYOptions;
         use core::sync::atomic::Ordering;
 
-        server_data.size.0.store(cols, Ordering::SeqCst);
-        server_data.size.1.store(rows, Ordering::SeqCst);
+        server_data.size.0.store(cols, Ordering::Relaxed);
+        server_data.size.1.store(rows, Ordering::Relaxed);
         if !Self::state(id, &HashSet::new(), docker, server_data)
             .await
             .map_err(ServerStopError::Docker)?
