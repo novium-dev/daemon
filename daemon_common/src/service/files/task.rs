@@ -10,7 +10,7 @@ use serde::Serialize;
 pub enum StorageTask {
     BackupRestore {
         location: BackupLocation,
-        progress: Option<Arc<(AtomicU64, AtomicU64)>>,
+        progress: Option<Arc<AtomicProgress>>,
     },
     BackupCreate {
         location: Option<BackupLocation>,
@@ -35,6 +35,12 @@ pub enum StorageTask {
     },
     Scan,
     ServerRunning,
+}
+
+#[derive(Serialize)]
+pub struct AtomicProgress {
+    pub current: AtomicU64,
+    pub max: AtomicU64,
 }
 
 #[derive(Copy, Clone, Serialize)]
