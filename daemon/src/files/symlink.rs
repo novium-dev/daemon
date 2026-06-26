@@ -8,6 +8,7 @@ use cap_async_std::fs::MetadataExt as _;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::{FileOperationKind, StorageTask};
 use std::io;
 use std::io::ErrorKind;
 use tracing::{debug, error, warn};
@@ -32,7 +33,16 @@ pub async fn symlink_file<
         notify,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::Symlink,
+        },
+    )
+    .await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
 
     let parent_ino = storage_parent_ino(&storage, &path).await;

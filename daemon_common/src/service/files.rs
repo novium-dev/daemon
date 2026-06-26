@@ -12,6 +12,8 @@ use zelus::define_query_variable;
 use zelus::responses::FileResponse;
 use zelus::types::DataStream;
 
+pub mod task;
+
 define_error!(file {
     not_found ("This file doesn't exist" NOT_FOUND),
     not_directory ("The path does not point to a directory" FORBIDDEN),

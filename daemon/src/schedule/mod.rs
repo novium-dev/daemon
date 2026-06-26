@@ -7,6 +7,7 @@ use cron::Schedule;
 use daemon_common::service::schedule::ScheduleRunPolicy;
 use sqlx::types::JsonValue;
 use sqlx::{query, query_scalar};
+use std::sync::Arc;
 use tracing::error;
 
 pub mod worker;
@@ -37,8 +38,8 @@ pub async fn init(state: &Daemon<impl DaemonExtra>) -> Result<(), sqlx::Error> {
             Ok(schedule) => schedule,
             Err(err) => {
                 error!(
-                    "Unable to parse cron schedule {:?} in {}: {:?}",
-                    schedule.schedule, schedule.id, err
+                    "Unable to parse cron schedule {:?} in {}: {err:?}",
+                    schedule.schedule, schedule.id
                 );
                 continue;
             }
@@ -64,17 +65,24 @@ pub async fn init(state: &Daemon<impl DaemonExtra>) -> Result<(), sqlx::Error> {
             let step = match serde_json::from_value(step) {
                 Ok(step) => step,
                 Err(err) => {
-                    error!(
-                        "Unable to parse schedule step in {}: {:?}",
-                        schedule.id, err
-                    );
+                    error!("Unable to parse schedule step in {}: {err:?}", schedule.id);
                     continue 'sched;
                 }
             };
             steps.push(step);
         }
 
-        let handle = set.spawn(task(server, state.clone(), policy, steps, cron, timezone));
+        let server_data = Arc::clone(state.servers.lock().await.entry(server).or_default());
+
+        let handle = set.spawn(task(
+            server,
+            server_data,
+            state.clone(),
+            policy,
+            steps,
+            cron,
+            timezone,
+        ));
         schedules
             .entry(server)
             .or_default()

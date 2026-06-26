@@ -109,9 +109,7 @@ pub async fn publickey_auth(
         .map_err(io::Error::other)
 }
 
-impl
-    InvalidationCacheMap<(String, [u8; HashAlg::Sha512.digest_size()]), DaemonBackendAuthResponse>
-{
+impl InvalidationCacheMap<(String, Fingerprint), DaemonBackendAuthResponse> {
     pub async fn get_resolved(
         &mut self,
         daemon: &Daemon<impl DaemonExtra>,
@@ -119,10 +117,7 @@ impl
         user: &str,
         public_key: &PublicKey,
     ) -> Result<DaemonBackendAuthResponse, io::Error> {
-        let key = (
-            user.to_owned(),
-            fingerprint_to_sha512(public_key.fingerprint(HashAlg::Sha512)), // TODO: Replace key to (String, Fingerprint), already merged in ssh-key but not released and thus not included in internal-russh-forked-ssh-key
-        );
+        let key = (user.to_owned(), public_key.fingerprint(HashAlg::Sha512));
         match self.get(&key) {
             None => {
                 let response = publickey_auth(daemon, ssh, user, public_key).await?;
@@ -132,13 +127,4 @@ impl
             Some(response) => Ok(response.clone()),
         }
     }
-}
-
-#[deprecated]
-fn fingerprint_to_sha512(fingerprint: Fingerprint) -> [u8; 64] {
-    #[expect(
-        clippy::unwrap_used,
-        reason = "will be fixed, when upstream ssh-key 0.7 releases"
-    )]
-    fingerprint.sha512().unwrap()
 }

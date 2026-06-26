@@ -14,6 +14,7 @@ impl ChannelWriteData {
             Self::Status(state) => state.as_websocket_message(),
             Self::Ping => Message::Ping(Bytes::new()),
             Self::Stats(stats) => stats.as_websocket_message(),
+            Self::Tasks(tasks) => tasks.as_websocket_message(),
         }
     }
 }

@@ -9,6 +9,7 @@ use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::FileEntry;
 use daemon_common::service::files::error_file_not_found::FromFileNotFound;
+use daemon_common::service::files::task::{FileOperationKind, StorageTask};
 use std::io;
 use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
@@ -33,7 +34,16 @@ pub async fn stat_file<
         storage,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::Stat,
+        },
+    )
+    .await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     let metadata = storage
         .symlink_metadata(&path)

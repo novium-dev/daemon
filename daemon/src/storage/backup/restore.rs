@@ -3,14 +3,17 @@ use crate::config::{BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedUnpackExt as _;
 use crate::storage::sync::{StorageLockData, storage_write_timeout};
+use crate::sync::task::TaskOwnedRwLockWriteGuard;
 use crate::{Daemon, DaemonExtra, storage};
-use core::sync::atomic::{AtomicI64, Ordering};
+use core::sync::atomic::{AtomicI64, AtomicU64, Ordering};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::{AtomicProgress, BackupLocation, StorageTask};
 use std::io;
 use std::io::ErrorKind;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tar::Archive;
@@ -33,6 +36,14 @@ pub async fn restore_backup<
     backup_id: i64,
     backup_storage: &String,
 ) -> Result<(), E> {
+    let backup = state
+        .config
+        .backup
+        .get(backup_storage)
+        .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
+        .inspect_err(|_err| debug!("Backup storage does not exist: {backup_storage}"))?
+        .clone();
+
     let StorageLockData {
         path,
         lock,
@@ -40,22 +51,28 @@ pub async fn restore_backup<
         storage,
         value: storage_value,
         ..
-    } = storage_write_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
+    } = storage_write_timeout::<E>(
+        &state.config,
+        &*state.conn,
+        &state.storages,
+        id,
+        StorageTask::BackupRestore {
+            location: BackupLocation {
+                storage: backup_storage.clone(),
+                id: backup_id,
+            },
+            progress: None,
+        },
+    )
+    .await?;
 
-    let backup = state
-        .config
-        .backup
-        .get(backup_storage)
-        .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
-        .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?
-        .clone();
-
-    tokio::task::spawn(restore_backup0::<E>(
+    let lock = tokio::task::spawn(restore_backup0::<E>(
         id,
         storage,
         path,
         backup_id,
         backup,
+        lock,
         disk,
         Arc::clone(&storage_value),
     ))
@@ -67,15 +84,17 @@ pub async fn restore_backup<
 }
 
 #[inline(always)]
+#[expect(clippy::too_many_arguments)]
 async fn restore_backup0<E: From<io::Error>>(
     id: StorageIdentifier,
     storage: StorageEntry,
     path: String,
     backup_id: i64,
     backup: BackupEntry,
+    lock: TaskOwnedRwLockWriteGuard<StorageTask, ()>,
     disk: Option<u64>,
     value: Arc<(AtomicI64, AtomicI64)>,
-) -> Result<(), E> {
+) -> Result<TaskOwnedRwLockWriteGuard<StorageTask, ()>, E> {
     let dir = PathBuf::from(path);
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
@@ -88,11 +107,34 @@ async fn restore_backup0<E: From<io::Error>>(
                     error!("Failed to restore backup (open): {err:?}");
                 }
             })?;
-            let decoder = compression
-                .create_decoder(file.into_std().await)
-                .inspect_err(|err| {
-                    error!("Failed to restore backup (create_decoder): {err:?}");
-                })?;
+            let meta = file
+                .metadata()
+                .await
+                .inspect_err(|err| error!("Unable to restore backup (metadata): {err:?}"))?;
+            let file = file.into_std().await;
+            let progress_arc = lock.task_mut(|task| {
+                let StorageTask::BackupRestore { progress, .. } = task else {
+                    unreachable!();
+                };
+                let progress_arc = Arc::new(AtomicProgress {
+                    current: AtomicU64::new(0),
+                    max: AtomicU64::new(meta.len()),
+                });
+                *progress = Some(Arc::clone(&progress_arc));
+                progress_arc
+            });
+            let wrapper = BackupRestoreTarReadProgressWrapper {
+                inner: file,
+                func: move |read| {
+                    progress_arc
+                        .current
+                        .fetch_add(read as u64, Ordering::Relaxed);
+                },
+            };
+
+            let decoder = compression.create_decoder(wrapper).inspect_err(|err| {
+                error!("Failed to restore backup (create_decoder): {err:?}");
+            })?;
             let archive = Archive::new(decoder);
             storage::delete(&storage, id).await.inspect_err(|err| {
                 error!("Failed to restore backup (storage_delete): {err:?}");
@@ -141,5 +183,18 @@ async fn restore_backup0<E: From<io::Error>>(
                 .inspect_err(|err| error!("Failed to restore backup (create_snapshot): {err:?}"))?;
         }
     }
-    Ok(())
+    Ok(lock)
+}
+
+struct BackupRestoreTarReadProgressWrapper<R: Read, F: FnMut(usize)> {
+    inner: R,
+    func: F,
+}
+
+impl<R: Read, F: FnMut(usize)> Read for BackupRestoreTarReadProgressWrapper<R, F> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let read = self.inner.read(buf)?;
+        (self.func)(read);
+        Ok(read)
+    }
 }

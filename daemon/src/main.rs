@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
 pub(crate) mod setup;
 
@@ -196,7 +195,8 @@ async fn run() {
     daemon.await_shutdown().await;
 }
 
-#[expect(
+#[expect(clippy::allow_attributes, reason = "platform depending")]
+#[allow(
     clippy::missing_const_for_fn,
     reason = "function performs non-const Linux capability setup behind cfg"
 )]

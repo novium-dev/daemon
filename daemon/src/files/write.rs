@@ -16,6 +16,7 @@ use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
+use daemon_common::service::files::task::{FileOperationKind, StorageTask};
 use daemon_common::service::server::ServerFileWrite;
 use std::io;
 use std::io::ErrorKind;
@@ -49,7 +50,16 @@ pub async fn write_file<
         notify,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::Write,
+        },
+    )
+    .await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
 
     let parent_ino = storage_parent_ino(&storage, &path).await;
@@ -130,7 +140,16 @@ pub async fn write_file_by_template<
         notify,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::WriteByTemplate,
+        },
+    )
+    .await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
 
     let parent_ino = storage_parent_ino(&storage, &path).await;
@@ -199,7 +218,16 @@ pub async fn write_file_by_url<
         notify,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::WriteByUrl,
+        },
+    )
+    .await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     tokio::task::spawn(write_file_by_url0::<E>(
         daemon.clone(),

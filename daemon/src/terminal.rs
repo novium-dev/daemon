@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::stop::ServerStopError;
-use crate::sync::Mutex;
 use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use crate::{ServerContainerWrite, ServerData};
 use bollard::Docker;
@@ -10,6 +9,7 @@ use core::time::Duration;
 use ringbuffer::RingBuffer as _;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt as _;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Instant;
@@ -54,13 +54,11 @@ pub async fn new_session<
         write,
     }: TerminalData,
     docker: Arc<Docker>,
-    server_data_arc: Arc<Mutex<ServerData>>,
+    server_data: Arc<ServerData>,
 ) {
-    let server_data = server_data_arc.lock().await;
     let buffer = Arc::clone(&server_data.buffer);
     let (sessions_arc, session_id) = {
         let sessions_arc = Arc::clone(&server_data.sessions);
-        drop(server_data);
         let mut sessions = sessions_arc.lock().await;
         let session_id = uuid::Uuid::new_v4();
         sessions.insert(
@@ -73,7 +71,7 @@ pub async fn new_session<
             },
         );
         drop(sessions);
-        update_size(id, &docker, Arc::clone(&server_data_arc)).await;
+        update_size(id, &docker, &server_data).await;
         (sessions_arc, session_id)
     };
 
@@ -96,7 +94,7 @@ pub async fn new_session<
                     let mut sessions = sessions_arc.lock().await;
                     sessions.remove(&session_id);
                     drop(sessions);
-                    update_size(id, &docker, Arc::clone(&server_data_arc)).await;
+                    update_size(id, &docker, &server_data).await;
                 };
                 return;
             }
@@ -125,7 +123,7 @@ pub async fn new_session<
                                     let mut sessions = sessions_arc.lock().await;
                                     sessions.remove(&session_id);
                                     drop(sessions);
-                                    update_size(id, &docker, Arc::clone(&server_data_arc)).await;
+                                    update_size(id, &docker, &server_data).await;
                                 };
                                 return;
                             }
@@ -138,7 +136,7 @@ pub async fn new_session<
                                 let mut sessions = sessions_arc.lock().await;
                                 sessions.remove(&session_id);
                                 drop(sessions);
-                                update_size(id, &docker, Arc::clone(&server_data_arc)).await;
+                                update_size(id, &docker, &server_data).await;
                             };
                             state.close().await;
                             return;
@@ -171,7 +169,7 @@ pub async fn new_session<
                                 let mut sessions = sessions_arc.lock().await;
                                 sessions.remove(&session_id);
                                 drop(sessions);
-                                update_size(id, &docker, Arc::clone(&server_data_arc)).await;
+                                update_size(id, &docker, &server_data).await;
                             };
                             return;
                         }
@@ -182,8 +180,7 @@ pub async fn new_session<
     }
 }
 
-pub async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex<ServerData>>) {
-    let mut server_data = server_data.lock().await;
+pub async fn update_size(id: u32, docker: &Docker, server_data: &ServerData) {
     let sessions = server_data.sessions.lock().await;
     let mut sessions_vec: Vec<_> = sessions.iter().collect();
     sessions_vec.sort_by_key(|(_id, TerminalSession { time, .. })| *time);
@@ -200,16 +197,16 @@ pub async fn update_size(id: u32, docker: &Docker, server_data: Arc<Mutex<Server
         }
 
         drop(sessions);
-        if (server_data.size.0 != cols || server_data.size.1 != rows)
+        if (server_data.size.0.load(Ordering::Relaxed) != cols
+            || server_data.size.1.load(Ordering::Relaxed) != rows)
             && let Err(err) =
-                FetchedServer::update_tty_size(id, docker, &mut server_data, cols, rows).await
+                FetchedServer::update_tty_size(id, docker, server_data, cols, rows).await
         {
             if matches!(err, ServerStopError::NotRunning) {
                 return;
             }
             warn!("Failed to resize tty to {cols},{rows}: {err:?}");
         }
-        drop(server_data);
         break;
     }
 }

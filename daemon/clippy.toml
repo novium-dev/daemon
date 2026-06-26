@@ -1,5 +1,1 @@
-disallowed-methods = [
-    "tokio::sync::Mutex::new",
-    "tokio::sync::RwLock::new",
-]
 allowed-idents-below-min-chars = ["a", "b", "i", "j", "x", "y", "z", "w", "n", "T", "E"]

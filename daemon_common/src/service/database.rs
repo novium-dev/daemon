@@ -35,7 +35,7 @@ pub trait DatabaseService {
         passwordless: HashMap<u32, DatabaseUserPermissions>,
     ) -> Result<(), _>;
 
-    /// Updates an existing database
+    /// Deletes an existing database
     #[route("/{database_id}", method = DELETE)]
     #[error(database::not_found, sql::failure <- [sql:*])]
     async fn delete_database(&self, database_id: u32) -> Result<(), _>;

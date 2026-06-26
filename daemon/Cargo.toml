@@ -11,12 +11,12 @@ workspace = true
 [package.metadata.deb]
 name = "novium-daemon"
 depends = [
-    "novium-daemon-mariadb-plugin",
-    "adduser (>=3.40)",
-    "docker.io | docker-ce",
-    "vim",
-    "liblzma5",
-    "init-system-helpers",
+	"novium-daemon-mariadb-plugin",
+	"adduser (>=3.40)",
+	"docker.io | docker-ce",
+	"vim",
+	"liblzma5",
+	"init-system-helpers",
 ]
 conflicts = "novium_daemon_trace"
 assets = [["target/release/daemon", "/usr/bin/novium_daemon", "755"]]
@@ -37,7 +37,6 @@ sentry = ["dep:sentry"]
 default = ["sentry", "btrfs", "bindgen/runtime"]
 full = ["default"]
 full_bypass = ["full", "ssh_debug_auth_bypass"]
-trace_sync = []
 ci = ["sentry", "btrfs", "bindgen/static"]
 
 [dependencies]
@@ -129,18 +128,10 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.60.2"
+version = "0.61.2"
 
 [dependencies.russh-sftp]
-version = "2.1.2"
-
-[dependencies.ratatui]
-version = "0.30.0"
-features = ["crossterm"]
-
-[dependencies.crossterm]
-version = "0.29.0"
-features = ["event-stream", "events"]
+version = "2.3.0"
 
 [dependencies.rustix]
 version = "1.1.4"

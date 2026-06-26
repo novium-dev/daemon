@@ -2,11 +2,13 @@
 use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::server::stop::ServerStopError;
+use crate::sync::task::AnyTaskRwLockReadGuard;
 use bollard::Docker;
 use bollard::container::LogOutput;
 use bollard::exec::{CreateExecOptions, StartExecResults};
 use cap_async_std::async_std::prelude::Stream;
 use core::pin::Pin;
+use daemon_common::service::server::task::ServerTask;
 use tokio::io::AsyncWrite;
 
 impl FetchedServer {
@@ -15,6 +17,7 @@ impl FetchedServer {
         docker: &Docker,
         cmd: Vec<String>,
         server_data: &ServerData,
+        lock: &impl AnyTaskRwLockReadGuard<ServerTask, ()>,
         terminal: bool,
     ) -> Result<
         Option<(
@@ -24,7 +27,7 @@ impl FetchedServer {
         )>,
         ServerStopError,
     > {
-        if !Self::state(self.id, self.locks.clone(), docker, Some(server_data))
+        if !Self::state(self.id, &self.locks, docker, server_data)
             .await
             .map_err(ServerStopError::Docker)?
             .stop()
@@ -49,6 +52,9 @@ impl FetchedServer {
             .start_exec(&exec.id, None)
             .await
             .map_err(ServerStopError::Docker)?;
+
+        let _ = lock;
+
         match start {
             StartExecResults::Attached { output, input } => Ok(Some((exec.id, output, input))),
             StartExecResults::Detached => Ok(None),

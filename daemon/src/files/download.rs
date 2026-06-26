@@ -9,6 +9,7 @@ use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::error_file_limit_reached::FromFileLimitReached;
+use daemon_common::service::files::task::{FileOperationKind, StorageTask};
 use daemon_common::service::{DataStream, FileResponse};
 use std::io;
 use std::io::ErrorKind;
@@ -34,7 +35,16 @@ pub async fn download_file<
         storage,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::Download,
+        },
+    )
+    .await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     let fd: OwnedFd = storage
         .open(&path)

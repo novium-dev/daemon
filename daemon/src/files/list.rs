@@ -8,6 +8,7 @@ use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::FileEntry;
+use daemon_common::service::files::task::{FileOperationKind, StorageTask};
 use std::io;
 use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
@@ -32,7 +33,16 @@ pub async fn list_files<
         storage,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &state.config,
+        &*state.conn,
+        &state.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::List,
+        },
+    )
+    .await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     let read_dir = storage
         .read_dir(&path)

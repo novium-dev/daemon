@@ -21,6 +21,8 @@ use zelus::define_query_variable;
 use zelus::responses::WebsocketResponse;
 use zelus::types::JsonVec;
 
+pub mod task;
+
 define_error!(server {
     image_different ("Server image differs in database" BAD_REQUEST),
     image_missing_tag ("Server image does not have a tag" BAD_REQUEST),
@@ -30,8 +32,6 @@ define_query_variable!(write "If write access to the terminal should be granted"
 define_query_variable!(cols "The initial value of columns in the terminal");
 define_query_variable!(rows "The initial value of rows in the terminal");
 define_query_variable!(command "The command to be executed encoded as json string array");
-
-define_query_variable!(precise "If stopping or restarting should be determined. Default: true. If false, the server mutex does not have to be locked.");
 
 #[service(path = "/server", tag = "server")]
 pub trait ServerService {
@@ -67,13 +67,9 @@ pub trait ServerService {
     async fn delete_server(&self, server_id: u32);
 
     /// Gets the status of an existing server
-    #[route("/{server_id}", method = GET, query = [ precise ])]
-    #[error(server::{not_found, mutex_locked}, docker::failure, sql::failure <- [sql:*])]
-    async fn server_status(
-        &self,
-        server_id: u32,
-        precise: Option<bool>,
-    ) -> Result<PublicServerState, _>;
+    #[route("/{server_id}", method = GET)]
+    #[error(server::not_found, docker::failure, sql::failure <- [sql:*])]
+    async fn server_status(&self, server_id: u32) -> Result<PublicServerState, _>;
 
     /// Starts an existing server
     #[route("/{server_id}/start", method = GET)]

@@ -76,9 +76,6 @@ bitflags! {
         const FILES_READ = 1 << 2;
         const FILES_WRITE = 1 << 3;
 
-        const CONTROL_VIEW = 1 << 6;
-        const CONTROL_POWER = 1 << 7;
-
         const BACKUP_DOWNLOAD = 1 << 8;
     }
 }

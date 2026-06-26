@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::ServerData;
-use crate::sync::Mutex;
 use crate::terminal::{TerminalData, TerminalSessionOrigin, new_session};
 use crate::utils::ChannelInterceptor;
 use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
@@ -13,25 +12,23 @@ pub const WEBSOCKET_RESIZE_MAGIC: &str = "DAEMON_TTY_RESIZE:";
 pub(super) async fn terminal_websocket_handle(
     id: u32,
     docker: Arc<Docker>,
-    server_data_arc: Arc<Mutex<ServerData>>,
+    server_data: Arc<ServerData>,
     socket: WebSocket,
     cols: Arc<AtomicU16>,
     rows: Arc<AtomicU16>,
     write: bool,
 ) {
-    let server_data = server_data_arc.lock().await;
     let sender = Arc::clone(&server_data.sender);
     let attach_write = Arc::clone(&server_data.attach_write);
-    drop(server_data);
 
-    let server_data_arc2 = Arc::clone(&server_data_arc);
+    let server_data2 = Arc::clone(&server_data);
     let docker2 = Arc::clone(&docker);
     let cols2 = Arc::clone(&cols);
     let rows2 = Arc::clone(&rows);
     tokio::task::spawn(new_session(
         id,
         ChannelInterceptor::new(socket, move |_socket, mut message| {
-            let server_data_arc2 = Arc::clone(&server_data_arc2);
+            let server_data2 = Arc::clone(&server_data2);
             let docker2 = Arc::clone(&docker2);
             let cols2 = Arc::clone(&cols2);
             let rows2 = Arc::clone(&rows2);
@@ -53,12 +50,7 @@ pub(super) async fn terminal_websocket_handle(
                             cols2.store(new_cols, Ordering::Relaxed);
                             rows2.store(new_rows, Ordering::Relaxed);
                             tokio::task::spawn(async move {
-                                crate::terminal::update_size(
-                                    id,
-                                    &docker2,
-                                    Arc::clone(&server_data_arc2),
-                                )
-                                .await;
+                                crate::terminal::update_size(id, &docker2, &server_data2).await;
                             });
                         }
                     }
@@ -75,6 +67,6 @@ pub(super) async fn terminal_websocket_handle(
             write,
         },
         docker,
-        server_data_arc,
+        server_data,
     ));
 }

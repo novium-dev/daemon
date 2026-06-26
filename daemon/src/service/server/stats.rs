@@ -2,27 +2,31 @@
 use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
-use crate::sync::Mutex;
-use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
+use crate::sync::task::TaskRwLock;
+use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData, TasksData};
 use axum::extract::ws::WebSocket;
 use core::time::Duration;
+use daemon_common::service::files::task::StorageTask;
 use sqlx::{MySql, Pool};
 use std::sync::Arc;
-use std::time::Instant;
-use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::RecvError;
+use tokio::time::Instant;
 use tracing::{debug, error, warn};
 
 pub(super) async fn stats_websocket_handle(
     id: u32,
     conn: Arc<Pool<MySql>>,
-    server_data_arc: Arc<Mutex<ServerData>>,
+    storage_lock: Arc<TaskRwLock<StorageTask, ()>>,
+    server_data: Arc<ServerData>,
     socket: WebSocket,
 ) {
-    let server_data = server_data_arc.lock().await;
-    let stats_sender = Arc::clone(&server_data.stats_sender);
-    drop(server_data);
-    tokio::task::spawn(new_stats_session(id, conn, socket, stats_sender));
+    tokio::task::spawn(new_stats_session(
+        id,
+        conn,
+        socket,
+        storage_lock,
+        server_data,
+    ));
 }
 
 #[inline(always)]
@@ -35,9 +39,10 @@ async fn new_stats_session<
     id: u32,
     conn: Arc<Pool<MySql>>,
     mut state: A,
-    sender: Arc<Sender<ChannelWriteData>>,
+    storage_lock: Arc<TaskRwLock<StorageTask, ()>>,
+    server_data: Arc<ServerData>,
 ) {
-    let mut recv = sender.subscribe();
+    let mut recv = server_data.stats_sender.subscribe();
     let mut last_sent = Instant::now();
     let mut ping_sent = false;
 
@@ -54,7 +59,7 @@ async fn new_stats_session<
     loop {
         if Instant::now().duration_since(last_sent) > Duration::from_secs(10) && A::send_ping() {
             if ping_sent {
-                debug!("Closing connection. Terminal session timed out");
+                debug!("Closing connection. Stats session timed out");
                 state.close().await;
                 return;
             }
@@ -62,8 +67,26 @@ async fn new_stats_session<
             ping_sent = true;
             last_sent = Instant::now();
         }
+        #[rustfmt::skip]
         tokio::select! {
-            _timeout = tokio::time::sleep(Duration::from_secs(10)) => {}
+            _timeout = tokio::time::sleep(Duration::from_secs(1)) => {
+                let storage_tasks = storage_lock.tasks();
+                let server_tasks = server_data.lock.tasks();
+
+                let result = state.write(ChannelWriteData::Tasks(TasksData {
+                    storage: storage_tasks,
+                    server: server_tasks,
+                })).await;
+                if let Err(err) = state.write_transform(result) {
+                    if let ChannelError::IO(ref err) = err {
+                        warn!("Channel disconnected with error: {err:?}");
+                    }
+                    drop(err);
+                    state.close().await;
+                    return;
+                }
+                state.flush().await;
+            }
             stdout = recv.recv() => {
                 match stdout {
                     Ok(data) => {
@@ -75,14 +98,14 @@ async fn new_stats_session<
                             drop(err);
                             state.close().await;
                             return;
-                        }
-                        state.flush().await;
+                         }
+                         state.flush().await;
                     }
                     Err(RecvError::Lagged(_)) => {},
                     Err(RecvError::Closed) => {
                         error!("Closing connection. Internal Sender disconnected");
-                        state.close().await;
-                        return;
+                         state.close().await;
+                          return;
                     }
                 }
             }

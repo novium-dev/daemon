@@ -131,7 +131,7 @@ impl FetchedServer {
             Self::log(&server_data.sender, buffer, "Building Image...");
 
             for (tag, image) in missing {
-                debug!("Building image {} for server {}...", tag, self.id);
+                debug!("Building image {tag} for server {}...", self.id);
                 let dockerfile = {
                     let dockerfile = image.dockerfile.as_bytes();
                     let mut header = Header::new_gnu();

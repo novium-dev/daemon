@@ -8,8 +8,10 @@ use cap_async_std::ambient_authority;
 use cap_async_std::fs::Dir;
 use core::sync::atomic::{AtomicU16, Ordering};
 use daemon_common::node::BackendAuthServerPermissions;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
-use russh::keys::{HashAlg, PublicKey};
+use russh::keys::PublicKey;
+use russh::keys::ssh_key::Fingerprint;
 use russh::server::{Auth, Handler, Msg, Session};
 use russh::{Channel, ChannelId, Pty};
 use std::collections::HashMap;
@@ -29,10 +31,7 @@ pub struct DaemonChannel {
 pub struct DaemonSSHHandler<T: DaemonExtra> {
     pub daemon: Daemon<T>,
     pub channels: HashMap<ChannelId, DaemonChannel>,
-    pub publickey_cache: InvalidationCacheMap<
-        (String, [u8; HashAlg::Sha512.digest_size()]),
-        DaemonBackendAuthResponse,
-    >,
+    pub publickey_cache: InvalidationCacheMap<(String, Fingerprint), DaemonBackendAuthResponse>,
     pub auth: Option<DaemonBackendAuthResponse>,
 }
 
@@ -219,14 +218,13 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                     None => {}
                     Some(id) => {
                         let mut servers = self.daemon.servers.lock().await;
-                        let server_data_arc = Arc::clone(match servers.get(id) {
+                        let server_data = Arc::clone(match servers.get(id) {
                             None => servers.entry(*id).or_default(),
                             Some(server) => server,
                         });
                         drop(servers);
 
-                        crate::terminal::update_size(*id, &self.daemon.docker, server_data_arc)
-                            .await;
+                        crate::terminal::update_size(*id, &self.daemon.docker, &server_data).await;
                     }
                 }
                 session.channel_success(channel_id)
@@ -251,12 +249,6 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
             .inspect_err(|_err| debug!("Command is not utf-8 encoded"))
             .map_err(|err| russh::Error::Utf8(err.utf8_error()))?;
         debug!("Exec {server_id}");
-
-        if let Some(server_id) = server_id.strip_prefix("control ") {
-            return self
-                .ssh_control(channel_id, session, server_id.to_owned())
-                .await;
-        }
 
         let server = Self::find_server(auth, &server_id);
 
@@ -366,6 +358,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                                 &*self.daemon.conn,
                                 &self.daemon.storages,
                                 identifier,
+                                StorageTask::Sftp,
                             )
                             .await
                             {
@@ -406,6 +399,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                                         &*self.daemon.conn,
                                         &self.daemon.storages,
                                         identifier,
+                                        StorageTask::Sftp,
                                     )
                                     .await
                                 {
