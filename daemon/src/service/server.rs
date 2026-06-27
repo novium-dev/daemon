@@ -20,6 +20,9 @@ use base64::prelude::BASE64_STANDARD;
 use core::sync::atomic::AtomicU16;
 use core::time::Duration;
 use daemon_common::service::files::task::StorageTask;
+use daemon_common::service::network::error_network_not_found::FromNetworkNotFound;
+use daemon_common::service::network::error_network_suffix_collision::FromNetworkSuffixCollision;
+use daemon_common::service::network::error_network_suffix_invalid::FromNetworkSuffixInvalid;
 use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
@@ -507,14 +510,21 @@ async fn insert_dummy(
 }
 
 /// ONLY EXECUTE INSIDE A TRANSACTION
-async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<sqlx::Error>>(
+async fn modify0<
+    E: FromServerImageDifferent
+        + FromServerImageMissingTag
+        + FromNetworkNotFound
+        + FromNetworkSuffixCollision
+        + FromNetworkSuffixInvalid
+        + From<sqlx::Error>,
+>(
     tx: &mut Transaction<'_, MySql>,
     server_id: u32,
     resource: Option<ServerResourcePayload>,
     build: Option<ServerBuildPayload>,
     ports: Option<Vec<ServerPortEntryPayload>>,
     network: Option<ServerNetworkPayload>,
-) -> Result<(), T> {
+) -> Result<(), E> {
     if let Some(resource) = &resource {
         query!(
             "UPDATE `servers` SET `cpu` = ?, `ram` = ?, `swap` = ?, `disk` = ? WHERE `id` = ?",
@@ -674,7 +684,7 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
             let parents: HashSet<u64> = image.parents.iter().map(ServerBuildImage::id).collect();
 
             if image.default_tag.is_none() && image.tag.is_none() {
-                return Err(<T as FromServerImageMissingTag>::from());
+                return Err(<E as FromServerImageMissingTag>::from());
             }
 
             if let Some(default_tag) = query_scalar!(
@@ -685,7 +695,7 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
             .await?
             {
                 if !default_tag.eq(&image.default_tag) {
-                    return Err(<T as FromServerImageDifferent>::from());
+                    return Err(<E as FromServerImageDifferent>::from());
                 }
 
                 let parents_current = query_scalar!(
@@ -697,7 +707,7 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 .into_iter()
                 .collect();
                 if !parents.eq(&parents_current) {
-                    return Err(<T as FromServerImageDifferent>::from());
+                    return Err(<E as FromServerImageDifferent>::from());
                 }
             }
             query!(
@@ -786,10 +796,36 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
         .await
         .inspect_err(|err| error!("Unable to remove prior server network attachments: {err:?}"))?;
         for attachment in &network.networks {
+            let ipv4_network = query_scalar!(
+                "SELECT `ipv4` IS NOT NULL AS `ipv4: bool` FROM `networks` WHERE `id` = ?",
+                attachment.network
+            )
+            .fetch_optional(&mut **tx)
+            .await
+            .inspect_err(|err| error!("Unable to fetch network: {err:?}"))?
+            .ok_or_else(<E as FromNetworkNotFound>::from)?;
+
+            if ipv4_network != attachment.ipv4.is_some() {
+                return Err(<E as FromNetworkSuffixInvalid>::from());
+            }
+
             query!("INSERT INTO `server_networks` (`server`, `network`, `ipv4`, `ipv6`) VALUES (?, ?, ?, ?)", server_id, attachment.network, attachment.ipv4, attachment.ipv6)
                 .execute(&mut **tx)
                 .await
-                .inspect_err(|err| error!("Unable to insert server network attachments: {err:?}"))?;
+                .map_err(|err| {
+               		if let sqlx::Error::Database(ref db) = err {
+                		if db.is_unique_violation() {
+                 			return <E as FromNetworkSuffixCollision>::from();
+                 		}
+                  		if db.is_check_violation() {
+                   			return <E as FromNetworkSuffixInvalid>::from();
+                    	}
+                 	}
+
+                	error!("Unable to insert server network attachments: {err:?}");
+
+                 	<E as From<sqlx::Error>>::from(err)
+                })?;
         }
     }
 

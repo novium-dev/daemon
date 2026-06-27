@@ -1,0 +1,17 @@
+ALTER TABLE `networks`
+  MODIFY `ipv4` SMALLINT UNSIGNED UNIQUE DEFAULT NULL;
+
+ALTER TABLE `server_networks`
+  MODIFY `ipv4` TINYINT UNSIGNED DEFAULT NULL;
+
+ALTER TABLE `networks`
+  DROP CONSTRAINT IP_RANGE;
+
+ALTER TABLE `networks`
+  ADD CONSTRAINT IP_RANGE CHECK (`ipv4` IS NULL OR ((`ipv4` & 0b111111) = 0 AND (`ipv4` >> 8) != 255));
+
+ALTER TABLE `server_networks`
+  DROP CONSTRAINT IP_RANGE;
+
+ALTER TABLE `server_networks`
+  ADD CONSTRAINT IP_RANGE CHECK ((`ipv4` IS NULL OR (`ipv4` > 1 AND (`ipv4` | 0b11000000) != 255 AND (`ipv4` & 0b11000000) = 0)) AND (`ipv6` & 0xffff) > 1);

@@ -9,7 +9,7 @@ use tracing::error;
 #[derive(Debug, Clone, Eq, PartialEq, sqlx::FromRow)]
 pub struct Network {
     pub id: u32,
-    pub ipv4: u16,
+    pub ipv4: Option<u16>,
     pub ipv6: u16,
 }
 
@@ -17,7 +17,7 @@ impl Network {
     pub async fn create<E: From<sqlx::Error> + FromDockerFailure>(
         docker: &Docker,
         tx: &mut Transaction<'_, MySql>,
-        ipv4: u16,
+        ipv4: Option<u16>,
         ipv6: u16,
     ) -> Result<Self, E> {
         let id = query!(
@@ -37,36 +37,42 @@ impl Network {
         })?
         .last_insert_id() as u32;
 
-        let ipv4_split = [(ipv4 >> 8u16) as u8, ipv4 as u8];
+        let mut subnets = vec![IpamConfig {
+            subnet: Some(format!(
+                "{:x}:{:x}:{:x}:{:x}::/64",
+                crate::common::IPV6_PREFIX[0],
+                crate::common::IPV6_PREFIX[1],
+                crate::common::IPV6_PREFIX[2],
+                ipv6
+            )),
+            ..IpamConfig::default()
+        }];
+        if let Some(ipv4) = ipv4 {
+            let ipv4_split = [(ipv4 >> 8u16) as u8, ipv4 as u8];
+
+            subnets.push(IpamConfig {
+                subnet: Some(format!(
+                    "{}.{}.{}.{}/26",
+                    crate::common::IPV4_PREFIX[0],
+                    crate::common::IPV4_PREFIX[1],
+                    ipv4_split[0],
+                    ipv4_split[1]
+                )),
+                ..IpamConfig::default()
+            });
+        }
 
         docker
             .create_network(NetworkCreateRequest {
                 name: format!("{}{}", crate::common::NETWORK_PREFIX, id),
-                enable_ipv6: Some(true),
+
+                // enable_ipv6 actually means "enable Dual-Stack".
+                // See https://github.com/podman-container-tools/podman/issues/22359#issuecomment-2196817604
+                enable_ipv6: Some(ipv4.is_some()),
+
                 internal: Some(true),
                 ipam: Some(Ipam {
-                    config: Some(vec![
-                        IpamConfig {
-                            subnet: Some(format!(
-                                "{}.{}.{}.{}/26",
-                                crate::common::IPV4_PREFIX[0],
-                                crate::common::IPV4_PREFIX[1],
-                                ipv4_split[0],
-                                ipv4_split[1]
-                            )),
-                            ..IpamConfig::default()
-                        },
-                        IpamConfig {
-                            subnet: Some(format!(
-                                "{:x}:{:x}:{:x}:{:x}::/64",
-                                crate::common::IPV6_PREFIX[0],
-                                crate::common::IPV6_PREFIX[1],
-                                crate::common::IPV6_PREFIX[2],
-                                ipv6
-                            )),
-                            ..IpamConfig::default()
-                        },
-                    ]),
+                    config: Some(subnets),
                     ..Ipam::default()
                 }),
                 ..NetworkCreateRequest::default()

@@ -12,7 +12,11 @@ use tracing::error;
 
 #[async_trait]
 impl<T: DaemonExtra> NetworkService for Daemon<T> {
-    async fn create_network(&self, ipv4: u16, ipv6: u16) -> Result<u32, CreateNetworkError> {
+    async fn create_network(
+        &self,
+        ipv4: Option<u16>,
+        ipv6: u16,
+    ) -> Result<u32, CreateNetworkError> {
         let mut conn = self.conn.acquire().await?;
         let docker = Arc::clone(&self.docker);
         tokio::task::spawn(async move {

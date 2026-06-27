@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
 use crate::service::error_storage_patch_failed::FromStoragePatchFailed;
+use crate::service::network::*;
 use crate::user::*;
 use crate::utils::{JsonExt as _, io_sync, io_sync_seek_truncate};
 use axum::extract::ws::Message;
@@ -37,7 +38,8 @@ define_query_variable!(command "The command to be executed encoded as json strin
 pub trait ServerService {
     /// Creates a new server
     #[route("", method = PUT)]
-    #[error(server::{image_different, image_missing_tag}, storage::location_not_found, sql::failure <- [sql:*])]
+    #[error(server::{image_different, image_missing_tag}, storage::location_not_found,
+    		network::{not_found, suffix_collision, suffix_invalid}, sql::failure <- [sql:*])]
     #[example("examples/server.create.json")]
     async fn create_server(
         &self,
@@ -50,7 +52,8 @@ pub trait ServerService {
 
     /// Updates an existing server
     #[route("/{server_id}", method = PATCH)]
-    #[error(server::{not_found, image_different, image_missing_tag}, sql::failure <- [sql:*])]
+    #[error(server::{not_found, image_different, image_missing_tag},
+    		network::{not_found, suffix_collision, suffix_invalid}, sql::failure <- [sql:*])]
     #[example("examples/server.update.json")]
     async fn update_server(
         &self,
@@ -308,7 +311,7 @@ pub struct ServerNetworkPayload {
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct NetworkAttachment {
     pub network: u32,
-    pub ipv4: u8,
+    pub ipv4: Option<u8>,
     pub ipv6: u64,
 }
 

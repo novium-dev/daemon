@@ -170,9 +170,6 @@ impl FetchedServer {
         );
 
         for network in &self.networks {
-            let ipv4_1 = (network.network_ipv4 >> 8u16) & 0xff;
-            let ipv4_2 = (network.network_ipv4 & 0xff) as u8 | network.server_ipv4;
-
             let ipv6_1 = (network.server_ipv6 >> 12u64) & 0xffff;
             let ipv6_2 = (network.server_ipv6 >> 8u64) & 0xffff;
             let ipv6_3 = (network.server_ipv6 >> 4u64) & 0xffff;
@@ -180,11 +177,20 @@ impl FetchedServer {
             networks.insert(
                 format!("{}{}", crate::common::NETWORK_PREFIX, network.network_id),
                 EndpointSettings {
-                    ip_address: Some(format!(
-                        "{}.{}.{ipv4_1}.{ipv4_2}",
-                        crate::common::IPV4_PREFIX[0],
-                        crate::common::IPV4_PREFIX[1],
-                    )),
+                    ip_address: if let Some(network_ipv4) = network.network_ipv4
+                        && let Some(server_ipv4) = network.server_ipv4
+                    {
+                        let ipv4_1 = (network_ipv4 >> 8u16) & 0xff;
+                        let ipv4_2 = (network_ipv4 & 0xff) as u8 | server_ipv4;
+
+                        Some(format!(
+                            "{}.{}.{ipv4_1}.{ipv4_2}",
+                            crate::common::IPV4_PREFIX[0],
+                            crate::common::IPV4_PREFIX[1],
+                        ))
+                    } else {
+                        None
+                    },
                     global_ipv6_address: Some(format!(
                         "{:x}:{:x}:{:x}:{:x}:{ipv6_1:x}:{ipv6_2:x}:{ipv6_3:x}:{ipv6_4:x}",
                         crate::common::IPV6_PREFIX[0],
