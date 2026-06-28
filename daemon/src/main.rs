@@ -22,25 +22,7 @@ fn main() {
                 .args_override_self(true)
                 .short_flag('s')
                 .long_flag("setup")
-                .about("Start the setup wizard")
-                .arg(
-                    Arg::new("backend")
-                        .short('b')
-                        .long("backend")
-                        .env("BACKEND_URL")
-                        .help("The public accessible backend url")
-                        .action(ArgAction::Set)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("code")
-                        .short('c')
-                        .long("code")
-                        .env("REGISTRATION_CODE")
-                        .help("The registration code")
-                        .action(ArgAction::Set)
-                        .required(false),
-                )
+                .about("Start the setup (driven by the SETUP_URL and SETUP_CODE env variables)")
                 .arg(
                     Arg::new("skip-mariadb-plugin")
                         .short(None)
@@ -129,10 +111,8 @@ async fn main0(matches: ArgMatches) {
                 let setup_matches = matches
                     .subcommand_matches("setup")
                     .expect("Unable to get matches for subcommand setup");
-                let backend = setup_matches.get_one("backend");
-                let code = setup_matches.get_one("code");
                 let skip_mariadb_plugin = setup_matches.get_flag("skip-mariadb-plugin");
-                setup::setup(backend.cloned(), code.cloned(), skip_mariadb_plugin);
+                setup::setup(skip_mariadb_plugin);
             })
             .await
             .expect("Setup wizard failed");

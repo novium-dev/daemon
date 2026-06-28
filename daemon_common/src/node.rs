@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use url::{Host, Url};
 use utoipa::{PartialSchema as _, ToSchema};
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct HostAndPort {
     #[schema(schema_with = String::schema)]
     pub host: Host,
@@ -27,10 +27,17 @@ pub struct NodeRegistrationRequest {
     pub backups: HashMap<String, BackupStorage>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct NodeUpdateRequest {
+/// The logical configuration of a node, owned by the backend.
+///
+/// It is sent by the backend to the daemon during setup (so the daemon can build its local
+/// `config.toml`) and returned by the daemon to the backend during a backend-driven update.
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct NodeConfig {
+    /// The publicly reachable base URL of the daemon.
     pub base_url: Url,
-
+    /// The MariaDB connection URL (local-specific, but owned by the backend).
+    pub database: String,
+    /// The publicly reachable SSH address, or `None` if SSH is disabled.
     pub ssh: Option<HostAndPort>,
 
     pub storages: HashMap<String, ServerStorage>,

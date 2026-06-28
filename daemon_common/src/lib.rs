@@ -7,7 +7,7 @@ pub mod key;
 #[cfg(feature = "sdk")]
 pub mod sdk;
 
-#[cfg(feature = "backend")]
+#[cfg(any(feature = "backend", feature = "service"))]
 pub mod node;
 #[cfg(feature = "service")]
 pub mod service;

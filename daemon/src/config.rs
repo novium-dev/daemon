@@ -2,6 +2,7 @@
 pub use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use axum::http::HeaderValue;
 use core::net::SocketAddr;
+use daemon_common::node::{BackupStorage, HostAndPort, NodeConfig, ServerStorage};
 use reqwest::Url;
 use russh::keys::PrivateKey;
 use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
@@ -16,6 +17,8 @@ use std::path::PathBuf;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
     pub backend_url: Url,
+    /// The publicly reachable base URL of this daemon (reported to the backend).
+    pub public_url: Url,
     pub listeners: HashSet<SocketAddr>,
     #[serde(deserialize_with = "deserialize_header")]
     #[serde(serialize_with = "serialize_header")]
@@ -28,6 +31,28 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub network: NetworkConfig,
     pub mounts: Vec<MountPoint>,
+}
+
+impl DaemonConfig {
+    /// Builds the logical [`NodeConfig`] reported to the backend during a backend-driven update.
+    #[must_use]
+    pub fn to_node_config(&self) -> NodeConfig {
+        NodeConfig {
+            base_url: self.public_url.clone(),
+            database: self.database.clone(),
+            ssh: self.ssh.as_ref().map(|ssh| ssh.public.clone()),
+            storages: self
+                .storage
+                .iter()
+                .map(|(name, storage)| (name.clone(), storage.as_server_storage()))
+                .collect(),
+            backups: self
+                .backup
+                .iter()
+                .map(|(name, backup)| (name.clone(), backup.as_backup_storage()))
+                .collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +68,8 @@ pub struct SSHConfig {
     pub host_key: Vec<SSHHostKey>,
     pub auth_cache_duration: u64,
     pub auth_url: reqwest::Url,
+    /// The publicly reachable SSH address (reported to the backend).
+    pub public: HostAndPort,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -66,6 +93,15 @@ impl StorageEntry {
             Self::Directory { path } => path,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { path, .. } => path,
+        }
+    }
+
+    #[must_use]
+    pub fn as_server_storage(&self) -> ServerStorage {
+        match self {
+            Self::Directory { .. } => ServerStorage::Directory,
+            #[cfg(feature = "btrfs")]
+            Self::Btrfs { group, .. } => ServerStorage::Btrfs(group.clone()),
         }
     }
 }
@@ -106,6 +142,15 @@ impl BackupEntry {
             Self::Archive { order, .. } => *order,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { order, .. } => *order,
+        }
+    }
+
+    #[must_use]
+    pub fn as_backup_storage(&self) -> BackupStorage {
+        match self {
+            Self::Archive { .. } => BackupStorage::Archive,
+            #[cfg(feature = "btrfs")]
+            Self::Btrfs { group, .. } => BackupStorage::Btrfs(group.clone()),
         }
     }
 }
