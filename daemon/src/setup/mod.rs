@@ -31,7 +31,7 @@ use sqlx::{Connection, MySqlConnection, QueryBuilder, query_scalar};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::net::{IpAddr, Ipv6Addr, SocketAddr};
 use std::path::PathBuf;
 use std::sync::Arc;
