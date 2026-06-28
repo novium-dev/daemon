@@ -17,22 +17,6 @@ fn main() {
     let matches = command!()
         .about("hosting-system daemon")
         .args_override_self(true)
-        .subcommand(
-            Command::new("setup")
-                .args_override_self(true)
-                .short_flag('s')
-                .long_flag("setup")
-                .about("Start the setup (driven by the SETUP_URL and SETUP_CODE env variables)")
-                .arg(
-                    Arg::new("skip-mariadb-plugin")
-                        .short(None)
-                        .long("skip-mariadb-plugin")
-                        .env("SKIP_MARIADB_PLUGIN")
-                        .help("Skips the mariadb plugin install step")
-                        .action(ArgAction::SetTrue)
-                        .required(false),
-                ),
-        )
         .arg(
             Arg::new("debug")
                 .short('d')
@@ -55,6 +39,33 @@ fn main() {
                 .help("Skips the setuid")
                 .required(false)
                 .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("skip-mariadb-plugin")
+                .short(None)
+                .long("skip-mariadb-plugin")
+                .env("SKIP_MARIADB_PLUGIN")
+                .help("Skips the mariadb plugin install step (Only relevant for setup)")
+                .action(ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
+            Arg::new("setup-url")
+                .short(None)
+                .long("setup-url")
+                .env("SETUP_URL")
+                .help("Sets the URL to use for setup (Only relevant for setup)")
+                .action(ArgAction::Set)
+                .required(false),
+        )
+        .arg(
+            Arg::new("setup-token")
+                .short(None)
+                .long("setup-token")
+                .env("SETUP_TOKEN")
+                .help("Sets the token to use for setup (Only relevant for setup)")
+                .action(ArgAction::Set)
+                .required(false),
         )
         .get_matches();
 
@@ -104,22 +115,31 @@ fn main() {
 
 #[tokio::main]
 async fn main0(matches: ArgMatches) {
-    let config_exists = fs::try_exists("config.toml").await.unwrap_or(true);
-    match (matches.subcommand(), config_exists) {
-        (Some(("setup", _)), _) | (_, false) => {
-            tokio::task::spawn_blocking(move || {
-                let setup_matches = matches
-                    .subcommand_matches("setup")
-                    .expect("Unable to get matches for subcommand setup");
-                let skip_mariadb_plugin = setup_matches.get_flag("skip-mariadb-plugin");
-                setup::setup(skip_mariadb_plugin);
-            })
+    let config_needs_setup = match fs::read_to_string("config.toml").await {
+        Ok(contents) => contents.trim().is_empty(),
+        Err(_) => true,
+    };
+
+    if config_needs_setup {
+        tokio::task::spawn_blocking(move || {
+            let skip_mariadb_plugin = matches.get_flag("skip-mariadb-plugin");
+            
+            let setup_url = matches
+                .get_one::<String>("setup-url")
+                .expect("setup-url is required for setup")
+                .to_string();
+
+            let setup_token = matches
+                .get_one::<String>("setup-token")
+                .expect("setup-token is required for setup")
+                .to_string();
+
+            setup::setup(skip_mariadb_plugin, setup_url, setup_token);
+        })
             .await
-            .expect("Setup wizard failed");
-        }
-        _ => {
-            run().await;
-        }
+            .expect("Setup failed");
+    } else {
+        run().await;
     }
 }
 

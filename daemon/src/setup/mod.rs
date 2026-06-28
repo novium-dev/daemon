@@ -43,12 +43,9 @@ use url::Url;
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
 
-/// Runs the non-interactive setup, driven by the `SETUP_URL` and `SETUP_CODE` environment variables.
-pub(crate) fn setup(skip_mariadb_plugin: bool) {
+pub(crate) fn setup(skip_mariadb_plugin: bool, url: String, code: String) {
     info!("Starting Setup...");
 
-    let url = std::env::var("SETUP_URL").expect("SETUP_URL environment variable is required");
-    let code = std::env::var("SETUP_CODE").expect("SETUP_CODE environment variable is required");
     let backend = Url::parse(&url).expect("SETUP_URL is not a valid URL");
 
     println!("Retrieving daemon root key...");
@@ -273,6 +270,8 @@ fn test_host(config: &DaemonConfig, root: Arc<DaemonRootKey>, key: Arc<DaemonKey
             .merge(router.into_openapi())
             .layer(axum::middleware::from_fn(middleware));
         let (router, _) = router.split_for_parts();
+
+        info!("Starting temporary setup server on {listener}...");
 
         tokio::task::spawn(
             Server::bind(listener)
