@@ -115,29 +115,26 @@ fn main() {
 
 #[tokio::main]
 async fn main0(matches: ArgMatches) {
-    let config_needs_setup = match fs::read_to_string("config.toml").await {
-        Ok(contents) => contents.trim().is_empty(),
-        Err(_) => true,
-    };
+    let config_needs_setup = fs::read_to_string("config.toml")
+        .await
+        .map_or(true, |contents| contents.trim().is_empty());
 
     if config_needs_setup {
         tokio::task::spawn_blocking(move || {
             let skip_mariadb_plugin = matches.get_flag("skip-mariadb-plugin");
-            
+
             let setup_url = matches
                 .get_one::<String>("setup-url")
-                .expect("setup-url is required for setup")
-                .to_string();
+                .expect("setup-url is required for setup");
 
             let setup_token = matches
                 .get_one::<String>("setup-token")
-                .expect("setup-token is required for setup")
-                .to_string();
+                .expect("setup-token is required for setup");
 
             setup::setup(skip_mariadb_plugin, setup_url, setup_token);
         })
-            .await
-            .expect("Setup failed");
+        .await
+        .expect("Setup failed");
     } else {
         run().await;
     }

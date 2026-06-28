@@ -35,7 +35,7 @@ pub struct NodeRegistrationRequest {
 pub struct NodeConfig {
     /// The publicly reachable base URL of the daemon.
     pub base_url: Url,
-    /// The MariaDB connection URL (local-specific, but owned by the backend).
+    /// The `MariaDB` connection URL (local-specific, but owned by the backend).
     pub database: String,
     /// The publicly reachable SSH address, or `None` if SSH is disabled.
     pub ssh: Option<HostAndPort>,

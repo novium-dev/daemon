@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #![allow(clippy::unwrap_used, reason = "setup is a fail-fast provisioning step")]
-#![allow(clippy::print_stdout, reason = "setup talks to the operator via stdout")]
+#![allow(
+    clippy::print_stdout,
+    reason = "setup talks to the operator via stdout"
+)]
 #![allow(clippy::uninlined_format_args, reason = "setup wizard")]
 #![allow(clippy::indexing_slicing, reason = "setup wizard")]
 #![allow(clippy::clone_on_ref_ptr, reason = "setup wizard")]
@@ -43,27 +46,22 @@ use url::Url;
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
 
-pub(crate) fn setup(skip_mariadb_plugin: bool, url: String, code: String) {
+pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str) {
     info!("Starting Setup...");
 
-    let backend = Url::parse(&url).expect("SETUP_URL is not a valid URL");
+    let backend = Url::parse(url).expect("SETUP_URL is not a valid URL");
 
     println!("Retrieving daemon root key...");
-    let Some((root, rsa)) = read_root_key(&backend, &code).unwrap() else {
+    let Some((root, rsa)) = read_root_key(&backend, code).unwrap() else {
         return;
     };
     let root = Arc::new(root);
 
     println!("Retrieving node config...");
-    let node = read_config(&backend, &code).unwrap();
+    let node = read_config(&backend, code).unwrap();
 
     let config = node_to_daemon_config(&backend, &node);
-    {
-        let mut file = File::create("config.toml").unwrap();
-        file.write_all(toml::to_string(&config).unwrap().as_bytes())
-            .unwrap();
-        file.flush().unwrap();
-    }
+    write_file("config.toml", toml::to_string(&config).unwrap().as_bytes());
 
     let keypair = crate::common::key::rcgen::KeyPair::generate_for(if rsa {
         &PKCS_RSA_SHA256
@@ -75,12 +73,12 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: String, code: String) {
     let csr = DaemonKey::new_request(&keypair).unwrap();
     let temp_key = Arc::new(DaemonKey::new_temp(&keypair).unwrap());
 
-    test_host(&config, root.clone(), temp_key.clone(), Uuid::nil());
+    test_host(&config, &root, &temp_key, Uuid::nil());
 
     let request = config_to_register_request(&node, &temp_key.cert[0], &csr, skip_mariadb_plugin);
     let response = Client::default()
         .post(backend.join("/internal/daemon/register").unwrap())
-        .bearer_auth(&code)
+        .bearer_auth(code)
         .json(&request)
         .send()
         .unwrap()
@@ -90,32 +88,35 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: String, code: String) {
     let signed = CertificateDer::from(bytes);
     let key = DaemonKey::new(&root, signed, temp_key.privkey.clone_key()).unwrap();
 
-    {
-        let mut file = File::create("daemon_root.pem").unwrap();
-        file.write_all(root.dump(None, None).as_bytes()).unwrap();
-        file.flush().unwrap();
-    }
-    {
-        let mut file = File::create("daemon.pem").unwrap();
-        file.write_all(key.dump().as_bytes()).unwrap();
-        file.flush().unwrap();
-    }
+    write_file("daemon_root.pem", root.dump(None, None).as_bytes());
+    write_file("daemon.pem", key.dump().as_bytes());
 
     println!("Done");
+}
+
+/// Writes `contents` to `path`, flushing before the handle is dropped.
+fn write_file(path: &str, contents: &[u8]) {
+    let mut file = File::create(path).unwrap();
+    file.write_all(contents).unwrap();
+    file.flush().unwrap();
 }
 
 /// Builds the local [`DaemonConfig`] from the backend-provided logical [`NodeConfig`], filling in
 /// local specifics (bind ports, on-disk paths, host-key paths, mounts) from defaults.
 fn node_to_daemon_config(backend: &Url, node: &NodeConfig) -> DaemonConfig {
     let mut mounts = Vec::new();
-    let mysql_url = Url::parse(&node.database).expect("database url provided by backend is invalid");
-    if let Some((_, socket)) = mysql_url.query_pairs().find(|(param, _)| param.eq("socket")) {
+    let mysql_url =
+        Url::parse(&node.database).expect("database url provided by backend is invalid");
+    if let Some((_, socket)) = mysql_url
+        .query_pairs()
+        .find(|(param, _)| param.eq("socket"))
+    {
         let src = PathBuf::from(socket.to_string());
         let src = src.parent().unwrap();
         mounts.push(MountPoint {
             src: src.to_string_lossy().to_string(),
-            dest: "/var/run/mysqld".to_string(),
-            mode: "ro".to_string(),
+            dest: "/var/run/mysqld".to_owned(),
+            mode: "ro".to_owned(),
         });
     }
 
@@ -132,10 +133,10 @@ fn node_to_daemon_config(backend: &Url, node: &NodeConfig) -> DaemonConfig {
             listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 22)]),
             host_key: vec![
                 SSHHostKey::Ed25519 {
-                    path: "ed25519.pem".to_string(),
+                    path: "ed25519.pem".to_owned(),
                 },
                 SSHHostKey::Rsa {
-                    path: "rsa.pem".to_string(),
+                    path: "rsa.pem".to_owned(),
                 },
             ],
             auth_url: backend_root.clone(),
@@ -232,12 +233,12 @@ fn config_to_register_request(
         csr: csr.to_vec(),
         storages: node.storages.clone(),
         backups: node.backups.clone(),
-        default_bind: "0.0.0.0".to_string(),
-        default_host: node.base_url.host_str().unwrap().to_string(),
+        default_bind: "0.0.0.0".to_owned(),
+        default_host: node.base_url.host_str().unwrap().to_owned(),
     }
 }
 
-fn test_host(config: &DaemonConfig, root: Arc<DaemonRootKey>, key: Arc<DaemonKey>, uuid: Uuid) {
+fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonKey>, uuid: Uuid) {
     #[derive(Clone)]
     struct ConnectionTestWrapper;
 
