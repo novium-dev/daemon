@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
-use crate::sync::Mutex;
+use crate::sync::task::TaskOwnedRwLockReadGuard;
 use crate::utils::ChannelWriteData;
 use crate::{Daemon, DaemonExtra, ServerData};
 use bollard::container::LogOutput;
@@ -14,11 +14,12 @@ use core::ops::Add as _;
 use core::pin::Pin;
 use core::sync::atomic::{AtomicI64, Ordering};
 use core::time::Duration;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::ServerStats;
 use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tokio::sync::OwnedRwLockReadGuard;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::time::Instant;
 
@@ -29,9 +30,8 @@ pub async fn attach(
     cpu_max: Option<f32>,
     ram_max: Option<u32>,
     swap_max: Option<u32>,
-    server_data: &ServerData,
-    server_data_arc: Arc<Mutex<ServerData>>,
-    storage_lock: OwnedRwLockReadGuard<(), ()>,
+    server_data: Arc<ServerData>,
+    storage_lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     storage_value: Arc<(AtomicI64, AtomicI64)>,
     storage_stats_lock: Arc<Mutex<()>>,
 ) -> Result<(), ServerStartError> {
@@ -76,7 +76,7 @@ pub async fn attach(
         ram_max,
         swap_max,
         result2,
-        server_data_arc,
+        server_data,
         storage_lock,
         storage_value,
         storage_stats_lock,
@@ -100,8 +100,8 @@ pub async fn watch(
     + Send
     + Unpin
     + 'static,
-    server_data_arc: Arc<Mutex<ServerData>>,
-    storage_lock: OwnedRwLockReadGuard<(), ()>,
+    server_data: Arc<ServerData>,
+    storage_lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     storage_value: Arc<(AtomicI64, AtomicI64)>,
     storage_stats_lock: Arc<Mutex<()>>,
 ) {
@@ -111,9 +111,7 @@ pub async fn watch(
     let mut next = Instant::now().add(Duration::from_millis(500));
     loop {
         if start.elapsed() > Duration::from_mins(1) && !reset_counter {
-            let mut server_data = server_data_arc.lock().await;
-            server_data.failure_counter = 0;
-            drop(server_data);
+            server_data.failure_counter.store(0, Ordering::Relaxed);
             reset_counter = true;
         }
         tokio::select! {
@@ -136,11 +134,10 @@ pub async fn watch(
             }
             _elapsed = tokio::time::sleep_until(next) => {
                 next = Instant::now().add(Duration::from_millis(500));
-                let stats_sender = stats_sender.clone();
                 let docker = Arc::clone(&daemon.docker);
-                let server_data_arc = Arc::clone(&server_data_arc);
+                let server_data = Arc::clone(&server_data);
                 tokio::task::spawn(async move {
-                    FetchedServer::update_status(server_id, HashSet::new(), &stats_sender, &docker, &server_data_arc).await;
+                    FetchedServer::update_status(server_id, &HashSet::new(), &docker, &server_data).await;
                 });
             }
         }
@@ -162,24 +159,24 @@ pub async fn watch(
     } else {
         false
     };
-    let mut server_data = server_data_arc.lock().await;
-    failure &= !server_data.stopping;
-    server_data.stopping = false;
+    failure &= !server_data.stopping.fetch_and(false, Ordering::Relaxed);
 
     let mut failure_exceeded = false;
-    if !server_data.restart && failure && start.elapsed() <= Duration::from_mins(1) {
-        server_data.failure_counter = server_data.failure_counter.saturating_add(1);
-        if server_data.failure_counter >= 3 {
+    if !server_data.restart.load(Ordering::Relaxed)
+        && failure
+        && start.elapsed() <= Duration::from_mins(1)
+    {
+        let old = server_data.failure_counter.fetch_add(1, Ordering::Relaxed);
+        if old >= 2 {
             failure = false;
             failure_exceeded = true;
-            server_data.failure_counter = 0;
+            server_data.failure_counter.store(0, Ordering::Relaxed);
         }
     }
-    server_data.restart |= failure;
+    server_data.restart.fetch_or(failure, Ordering::Relaxed);
 
-    let do_restart = server_data.restart;
+    let do_restart = server_data.restart.fetch_and(false, Ordering::Relaxed);
     if do_restart {
-        server_data.restart = false;
         tokio::task::spawn(FetchedServer::queue_start(
             daemon.clone(),
             server_id,
@@ -220,9 +217,9 @@ pub async fn watch(
     drop(storage_stats_guard);
     if !do_restart {
         tokio::time::sleep(Duration::from_secs(1)).await;
-        FetchedServer::update_status0(
+        FetchedServer::update_status(
             server_id,
-            FetchedServer::resolve_locked(server_id, &daemon.conn).await,
+            &FetchedServer::resolve_locked(server_id, &daemon.conn).await,
             &daemon.docker,
             &server_data,
         )

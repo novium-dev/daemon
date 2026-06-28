@@ -7,6 +7,7 @@ use daemon_common::service::backup::error_backup_storage_location_not_found::Fro
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::{BackupLocation, StorageTask};
 use std::io;
 use std::io::ErrorKind;
 use std::path::PathBuf;
@@ -26,14 +27,25 @@ pub async fn delete_backup<
     backup_id: i64,
     backup_storage: &String,
 ) -> Result<(), E> {
-    let StorageLockData { lock, .. } =
-        storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
     let backup = state
         .config
         .backup
         .get(backup_storage)
         .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
         .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
+    let StorageLockData { lock, .. } = storage_read_timeout::<E>(
+        &state.config,
+        &*state.conn,
+        &state.storages,
+        id,
+        StorageTask::BackupDelete {
+            location: BackupLocation {
+                storage: backup_storage.clone(),
+                id: backup_id,
+            },
+        },
+    )
+    .await?;
 
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {

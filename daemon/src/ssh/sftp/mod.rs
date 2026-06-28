@@ -4,8 +4,10 @@ pub mod files;
 pub mod r#impl;
 
 use crate::StorageNotification;
+use crate::sync::task::TaskOwnedRwLockReadGuard;
 use cap_async_std::fs::*;
 use daemon_common::node::BackendAuthServerPermissions;
+use daemon_common::service::files::task::StorageTask;
 use indexmap::IndexMap;
 use russh_sftp::protocol::*;
 use std::collections::HashMap;
@@ -13,14 +15,13 @@ use std::io::ErrorKind;
 use std::sync::Arc;
 use tokio::fs::File;
 use tokio::io;
-use tokio::sync::OwnedRwLockReadGuard;
 use tokio::sync::broadcast::Sender;
 use tracing::*;
 
 type DaemonAccess = (
     Arc<Dir>,
     BackendAuthServerPermissions,
-    OwnedRwLockReadGuard<()>,
+    TaskOwnedRwLockReadGuard<StorageTask, ()>,
     Option<Sender<StorageNotification>>,
 );
 

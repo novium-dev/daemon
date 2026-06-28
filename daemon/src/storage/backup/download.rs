@@ -13,6 +13,7 @@ use daemon_common::service::error_compression_unsupported::FromCompressionUnsupp
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::{BackupLocation, StorageTask};
 use daemon_common::service::{DataStream, FileResponse};
 use serde_json::json;
 use std::collections::HashSet;
@@ -38,18 +39,30 @@ pub async fn backup_to_stream<
     backup_id: i64,
     backup_storage: &String,
 ) -> Result<FileResponse, E> {
-    let StorageLockData {
-        lock,
-        #[cfg(feature = "btrfs")]
-        backup_exclude,
-        ..
-    } = storage_read_timeout::<E>(&state.config, &*state.conn, &state.storages, id).await?;
     let backup = state
         .config
         .backup
         .get(backup_storage)
         .ok_or_else(<E as FromBackupStorageLocationNotFound>::from)
-        .inspect_err(|_err| debug!("Backup storage does not exist: {}", backup_storage))?;
+        .inspect_err(|_err| debug!("Backup storage does not exist: {backup_storage}"))?;
+    let StorageLockData {
+        lock,
+        #[cfg(feature = "btrfs")]
+        backup_exclude,
+        ..
+    } = storage_read_timeout::<E>(
+        &state.config,
+        &*state.conn,
+        &state.storages,
+        id,
+        StorageTask::BackupDownload {
+            location: BackupLocation {
+                storage: backup_storage.clone(),
+                id: backup_id,
+            },
+        },
+    )
+    .await?;
 
     let (header, data) = backup_to_stream0::<E>(
         id,
@@ -75,7 +88,7 @@ async fn backup_to_stream0<E: From<io::Error>>(
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     match backup {
         BackupEntry::Archive { compression, .. } => {
-            let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
+            let target = target_dir.join(format!("{backup_id}.tar{}", compression.ext()));
 
             let headers = format!(
                 "attachment; filename=\"{}_{}.tar{}\"",
@@ -140,7 +153,14 @@ pub async fn stream_realtime<
         lock,
         backup_exclude,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::RealtimeDownload,
+    )
+    .await?;
     let compression: ArchiveCompression = serde_json::from_value(json!({
         "type": compression
     }))

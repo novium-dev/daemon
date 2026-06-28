@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#![cfg_attr(not(feature = "trace_sync"), allow(clippy::disallowed_methods))]
 
 pub mod config;
 mod server;
@@ -18,24 +17,28 @@ mod terminal;
 mod utils;
 mod websocket;
 
-use crate::sync::Mutex;
-use crate::sync::RwLock;
-use crate::sync::broadcast::Sender;
 use bollard::Docker;
 use core::pin::Pin;
 use core::sync::atomic::AtomicI64;
+use core::sync::atomic::AtomicU16;
+use core::sync::atomic::{AtomicBool, AtomicU8};
+use daemon_common::service::files::task::StorageTask;
+use daemon_common::service::server::task::ServerTask;
 use ed25519_dalek::SigningKey;
 use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
 use sqlx::{MySql, Pool};
 use std::collections::HashMap;
 use tokio::io::AsyncWrite;
+use tokio::sync::Mutex;
+use tokio::sync::broadcast::Sender;
 use tokio::task::JoinSet;
 use url::Url;
 
 use crate::config::DaemonConfig;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::StorageTokens;
+use crate::sync::task::TaskRwLock;
 use crate::utils::ChannelWriteData;
 pub use daemon_common as common;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
@@ -52,7 +55,7 @@ where
     T: DaemonExtra,
 {
     pub(crate) config: Arc<DaemonConfig>,
-    pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerData>>>>>,
+    pub(crate) servers: Arc<Mutex<HashMap<u32, Arc<ServerData>>>>,
     pub(crate) storages: Arc<Mutex<HashMap<StorageIdentifier, StorageData>>>,
     pub(crate) server_task_cancellable: Arc<Mutex<JoinSet<()>>>,
     pub(crate) server_task: Arc<Mutex<JoinSet<()>>>,
@@ -106,7 +109,7 @@ impl UserKeyProvider for Daemon<WithUserKey> {
 
 #[derive(Clone)]
 pub(crate) struct StorageData {
-    pub(crate) lock: Arc<RwLock<()>>,
+    pub(crate) lock: Arc<TaskRwLock<StorageTask, ()>>,
     pub(crate) value: Arc<(AtomicI64, AtomicI64)>,
     pub(crate) stats_lock: Arc<Mutex<()>>,
     pub(crate) notify: Sender<StorageNotification>,
@@ -143,32 +146,35 @@ pub(crate) enum StorageNotification {
 pub(crate) type ServerContainerWrite = Pin<Box<dyn AsyncWrite + Send>>;
 
 pub(crate) struct ServerData {
-    pub(crate) restart: bool,
-    pub(crate) stopping: bool,
-    pub(crate) size: (u16, u16),
+    pub(crate) lock: Arc<TaskRwLock<ServerTask, ()>>,
+    pub(crate) restart: AtomicBool,
+    pub(crate) stopping: AtomicBool,
+    pub(crate) size: (AtomicU16, AtomicU16), // TODO: RwLock, possible race condition + store after completion
     pub(crate) buffer: Arc<Mutex<AllocRingBuffer<u8>>>,
     pub(crate) attach_write: Arc<Mutex<Option<ServerContainerWrite>>>,
     pub(crate) sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) stats_sender: Arc<Sender<ChannelWriteData>>,
     pub(crate) sessions: Arc<Mutex<HashMap<uuid::Uuid, terminal::TerminalSession>>>,
-    pub(crate) stop_command: Option<String>,
-    pub(crate) failure_counter: u8,
+    pub(crate) stop_command: Mutex<Option<String>>,
+    pub(crate) failure_counter: AtomicU8,
 }
 impl Default for ServerData {
     fn default() -> Self {
         Self {
-            restart: false,
-            stopping: false,
+            lock: Arc::default(),
+            restart: AtomicBool::new(false),
+            stopping: AtomicBool::new(false),
             attach_write: Arc::new(Mutex::new(None)),
             sender: Arc::new(Sender::new(400)),
             stats_sender: Arc::new(Sender::new(400)),
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            size: (170, 30),
+
+            size: (AtomicU16::new(170), AtomicU16::new(30)),
             buffer: Arc::new(Mutex::new(AllocRingBuffer::new(
                 crate::common::DAEMON_TERMINAL_BUFFER_LIMIT,
             ))),
-            stop_command: None,
-            failure_counter: 0,
+            stop_command: Mutex::default(),
+            failure_counter: AtomicU8::new(0),
         }
     }
 }

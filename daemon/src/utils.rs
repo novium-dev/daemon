@@ -2,20 +2,24 @@
 use crate::ServerData;
 use crate::server::status::InternalServerState;
 use crate::server::*;
+use crate::sync::task::TaskDescriptor;
 use async_trait::async_trait;
+use axum::extract::ws::Message;
 use cap_async_std::fs::{Dir, MetadataExt as _};
-use core::fmt::Debug;
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
 use daemon_common::service::error_server_not_found::FromServerNotFound;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::ServerStats;
+use daemon_common::service::server::task::ServerTask;
+use serde::Serialize;
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tokio_util::io::SyncIoBridge;
+use tokio::sync::Mutex;
 
 pub fn from_mib(mib: impl Into<u64>) -> u64 {
     mib.into().saturating_mul(0x0010_0000)
@@ -23,27 +27,21 @@ pub fn from_mib(mib: impl Into<u64>) -> u64 {
 
 pub async fn server(
     conn: &Pool<MySql>,
-    servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
+    servers: &Mutex<HashMap<u32, Arc<ServerData>>>,
     server_id: u32,
-) -> Result<Option<(FetchedServer, Arc<crate::sync::Mutex<ServerData>>)>, sqlx::Error> {
+) -> Result<Option<(FetchedServer, Arc<ServerData>)>, sqlx::Error> {
     let Some(server) = generic_server_select(conn, server_id).await? else {
         return Ok(None);
     };
-    let server_data = Arc::clone(
-        servers
-            .lock()
-            .await
-            .entry(server_id)
-            .or_insert_with(|| Arc::new(crate::sync::Mutex::new(ServerData::default()))),
-    );
+    let server_data = Arc::clone(servers.lock().await.entry(server_id).or_default());
     Ok(Some((server, server_data)))
 }
 
 pub async fn server_required<T: From<sqlx::Error> + FromServerNotFound>(
     conn: &Pool<MySql>,
-    servers: &crate::sync::Mutex<HashMap<u32, Arc<crate::sync::Mutex<ServerData>>>>,
+    servers: &Mutex<HashMap<u32, Arc<ServerData>>>,
     server_id: u32,
-) -> Result<(FetchedServer, Arc<crate::sync::Mutex<ServerData>>), T> {
+) -> Result<(FetchedServer, Arc<ServerData>), T> {
     server(conn, servers, server_id)
         .await?
         .ok_or_else(<T as FromServerNotFound>::from)
@@ -115,6 +113,7 @@ pub fn short_path(components: Vec<&str>) -> Result<Vec<&str>, ()> {
 pub enum ChannelWriteData {
     Terminal(Vec<u8>),
     Status(InternalServerState),
+    Tasks(TasksData),
     Stats(ServerStats),
     Ping,
 }
@@ -216,24 +215,23 @@ impl<
     }
 }
 
-#[derive(Debug)]
-#[expect(
-    dead_code,
-    reason = "this is an exact copy of SyncIoBridge from upstream"
-)]
-struct SyncIoBridgeCopy<T> {
-    src: T,
-    rt: tokio::runtime::Handle,
+#[derive(Clone, Serialize)]
+pub struct TasksData {
+    pub storage: Vec<TaskDescriptor<StorageTask>>,
+    pub server: Vec<TaskDescriptor<ServerTask>>,
 }
 
-pub trait SyncIOBridgeExt<T> {
-    fn inner_mut(&mut self) -> &mut T;
-}
-
-impl<T> SyncIOBridgeExt<T> for SyncIoBridge<T> {
-    fn inner_mut(&mut self) -> &mut T {
-        let transmuted = core::ptr::from_mut(self).cast::<SyncIoBridgeCopy<T>>();
-        // SAFETY: As long as the crate struct definition doesn't change, this is safe
-        unsafe { &mut (*transmuted).src }
+impl TasksData {
+    #[must_use]
+    pub fn as_websocket_message(&self) -> Message {
+        const TASKS_MAGIC: &str = "TASKS!";
+        Message::Text(
+            format!(
+                "{TASKS_MAGIC}{}",
+                serde_json::to_string(self)
+                    .expect("Unable to serialize stats to websocket message")
+            )
+            .into(),
+        )
     }
 }

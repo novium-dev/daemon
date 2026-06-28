@@ -325,10 +325,10 @@ impl sqlx::Type<MySql> for ServerLock {
     }
 }
 
-impl<'q> sqlx::Encode<'q, MySql> for ServerLock {
+impl sqlx::Encode<'_, MySql> for ServerLock {
     fn encode_by_ref(
         &self,
-        buf: &mut <MySql as Database>::ArgumentBuffer<'q>,
+        buf: &mut <MySql as Database>::ArgumentBuffer,
     ) -> Result<IsNull, BoxDynError> {
         let str = self.to_string();
         <&str as Encode<'_, MySql>>::encode_by_ref(&&*str, buf)

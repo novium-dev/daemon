@@ -11,6 +11,7 @@ use daemon_common::service::error_compression_unsupported::FromCompressionUnsupp
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::{FileOperationKind, StorageTask};
 use serde_json::json;
 use std::collections::HashSet;
 use std::io;
@@ -42,7 +43,16 @@ pub async fn unpack_archive<
         notify,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::ArchiveUnpack,
+        },
+    )
+    .await?;
     let (dest_storage, dest_storage_path, dest_path) =
         storage_path(id, &storage, dest, &tokens).await?;
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
@@ -140,7 +150,16 @@ pub async fn create_archive<
         notify,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FileOperation {
+            kind: FileOperationKind::ArchiveCreate,
+        },
+    )
+    .await?;
     let compression: ArchiveCompression = serde_json::from_value(json!({
         "type": compression
     }))

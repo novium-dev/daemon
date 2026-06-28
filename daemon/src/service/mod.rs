@@ -22,8 +22,6 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
 mod backup;
-#[cfg(feature = "trace_sync")]
-mod debug;
 mod files;
 pub mod middleware;
 mod network;
@@ -38,8 +36,7 @@ impl<T: DaemonExtra> Daemon<T> {
         struct ApiDoc;
 
         let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
-            ServerService, BackupService, FilesService, NetworkService,
-            ResourceService {"trace_sync" daemon_common::service::debug::DebugService}
+            ServerService, BackupService, FilesService, NetworkService, ResourceService
         });
         let router = router.into_openapi();
         let router_user = router_user.into_openapi();

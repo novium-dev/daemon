@@ -26,7 +26,6 @@ pub use zelus::sdk::ZelusClientImpl;
 pub use zelus::types::{DataStream, JsonVec};
 
 pub mod backup;
-pub mod debug;
 pub mod files;
 pub mod network;
 pub mod resource;

@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::config::{DaemonConfig, StorageEntry};
 use crate::storage::{StorageIdentifier, prepare};
-use crate::sync::Mutex;
-use crate::sync::{OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock};
+use crate::sync::task::{TaskOwnedRwLockReadGuard, TaskOwnedRwLockWriteGuard, TaskRwLock};
 use crate::utils::generic_server_select;
 use crate::{StorageData, StorageNotification};
 use arc_swap::ArcSwap;
@@ -15,11 +14,13 @@ use core::time::Duration;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::StorageTask;
 use sqlx::{Executor, MySql};
 use std::collections::{HashMap, HashSet};
 use std::io;
 use std::sync::Arc;
 use std::time::SystemTime;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use uuid::Uuid;
 
@@ -90,7 +91,7 @@ impl StorageTokens {
 }
 
 /// Cancel safe
-async fn storage_lock(
+pub(crate) async fn storage_lock(
     config: &DaemonConfig,
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
@@ -98,7 +99,7 @@ async fn storage_lock(
 ) -> Result<
     Option<(
         Option<u64>,
-        Arc<RwLock<()>>,
+        Arc<TaskRwLock<StorageTask, ()>>,
         HashSet<String>,
         StorageEntry,
         Arc<(AtomicI64, AtomicI64)>,
@@ -126,7 +127,7 @@ async fn storage_lock(
     )]
     let (value, lock, stats_lock, notify, tokens) = match storages.get(&storage) {
         None => {
-            let lock = Arc::new(RwLock::new(()));
+            let lock = Arc::new(TaskRwLock::new(()));
             let current = AtomicI64::new(-1);
             let max = AtomicI64::new(
                 disk.filter(|disk| *disk <= i64::MAX.unsigned_abs())
@@ -178,13 +179,14 @@ pub async fn storage_read_timeout<
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
-) -> Result<StorageLockData<OwnedRwLockReadGuard<()>>, E> {
+    task: StorageTask,
+) -> Result<StorageLockData<TaskOwnedRwLockReadGuard<StorageTask, ()>>, E> {
     let Some((disk, lock, backup_exclude, entry, value, stats_lock, notify, tokens)) =
         storage_lock(config, conn, storages, storage).await?
     else {
         return Err(<E as FromStorageNotFound>::from());
     };
-    let guard = tokio::time::timeout(Duration::from_millis(100), lock.read_owned())
+    let guard = tokio::time::timeout(Duration::from_millis(100), lock.read_owned(task))
         .await
         .map_err(|_elapsed| <E as FromStorageMutexLocked>::from())?;
     let path = prepare(storage, &entry, &value, disk)
@@ -209,13 +211,14 @@ pub async fn storage_read<'a, E: From<sqlx::Error> + FromStorageNotFound + FromS
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
-) -> Result<StorageLockData<OwnedRwLockReadGuard<()>>, E> {
+    task: StorageTask,
+) -> Result<StorageLockData<TaskOwnedRwLockReadGuard<StorageTask, ()>>, E> {
     let Some((disk, lock, backup_exclude, entry, value, stats_lock, notify, tokens)) =
         storage_lock(config, conn, storages, storage).await?
     else {
         return Err(<E as FromStorageNotFound>::from());
     };
-    let guard = lock.read_owned().await;
+    let guard = lock.read_owned(task).await;
     let path = prepare(storage, &entry, &value, disk)
         .await
         .map_err(|_err| <E as FromStorageFailure>::from())?;
@@ -241,13 +244,14 @@ pub async fn storage_write_timeout<
     conn: impl Executor<'_, Database = MySql> + Copy,
     storages: &Mutex<HashMap<StorageIdentifier, StorageData>>,
     storage: StorageIdentifier,
-) -> Result<StorageLockData<OwnedRwLockWriteGuard<()>>, E> {
+    task: StorageTask,
+) -> Result<StorageLockData<TaskOwnedRwLockWriteGuard<StorageTask, ()>>, E> {
     let Some((disk, lock, backup_exclude, entry, value, stats_lock, notify, tokens)) =
         storage_lock(config, conn, storages, storage).await?
     else {
         return Err(<E as FromStorageNotFound>::from());
     };
-    let guard = tokio::time::timeout(Duration::from_millis(100), lock.write_owned())
+    let guard = tokio::time::timeout(Duration::from_millis(100), lock.write_owned(task))
         .await
         .map_err(|_elapsed| <E as FromStorageMutexLocked>::from())?;
     let path = prepare(storage, &entry, &value, disk)

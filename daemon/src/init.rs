@@ -4,7 +4,6 @@ use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
-use crate::sync::Mutex;
 use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, storage};
 use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
 use bollard::query_parameters::{
@@ -14,6 +13,8 @@ use core::fmt::{Debug, Display, Formatter};
 use core::mem;
 use core::time::Duration;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
+use daemon_common::service::files::task::StorageTask;
+use daemon_common::service::server::task::ServerTask;
 use ed25519_dalek::SigningKey;
 use futures_util::{FutureExt as _, TryFutureExt as _};
 use libc::{SIGINT, SIGTERM};
@@ -24,6 +25,7 @@ use std::collections::HashMap;
 use std::io::ErrorKind;
 use std::sync::Arc;
 use sqlx::migrate::Migrator;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::task::JoinSet;
 use tracing::{debug, error, info, warn};
@@ -98,13 +100,13 @@ impl<T: DaemonExtra> Daemon<T> {
 
         let servers = HashMap::new();
 
-        let docker = if config.podman {
-            info!("Connecting to Podman...");
+        let docker = if cfg!(target_os = "linux") {
+            info!("Connecting to Podman/Docker...");
             bollard::Docker::connect_with_podman_defaults()
                 .inspect_err(|err| error!("Failed to connect to podman: {err:?}"))
                 .map_err(DaemonInitError::Docker)?
         } else {
-            info!("Connecting to Docker...");
+            info!("Connecting to Podman/Docker...");
             bollard::Docker::connect_with_local_defaults()
                 .inspect_err(|err| error!("Failed to connect to docker: {err:?}"))
                 .map_err(DaemonInitError::Docker)?
@@ -285,7 +287,7 @@ impl<T: DaemonExtra> Daemon<T> {
                     id,
                     ..FetchedServer::default()
                 }
-                .stop(&docker, server.lock_owned().await)
+                .stop(&docker, &server, &server.lock.read(ServerTask::Stop).await)
                 .await;
             });
         }
@@ -351,7 +353,7 @@ impl<T: DaemonExtra> Daemon<T> {
                     }
                 }
                 if let Some(id) = id {
-                    let server_data_arc = Arc::clone(servers.entry(id).or_default());
+                    let server_data = Arc::clone(servers.entry(id).or_default());
 
                     match query!(
                         "SELECT `cpu`, `ram`, `swap` FROM `servers` WHERE `id` = ?",
@@ -361,13 +363,12 @@ impl<T: DaemonExtra> Daemon<T> {
                     .await
                     {
                         Ok(Some(row)) => {
-                            let server_data = server_data_arc.lock().await;
-
                             match storage_read::<StorageError>(
                                 &self.config,
                                 &*self.conn,
                                 &self.storages,
                                 StorageIdentifier::Primary(id),
+                                StorageTask::ServerRunning,
                             )
                             .await
                             {
@@ -383,8 +384,7 @@ impl<T: DaemonExtra> Daemon<T> {
                                         row.cpu,
                                         row.ram,
                                         row.swap,
-                                        &server_data,
-                                        Arc::clone(&server_data_arc),
+                                        Arc::clone(&server_data),
                                         storage_lock,
                                         storage_value,
                                         storage_stats_lock,

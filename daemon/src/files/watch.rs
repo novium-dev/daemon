@@ -14,6 +14,7 @@ use daemon_common::service::WebsocketResponse;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::files::{
     FileEntry, FilesWatchCommand, FilesWatchResponse, FilesWatchResponseEntry,
     FilesWatchWorkDirectoryChangedReason,
@@ -47,7 +48,14 @@ pub async fn watch_files<
         storage,
         tokens,
         ..
-    } = storage_read_timeout::<E>(&daemon.config, &*daemon.conn, &daemon.storages, id).await?;
+    } = storage_read_timeout::<E>(
+        &daemon.config,
+        &*daemon.conn,
+        &daemon.storages,
+        id,
+        StorageTask::FilesWatchWebsocket,
+    )
+    .await?;
     let (storage, _) = storage_path_root(id, &storage).await?;
     let recv = notify.subscribe();
     Ok(WebsocketResponse(ws.on_upgrade(move |socket| {
