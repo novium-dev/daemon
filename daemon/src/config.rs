@@ -2,7 +2,7 @@
 pub use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use axum::http::HeaderValue;
 use core::net::SocketAddr;
-use daemon_common::node::{BackupStorage, HostAndPort, NodeConfig, ServerStorage};
+use daemon_common::node::{BackendNodeConfig, BackupStorage, HostAndPort, ServerStorage};
 use reqwest::Url;
 use russh::keys::PrivateKey;
 use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
@@ -36,20 +36,12 @@ pub struct DaemonConfig {
 impl DaemonConfig {
     /// Builds the logical [`NodeConfig`] reported to the backend during a backend-driven update.
     #[must_use]
-    pub fn to_node_config(&self) -> NodeConfig {
-        NodeConfig {
+    pub fn to_node_config(&self) -> BackendNodeConfig {
+        BackendNodeConfig {
             base_url: self.public_url.clone(),
             ssh: self.ssh.as_ref().map(|ssh| ssh.public.clone()),
-            storages: self
-                .storage
-                .iter()
-                .map(|(name, storage)| (name.clone(), storage.as_server_storage()))
-                .collect(),
-            backups: self
-                .backup
-                .iter()
-                .map(|(name, backup)| (name.clone(), backup.as_backup_storage()))
-                .collect(),
+            storages: self.storage.keys().cloned().collect(),
+            backups: self.backup.keys().cloned().collect(),
         }
     }
 }

@@ -20,7 +20,7 @@ pub struct NodeRegistrationRequest {
     pub default_bind: String,
     pub default_host: String,
 
-    pub config: BackendNodeConfig,
+    pub config: SetupNodeConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
