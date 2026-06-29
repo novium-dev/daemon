@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
-use crate::node::NodeConfig;
 use zelus::service;
+use crate::node::BackendNodeConfig;
 
 #[service(tag = "setup")]
 pub trait SetupService {
@@ -13,5 +13,5 @@ pub trait SetupService {
     /// Returns the daemon's current config (backend-driven update)
     #[route("/setup/config", method = GET)]
     #[error((AwaitingSetup, "This error is expected while in the setup wizard", FORBIDDEN))]
-    async fn config(&self) -> Result<NodeConfig, _>;
+    async fn config(&self) -> Result<BackendNodeConfig, _>;
 }

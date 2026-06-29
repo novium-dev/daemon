@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
-use daemon_common::node::NodeConfig;
+use daemon_common::node::BackendNodeConfig;
 use daemon_common::service::setup::SetupService;
 use daemon_common::service::setup::setup_service_error::{ConfigError, ConnectionTestError};
 
@@ -11,7 +11,7 @@ impl<T: DaemonExtra> SetupService for Daemon<T> {
         Ok(())
     }
 
-    async fn config(&self) -> Result<NodeConfig, ConfigError> {
+    async fn config(&self) -> Result<BackendNodeConfig, ConfigError> {
         Ok(self.config.to_node_config())
     }
 }

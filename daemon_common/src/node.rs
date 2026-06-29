@@ -14,25 +14,17 @@ pub struct HostAndPort {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct NodeRegistrationRequest {
-    pub base_url: Url,
-
-    pub ssh: Option<HostAndPort>,
     pub cert: Vec<u8>,
     pub csr: Vec<u8>,
 
     pub default_bind: String,
     pub default_host: String,
 
-    pub storages: HashMap<String, ServerStorage>,
-    pub backups: HashMap<String, BackupStorage>,
+    pub config: BackendNodeConfig,
 }
 
-/// The logical configuration of a node, owned by the backend.
-///
-/// It is sent by the backend to the daemon during setup (so the daemon can build its local
-/// `config.toml`) and returned by the daemon to the backend during a backend-driven update.
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct NodeConfig {
+pub struct SetupNodeConfig {
     /// The publicly reachable base URL of the daemon.
     pub base_url: Url,
     /// The publicly reachable SSH address, or `None` if SSH is disabled.
@@ -40,6 +32,17 @@ pub struct NodeConfig {
 
     pub storages: HashMap<String, ServerStorage>,
     pub backups: HashMap<String, BackupStorage>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BackendNodeConfig {
+    /// The publicly reachable base URL of the daemon.
+    pub base_url: Url,
+    /// The publicly reachable SSH address, or `None` if SSH is disabled.
+    pub ssh: Option<HostAndPort>,
+    
+    pub storages: Vec<String>,
+    pub backups: Vec<String>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, ToSchema)]

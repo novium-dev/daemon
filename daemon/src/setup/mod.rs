@@ -11,7 +11,7 @@ use daemon::internal::middleware;
 use daemon::key::{DaemonCertResolver, TlsAcceptor};
 use daemon_common::key::rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
 use daemon_common::key::{DaemonKey, DaemonRootKey};
-use daemon_common::node::{BackupStorage, NodeConfig, NodeRegistrationRequest, ServerStorage};
+use daemon_common::node::{BackupStorage, BackendNodeConfig, SetupNodeConfig, NodeRegistrationRequest, ServerStorage};
 use daemon_common::service::framework_router;
 use daemon_common::service::setup::SetupService;
 use daemon_common::service::setup::setup_service_error::{ConfigError, ConnectionTestError};
@@ -91,9 +91,7 @@ fn write_file(path: &str, contents: &[u8]) {
     file.flush().unwrap();
 }
 
-/// Builds the local [`DaemonConfig`] from the backend-provided logical [`NodeConfig`], filling in
-/// local specifics (bind ports, on-disk paths, host-key paths, mounts) from defaults.
-fn node_to_daemon_config(backend: &Url, node: &NodeConfig, database_url: &Url) -> DaemonConfig {
+fn node_to_daemon_config(backend: &Url, node: &SetupNodeConfig, database_url: &Url) -> DaemonConfig {
     let mut mounts = Vec::new();
     let backend_root = backend.join("/").unwrap();
 
@@ -183,7 +181,7 @@ fn backup_storage_to_entry(name: &str, backup: &BackupStorage) -> BackupEntry {
 }
 
 fn config_to_register_request(
-    node: &NodeConfig,
+    node: &SetupNodeConfig,
     cert: &CertificateDer<'static>,
     csr: &CertificateSigningRequestDer<'static>,
     mysql: String,
@@ -215,14 +213,11 @@ fn config_to_register_request(
     }
 
     NodeRegistrationRequest {
-        base_url: node.base_url.clone(),
-        ssh: node.ssh.clone(),
         cert: cert.to_vec(),
         csr: csr.to_vec(),
-        storages: node.storages.clone(),
-        backups: node.backups.clone(),
         default_bind: "0.0.0.0".to_owned(),
         default_host: node.base_url.host_str().unwrap().to_owned(),
+        config: node.clone(),
     }
 }
 
@@ -236,7 +231,7 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
             Err(ConnectionTestError::AwaitingSetup)
         }
 
-        async fn config(&self) -> Result<NodeConfig, ConfigError> {
+        async fn config(&self) -> Result<BackendNodeConfig, ConfigError> {
             Err(ConfigError::AwaitingSetup)
         }
     }
@@ -286,7 +281,7 @@ fn read_root_key(url: &Url, code: &str) -> Result<Option<(DaemonRootKey, bool)>,
     Ok(Some((DaemonRootKey::parse(str)?.0, rsa)))
 }
 
-fn read_config(url: &Url, code: &str) -> Result<NodeConfig, anyhow::Error> {
+fn read_config(url: &Url, code: &str) -> Result<SetupNodeConfig, anyhow::Error> {
     let response = Client::default()
         .get(url.join("/internal/daemon/config").unwrap())
         .bearer_auth(code)
