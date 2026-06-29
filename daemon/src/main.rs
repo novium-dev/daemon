@@ -2,6 +2,7 @@
 
 pub(crate) mod setup;
 
+use std::io::ErrorKind;
 use crate::config::DaemonConfig;
 use clap::*;
 use daemon::*;
@@ -12,6 +13,7 @@ use tokio::io::AsyncReadExt as _;
 use tracing::info;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
+use url::Url;
 
 fn main() {
     let matches = command!()
@@ -67,6 +69,17 @@ fn main() {
                 .action(ArgAction::Set)
                 .required(false),
         )
+        .arg(
+            Arg::new("database-url")
+                .short(None)
+                .long("database-url")
+                .env("DATABASE_URL")
+                .help("Sets the database URL to use")
+                .action(ArgAction::Set)
+                .required(true)
+                .value_parser(value_parser!(Url))
+                .default_value("mysql://root@localhost/daemon")
+        )
         .get_matches();
 
     if !matches.get_flag("skip-capability-setup") {
@@ -115,9 +128,18 @@ fn main() {
 
 #[tokio::main]
 async fn main0(matches: ArgMatches) {
-    let config_needs_setup = fs::read_to_string("config.toml")
-        .await
-        .map_or(true, |contents| contents.trim().is_empty());
+    let config_needs_setup = match fs::read_to_string("config.toml").await {
+        Ok(contents) => contents.trim().is_empty(),
+        Err(err) if err.kind() == ErrorKind::NotFound => true,
+        Err(err) => {
+            panic!("Unable to read config file: {err}");
+        }
+    };
+
+    let database_url = matches
+        .get_one::<Url>("database-url")
+        .expect("database-url is required")
+        .clone();
 
     if config_needs_setup {
         tokio::task::spawn_blocking(move || {
@@ -131,16 +153,16 @@ async fn main0(matches: ArgMatches) {
                 .get_one::<String>("setup-token")
                 .expect("setup-token is required for setup");
 
-            setup::setup(skip_mariadb_plugin, setup_url, setup_token);
+            setup::setup(skip_mariadb_plugin, setup_url, setup_token, database_url)
         })
         .await
         .expect("Setup failed");
     } else {
-        run().await;
+        run(database_url).await;
     }
 }
 
-async fn run() {
+async fn run(database_url: Url) {
     let mut config_buffer = String::new();
     File::open("config.toml")
         .await
@@ -148,7 +170,11 @@ async fn run() {
         .read_to_string(&mut config_buffer)
         .await
         .expect("Unable to read config file");
-    let config: DaemonConfig = toml::from_str(&config_buffer).expect("Failed to parse config file");
+    let mut config: DaemonConfig = toml::from_str(&config_buffer).expect("Failed to parse config file");
+
+    if config.database.is_empty() {
+        config.database = database_url.to_string();
+    }
 
     let mut root = Vec::new();
     let mut key = Vec::new();

@@ -1,18 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#![allow(clippy::unwrap_used, reason = "setup is a fail-fast provisioning step")]
-#![allow(
-    clippy::print_stdout,
-    reason = "setup talks to the operator via stdout"
-)]
-#![allow(clippy::uninlined_format_args, reason = "setup wizard")]
-#![allow(clippy::indexing_slicing, reason = "setup wizard")]
-#![allow(clippy::clone_on_ref_ptr, reason = "setup wizard")]
-#![allow(clippy::std_instead_of_core, reason = "setup wizard")]
-#![allow(clippy::unused_trait_names, reason = "setup wizard")]
-
 use crate::config::{ArchiveCompression, CompressionLevel};
 use crate::config::{
-    BackupEntry, DaemonConfig, MountPoint, NetworkConfig, SSHConfig, SSHHostKey, StorageEntry,
+    BackupEntry, DaemonConfig, NetworkConfig, SSHConfig, SSHHostKey, StorageEntry,
 };
 use async_trait::async_trait;
 use axum::http::HeaderValue;
@@ -45,8 +34,9 @@ use tracing::info;
 use url::Url;
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
+use daemon::config::MountPoint;
 
-pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str) {
+pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_url: Url) {
     info!("Starting Setup...");
 
     let backend = Url::parse(url).expect("SETUP_URL is not a valid URL");
@@ -60,7 +50,7 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str) {
     println!("Retrieving node config...");
     let node = read_config(&backend, code).unwrap();
 
-    let config = node_to_daemon_config(&backend, &node);
+    let config = node_to_daemon_config(&backend, &node, &database_url);
     write_file("config.toml", toml::to_string(&config).unwrap().as_bytes());
 
     let keypair = crate::common::key::rcgen::KeyPair::generate_for(if rsa {
@@ -75,7 +65,7 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str) {
 
     test_host(&config, &root, &temp_key, Uuid::nil());
 
-    let request = config_to_register_request(&node, &temp_key.cert[0], &csr, skip_mariadb_plugin);
+    let request = config_to_register_request(&node, &temp_key.cert[0], &csr, database_url.to_string(), skip_mariadb_plugin);
     let response = Client::default()
         .post(backend.join("/internal/daemon/register").unwrap())
         .bearer_auth(code)
@@ -103,11 +93,11 @@ fn write_file(path: &str, contents: &[u8]) {
 
 /// Builds the local [`DaemonConfig`] from the backend-provided logical [`NodeConfig`], filling in
 /// local specifics (bind ports, on-disk paths, host-key paths, mounts) from defaults.
-fn node_to_daemon_config(backend: &Url, node: &NodeConfig) -> DaemonConfig {
+fn node_to_daemon_config(backend: &Url, node: &NodeConfig, database_url: &Url) -> DaemonConfig {
     let mut mounts = Vec::new();
-    let mysql_url =
-        Url::parse(&node.database).expect("database url provided by backend is invalid");
-    if let Some((_, socket)) = mysql_url
+    let backend_root = backend.join("/").unwrap();
+
+    if let Some((_, socket)) = database_url
         .query_pairs()
         .find(|(param, _)| param.eq("socket"))
     {
@@ -120,10 +110,8 @@ fn node_to_daemon_config(backend: &Url, node: &NodeConfig) -> DaemonConfig {
         });
     }
 
-    let backend_root = backend.join("/").unwrap();
-
     DaemonConfig {
-        database: node.database.clone(),
+        database: database_url.to_string(),
         public_url: node.base_url.clone(),
         listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 3000)]),
         origin: HeaderValue::from_str(backend_root.as_str()).unwrap(),
@@ -198,10 +186,10 @@ fn config_to_register_request(
     node: &NodeConfig,
     cert: &CertificateDer<'static>,
     csr: &CertificateSigningRequestDer<'static>,
+    mysql: String,
     no_plugin: bool,
 ) -> NodeRegistrationRequest {
     if !no_plugin {
-        let mysql = node.database.clone();
         Handle::current()
             .block_on(async {
                 let mut conn = MySqlConnection::connect(&mysql).await?;

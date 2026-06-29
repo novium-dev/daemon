@@ -39,7 +39,6 @@ impl DaemonConfig {
     pub fn to_node_config(&self) -> NodeConfig {
         NodeConfig {
             base_url: self.public_url.clone(),
-            database: self.database.clone(),
             ssh: self.ssh.as_ref().map(|ssh| ssh.public.clone()),
             storages: self
                 .storage

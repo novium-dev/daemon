@@ -59,7 +59,6 @@ impl Daemon<WithUserKey> {
         config: DaemonConfig,
         root: Arc<DaemonRootKey>,
         key: Arc<DaemonKey>,
-
         mut base_url: Url,
         user_key: SigningKey,
     ) -> Result<Self, DaemonInitError> {
