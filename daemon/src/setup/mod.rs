@@ -1,15 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-#![allow(clippy::unwrap_used, reason = "setup is a fail-fast provisioning step")]
-#![allow(
-    clippy::print_stdout,
-    reason = "setup talks to the operator via stdout"
-)]
-#![allow(clippy::uninlined_format_args, reason = "setup wizard")]
-#![allow(clippy::indexing_slicing, reason = "setup wizard")]
-#![allow(clippy::clone_on_ref_ptr, reason = "setup wizard")]
-#![allow(clippy::std_instead_of_core, reason = "setup wizard")]
-#![allow(clippy::unused_trait_names, reason = "setup wizard")]
-
 use crate::config::{ArchiveCompression, CompressionLevel};
 use crate::config::{
     BackupEntry, DaemonConfig, NetworkConfig, SSHConfig, SSHHostKey, StorageEntry,
@@ -18,6 +7,9 @@ use async_trait::async_trait;
 use axum::http::HeaderValue;
 use axum_server::Server;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
+use core::error::Error;
+use core::net::{IpAddr, Ipv6Addr, SocketAddr};
+use core::time::Duration;
 use daemon::config::MountPoint;
 use daemon::internal::middleware;
 use daemon::key::{DaemonCertResolver, TlsAcceptor};
@@ -33,18 +25,15 @@ use reqwest::blocking::Client;
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, CertificateSigningRequestDer};
 use rustls::server::WebPkiClientVerifier;
-use sqlx::{Connection, MySqlConnection, QueryBuilder, query_scalar};
+use sqlx::{Connection as _, MySqlConnection, QueryBuilder, query_scalar};
 use std::collections::HashSet;
-use std::error::Error;
 use std::fs::File;
-use std::io::Write;
-use std::net::{IpAddr, Ipv6Addr, SocketAddr};
+use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
 use tokio::runtime::Handle;
-use tracing::info;
+use tracing::{info, warn};
 use url::Url;
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
@@ -54,60 +43,80 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
 
     let backend = Url::parse(url).expect("SETUP_URL is not a valid URL");
 
-    println!("Retrieving daemon root key...");
-    let Some((root, rsa)) = read_root_key(&backend, code).unwrap() else {
+    info!("Retrieving daemon root key...");
+    let Some((root, rsa)) =
+        read_root_key(&backend, code).expect("failed to retrieve daemon root key")
+    else {
         return;
     };
     let root = Arc::new(root);
 
-    println!("Retrieving node config...");
-    let node = read_config(&backend, code).unwrap();
+    info!("Retrieving node config...");
+    let node = read_config(&backend, code).expect("failed to retrieve node config");
 
     let config = node_to_daemon_config(&backend, &node, database_url);
-    write_file("config.toml", toml::to_string(&config).unwrap().as_bytes());
+    write_file(
+        "config.toml",
+        toml::to_string(&config)
+            .expect("failed to serialize daemon config")
+            .as_bytes(),
+    );
 
     let keypair = crate::common::key::rcgen::KeyPair::generate_for(if rsa {
         &PKCS_RSA_SHA256
     } else {
         &PKCS_ECDSA_P256_SHA256
     })
-    .unwrap();
+    .expect("failed to generate key pair");
 
-    let csr = DaemonKey::new_request(&keypair).unwrap();
-    let temp_key = Arc::new(DaemonKey::new_temp(&keypair).unwrap());
+    let csr =
+        DaemonKey::new_request(&keypair).expect("failed to build certificate signing request");
+    let temp_key = Arc::new(DaemonKey::new_temp(&keypair).expect("failed to build temporary key"));
 
     test_host(&config, &root, &temp_key, Uuid::nil());
 
     let request = config_to_register_request(
         &node,
-        &temp_key.cert[0],
+        temp_key
+            .cert
+            .first()
+            .expect("temporary key has at least one certificate"),
         &csr,
         database_url.as_str(),
         skip_mariadb_plugin,
     );
     let response = Client::default()
-        .post(backend.join("/internal/daemon/register").unwrap())
+        .post(
+            backend
+                .join("/internal/daemon/register")
+                .expect("register endpoint url is valid"),
+        )
         .bearer_auth(code)
         .json(&request)
         .send()
-        .unwrap()
+        .expect("failed to send registration request")
         .error_for_status()
-        .unwrap();
-    let bytes = response.bytes().unwrap().to_vec();
+        .expect("registration request returned an error status");
+    let bytes = response
+        .bytes()
+        .expect("failed to read registration response body")
+        .to_vec();
     let signed = CertificateDer::from(bytes);
-    let key = DaemonKey::new(&root, signed, temp_key.privkey.clone_key()).unwrap();
+    let key = DaemonKey::new(&root, signed, temp_key.privkey.clone_key())
+        .expect("failed to build signed daemon key");
 
     write_file("daemon_root.pem", root.dump(None, None).as_bytes());
     write_file("daemon.pem", key.dump().as_bytes());
 
-    println!("Done");
+    info!("Done");
 }
 
 /// Writes `contents` to `path`, flushing before the handle is dropped.
 fn write_file(path: &str, contents: &[u8]) {
-    let mut file = File::create(path).unwrap();
-    file.write_all(contents).unwrap();
-    file.flush().unwrap();
+    let mut file = File::create(path).expect("failed to create output file");
+    file.write_all(contents)
+        .expect("failed to write file contents");
+    file.flush().expect("failed to flush file");
 }
 
 fn node_to_daemon_config(
@@ -116,14 +125,14 @@ fn node_to_daemon_config(
     database_url: &Url,
 ) -> DaemonConfig {
     let mut mounts = Vec::new();
-    let backend_root = backend.join("/").unwrap();
+    let backend_root = backend.join("/").expect("backend root url is valid");
 
     if let Some((_, socket)) = database_url
         .query_pairs()
         .find(|(param, _)| param.eq("socket"))
     {
         let src = PathBuf::from(socket.to_string());
-        let src = src.parent().unwrap();
+        let src = src.parent().expect("socket path has a parent directory");
         mounts.push(MountPoint {
             src: src.to_string_lossy().to_string(),
             dest: "/var/run/mysqld".to_owned(),
@@ -135,7 +144,8 @@ fn node_to_daemon_config(
         database: database_url.to_string(),
         public_url: node.base_url.clone(),
         listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 3000)]),
-        origin: HeaderValue::from_str(backend_root.as_str()).unwrap(),
+        origin: HeaderValue::from_str(backend_root.as_str())
+            .expect("backend root url is a valid header value"),
         backend_url: backend_root.clone(),
         tls: None,
         ssh: node.ssh.as_ref().map(|public| SSHConfig {
@@ -223,7 +233,7 @@ fn config_to_register_request(
                         .collect();
 
                 if !plugins.contains(crate::common::MARIADB_PLUGIN_NAME) {
-                    println!("MariaDB Authentication plugin missing! Trying to install it...");
+                    info!("MariaDB Authentication plugin missing! Trying to install it...");
                     let mut query = QueryBuilder::new("INSTALL PLUGIN ");
                     query.push(crate::common::MARIADB_PLUGIN_NAME);
                     query.push("  SONAME 'libdaemon_mariadb_plugin.so'");
@@ -232,14 +242,18 @@ fn config_to_register_request(
 
                 Ok::<(), Box<dyn Error + Send + Sync>>(())
             })
-            .unwrap();
+            .expect("failed to ensure MariaDB authentication plugin is installed");
     }
 
     NodeRegistrationRequest {
         cert: cert.to_vec(),
         csr: csr.to_vec(),
         default_bind: "0.0.0.0".to_owned(),
-        default_host: node.base_url.host_str().unwrap().to_owned(),
+        default_host: node
+            .base_url
+            .host_str()
+            .expect("node base url has a host")
+            .to_owned(),
     }
 }
 
@@ -260,13 +274,13 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
 
     let mut rustls = ServerConfig::builder()
         .with_client_cert_verifier(
-            WebPkiClientVerifier::builder(root.cert_store.clone())
+            WebPkiClientVerifier::builder(Arc::clone(&root.cert_store))
                 .allow_unauthenticated()
                 .allow_unknown_revocation_status()
                 .build()
-                .unwrap(),
+                .expect("failed to build client certificate verifier"),
         )
-        .with_cert_resolver(Arc::new(DaemonCertResolver(key.clone(), None, uuid)));
+        .with_cert_resolver(Arc::new(DaemonCertResolver(Arc::clone(key), None, uuid)));
     rustls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let rustls = RustlsConfig::from_config(Arc::new(rustls));
 
@@ -291,11 +305,14 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
 
 fn read_root_key(url: &Url, code: &str) -> Result<Option<(DaemonRootKey, bool)>, anyhow::Error> {
     let response = Client::default()
-        .get(url.join("/internal/daemon/root_key").unwrap())
+        .get(
+            url.join("/internal/daemon/root_key")
+                .expect("root_key endpoint url is valid"),
+        )
         .bearer_auth(code)
         .send()?;
     if response.status() == axum::http::StatusCode::UNAUTHORIZED {
-        println!("Code is invalid");
+        warn!("Code is invalid");
         return Ok(None);
     }
     let rsa = response.headers().contains_key("X-Prefer-RSA-Key");
@@ -305,7 +322,10 @@ fn read_root_key(url: &Url, code: &str) -> Result<Option<(DaemonRootKey, bool)>,
 
 fn read_config(url: &Url, code: &str) -> Result<SetupNodeConfig, anyhow::Error> {
     let response = Client::default()
-        .get(url.join("/internal/daemon/config").unwrap())
+        .get(
+            url.join("/internal/daemon/config")
+                .expect("config endpoint url is valid"),
+        )
         .bearer_auth(code)
         .send()?
         .error_for_status()?;

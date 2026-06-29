@@ -128,15 +128,15 @@ fn main() {
 
 #[tokio::main]
 async fn main0(matches: ArgMatches) {
-    #[expect(
-        clippy::panic,
-        reason = "an unreadable config file at startup is unrecoverable"
-    )]
     let config_needs_setup = match fs::read_to_string("config.toml").await {
         Ok(contents) => contents.trim().is_empty(),
-        Err(err) if err.kind() == ErrorKind::NotFound => true,
         Err(err) => {
-            panic!("Unable to read config file: {err}");
+            assert_eq!(
+                err.kind(),
+                ErrorKind::NotFound,
+                "Unable to read config file: {err}"
+            );
+            true
         }
     };
 
