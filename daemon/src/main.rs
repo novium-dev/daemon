@@ -128,6 +128,10 @@ fn main() {
 
 #[tokio::main]
 async fn main0(matches: ArgMatches) {
+    #[expect(
+        clippy::panic,
+        reason = "an unreadable config file at startup is unrecoverable"
+    )]
     let config_needs_setup = match fs::read_to_string("config.toml").await {
         Ok(contents) => contents.trim().is_empty(),
         Err(err) if err.kind() == ErrorKind::NotFound => true,
@@ -153,7 +157,7 @@ async fn main0(matches: ArgMatches) {
                 .get_one::<String>("setup-token")
                 .expect("setup-token is required for setup");
 
-            setup::setup(skip_mariadb_plugin, setup_url, setup_token, database_url);
+            setup::setup(skip_mariadb_plugin, setup_url, setup_token, &database_url);
         })
         .await
         .expect("Setup failed");

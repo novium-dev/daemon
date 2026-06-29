@@ -1,4 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+#![allow(clippy::unwrap_used, reason = "setup is a fail-fast provisioning step")]
+#![allow(
+    clippy::print_stdout,
+    reason = "setup talks to the operator via stdout"
+)]
+#![allow(clippy::uninlined_format_args, reason = "setup wizard")]
+#![allow(clippy::indexing_slicing, reason = "setup wizard")]
+#![allow(clippy::clone_on_ref_ptr, reason = "setup wizard")]
+#![allow(clippy::std_instead_of_core, reason = "setup wizard")]
+#![allow(clippy::unused_trait_names, reason = "setup wizard")]
+
 use crate::config::{ArchiveCompression, CompressionLevel};
 use crate::config::{
     BackupEntry, DaemonConfig, NetworkConfig, SSHConfig, SSHHostKey, StorageEntry,
@@ -38,7 +49,7 @@ use url::Url;
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
 
-pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_url: Url) {
+pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_url: &Url) {
     info!("Starting Setup...");
 
     let backend = Url::parse(url).expect("SETUP_URL is not a valid URL");
@@ -52,7 +63,7 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
     println!("Retrieving node config...");
     let node = read_config(&backend, code).unwrap();
 
-    let config = node_to_daemon_config(&backend, &node, &database_url);
+    let config = node_to_daemon_config(&backend, &node, database_url);
     write_file("config.toml", toml::to_string(&config).unwrap().as_bytes());
 
     let keypair = crate::common::key::rcgen::KeyPair::generate_for(if rsa {
@@ -71,7 +82,7 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
         &node,
         &temp_key.cert[0],
         &csr,
-        database_url.to_string(),
+        database_url.as_str(),
         skip_mariadb_plugin,
     );
     let response = Client::default()
@@ -196,13 +207,13 @@ fn config_to_register_request(
     node: &SetupNodeConfig,
     cert: &CertificateDer<'static>,
     csr: &CertificateSigningRequestDer<'static>,
-    mysql: String,
+    mysql: &str,
     no_plugin: bool,
 ) -> NodeRegistrationRequest {
     if !no_plugin {
         Handle::current()
             .block_on(async {
-                let mut conn = MySqlConnection::connect(&mysql).await?;
+                let mut conn = MySqlConnection::connect(mysql).await?;
 
                 let plugins: HashSet<String> =
                     query_scalar!("SELECT `PLUGIN_NAME` FROM `information_schema`.`plugins`")
