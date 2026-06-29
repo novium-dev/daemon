@@ -19,8 +19,6 @@ pub struct NodeRegistrationRequest {
 
     pub default_bind: String,
     pub default_host: String,
-
-    pub config: SetupNodeConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
@@ -40,7 +38,7 @@ pub struct BackendNodeConfig {
     pub base_url: Url,
     /// The publicly reachable SSH address, or `None` if SSH is disabled.
     pub ssh: Option<HostAndPort>,
-    
+
     pub storages: Vec<String>,
     pub backups: Vec<String>,
 }

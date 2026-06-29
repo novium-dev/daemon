@@ -7,11 +7,14 @@ use async_trait::async_trait;
 use axum::http::HeaderValue;
 use axum_server::Server;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
+use daemon::config::MountPoint;
 use daemon::internal::middleware;
 use daemon::key::{DaemonCertResolver, TlsAcceptor};
 use daemon_common::key::rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
 use daemon_common::key::{DaemonKey, DaemonRootKey};
-use daemon_common::node::{BackupStorage, BackendNodeConfig, SetupNodeConfig, NodeRegistrationRequest, ServerStorage};
+use daemon_common::node::{
+    BackendNodeConfig, BackupStorage, NodeRegistrationRequest, ServerStorage, SetupNodeConfig,
+};
 use daemon_common::service::framework_router;
 use daemon_common::service::setup::SetupService;
 use daemon_common::service::setup::setup_service_error::{ConfigError, ConnectionTestError};
@@ -34,7 +37,6 @@ use tracing::info;
 use url::Url;
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
-use daemon::config::MountPoint;
 
 pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_url: Url) {
     info!("Starting Setup...");
@@ -65,7 +67,13 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
 
     test_host(&config, &root, &temp_key, Uuid::nil());
 
-    let request = config_to_register_request(&node, &temp_key.cert[0], &csr, database_url.to_string(), skip_mariadb_plugin);
+    let request = config_to_register_request(
+        &node,
+        &temp_key.cert[0],
+        &csr,
+        database_url.to_string(),
+        skip_mariadb_plugin,
+    );
     let response = Client::default()
         .post(backend.join("/internal/daemon/register").unwrap())
         .bearer_auth(code)
@@ -91,7 +99,11 @@ fn write_file(path: &str, contents: &[u8]) {
     file.flush().unwrap();
 }
 
-fn node_to_daemon_config(backend: &Url, node: &SetupNodeConfig, database_url: &Url) -> DaemonConfig {
+fn node_to_daemon_config(
+    backend: &Url,
+    node: &SetupNodeConfig,
+    database_url: &Url,
+) -> DaemonConfig {
     let mut mounts = Vec::new();
     let backend_root = backend.join("/").unwrap();
 
@@ -217,7 +229,6 @@ fn config_to_register_request(
         csr: csr.to_vec(),
         default_bind: "0.0.0.0".to_owned(),
         default_host: node.base_url.host_str().unwrap().to_owned(),
-        config: node.clone(),
     }
 }
 

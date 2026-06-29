@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
-use zelus::service;
 use crate::node::BackendNodeConfig;
+use zelus::service;
 
 #[service(tag = "setup")]
 pub trait SetupService {

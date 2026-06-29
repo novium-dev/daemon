@@ -2,11 +2,11 @@
 
 pub(crate) mod setup;
 
-use std::io::ErrorKind;
 use crate::config::DaemonConfig;
 use clap::*;
 use daemon::*;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
+use std::io::ErrorKind;
 use std::sync::Arc;
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt as _;
@@ -78,7 +78,7 @@ fn main() {
                 .action(ArgAction::Set)
                 .required(true)
                 .value_parser(value_parser!(Url))
-                .default_value("mysql://root@localhost/daemon")
+                .default_value("mysql://root@localhost/daemon"),
         )
         .get_matches();
 
@@ -153,7 +153,7 @@ async fn main0(matches: ArgMatches) {
                 .get_one::<String>("setup-token")
                 .expect("setup-token is required for setup");
 
-            setup::setup(skip_mariadb_plugin, setup_url, setup_token, database_url)
+            setup::setup(skip_mariadb_plugin, setup_url, setup_token, database_url);
         })
         .await
         .expect("Setup failed");
@@ -170,7 +170,8 @@ async fn run(database_url: Url) {
         .read_to_string(&mut config_buffer)
         .await
         .expect("Unable to read config file");
-    let mut config: DaemonConfig = toml::from_str(&config_buffer).expect("Failed to parse config file");
+    let mut config: DaemonConfig =
+        toml::from_str(&config_buffer).expect("Failed to parse config file");
 
     if config.database.is_empty() {
         config.database = database_url.to_string();
