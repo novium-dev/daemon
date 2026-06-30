@@ -20,7 +20,7 @@ use daemon_common::node::{
 };
 use daemon_common::service::framework_router;
 use daemon_common::service::setup::SetupService;
-use daemon_common::service::setup::setup_service_error::{ConfigError, ConnectionTestError};
+use daemon_common::service::setup::setup_service_error::ConfigError;
 use reqwest::blocking::Client;
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, CertificateSigningRequestDer};
@@ -261,10 +261,6 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
 
     #[async_trait]
     impl SetupService for ConnectionTestWrapper {
-        async fn connection_test(&self) -> Result<(), ConnectionTestError> {
-            Err(ConnectionTestError::AwaitingSetup)
-        }
-
         async fn config(&self) -> Result<BackendNodeConfig, ConfigError> {
             Err(ConfigError::AwaitingSetup)
         }
