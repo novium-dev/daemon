@@ -27,8 +27,6 @@ use rustls::pki_types::{CertificateDer, CertificateSigningRequestDer};
 use rustls::server::WebPkiClientVerifier;
 use sqlx::{Connection as _, MySqlConnection, QueryBuilder, query_scalar};
 use std::collections::HashSet;
-use std::fs::File;
-use std::io::Write as _;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
@@ -55,12 +53,6 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
     let node = read_config(&backend, code).expect("failed to retrieve node config");
 
     let config = node_to_daemon_config(&backend, &node, database_url);
-    write_file(
-        "config.toml",
-        toml::to_string(&config)
-            .expect("failed to serialize daemon config")
-            .as_bytes(),
-    );
 
     let keypair = crate::common::key::rcgen::KeyPair::generate_for(if rsa {
         &PKCS_RSA_SHA256
@@ -75,6 +67,10 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
 
     test_host(&config, &root, &temp_key, Uuid::nil());
 
+    if !skip_mariadb_plugin {
+        ensure_mariadb_plugin(database_url.as_str());
+    }
+
     let request = config_to_register_request(
         &node,
         temp_key
@@ -82,8 +78,6 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
             .first()
             .expect("temporary key has at least one certificate"),
         &csr,
-        database_url.as_str(),
-        skip_mariadb_plugin,
     );
     let response = Client::default()
         .post(
@@ -105,18 +99,18 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
     let key = DaemonKey::new(&root, signed, temp_key.privkey.clone_key())
         .expect("failed to build signed daemon key");
 
-    write_file("daemon_root.pem", root.dump(None, None).as_bytes());
-    write_file("daemon.pem", key.dump().as_bytes());
+    // Persist the configuration and keys only after registration succeeds, so an interrupted or
+    // failed run can simply be retried without having to manually delete config.toml first.
+    std::fs::write(
+        "config.toml",
+        toml::to_string(&config).expect("failed to serialize daemon config"),
+    )
+    .expect("failed to write config.toml");
+    std::fs::write("daemon_root.pem", root.dump(None, None))
+        .expect("failed to write daemon_root.pem");
+    std::fs::write("daemon.pem", key.dump()).expect("failed to write daemon.pem");
 
     info!("Done");
-}
-
-/// Writes `contents` to `path`, flushing before the handle is dropped.
-fn write_file(path: &str, contents: &[u8]) {
-    let mut file = File::create(path).expect("failed to create output file");
-    file.write_all(contents)
-        .expect("failed to write file contents");
-    file.flush().expect("failed to flush file");
 }
 
 fn node_to_daemon_config(
@@ -218,38 +212,37 @@ fn backup_storage_to_entry(name: &str, backup: &BackupStorage) -> BackupEntry {
     }
 }
 
+/// Installs the `MariaDB` authentication plugin into the configured database if it is missing.
+fn ensure_mariadb_plugin(mysql: &str) {
+    Handle::current()
+        .block_on(async {
+            let mut conn = MySqlConnection::connect(mysql).await?;
+
+            let plugins: HashSet<String> =
+                query_scalar!("SELECT `PLUGIN_NAME` FROM `information_schema`.`plugins`")
+                    .fetch_all(&mut conn)
+                    .await?
+                    .into_iter()
+                    .collect();
+
+            if !plugins.contains(crate::common::MARIADB_PLUGIN_NAME) {
+                info!("MariaDB Authentication plugin missing! Trying to install it...");
+                let mut query = QueryBuilder::new("INSTALL PLUGIN ");
+                query.push(crate::common::MARIADB_PLUGIN_NAME);
+                query.push("  SONAME 'libdaemon_mariadb_plugin.so'");
+                query.build().execute(&mut conn).await?;
+            }
+
+            Ok::<(), Box<dyn Error + Send + Sync>>(())
+        })
+        .expect("failed to ensure MariaDB authentication plugin is installed");
+}
+
 fn config_to_register_request(
     node: &SetupNodeConfig,
     cert: &CertificateDer<'static>,
     csr: &CertificateSigningRequestDer<'static>,
-    mysql: &str,
-    no_plugin: bool,
 ) -> NodeRegistrationRequest {
-    if !no_plugin {
-        Handle::current()
-            .block_on(async {
-                let mut conn = MySqlConnection::connect(mysql).await?;
-
-                let plugins: HashSet<String> =
-                    query_scalar!("SELECT `PLUGIN_NAME` FROM `information_schema`.`plugins`")
-                        .fetch_all(&mut conn)
-                        .await?
-                        .into_iter()
-                        .collect();
-
-                if !plugins.contains(crate::common::MARIADB_PLUGIN_NAME) {
-                    info!("MariaDB Authentication plugin missing! Trying to install it...");
-                    let mut query = QueryBuilder::new("INSTALL PLUGIN ");
-                    query.push(crate::common::MARIADB_PLUGIN_NAME);
-                    query.push("  SONAME 'libdaemon_mariadb_plugin.so'");
-                    query.build().execute(&mut conn).await?;
-                }
-
-                Ok::<(), Box<dyn Error + Send + Sync>>(())
-            })
-            .expect("failed to ensure MariaDB authentication plugin is installed");
-    }
-
     NodeRegistrationRequest {
         cert: cert.to_vec(),
         csr: csr.to_vec(),
