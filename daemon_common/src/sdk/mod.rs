@@ -39,7 +39,7 @@ pub struct DaemonSDK<T: DaemonSDKExtra + Send + Sync> {
     client: Client,
     identifier: Uuid,
     base_url: Url,
-    public_url: Url,
+    public_url: Option<Url>,
     extra: T,
 }
 
@@ -54,8 +54,8 @@ impl<T: DaemonSDKExtra + Send + Sync> ZelusClientImpl for DaemonSDK<T> {
 }
 
 impl<T: DaemonSDKExtra + Send + Sync> PublicBaseUrl for DaemonSDK<T> {
-    fn public_base_url(&self) -> &Url {
-        &self.public_url
+    fn public_base_url(&self) -> Option<&Url> {
+        self.public_url.as_ref()
     }
 }
 

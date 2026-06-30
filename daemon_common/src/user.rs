@@ -177,8 +177,18 @@ pub trait UserKeyProvider {
 }
 
 pub trait PublicBaseUrl {
-    /// The publicly reachable base URL used when building signed URLs handed to end users.
+    /// The publicly reachable base URL used when building signed URLs handed to end users, or
+    /// `None` if signed URLs should reuse the (internal) request URL.
     ///
     /// This is separate from the URL used for requests, which may target an internal address.
-    fn public_base_url(&self) -> &url::Url;
+    fn public_base_url(&self) -> Option<&url::Url>;
+
+    /// Rebases a freshly built signed URL onto the public origin, or returns it unchanged when no
+    /// public URL is configured.
+    fn rebase_public(&self, url: url::Url) -> url::Url {
+        match self.public_base_url() {
+            Some(base) => crate::utils::rebase_origin(url, base),
+            None => url,
+        }
+    }
 }

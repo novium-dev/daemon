@@ -2,7 +2,7 @@
 use super::*;
 use crate::service::error_storage_patch_failed::FromStoragePatchFailed;
 use crate::user::*;
-use crate::utils::{JsonExt as _, io_sync, io_sync_seek_truncate, rebase_origin};
+use crate::utils::{JsonExt as _, io_sync, io_sync_seek_truncate};
 use axum::extract::ws::Message;
 use chrono::Utc;
 use core::error::Error as _;
@@ -192,19 +192,15 @@ impl<T: ServerServiceURL + UserKeyProvider + PublicBaseUrl> ServerServiceUserKey
         let timestamp = Utc::now().timestamp();
         let signature =
             UserSignature::new_terminal(self.key(), timestamp, self.node_id(), server_id, write);
-        rebase_origin(
-            self.server_terminal_user_url(server_id, cols, rows, write, timestamp, signature),
-            self.public_base_url(),
-        )
+        self.rebase_public(self.server_terminal_user_url(
+            server_id, cols, rows, write, timestamp, signature,
+        ))
     }
 
     fn server_stats_user_url_signed(&self, server_id: u32) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature = UserSignature::new_stats(self.key(), timestamp, self.node_id(), server_id);
-        rebase_origin(
-            self.server_stats_user_url(server_id, timestamp, signature),
-            self.public_base_url(),
-        )
+        self.rebase_public(self.server_stats_user_url(server_id, timestamp, signature))
     }
 
     fn exec_server_interactive_user_url_signed(
@@ -217,12 +213,9 @@ impl<T: ServerServiceURL + UserKeyProvider + PublicBaseUrl> ServerServiceUserKey
         let timestamp = Utc::now().timestamp();
         let signature =
             UserSignature::new_exec(self.key(), timestamp, self.node_id(), server_id, &command);
-        rebase_origin(
-            self.exec_server_interactive_user_url(
-                server_id, cols, rows, command, timestamp, signature,
-            ),
-            self.public_base_url(),
-        )
+        self.rebase_public(self.exec_server_interactive_user_url(
+            server_id, cols, rows, command, timestamp, signature,
+        ))
     }
 }
 

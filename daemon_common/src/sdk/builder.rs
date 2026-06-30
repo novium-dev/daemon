@@ -48,8 +48,8 @@ impl DaemonSDKBuilderState for () {
         Arc<BackendKey>,
         // Internal base URL used for requests.
         Url,
-        // Public base URL used for signed URLs.
-        Url,
+        // Public base URL used for signed URLs, or `None` to reuse the internal URL.
+        Option<Url>,
     );
 }
 impl DaemonSdkSealed for RequiresIdentifier {}
@@ -96,10 +96,10 @@ impl DaemonSDKBuilder<RequiresBackendKey> {
 
 impl DaemonSDKBuilder<RequiresBaseURL> {
     /// Sets the base URL used for requests. Unless overridden with
-    /// [`DaemonSDKBuilder::with_public_url`], signed URLs default to this URL as well.
+    /// [`DaemonSDKBuilder::with_public_url`], signed URLs reuse this URL as well.
     pub fn with_url(self, mut url: Url) -> DaemonSDKBuilder<()> {
         base_url(&mut url);
-        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, url.clone(), url))
+        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, url, None))
     }
 }
 
@@ -107,7 +107,7 @@ impl DaemonSDKBuilder<()> {
     /// Overrides the public base URL used for signed URLs, leaving the request URL untouched.
     pub fn with_public_url(self, mut public_url: Url) -> Self {
         base_url(&mut public_url);
-        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, self.0.3, public_url))
+        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, self.0.3, Some(public_url)))
     }
 
     pub fn with_user_key(self, user_key: SigningKey) -> DaemonSDKBuilder<WithUserKey> {
@@ -125,7 +125,7 @@ impl<T: DaemonSDKExtra + DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T
         root_key: Either<Arc<DaemonRootKey>, Arc<RootCertStore>>,
         backend_key: &BackendKey,
         base_url: Url,
-        public_url: Url,
+        public_url: Option<Url>,
         extra: T,
     ) -> DaemonSDK<T> {
         let cert_store = match root_key {
@@ -175,7 +175,7 @@ impl DaemonSDKBuilderState for WithUserKey {
         Either<Arc<DaemonRootKey>, Arc<RootCertStore>>,
         Arc<BackendKey>,
         Url,
-        Url,
+        Option<Url>,
         SigningKey,
     );
 }

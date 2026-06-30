@@ -112,8 +112,8 @@ impl UserKeyProvider for Daemon<WithUserKey> {
     }
 }
 impl PublicBaseUrl for Daemon<WithUserKey> {
-    fn public_base_url(&self) -> &Url {
-        &self.extra.base_url
+    fn public_base_url(&self) -> Option<&Url> {
+        None
     }
 }
 

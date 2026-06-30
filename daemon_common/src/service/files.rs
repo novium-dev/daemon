@@ -3,7 +3,6 @@ use super::*;
 use crate::service::server::ServerFileWrite;
 use crate::service::service;
 use crate::user::*;
-use crate::utils::rebase_origin;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -246,10 +245,9 @@ impl<T: FilesServiceURL + UserKeyProvider + PublicBaseUrl> FilesServiceUserKeyEx
             server_id,
             &path,
         );
-        rebase_origin(
-            self.server_download_file_user_url(server_id, path, limit, timestamp, signature),
-            self.public_base_url(),
-        )
+        self.rebase_public(self.server_download_file_user_url(
+            server_id, path, limit, timestamp, signature,
+        ))
     }
 
     fn server_upload_file_user_url_signed(&self, server_id: u32, path: String) -> Url {
@@ -261,20 +259,14 @@ impl<T: FilesServiceURL + UserKeyProvider + PublicBaseUrl> FilesServiceUserKeyEx
             server_id,
             &path,
         );
-        rebase_origin(
-            self.server_upload_file_user_url(server_id, path, timestamp, signature),
-            self.public_base_url(),
-        )
+        self.rebase_public(self.server_upload_file_user_url(server_id, path, timestamp, signature))
     }
 
     fn server_watch_files_user_url_signed(&self, server_id: u32, path: Option<String>) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature =
             UserSignature::new_server_watch_files(self.key(), timestamp, self.node_id(), server_id);
-        rebase_origin(
-            self.server_watch_files_user_url(server_id, path, timestamp, signature),
-            self.public_base_url(),
-        )
+        self.rebase_public(self.server_watch_files_user_url(server_id, path, timestamp, signature))
     }
 }
 
