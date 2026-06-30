@@ -144,8 +144,13 @@ fn node_to_daemon_config(
         database: database_url.to_string(),
         public_url: node.base_url.clone(),
         listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 3000)]),
-        origin: HeaderValue::from_str(backend_root.as_str())
-            .expect("backend root url is a valid header value"),
+        origins: node
+            .origins
+            .iter()
+            .map(|origin| {
+                HeaderValue::from_str(origin).expect("backend provided a valid origin header value")
+            })
+            .collect(),
         backend_url: backend_root.clone(),
         tls: None,
         ssh: node.ssh.as_ref().map(|public| SSHConfig {

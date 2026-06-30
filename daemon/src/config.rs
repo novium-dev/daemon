@@ -20,9 +20,10 @@ pub struct DaemonConfig {
     /// The publicly reachable base URL of this daemon (reported to the backend).
     pub public_url: Url,
     pub listeners: HashSet<SocketAddr>,
-    #[serde(deserialize_with = "deserialize_header")]
-    #[serde(serialize_with = "serialize_header")]
-    pub origin: HeaderValue,
+    /// Origins whitelisted for CORS requests against this daemon.
+    #[serde(deserialize_with = "deserialize_headers")]
+    #[serde(serialize_with = "serialize_headers")]
+    pub origins: Vec<HeaderValue>,
     pub storage: HashMap<String, StorageEntry>,
     pub backup: HashMap<String, BackupEntry>,
     pub database: String,
@@ -241,20 +242,28 @@ impl SSHHostKey {
     }
 }
 
-fn deserialize_header<'de, D>(deserializer: D) -> Result<HeaderValue, D::Error>
+fn deserialize_headers<'de, D>(deserializer: D) -> Result<Vec<HeaderValue>, D::Error>
 where
     D: de::Deserializer<'de>,
 {
     use de::Error as _;
 
-    let data = <String>::deserialize(deserializer)?;
-    HeaderValue::from_str(&data).map_err(D::Error::custom)
+    <Vec<String>>::deserialize(deserializer)?
+        .iter()
+        .map(|data| HeaderValue::from_str(data).map_err(D::Error::custom))
+        .collect()
 }
 
-fn serialize_header<S>(data: &HeaderValue, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_headers<S>(data: &[HeaderValue], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: ser::Serializer,
 {
     use ser::Error as _;
-    serializer.serialize_str(data.to_str().map_err(S::Error::custom)?)
+    use ser::SerializeSeq as _;
+
+    let mut seq = serializer.serialize_seq(Some(data.len()))?;
+    for value in data {
+        seq.serialize_element(value.to_str().map_err(S::Error::custom)?)?;
+    }
+    seq.end()
 }

@@ -27,6 +27,9 @@ pub struct SetupNodeConfig {
     pub base_url: Url,
     /// The publicly reachable SSH address, or `None` if SSH is disabled.
     pub ssh: Option<HostAndPort>,
+    /// Origins whitelisted for CORS requests against this daemon.
+    #[serde(default)]
+    pub origins: Vec<String>,
 
     pub storages: HashMap<String, ServerStorage>,
     pub backups: HashMap<String, BackupStorage>,

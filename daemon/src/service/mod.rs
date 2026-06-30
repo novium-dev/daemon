@@ -48,8 +48,8 @@ impl<T: DaemonExtra> Daemon<T> {
         let router_user = router_user.into_openapi();
 
         let cors = tower_http::cors::CorsLayer::new()
-            .allow_origin(tower_http::cors::AllowOrigin::exact(
-                self.config.origin.clone(),
+            .allow_origin(tower_http::cors::AllowOrigin::list(
+                self.config.origins.iter().cloned(),
             ))
             .allow_methods([axum::http::Method::GET, axum::http::Method::PUT])
             .allow_headers(tower_http::cors::AllowHeaders::any());
