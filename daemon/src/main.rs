@@ -6,51 +6,19 @@ use crate::config::DaemonConfig;
 use clap::*;
 use daemon::*;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
+use std::io::ErrorKind;
 use std::sync::Arc;
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt as _;
 use tracing::info;
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
+use url::Url;
 
 fn main() {
     let matches = command!()
         .about("hosting-system daemon")
         .args_override_self(true)
-        .subcommand(
-            Command::new("setup")
-                .args_override_self(true)
-                .short_flag('s')
-                .long_flag("setup")
-                .about("Start the setup wizard")
-                .arg(
-                    Arg::new("backend")
-                        .short('b')
-                        .long("backend")
-                        .env("BACKEND_URL")
-                        .help("The public accessible backend url")
-                        .action(ArgAction::Set)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("code")
-                        .short('c')
-                        .long("code")
-                        .env("REGISTRATION_CODE")
-                        .help("The registration code")
-                        .action(ArgAction::Set)
-                        .required(false),
-                )
-                .arg(
-                    Arg::new("skip-mariadb-plugin")
-                        .short(None)
-                        .long("skip-mariadb-plugin")
-                        .env("SKIP_MARIADB_PLUGIN")
-                        .help("Skips the mariadb plugin install step")
-                        .action(ArgAction::SetTrue)
-                        .required(false),
-                ),
-        )
         .arg(
             Arg::new("debug")
                 .short('d')
@@ -73,6 +41,44 @@ fn main() {
                 .help("Skips the setuid")
                 .required(false)
                 .action(ArgAction::SetTrue),
+        )
+        .arg(
+            Arg::new("skip-mariadb-plugin")
+                .short(None)
+                .long("skip-mariadb-plugin")
+                .env("SKIP_MARIADB_PLUGIN")
+                .help("Skips the mariadb plugin install step (Only relevant for setup)")
+                .action(ArgAction::SetTrue)
+                .required(false),
+        )
+        .arg(
+            Arg::new("setup-url")
+                .short(None)
+                .long("setup-url")
+                .env("SETUP_URL")
+                .help("Sets the URL to use for setup (Only relevant for setup)")
+                .action(ArgAction::Set)
+                .required(false),
+        )
+        .arg(
+            Arg::new("setup-token")
+                .short(None)
+                .long("setup-token")
+                .env("SETUP_TOKEN")
+                .help("Sets the token to use for setup (Only relevant for setup)")
+                .action(ArgAction::Set)
+                .required(false),
+        )
+        .arg(
+            Arg::new("database-url")
+                .short(None)
+                .long("database-url")
+                .env("DATABASE_URL")
+                .help("Sets the database URL to use")
+                .action(ArgAction::Set)
+                .required(true)
+                .value_parser(value_parser!(Url))
+                .default_value("mysql://root@localhost/daemon"),
         )
         .get_matches();
 
@@ -122,28 +128,45 @@ fn main() {
 
 #[tokio::main]
 async fn main0(matches: ArgMatches) {
-    let config_exists = fs::try_exists("config.toml").await.unwrap_or(true);
-    match (matches.subcommand(), config_exists) {
-        (Some(("setup", _)), _) | (_, false) => {
-            tokio::task::spawn_blocking(move || {
-                let setup_matches = matches
-                    .subcommand_matches("setup")
-                    .expect("Unable to get matches for subcommand setup");
-                let backend = setup_matches.get_one("backend");
-                let code = setup_matches.get_one("code");
-                let skip_mariadb_plugin = setup_matches.get_flag("skip-mariadb-plugin");
-                setup::setup(backend.cloned(), code.cloned(), skip_mariadb_plugin);
-            })
-            .await
-            .expect("Setup wizard failed");
+    let config_needs_setup = match fs::read_to_string("config.toml").await {
+        Ok(contents) => contents.trim().is_empty(),
+        Err(err) => {
+            assert_eq!(
+                err.kind(),
+                ErrorKind::NotFound,
+                "Unable to read config file: {err}"
+            );
+            true
         }
-        _ => {
-            run().await;
-        }
+    };
+
+    let database_url = matches
+        .get_one::<Url>("database-url")
+        .expect("database-url is required")
+        .clone();
+
+    if config_needs_setup {
+        tokio::task::spawn_blocking(move || {
+            let skip_mariadb_plugin = matches.get_flag("skip-mariadb-plugin");
+
+            let setup_url = matches
+                .get_one::<String>("setup-url")
+                .expect("setup-url is required for setup");
+
+            let setup_token = matches
+                .get_one::<String>("setup-token")
+                .expect("setup-token is required for setup");
+
+            setup::setup(skip_mariadb_plugin, setup_url, setup_token, &database_url);
+        })
+        .await
+        .expect("Setup failed");
+    } else {
+        run(database_url).await;
     }
 }
 
-async fn run() {
+async fn run(database_url: Url) {
     let mut config_buffer = String::new();
     File::open("config.toml")
         .await
@@ -151,7 +174,12 @@ async fn run() {
         .read_to_string(&mut config_buffer)
         .await
         .expect("Unable to read config file");
-    let config: DaemonConfig = toml::from_str(&config_buffer).expect("Failed to parse config file");
+    let mut config: DaemonConfig =
+        toml::from_str(&config_buffer).expect("Failed to parse config file");
+
+    if config.database.is_empty() {
+        config.database = database_url.to_string();
+    }
 
     let mut root = Vec::new();
     let mut key = Vec::new();

@@ -2,6 +2,7 @@
 pub use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use axum::http::HeaderValue;
 use core::net::SocketAddr;
+use daemon_common::node::{BackendNodeConfig, BackupStorage, HostAndPort, ServerStorage};
 use reqwest::Url;
 use russh::keys::PrivateKey;
 use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
@@ -16,10 +17,13 @@ use std::path::PathBuf;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
     pub backend_url: Url,
+    /// The publicly reachable base URL of this daemon (reported to the backend).
+    pub public_url: Url,
     pub listeners: HashSet<SocketAddr>,
-    #[serde(deserialize_with = "deserialize_header")]
-    #[serde(serialize_with = "serialize_header")]
-    pub origin: HeaderValue,
+    /// Origins whitelisted for CORS requests against this daemon.
+    #[serde(deserialize_with = "deserialize_headers")]
+    #[serde(serialize_with = "serialize_headers")]
+    pub origins: Vec<HeaderValue>,
     pub storage: HashMap<String, StorageEntry>,
     pub backup: HashMap<String, BackupEntry>,
     pub database: String,
@@ -28,6 +32,19 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub network: NetworkConfig,
     pub mounts: Vec<MountPoint>,
+}
+
+impl DaemonConfig {
+    /// Builds the logical [`NodeConfig`] reported to the backend during a backend-driven update.
+    #[must_use]
+    pub fn to_node_config(&self) -> BackendNodeConfig {
+        BackendNodeConfig {
+            base_url: self.public_url.clone(),
+            ssh: self.ssh.as_ref().map(|ssh| ssh.public.clone()),
+            storages: self.storage.keys().cloned().collect(),
+            backups: self.backup.keys().cloned().collect(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +60,8 @@ pub struct SSHConfig {
     pub host_key: Vec<SSHHostKey>,
     pub auth_cache_duration: u64,
     pub auth_url: reqwest::Url,
+    /// The publicly reachable SSH address (reported to the backend).
+    pub public: HostAndPort,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -66,6 +85,15 @@ impl StorageEntry {
             Self::Directory { path } => path,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { path, .. } => path,
+        }
+    }
+
+    #[must_use]
+    pub fn as_server_storage(&self) -> ServerStorage {
+        match self {
+            Self::Directory { .. } => ServerStorage::Directory,
+            #[cfg(feature = "btrfs")]
+            Self::Btrfs { group, .. } => ServerStorage::Btrfs(group.clone()),
         }
     }
 }
@@ -106,6 +134,15 @@ impl BackupEntry {
             Self::Archive { order, .. } => *order,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { order, .. } => *order,
+        }
+    }
+
+    #[must_use]
+    pub fn as_backup_storage(&self) -> BackupStorage {
+        match self {
+            Self::Archive { .. } => BackupStorage::Archive,
+            #[cfg(feature = "btrfs")]
+            Self::Btrfs { group, .. } => BackupStorage::Btrfs(group.clone()),
         }
     }
 }
@@ -205,20 +242,28 @@ impl SSHHostKey {
     }
 }
 
-fn deserialize_header<'de, D>(deserializer: D) -> Result<HeaderValue, D::Error>
+fn deserialize_headers<'de, D>(deserializer: D) -> Result<Vec<HeaderValue>, D::Error>
 where
     D: de::Deserializer<'de>,
 {
     use de::Error as _;
 
-    let data = <String>::deserialize(deserializer)?;
-    HeaderValue::from_str(&data).map_err(D::Error::custom)
+    <Vec<String>>::deserialize(deserializer)?
+        .iter()
+        .map(|data| HeaderValue::from_str(data).map_err(D::Error::custom))
+        .collect()
 }
 
-fn serialize_header<S>(data: &HeaderValue, serializer: S) -> Result<S::Ok, S::Error>
+fn serialize_headers<S>(data: &[HeaderValue], serializer: S) -> Result<S::Ok, S::Error>
 where
     S: ser::Serializer,
 {
     use ser::Error as _;
-    serializer.serialize_str(data.to_str().map_err(S::Error::custom)?)
+    use ser::SerializeSeq as _;
+
+    let mut seq = serializer.serialize_seq(Some(data.len()))?;
+    for value in data {
+        seq.serialize_element(value.to_str().map_err(S::Error::custom)?)?;
+    }
+    seq.end()
 }
