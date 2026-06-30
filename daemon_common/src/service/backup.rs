@@ -2,6 +2,7 @@
 use super::*;
 use crate::service::service;
 use crate::user::*;
+use crate::utils::rebase_origin;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -136,7 +137,7 @@ pub trait BackupServiceUserKeyExtension {
     fn server_download_realtime_user_url_signed(&self, server_id: u32, compression: String) -> Url;
 }
 
-impl<T: BackupServiceURL + UserKeyProvider> BackupServiceUserKeyExtension for T {
+impl<T: BackupServiceURL + UserKeyProvider + PublicBaseUrl> BackupServiceUserKeyExtension for T {
     fn server_download_backup_user_url_signed(
         &self,
         server_id: u32,
@@ -152,12 +153,15 @@ impl<T: BackupServiceURL + UserKeyProvider> BackupServiceUserKeyExtension for T 
             &backup_storage,
             backup_id,
         );
-        self.server_download_backup_user_url(
-            server_id,
-            backup_storage,
-            backup_id,
-            timestamp,
-            signature,
+        rebase_origin(
+            self.server_download_backup_user_url(
+                server_id,
+                backup_storage,
+                backup_id,
+                timestamp,
+                signature,
+            ),
+            self.public_base_url(),
         )
     }
 
@@ -170,7 +174,10 @@ impl<T: BackupServiceURL + UserKeyProvider> BackupServiceUserKeyExtension for T 
             server_id,
             &compression,
         );
-        self.server_download_realtime_user_url(server_id, timestamp, signature, compression)
+        rebase_origin(
+            self.server_download_realtime_user_url(server_id, timestamp, signature, compression),
+            self.public_base_url(),
+        )
     }
 }
 

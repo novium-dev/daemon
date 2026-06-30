@@ -17,7 +17,7 @@ use crate::service::setup::SetupServiceClientImpl;
 use crate::service::{
     DaemonServices, DaemonServicesClientImpl, DaemonServicesURL, DaemonServicesURLWithUserKey,
 };
-use crate::user::UserKeyProvider;
+use crate::user::{PublicBaseUrl, UserKeyProvider};
 use reqwest::{
     Client, Url,
     tls::{DnsName, ResolveServerName, ServerName},
@@ -39,6 +39,7 @@ pub struct DaemonSDK<T: DaemonSDKExtra + Send + Sync> {
     client: Client,
     identifier: Uuid,
     base_url: Url,
+    public_url: Url,
     extra: T,
 }
 
@@ -49,6 +50,12 @@ impl<T: DaemonSDKExtra + Send + Sync> ZelusClientImpl for DaemonSDK<T> {
 
     fn base_url(&self) -> &Url {
         &self.base_url
+    }
+}
+
+impl<T: DaemonSDKExtra + Send + Sync> PublicBaseUrl for DaemonSDK<T> {
+    fn public_base_url(&self) -> &Url {
+        &self.public_url
     }
 }
 

@@ -57,6 +57,16 @@ pub fn base_url(url: &mut Url) {
     }
 }
 
+/// Replaces the origin (scheme, host and port) of `url` with that of `base`, keeping the path and
+/// query intact. Used to rebase signed URLs onto a node's public address.
+#[must_use]
+pub fn rebase_origin(mut url: Url, base: &Url) -> Url {
+    let _ = url.set_scheme(base.scheme());
+    let _ = url.set_host(base.host_str());
+    let _ = url.set_port(base.port());
+    url
+}
+
 #[cfg(feature = "service")]
 pub trait JsonExt {
     fn to_yaml(self) -> serde_yaml_ng::Value;

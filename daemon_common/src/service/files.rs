@@ -3,6 +3,7 @@ use super::*;
 use crate::service::server::ServerFileWrite;
 use crate::service::service;
 use crate::user::*;
+use crate::utils::rebase_origin;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -230,7 +231,7 @@ pub trait FilesServiceUserKeyExtension {
     fn server_watch_files_user_url_signed(&self, server_id: u32, path: Option<String>) -> Url;
 }
 
-impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
+impl<T: FilesServiceURL + UserKeyProvider + PublicBaseUrl> FilesServiceUserKeyExtension for T {
     fn server_download_file_user_url_signed(
         &self,
         server_id: u32,
@@ -245,7 +246,10 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
             server_id,
             &path,
         );
-        self.server_download_file_user_url(server_id, path, limit, timestamp, signature)
+        rebase_origin(
+            self.server_download_file_user_url(server_id, path, limit, timestamp, signature),
+            self.public_base_url(),
+        )
     }
 
     fn server_upload_file_user_url_signed(&self, server_id: u32, path: String) -> Url {
@@ -257,14 +261,20 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
             server_id,
             &path,
         );
-        self.server_upload_file_user_url(server_id, path, timestamp, signature)
+        rebase_origin(
+            self.server_upload_file_user_url(server_id, path, timestamp, signature),
+            self.public_base_url(),
+        )
     }
 
     fn server_watch_files_user_url_signed(&self, server_id: u32, path: Option<String>) -> Url {
         let timestamp = Utc::now().timestamp();
         let signature =
             UserSignature::new_server_watch_files(self.key(), timestamp, self.node_id(), server_id);
-        self.server_watch_files_user_url(server_id, path, timestamp, signature)
+        rebase_origin(
+            self.server_watch_files_user_url(server_id, path, timestamp, signature),
+            self.public_base_url(),
+        )
     }
 }
 

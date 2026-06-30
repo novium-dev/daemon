@@ -47,7 +47,7 @@ pub use daemon_common as common;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use daemon_common::service::ZelusClientImpl;
 use daemon_common::service::{DaemonServices, DaemonServicesURL, DaemonServicesURLWithUserKey};
-use daemon_common::user::UserKeyProvider;
+use daemon_common::user::{PublicBaseUrl, UserKeyProvider};
 use std::sync::Arc;
 use uuid::Uuid;
 
@@ -109,6 +109,11 @@ impl UserKeyProvider for Daemon<WithUserKey> {
 
     fn key(&self) -> &SigningKey {
         &self.extra.user_key
+    }
+}
+impl PublicBaseUrl for Daemon<WithUserKey> {
+    fn public_base_url(&self) -> &Url {
+        &self.extra.base_url
     }
 }
 

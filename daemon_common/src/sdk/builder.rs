@@ -46,6 +46,9 @@ impl DaemonSDKBuilderState for () {
         Uuid,
         Either<Arc<DaemonRootKey>, Arc<RootCertStore>>,
         Arc<BackendKey>,
+        // Internal base URL used for requests.
+        Url,
+        // Public base URL used for signed URLs.
         Url,
     );
 }
@@ -92,19 +95,27 @@ impl DaemonSDKBuilder<RequiresBackendKey> {
 }
 
 impl DaemonSDKBuilder<RequiresBaseURL> {
+    /// Sets the base URL used for requests. Unless overridden with
+    /// [`DaemonSDKBuilder::with_public_url`], signed URLs default to this URL as well.
     pub fn with_url(self, mut url: Url) -> DaemonSDKBuilder<()> {
         base_url(&mut url);
-        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, url))
+        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, url.clone(), url))
     }
 }
 
 impl DaemonSDKBuilder<()> {
+    /// Overrides the public base URL used for signed URLs, leaving the request URL untouched.
+    pub fn with_public_url(self, mut public_url: Url) -> Self {
+        base_url(&mut public_url);
+        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, self.0.3, public_url))
+    }
+
     pub fn with_user_key(self, user_key: SigningKey) -> DaemonSDKBuilder<WithUserKey> {
-        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, self.0.3, user_key))
+        DaemonSDKBuilder((self.0.0, self.0.1, self.0.2, self.0.3, self.0.4, user_key))
     }
 
     pub fn build(self) -> DaemonSDK<()> {
-        Self::build0(self.0.0, self.0.1, &self.0.2, self.0.3, ())
+        Self::build0(self.0.0, self.0.1, &self.0.2, self.0.3, self.0.4, ())
     }
 }
 
@@ -114,6 +125,7 @@ impl<T: DaemonSDKExtra + DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T
         root_key: Either<Arc<DaemonRootKey>, Arc<RootCertStore>>,
         backend_key: &BackendKey,
         base_url: Url,
+        public_url: Url,
         extra: T,
     ) -> DaemonSDK<T> {
         let cert_store = match root_key {
@@ -151,6 +163,7 @@ impl<T: DaemonSDKExtra + DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T
                 .expect("Unable to build reqwest client"),
             identifier,
             base_url,
+            public_url,
             extra,
         }
     }
@@ -161,6 +174,7 @@ impl DaemonSDKBuilderState for WithUserKey {
         Uuid,
         Either<Arc<DaemonRootKey>, Arc<RootCertStore>>,
         Arc<BackendKey>,
+        Url,
         Url,
         SigningKey,
     );
@@ -173,7 +187,8 @@ impl DaemonSDKBuilder<WithUserKey> {
             self.0.1,
             &self.0.2,
             self.0.3,
-            WithUserKey(self.0.4),
+            self.0.4,
+            WithUserKey(self.0.5),
         )
     }
 }

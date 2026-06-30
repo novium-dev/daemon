@@ -175,3 +175,10 @@ pub trait UserKeyProvider {
 
     fn key(&self) -> &SigningKey;
 }
+
+pub trait PublicBaseUrl {
+    /// The publicly reachable base URL used when building signed URLs handed to end users.
+    ///
+    /// This is separate from the URL used for requests, which may target an internal address.
+    fn public_base_url(&self) -> &url::Url;
+}
