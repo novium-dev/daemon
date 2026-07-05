@@ -68,8 +68,15 @@ stages:
     - docker info
     - echo "$CI_REGISTRY_PASSWORD" | docker login $CI_REGISTRY -u $CI_REGISTRY_USER --password-stdin
   rules:
+    # Automatically deploy protected prod
     - if: $CI_COMMIT_BRANCH == "prod" && $CI_COMMIT_REF_PROTECTED == "true"
       when: on_success
+
+    # Allow manual deployment from dev
+    - if: $CI_COMMIT_BRANCH == "dev"
+      when: manual
+
+    # Disable everywhere else
     - when: never
 
 
