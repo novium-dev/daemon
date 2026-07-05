@@ -210,7 +210,7 @@ hex = "0.4.3"
 java-properties = "2.0.0"
 ini = { package = "rust-ini", version = "0.21.3" }
 futures = "0.3.32"
-anyhow = "1.0.102"
+anyhow = "1.0.103"
 bytes = "1.11.1"
 futures-util = "0.3.32"
 either = "1.15.0"
