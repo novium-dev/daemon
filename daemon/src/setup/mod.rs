@@ -36,7 +36,13 @@ use url::Url;
 use utoipa_axum::router::OpenApiRouter;
 use uuid::Uuid;
 
-pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_url: &Url) {
+pub(crate) fn setup(
+    skip_mariadb_plugin: bool,
+    url: &str,
+    code: &str,
+    database_url: &Url,
+    port: u16,
+) {
     info!("Starting Setup...");
 
     let backend = Url::parse(url).expect("SETUP_URL is not a valid URL");
@@ -52,7 +58,7 @@ pub(crate) fn setup(skip_mariadb_plugin: bool, url: &str, code: &str, database_u
     info!("Retrieving node config...");
     let node = read_config(&backend, code).expect("failed to retrieve node config");
 
-    let config = node_to_daemon_config(&backend, &node, database_url);
+    let config = node_to_daemon_config(&backend, &node, database_url, port);
 
     let keypair = crate::common::key::rcgen::KeyPair::generate_for(if rsa {
         &PKCS_RSA_SHA256
@@ -117,6 +123,7 @@ fn node_to_daemon_config(
     backend: &Url,
     node: &SetupNodeConfig,
     database_url: &Url,
+    port: u16,
 ) -> DaemonConfig {
     let mut mounts = Vec::new();
     let backend_root = backend.join("/").expect("backend root url is valid");
@@ -137,7 +144,7 @@ fn node_to_daemon_config(
     DaemonConfig {
         database: database_url.to_string(),
         public_url: node.base_url.clone(),
-        listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 3000)]),
+        listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), port)]),
         origins: node
             .origins
             .iter()

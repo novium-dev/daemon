@@ -80,6 +80,17 @@ fn main() {
                 .value_parser(value_parser!(Url))
                 .default_value("mysql://root@localhost/daemon"),
         )
+        .arg(
+            Arg::new("port")
+                .short(None)
+                .long("port")
+                .env("PORT")
+                .help("Sets the port to use for the daemon")
+                .action(ArgAction::Set)
+                .required(false)
+                .value_parser(value_parser!(u16))
+                .default_value("8080"),
+        )
         .get_matches();
 
     if !matches.get_flag("skip-capability-setup") {
@@ -157,7 +168,17 @@ async fn main0(matches: ArgMatches) {
                 .get_one::<String>("setup-token")
                 .expect("setup-token is required for setup");
 
-            setup::setup(skip_mariadb_plugin, setup_url, setup_token, &database_url);
+            let port = *matches
+                .get_one::<u16>("port")
+                .expect("port is required for setup");
+
+            setup::setup(
+                skip_mariadb_plugin,
+                setup_url,
+                setup_token,
+                &database_url,
+                port,
+            );
         })
         .await
         .expect("Setup failed");
