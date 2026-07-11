@@ -7,7 +7,6 @@ use crate::sync::task::TaskOwnedRwLockReadGuard;
 use crate::{Daemon, DaemonExtra};
 use chrono::Utc;
 use core::sync::atomic::{AtomicU64, Ordering};
-use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::backup::error_backup_storage_incompatible::FromBackupStorageIncompatible;
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::backup::error_backup_storage_no_suitable_found::FromBackupStorageNoSuitableFound;
@@ -34,7 +33,7 @@ pub async fn create_backup_order<
     daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     name: Option<String>,
-) -> Result<BackupResponseEntry, E> {
+) -> Result<i64, E> {
     let StorageLockData {
         path,
         lock,
@@ -71,18 +70,11 @@ pub async fn create_backup_order<
     match suitable {
         None => Err(<E as FromBackupStorageNoSuitableFound>::from()),
         Some((backup_storage, backup_entry)) => {
-            let (entry, lock) = create_backup0::<E>(
-                path,
-                id,
-                backup_storage,
-                backup_entry,
-                lock,
-                backup_exclude,
-                name,
-            )
-            .await?;
+            let (id, lock) =
+                create_backup0::<E>(path, id, backup_storage, backup_entry, lock, backup_exclude, name)
+                    .await?;
             drop(lock); // Ensure lock hasn't been unlocked until now
-            Ok(entry)
+            Ok(id)
         }
     }
 }
@@ -122,7 +114,7 @@ pub async fn create_backup<
     id: StorageIdentifier,
     backup_storage: &String,
     name: Option<String>,
-) -> Result<BackupResponseEntry, E> {
+) -> Result<i64, E> {
     let backup = state
         .config
         .backup
@@ -151,7 +143,7 @@ pub async fn create_backup<
         return Err(<E as FromBackupStorageIncompatible>::from());
     }
 
-    let (entry, lock) = create_backup0::<E>(
+    let (id, lock) = create_backup0::<E>(
         path,
         id,
         backup_storage.clone(),
@@ -162,7 +154,7 @@ pub async fn create_backup<
     )
     .await?;
     drop(lock);
-    Ok(entry)
+    Ok(id)
 }
 
 /// Cancel safe
@@ -174,13 +166,7 @@ async fn create_backup0<E: From<std::io::Error>>(
     mut lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     mut exclude: HashSet<String>,
     name: Option<String>,
-) -> Result<
-    (
-        BackupResponseEntry,
-        TaskOwnedRwLockReadGuard<StorageTask, ()>,
-    ),
-    E,
-> {
+) -> Result<(i64, TaskOwnedRwLockReadGuard<StorageTask, ()>), E> {
     exclude.insert(".tmp/".to_owned());
 
     let dir = PathBuf::from(path);
@@ -205,13 +191,9 @@ async fn create_backup0<E: From<std::io::Error>>(
         });
     });
 
-    let size;
-    // Backup type where the name lives in an extended attribute of a backing file/subvolume.
-    let named_backing;
     match backup {
         BackupEntry::Archive { compression, .. } => {
-            let result;
-            (lock, result) = tokio::task::spawn(create_archive_backup(
+            lock = tokio::task::spawn(create_archive_backup(
                 dir,
                 target_dir.clone(),
                 timestamp,
@@ -221,9 +203,6 @@ async fn create_backup0<E: From<std::io::Error>>(
             ))
             .await
             .map_err(io::Error::from)??;
-            size = Some(result);
-            named_backing =
-                Some(target_dir.join(format!("{}.tar{}", timestamp, compression.ext())));
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
@@ -234,35 +213,26 @@ async fn create_backup0<E: From<std::io::Error>>(
             super::super::btrfs::new_snapshot(subvol_fd, &target_dir, &timestamp.to_string(), true)
                 .await
                 .inspect_err(|err| debug!("Backup creation failed (snapshot): {:?}", err))?;
-            size = None;
-            named_backing = Some(target_dir.join(timestamp.to_string()));
         }
         BackupEntry::Rustic { password, .. } => {
             let password = password.clone();
             let name = name.clone();
-            size = tokio::task::spawn_blocking(move || {
-                super::rustic::create(&target_dir, password, &dir, timestamp, name)
+            let target_dir_clone = target_dir.clone();
+            tokio::task::spawn_blocking(move || {
+                super::rustic::create(&target_dir_clone, password, &dir, timestamp, name)
             })
             .await
             .map_err(io::Error::from)?
             .inspect_err(|err| debug!("Backup creation failed (rustic): {err:?}"))?;
-            named_backing = None;
         }
     }
-    if name.is_some()
-        && let Some(backing) = named_backing
-    {
-        apply_backup_name(backing, name.clone())
+    if name.is_some() {
+        apply_backup_name(target_dir, name.clone())
             .await
             .inspect_err(|err| debug!("Backup creation failed (set name): {err:?}"))?;
     }
     Ok((
-        BackupResponseEntry {
-            time: timestamp,
-            storage,
-            name,
-            size,
-        },
+        timestamp,
         lock,
     ))
 }
@@ -285,7 +255,7 @@ async fn create_archive_backup(
     lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     exclude: HashSet<String>,
     compression: ArchiveCompression,
-) -> Result<(TaskOwnedRwLockReadGuard<StorageTask, ()>, u64), io::Error> {
+) -> Result<TaskOwnedRwLockReadGuard<StorageTask, ()>, io::Error> {
     let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
     let file = tokio::fs::OpenOptions::new()
         .create(true)
@@ -331,11 +301,8 @@ async fn create_archive_backup(
     .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {err:?}"))
     .map_err(io::Error::from)?
     .inspect_err(|err| debug!("Backup creation failed (flush): {err:?}"))?;
-    let size = tokio::fs::metadata(&target)
-        .await
-        .inspect_err(|err| debug!("Backup creation failed (metadata): {err:?}"))?
-        .len();
-    Ok((lock, size))
+
+    Ok(lock)
 }
 
 struct BackupCreateTarWriteProgressWrapper<W: Write, F: FnMut(usize)> {

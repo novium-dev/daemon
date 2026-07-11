@@ -48,7 +48,7 @@ pub trait BackupService {
         &self,
         server_id: u32,
         name: Option<String>,
-    ) -> Result<BackupResponseEntry, _>;
+    ) -> Result<i64, _>;
 
     /// Creates a new backup
     #[route("/{backup_storage}", method = PUT)]
@@ -58,7 +58,7 @@ pub trait BackupService {
         server_id: u32,
         backup_storage: String,
         name: Option<String>,
-    ) -> Result<BackupResponseEntry, _>;
+    ) -> Result<i64, _>;
 
     /// Downloads a backup
     #[route("/{backup_storage}/{backup_id}", method = GET, raw)]
