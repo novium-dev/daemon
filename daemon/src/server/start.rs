@@ -85,7 +85,7 @@ impl FetchedServer {
         }: StorageLockData<TaskOwnedRwLockReadGuard<StorageTask, ()>>,
         daemon: &Daemon<impl DaemonExtra>,
     ) -> Result<(), ServerStartError> {
-        if !Self::state(self.id, &self.locks, &docker, &server_data)
+        if !Self::container_state(self.id, &self.locks, &docker, &server_data)
             .await
             .map_err(ServerStartError::Docker)?
             .start()

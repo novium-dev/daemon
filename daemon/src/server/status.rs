@@ -54,6 +54,15 @@ impl FetchedServer {
             return Ok(InternalServerState::Preparing);
         }
 
+        Self::container_state(id, locks, docker, server_data).await
+    }
+    
+    pub(crate) async fn container_state(
+        id: u32,
+        locks: &HashSet<ServerLock>,
+        docker: &Docker,
+        server_data: &ServerData,
+    ) -> Result<InternalServerState, bollard::errors::Error> {
         let list = docker
             .list_containers(Some(ListContainersOptions {
                 all: true,
