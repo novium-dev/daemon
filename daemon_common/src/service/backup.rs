@@ -44,12 +44,16 @@ pub trait BackupService {
     /// Creates a new backup (selecting the backup storage by order)
     #[route("", method = PUT)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::no_suitable_found, sql::failure <- [sql:*])]
-    async fn server_create_backup_order(&self, server_id: u32) -> Result<i64, _>;
+    async fn server_create_backup_order(&self, server_id: u32) -> Result<BackupResponseEntry, _>;
 
     /// Creates a new backup
     #[route("/{backup_storage}", method = PUT)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::{incompatible, location_not_found}, sql::failure <- [sql:*])]
-    async fn server_create_backup(&self, server_id: u32, backup_storage: String) -> Result<i64, _>;
+    async fn server_create_backup(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+    ) -> Result<BackupResponseEntry, _>;
 
     /// Downloads a backup
     #[route("/{backup_storage}/{backup_id}", method = GET, raw)]

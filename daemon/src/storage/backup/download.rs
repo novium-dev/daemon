@@ -111,6 +111,50 @@ async fn backup_to_stream0<E: From<io::Error>>(
                 })?),
             ))
         }
+        BackupEntry::Rustic { password, .. } => {
+            // Rustic snapshots are deduplicated and cannot be streamed directly, so the
+            // snapshot is first restored into a temporary directory which is then streamed
+            // as a tar archive and removed once the stream has been produced.
+            let nanos = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|duration| duration.as_nanos())
+                .unwrap_or_default();
+            let temp_dir = PathBuf::from(backup.path())
+                .join(".download")
+                .join(format!("{}_{backup_id}_{nanos}", filename(id)));
+            tokio::fs::create_dir_all(&temp_dir).await.inspect_err(|err| {
+                error!("Failed to create a backup stream (create temp): {err:?}");
+            })?;
+
+            let repo_path = target_dir;
+            let password = password.clone();
+            let restore_dest = temp_dir.clone();
+            let restore = tokio::task::spawn_blocking(move || {
+                super::rustic::restore(repo_path, password, backup_id, &restore_dest)
+            })
+            .await
+            .map_err(io::Error::from)?;
+            if let Err(err) = restore {
+                let _ = tokio::fs::remove_dir_all(&temp_dir).await;
+                if err.kind() == ErrorKind::NotFound {
+                    debug!("Failed to create a backup stream (rustic restore): {err:?}");
+                } else {
+                    error!("Failed to create a backup stream (rustic restore): {err:?}");
+                }
+                return Err(E::from(err));
+            }
+
+            let headers = format!(
+                "attachment; filename=\"{}_{}.tar\"",
+                filename(id),
+                Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
+            )
+            .parse()
+            .map(|header| HeaderMap::from_iter([(http::header::CONTENT_DISPOSITION, header)]))
+            .ok();
+
+            Ok((headers, super::rustic::tar_stream_and_cleanup(temp_dir).await))
+        }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs {
             jit_compression, ..

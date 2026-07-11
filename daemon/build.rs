@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 #![allow(clippy::expect_used)]
 
-use std::fs;
-use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
@@ -28,6 +26,9 @@ fn main() {
 
 #[cfg(feature = "btrfs")]
 fn gen_btrfs_bindings() {
+    use std::fs;
+    use std::path::PathBuf;
+
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     let out_path = PathBuf::from(std::env::var("OUT_DIR").expect("Missing output directory"));
     let target_path = out_path.join("btrfs_bindings.rs");

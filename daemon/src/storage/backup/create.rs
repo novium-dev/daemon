@@ -13,6 +13,7 @@ use daemon_common::service::backup::error_backup_storage_no_suitable_found::From
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
+use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::files::task::{BackupLocation, StorageTask};
 use std::collections::HashSet;
 use std::io;
@@ -32,7 +33,7 @@ pub async fn create_backup_order<
 >(
     daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
-) -> Result<i64, E> {
+) -> Result<BackupResponseEntry, E> {
     let StorageLockData {
         path,
         lock,
@@ -69,11 +70,11 @@ pub async fn create_backup_order<
     match suitable {
         None => Err(<E as FromBackupStorageNoSuitableFound>::from()),
         Some((backup_storage, backup_entry)) => {
-            let (id, lock) =
+            let (entry, lock) =
                 create_backup0::<E>(path, id, backup_storage, backup_entry, lock, backup_exclude)
                     .await?;
             drop(lock); // Ensure lock hasn't been unlocked until now
-            Ok(id)
+            Ok(entry)
         }
     }
 }
@@ -93,7 +94,7 @@ fn compatible(storage: &StorageEntry, backup: &BackupEntry) -> bool {
         {
             true
         }
-        (_, BackupEntry::Archive { .. }) => true,
+        (_, BackupEntry::Archive { .. } | BackupEntry::Rustic { .. }) => true,
         #[cfg(feature = "btrfs")]
         _ => false,
     }
@@ -112,7 +113,7 @@ pub async fn create_backup<
     state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     backup_storage: &String,
-) -> Result<i64, E> {
+) -> Result<BackupResponseEntry, E> {
     let backup = state
         .config
         .backup
@@ -141,7 +142,7 @@ pub async fn create_backup<
         return Err(<E as FromBackupStorageIncompatible>::from());
     }
 
-    let (id, lock) = create_backup0::<E>(
+    let (entry, lock) = create_backup0::<E>(
         path,
         id,
         backup_storage.clone(),
@@ -151,7 +152,7 @@ pub async fn create_backup<
     )
     .await?;
     drop(lock);
-    Ok(id)
+    Ok(entry)
 }
 
 /// Cancel safe
@@ -162,7 +163,7 @@ async fn create_backup0<E: From<std::io::Error>>(
     backup: &BackupEntry,
     mut lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     mut exclude: HashSet<String>,
-) -> Result<(i64, TaskOwnedRwLockReadGuard<StorageTask, ()>), E> {
+) -> Result<(BackupResponseEntry, TaskOwnedRwLockReadGuard<StorageTask, ()>), E> {
     exclude.insert(".tmp/".to_owned());
 
     let dir = PathBuf::from(path);
@@ -182,14 +183,16 @@ async fn create_backup0<E: From<std::io::Error>>(
             unreachable!();
         };
         *location = Some(BackupLocation {
-            storage,
+            storage: storage.clone(),
             id: timestamp,
         });
     });
 
+    let size;
     match backup {
         BackupEntry::Archive { compression, .. } => {
-            lock = tokio::task::spawn(create_archive_backup(
+            let result;
+            (lock, result) = tokio::task::spawn(create_archive_backup(
                 dir,
                 target_dir,
                 timestamp,
@@ -199,6 +202,7 @@ async fn create_backup0<E: From<std::io::Error>>(
             ))
             .await
             .map_err(io::Error::from)??;
+            size = Some(result);
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
@@ -209,9 +213,27 @@ async fn create_backup0<E: From<std::io::Error>>(
             super::super::btrfs::new_snapshot(subvol_fd, &target_dir, &timestamp.to_string(), true)
                 .await
                 .inspect_err(|err| debug!("Backup creation failed (snapshot): {:?}", err))?;
+            size = None;
+        }
+        BackupEntry::Rustic { password, .. } => {
+            let password = password.clone();
+            size = tokio::task::spawn_blocking(move || {
+                super::rustic::create(target_dir, password, dir, timestamp)
+            })
+            .await
+            .map_err(io::Error::from)?
+            .inspect_err(|err| debug!("Backup creation failed (rustic): {err:?}"))?;
         }
     }
-    Ok((timestamp, lock))
+    Ok((
+        BackupResponseEntry {
+            time: timestamp,
+            storage,
+            name: None,
+            size,
+        },
+        lock,
+    ))
 }
 
 #[inline(always)]
@@ -222,12 +244,13 @@ async fn create_archive_backup(
     lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     exclude: HashSet<String>,
     compression: ArchiveCompression,
-) -> Result<TaskOwnedRwLockReadGuard<StorageTask, ()>, io::Error> {
+) -> Result<(TaskOwnedRwLockReadGuard<StorageTask, ()>, u64), io::Error> {
+    let target = target_dir.join(format!("{}.tar{}", timestamp, compression.ext()));
     let file = tokio::fs::OpenOptions::new()
         .create(true)
         .write(true)
         .truncate(true)
-        .open(target_dir.join(format!("{}.tar{}", timestamp, compression.ext())))
+        .open(&target)
         .await
         .inspect_err(|err| debug!("Backup creation failed (open): {err:?}"))?;
     let file = file.into_std().await;
@@ -267,7 +290,11 @@ async fn create_archive_backup(
     .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {err:?}"))
     .map_err(io::Error::from)?
     .inspect_err(|err| debug!("Backup creation failed (flush): {err:?}"))?;
-    Ok(lock)
+    let size = tokio::fs::metadata(&target)
+        .await
+        .inspect_err(|err| debug!("Backup creation failed (metadata): {err:?}"))?
+        .len();
+    Ok((lock, size))
 }
 
 struct BackupCreateTarWriteProgressWrapper<W: Write, F: FnMut(usize)> {

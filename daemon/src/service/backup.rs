@@ -26,7 +26,7 @@ impl<T: DaemonExtra> BackupService for Daemon<T> {
     async fn server_create_backup_order(
         &self,
         server_id: u32,
-    ) -> Result<i64, ServerCreateBackupOrderError> {
+    ) -> Result<BackupResponseEntry, ServerCreateBackupOrderError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::create_backup_order(self, storage).await
     }
@@ -35,7 +35,7 @@ impl<T: DaemonExtra> BackupService for Daemon<T> {
         &self,
         server_id: u32,
         backup_storage: String,
-    ) -> Result<i64, ServerCreateBackupError> {
+    ) -> Result<BackupResponseEntry, ServerCreateBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::create_backup(self, storage, &backup_storage).await
     }

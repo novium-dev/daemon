@@ -51,13 +51,36 @@ pub async fn set_backup_name<
     .await?;
 
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
-    let target = match backup {
+    match backup {
         BackupEntry::Archive { compression, .. } => {
-            target_dir.join(format!("{backup_id}.tar{}", compression.ext()))
+            let target = target_dir.join(format!("{backup_id}.tar{}", compression.ext()));
+            set_file_backup_name(target, name).await?;
         }
         #[cfg(feature = "btrfs")]
-        BackupEntry::Btrfs { .. } => target_dir.join(backup_id.to_string()),
-    };
+        BackupEntry::Btrfs { .. } => {
+            set_file_backup_name(target_dir.join(backup_id.to_string()), name).await?;
+        }
+        BackupEntry::Rustic { password, .. } => {
+            let repo_path = target_dir;
+            let password = password.clone();
+            tokio::task::spawn_blocking(move || {
+                super::rustic::set_name(repo_path, password, backup_id, name)
+            })
+            .await
+            .map_err(io::Error::from)?
+            .inspect_err(|err| error!("Failed to set backup name (rustic): {err:?}"))?;
+        }
+    }
+
+    drop(lock);
+
+    Ok(())
+}
+
+/// Stores the backup name in the extended attribute of the backup's backing file.
+///
+/// Cancel safe
+async fn set_file_backup_name(target: PathBuf, name: Option<String>) -> Result<(), io::Error> {
     let file = File::open(target).await.inspect_err(|err| {
         if err.kind() == ErrorKind::NotFound {
             debug!("Failed to set backup name (open): {err:?}");
@@ -68,8 +91,5 @@ pub async fn set_backup_name<
     file.set_backup_name(name)
         .await
         .inspect_err(|err| error!("Failed to set backup name (set): {err:?}"))?;
-
-    drop(lock);
-
     Ok(())
 }

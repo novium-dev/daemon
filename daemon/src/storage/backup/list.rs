@@ -163,6 +163,23 @@ pub async fn list_backups<
                     }
                 }
             }
+            BackupEntry::Rustic { password, .. } => {
+                let repo_path = target_dir;
+                let password = password.clone();
+                let snapshots =
+                    tokio::task::spawn_blocking(move || super::rustic::list(repo_path, password))
+                        .await
+                        .map_err(io::Error::from)?
+                        .inspect_err(|err| error!("Failed to list backups (rustic): {err:?}"))?;
+                for info in snapshots {
+                    entries.push(BackupResponseEntry {
+                        time: info.time,
+                        storage: storage.clone(),
+                        size: info.size,
+                        name: info.name,
+                    });
+                }
+            }
         }
     }
     drop(lock);

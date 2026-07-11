@@ -154,6 +154,13 @@ features = []
 [dependencies.lz4]
 version = "1.28.1"
 
+[dependencies.rustic_core]
+version = "0.12.0"
+
+[dependencies.rustic_backend]
+version = "0.6.2"
+default-features = false
+
 [build-dependencies.bindgen]
 version = "0.72.1"
 default-features = false

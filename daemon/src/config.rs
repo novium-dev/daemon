@@ -116,6 +116,14 @@ pub enum BackupEntry {
         quota: bool,
         order: Option<i8>,
     },
+    #[serde(rename = "rustic")]
+    Rustic {
+        /// Base path under which a deduplicated rustic repository is kept per server.
+        path: String,
+        /// Password protecting the rustic repository.
+        password: String,
+        order: Option<i8>,
+    },
 }
 
 impl BackupEntry {
@@ -125,6 +133,7 @@ impl BackupEntry {
             Self::Archive { path, .. } => path,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { path, .. } => path,
+            Self::Rustic { path, .. } => path,
         }
     }
 
@@ -134,6 +143,7 @@ impl BackupEntry {
             Self::Archive { order, .. } => *order,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { order, .. } => *order,
+            Self::Rustic { order, .. } => *order,
         }
     }
 
@@ -143,6 +153,7 @@ impl BackupEntry {
             Self::Archive { .. } => BackupStorage::Archive,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { group, .. } => BackupStorage::Btrfs(group.clone()),
+            Self::Rustic { .. } => BackupStorage::Rustic,
         }
     }
 }

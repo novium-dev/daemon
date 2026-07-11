@@ -149,6 +149,30 @@ async fn restore_backup0<E: From<io::Error>>(
                 .await
                 .inspect_err(|err| error!("Failed to restore backup (unpack): {err:?}"))?;
         }
+        BackupEntry::Rustic { password, .. } => {
+            storage::delete(&storage, id).await.inspect_err(|err| {
+                error!("Failed to restore backup (storage_delete): {err:?}");
+            })?;
+            storage::prepare(id, &storage, &value, disk)
+                .await
+                .inspect_err(|err| {
+                    error!("Failed to restore backup (storage_prepare): {err:?}");
+                })?;
+            let repo_path = target_dir;
+            let dest = dir;
+            tokio::task::spawn_blocking(move || {
+                super::rustic::restore(repo_path, password, backup_id, &dest)
+            })
+            .await
+            .map_err(io::Error::from)?
+            .inspect_err(|err| {
+                if err.kind() == ErrorKind::NotFound {
+                    debug!("Failed to restore backup (rustic): {err:?}");
+                } else {
+                    error!("Failed to restore backup (rustic): {err:?}");
+                }
+            })?;
+        }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
             use std::io::ErrorKind;

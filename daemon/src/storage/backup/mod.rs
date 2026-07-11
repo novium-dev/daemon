@@ -5,6 +5,7 @@ mod download;
 mod list;
 mod name;
 mod restore;
+mod rustic;
 
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};

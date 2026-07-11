@@ -71,6 +71,22 @@ pub async fn delete_backup<
                     }
                 })?;
         }
+        BackupEntry::Rustic { password, .. } => {
+            let repo_path = target_dir;
+            let password = password.clone();
+            tokio::task::spawn_blocking(move || {
+                super::rustic::delete(repo_path, password, backup_id)
+            })
+            .await
+            .map_err(io::Error::from)?
+            .inspect_err(|err| {
+                if err.kind() == ErrorKind::NotFound {
+                    debug!("Failed to delete a backup (rustic): {err:?}");
+                } else {
+                    error!("Failed to delete a backup (rustic): {err:?}");
+                }
+            })?;
+        }
     }
     drop(lock); // Ensure it gets dropped here and not earlier
     Ok(())

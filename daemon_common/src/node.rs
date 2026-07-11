@@ -60,6 +60,8 @@ pub enum BackupStorage {
     Btrfs(String),
     #[serde(rename = "archive")]
     Archive,
+    #[serde(rename = "rustic")]
+    Rustic,
 }
 
 impl BackupStorage {
@@ -70,7 +72,7 @@ impl BackupStorage {
                 server_group.eq(backup_group)
             }
             (Self::Btrfs(_), ServerStorage::Directory) => false,
-            (Self::Archive, _) => true,
+            (Self::Archive | Self::Rustic, _) => true,
         }
     }
 }
