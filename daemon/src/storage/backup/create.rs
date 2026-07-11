@@ -33,6 +33,7 @@ pub async fn create_backup_order<
 >(
     daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
+    name: Option<String>,
 ) -> Result<BackupResponseEntry, E> {
     let StorageLockData {
         path,
@@ -70,9 +71,16 @@ pub async fn create_backup_order<
     match suitable {
         None => Err(<E as FromBackupStorageNoSuitableFound>::from()),
         Some((backup_storage, backup_entry)) => {
-            let (entry, lock) =
-                create_backup0::<E>(path, id, backup_storage, backup_entry, lock, backup_exclude)
-                    .await?;
+            let (entry, lock) = create_backup0::<E>(
+                path,
+                id,
+                backup_storage,
+                backup_entry,
+                lock,
+                backup_exclude,
+                name,
+            )
+            .await?;
             drop(lock); // Ensure lock hasn't been unlocked until now
             Ok(entry)
         }
@@ -113,6 +121,7 @@ pub async fn create_backup<
     state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     backup_storage: &String,
+    name: Option<String>,
 ) -> Result<BackupResponseEntry, E> {
     let backup = state
         .config
@@ -149,6 +158,7 @@ pub async fn create_backup<
         backup,
         lock,
         backup_exclude,
+        name,
     )
     .await?;
     drop(lock);
@@ -163,6 +173,7 @@ async fn create_backup0<E: From<std::io::Error>>(
     backup: &BackupEntry,
     mut lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     mut exclude: HashSet<String>,
+    name: Option<String>,
 ) -> Result<(BackupResponseEntry, TaskOwnedRwLockReadGuard<StorageTask, ()>), E> {
     exclude.insert(".tmp/".to_owned());
 
@@ -189,12 +200,14 @@ async fn create_backup0<E: From<std::io::Error>>(
     });
 
     let size;
+    // Backup type where the name lives in an extended attribute of a backing file/subvolume.
+    let named_backing;
     match backup {
         BackupEntry::Archive { compression, .. } => {
             let result;
             (lock, result) = tokio::task::spawn(create_archive_backup(
                 dir,
-                target_dir,
+                target_dir.clone(),
                 timestamp,
                 lock,
                 exclude,
@@ -203,6 +216,8 @@ async fn create_backup0<E: From<std::io::Error>>(
             .await
             .map_err(io::Error::from)??;
             size = Some(result);
+            named_backing =
+                Some(target_dir.join(format!("{}.tar{}", timestamp, compression.ext())));
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
@@ -214,26 +229,46 @@ async fn create_backup0<E: From<std::io::Error>>(
                 .await
                 .inspect_err(|err| debug!("Backup creation failed (snapshot): {:?}", err))?;
             size = None;
+            named_backing = Some(target_dir.join(timestamp.to_string()));
         }
         BackupEntry::Rustic { password, .. } => {
             let password = password.clone();
+            let name = name.clone();
             size = tokio::task::spawn_blocking(move || {
-                super::rustic::create(target_dir, password, dir, timestamp)
+                super::rustic::create(&target_dir, password, &dir, timestamp, name)
             })
             .await
             .map_err(io::Error::from)?
             .inspect_err(|err| debug!("Backup creation failed (rustic): {err:?}"))?;
+            named_backing = None;
         }
+    }
+    if name.is_some()
+        && let Some(backing) = named_backing
+    {
+        apply_backup_name(backing, name.clone())
+            .await
+            .inspect_err(|err| debug!("Backup creation failed (set name): {err:?}"))?;
     }
     Ok((
         BackupResponseEntry {
             time: timestamp,
             storage,
-            name: None,
+            name,
             size,
         },
         lock,
     ))
+}
+
+/// Stores the backup name in the extended attribute of the backup's backing file.
+///
+/// Cancel safe
+async fn apply_backup_name(target: PathBuf, name: Option<String>) -> Result<(), io::Error> {
+    use super::BackupNameExt as _;
+
+    let file = tokio::fs::File::open(target).await?;
+    file.set_backup_name(name).await
 }
 
 #[inline(always)]

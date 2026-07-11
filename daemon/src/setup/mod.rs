@@ -216,7 +216,23 @@ fn backup_storage_to_entry(name: &str, backup: &BackupStorage) -> BackupEntry {
             quota: true,
             order: Some(0),
         },
+        BackupStorage::Rustic => BackupEntry::Rustic {
+            path: format!("./backups/{name}"),
+            password: random_password(),
+            order: Some(0),
+        },
     }
+}
+
+/// Generates a random password protecting a freshly configured rustic repository.
+fn random_password() -> String {
+    use rand::RngExt as _;
+
+    rand::rng()
+        .sample_iter(rand::distr::Alphanumeric)
+        .take(32)
+        .map(char::from)
+        .collect()
 }
 
 /// Installs the `MariaDB` authentication plugin into the configured database if it is missing.

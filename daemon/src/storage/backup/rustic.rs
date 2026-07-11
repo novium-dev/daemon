@@ -77,15 +77,16 @@ fn snapshot_size(snapshot: &SnapshotFile) -> Option<u64> {
 ///
 /// Blocking: run inside [`tokio::task::spawn_blocking`].
 pub fn create(
-    repo_path: PathBuf,
+    repo_path: &Path,
     password: String,
-    source: PathBuf,
+    source: &Path,
     backup_id: i64,
+    name: Option<String>,
 ) -> Result<Option<u64>, io::Error> {
-    let backends = backends(&repo_path)?;
+    let backends = backends(repo_path)?;
     let credentials = Credentials::password(password);
     let repo = Repository::new(&RepositoryOptions::default(), &backends).map_err(rustic_err)?;
-    let repo = if is_initialized(&repo_path) {
+    let repo = if is_initialized(repo_path) {
         repo.open(&credentials).map_err(rustic_err)?
     } else {
         repo.init(&credentials, &KeyOptions::default(), &ConfigOptions::default())
@@ -94,13 +95,14 @@ pub fn create(
     .to_indexed_ids()
     .map_err(rustic_err)?;
 
-    let source = PathList::from_string(to_str(&source)?)
+    let source = PathList::from_string(to_str(source)?)
         .map_err(rustic_err)?
         .sanitize()
         .map_err(rustic_err)?;
     let snapshot = SnapshotOptions::default()
         .add_tags(&format!("{ID_TAG_PREFIX}{backup_id}"))
         .map_err(rustic_err)?
+        .description(name)
         .to_snapshot()
         .map_err(rustic_err)?;
 
@@ -114,11 +116,11 @@ pub fn create(
 /// repository has not been initialized yet.
 ///
 /// Blocking: run inside [`tokio::task::spawn_blocking`].
-pub fn list(repo_path: PathBuf, password: String) -> Result<Vec<RusticSnapshotInfo>, io::Error> {
-    if !is_initialized(&repo_path) {
+pub fn list(repo_path: &Path, password: String) -> Result<Vec<RusticSnapshotInfo>, io::Error> {
+    if !is_initialized(repo_path) {
         return Ok(Vec::new());
     }
-    let repo = open(&repo_path, password)?;
+    let repo = open(repo_path, password)?;
     let snapshots = repo.get_all_snapshots().map_err(rustic_err)?;
     Ok(snapshots
         .into_iter()
@@ -135,8 +137,8 @@ pub fn list(repo_path: PathBuf, password: String) -> Result<Vec<RusticSnapshotIn
 /// Deletes the snapshot with the given backup id and prunes the repository to reclaim space.
 ///
 /// Blocking: run inside [`tokio::task::spawn_blocking`].
-pub fn delete(repo_path: PathBuf, password: String, backup_id: i64) -> Result<(), io::Error> {
-    let repo = open(&repo_path, password)?;
+pub fn delete(repo_path: &Path, password: String, backup_id: i64) -> Result<(), io::Error> {
+    let repo = open(repo_path, password)?;
     let snapshot = find(repo.get_all_snapshots().map_err(rustic_err)?, backup_id)?;
     repo.delete_snapshots(&[snapshot.id]).map_err(rustic_err)?;
 
@@ -152,12 +154,12 @@ pub fn delete(repo_path: PathBuf, password: String, backup_id: i64) -> Result<()
 ///
 /// Blocking: run inside [`tokio::task::spawn_blocking`].
 pub fn set_name(
-    repo_path: PathBuf,
+    repo_path: &Path,
     password: String,
     backup_id: i64,
     name: Option<String>,
 ) -> Result<(), io::Error> {
-    let repo = open(&repo_path, password)?;
+    let repo = open(repo_path, password)?;
     let mut snapshot = find(repo.get_all_snapshots().map_err(rustic_err)?, backup_id)?;
     let old_id = snapshot.id;
     snapshot.description = name;
@@ -172,12 +174,12 @@ pub fn set_name(
 ///
 /// Blocking: run inside [`tokio::task::spawn_blocking`].
 pub fn restore(
-    repo_path: PathBuf,
+    repo_path: &Path,
     password: String,
     backup_id: i64,
     destination: &Path,
 ) -> Result<(), io::Error> {
-    let repo = Repository::new(&RepositoryOptions::default(), &backends(&repo_path)?)
+    let repo = Repository::new(&RepositoryOptions::default(), &backends(repo_path)?)
         .map_err(rustic_err)?
         .open(&Credentials::password(password))
         .map_err(rustic_err)?

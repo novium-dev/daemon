@@ -75,7 +75,7 @@ pub async fn delete_backup<
             let repo_path = target_dir;
             let password = password.clone();
             tokio::task::spawn_blocking(move || {
-                super::rustic::delete(repo_path, password, backup_id)
+                super::rustic::delete(&repo_path, password, backup_id)
             })
             .await
             .map_err(io::Error::from)?

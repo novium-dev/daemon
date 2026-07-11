@@ -130,7 +130,7 @@ async fn backup_to_stream0<E: From<io::Error>>(
             let password = password.clone();
             let restore_dest = temp_dir.clone();
             let restore = tokio::task::spawn_blocking(move || {
-                super::rustic::restore(repo_path, password, backup_id, &restore_dest)
+                super::rustic::restore(&repo_path, password, backup_id, &restore_dest)
             })
             .await
             .map_err(io::Error::from)?;

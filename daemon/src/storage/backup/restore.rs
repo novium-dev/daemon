@@ -161,7 +161,7 @@ async fn restore_backup0<E: From<io::Error>>(
             let repo_path = target_dir;
             let dest = dir;
             tokio::task::spawn_blocking(move || {
-                super::rustic::restore(repo_path, password, backup_id, &dest)
+                super::rustic::restore(&repo_path, password, backup_id, &dest)
             })
             .await
             .map_err(io::Error::from)?

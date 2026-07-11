@@ -167,7 +167,7 @@ pub async fn list_backups<
                 let repo_path = target_dir;
                 let password = password.clone();
                 let snapshots =
-                    tokio::task::spawn_blocking(move || super::rustic::list(repo_path, password))
+                    tokio::task::spawn_blocking(move || super::rustic::list(&repo_path, password))
                         .await
                         .map_err(io::Error::from)?
                         .inspect_err(|err| error!("Failed to list backups (rustic): {err:?}"))?;
