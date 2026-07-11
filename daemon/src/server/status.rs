@@ -56,7 +56,7 @@ impl FetchedServer {
 
         Self::container_state(id, locks, docker, server_data).await
     }
-    
+
     pub(crate) async fn container_state(
         id: u32,
         locks: &HashSet<ServerLock>,
