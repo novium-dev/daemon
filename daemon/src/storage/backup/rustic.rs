@@ -89,8 +89,12 @@ pub fn create(
     let repo = if is_initialized(repo_path) {
         repo.open(&credentials).map_err(rustic_err)?
     } else {
-        repo.init(&credentials, &KeyOptions::default(), &ConfigOptions::default())
-            .map_err(rustic_err)?
+        repo.init(
+            &credentials,
+            &KeyOptions::default(),
+            &ConfigOptions::default(),
+        )
+        .map_err(rustic_err)?
     }
     .to_indexed_ids()
     .map_err(rustic_err)?;
@@ -190,12 +194,10 @@ pub fn restore(
     let node = repo
         .node_from_snapshot_path(&snapshot.id.to_string(), |_| true)
         .map_err(rustic_err)?;
-    let entries = repo
-        .ls(&node, &LsOptions::default())
-        .map_err(rustic_err)?;
+    let entries = repo.ls(&node, &LsOptions::default()).map_err(rustic_err)?;
 
-    let dest = LocalDestination::new(to_str(destination)?, true, !node.is_dir())
-        .map_err(rustic_err)?;
+    let dest =
+        LocalDestination::new(to_str(destination)?, true, !node.is_dir()).map_err(rustic_err)?;
     let options = RestoreOptions::default();
     let plan = repo
         .prepare_restore(&options, entries.clone(), &dest, false)

@@ -122,9 +122,11 @@ async fn backup_to_stream0<E: From<io::Error>>(
             let temp_dir = PathBuf::from(backup.path())
                 .join(".download")
                 .join(format!("{}_{backup_id}_{nanos}", filename(id)));
-            tokio::fs::create_dir_all(&temp_dir).await.inspect_err(|err| {
-                error!("Failed to create a backup stream (create temp): {err:?}");
-            })?;
+            tokio::fs::create_dir_all(&temp_dir)
+                .await
+                .inspect_err(|err| {
+                    error!("Failed to create a backup stream (create temp): {err:?}");
+                })?;
 
             let repo_path = target_dir;
             let password = password.clone();
@@ -153,7 +155,10 @@ async fn backup_to_stream0<E: From<io::Error>>(
             .map(|header| HeaderMap::from_iter([(http::header::CONTENT_DISPOSITION, header)]))
             .ok();
 
-            Ok((headers, super::rustic::tar_stream_and_cleanup(temp_dir).await))
+            Ok((
+                headers,
+                super::rustic::tar_stream_and_cleanup(temp_dir).await,
+            ))
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs {

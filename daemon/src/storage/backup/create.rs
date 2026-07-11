@@ -7,13 +7,13 @@ use crate::sync::task::TaskOwnedRwLockReadGuard;
 use crate::{Daemon, DaemonExtra};
 use chrono::Utc;
 use core::sync::atomic::{AtomicU64, Ordering};
+use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::backup::error_backup_storage_incompatible::FromBackupStorageIncompatible;
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::backup::error_backup_storage_no_suitable_found::FromBackupStorageNoSuitableFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
-use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::files::task::{BackupLocation, StorageTask};
 use std::collections::HashSet;
 use std::io;
@@ -174,7 +174,13 @@ async fn create_backup0<E: From<std::io::Error>>(
     mut lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     mut exclude: HashSet<String>,
     name: Option<String>,
-) -> Result<(BackupResponseEntry, TaskOwnedRwLockReadGuard<StorageTask, ()>), E> {
+) -> Result<
+    (
+        BackupResponseEntry,
+        TaskOwnedRwLockReadGuard<StorageTask, ()>,
+    ),
+    E,
+> {
     exclude.insert(".tmp/".to_owned());
 
     let dir = PathBuf::from(path);
