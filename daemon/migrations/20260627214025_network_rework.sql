@@ -16,7 +16,7 @@ CREATE TABLE `wireguard_tunnels`
 (
 	`id` INT UNSIGNED NOT NULL PRIMARY KEY,
 	`ip` BINARY(16) NOT NULL,
-	`port` SMALLINT UNSIGNED NULL
+	`port` SMALLINT UNSIGNED NOT NULL
 );
 
 CREATE TABLE `wireguard_peers`
