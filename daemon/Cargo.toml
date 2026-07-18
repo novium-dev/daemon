@@ -85,6 +85,8 @@ num-traits = "0.2.19"
 ringbuffer = "0.16.0"
 fs_extra = "1.3.0"
 xattr = "1.6.1"
+defguard_wireguard_rs = "0.11.0"
+rtnetlink = "0.21.0"
 bytes.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
@@ -128,7 +130,7 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.61.2"
+git = "https://github.com/0xIO32/russh.git"
 
 [dependencies.russh-sftp]
 version = "2.3.0"

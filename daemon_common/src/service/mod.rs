@@ -16,7 +16,6 @@ use crate::service::server::{
 use crate::service::setup::{SetupService, SetupServiceClientImpl, SetupServiceURL};
 use crate::user::UserKeyProvider;
 use std::io;
-use std::io::ErrorKind;
 use uuid::Uuid;
 pub(crate) use zelus::error::{define_error, error};
 pub(crate) use zelus::service;
@@ -72,7 +71,7 @@ impl FromStorageQuotaReached for io::Error {
     where
         Self: Sized,
     {
-        Self::new(ErrorKind::QuotaExceeded, "Quota reached")
+        Self::new(io::ErrorKind::QuotaExceeded, "Quota reached")
     }
 }
 

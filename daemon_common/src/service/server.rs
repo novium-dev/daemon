@@ -408,14 +408,14 @@ impl ServerFileWrite {
                 file.write_all(data)
                     .await
                     .inspect_err(|err| {
-                        if err.kind() == ErrorKind::QuotaExceeded {
+                        if err.kind() == io::ErrorKind::QuotaExceeded {
                             debug!("Failed to write data: {:?}", err);
                         } else {
                             error!("Failed to write data: {:?}", err);
                         }
                     })
                     .map_err(|err| {
-                        if err.kind() == ErrorKind::QuotaExceeded {
+                        if err.kind() == io::ErrorKind::QuotaExceeded {
                             <E as FromStorageQuotaReached>::from()
                         } else {
                             <E as From<io::Error>>::from(err)
@@ -442,7 +442,7 @@ impl ServerFileWrite {
                         .map_err(|err| {
                             if let Some(err) = err.source()
                                 && let Some(err) = err.downcast_ref::<io::Error>()
-                                && err.kind() == ErrorKind::QuotaExceeded
+                                && err.kind() == io::ErrorKind::QuotaExceeded
                             {
                                 <E as FromStorageQuotaReached>::from()
                             } else {
@@ -481,7 +481,7 @@ impl ServerFileWrite {
                         .write_to(&mut file)
                         .inspect_err(|err| warn!("Failed to write ini: {:?}", err))
                         .map_err(|err| {
-                            if err.kind() == ErrorKind::QuotaExceeded {
+                            if err.kind() == io::ErrorKind::QuotaExceeded {
                                 <E as FromStorageQuotaReached>::from()
                             } else {
                                 <E as From<io::Error>>::from(err)
@@ -528,7 +528,7 @@ impl ServerFileWrite {
                 )
                 .await
                 .map_err(|err| {
-                    if err.kind() == ErrorKind::QuotaExceeded {
+                    if err.kind() == io::ErrorKind::QuotaExceeded {
                         <E as FromStorageQuotaReached>::from()
                     } else {
                         <E as From<io::Error>>::from(err)
@@ -571,7 +571,7 @@ impl ServerFileWrite {
                 )
                 .await
                 .map_err(|err| {
-                    if err.kind() == ErrorKind::QuotaExceeded {
+                    if err.kind() == io::ErrorKind::QuotaExceeded {
                         <E as FromStorageQuotaReached>::from()
                     } else {
                         <E as From<io::Error>>::from(err)
@@ -625,7 +625,7 @@ impl ServerFileWrite {
                 )
                 .await
                 .map_err(|err| {
-                    if err.kind() == ErrorKind::QuotaExceeded {
+                    if err.kind() == io::ErrorKind::QuotaExceeded {
                         <E as FromStorageQuotaReached>::from()
                     } else {
                         <E as From<io::Error>>::from(err)
@@ -665,7 +665,7 @@ impl ServerFileWrite {
                 )
                 .await
                 .map_err(|err| {
-                    if err.kind() == ErrorKind::QuotaExceeded {
+                    if err.kind() == io::ErrorKind::QuotaExceeded {
                         <E as FromStorageQuotaReached>::from()
                     } else {
                         <E as From<io::Error>>::from(err)

@@ -6,6 +6,8 @@ use daemon_common::service::error_docker_failure::FromDockerFailure;
 use sqlx::{Error, Executor, MySql, Transaction, query, query_as};
 use tracing::error;
 
+pub mod wireguard;
+
 #[derive(Debug, Clone, Eq, PartialEq, sqlx::FromRow)]
 pub struct Network {
     pub id: u32,
@@ -88,11 +90,15 @@ impl Network {
         conn: impl Executor<'_, Database = MySql>,
         id: u32,
     ) -> Result<Option<Self>, E> {
-        query_as!(Self, "SELECT * FROM `networks` WHERE `id` = ? LIMIT 1", id)
-            .fetch_optional(conn)
-            .await
-            .inspect_err(|err| error!("Failed to resolve network: {:?}", err))
-            .map_err(<E as From<sqlx::Error>>::from)
+        query_as!(
+            Self,
+            "SELECT `id`,`ipv4`,`ipv6` FROM `networks` WHERE `id` = ? LIMIT 1",
+            id
+        )
+        .fetch_optional(conn)
+        .await
+        .inspect_err(|err| error!("Failed to resolve network: {:?}", err))
+        .map_err(<E as From<sqlx::Error>>::from)
     }
 
     pub async fn delete<E: From<sqlx::Error> + FromDockerFailure>(
