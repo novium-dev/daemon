@@ -27,7 +27,7 @@ pub fn from_mib(mib: impl Into<u64>) -> u64 {
 }
 
 pub fn to_mib(bytes: impl Into<u64>) -> u64 {
-    bytes.into() / 0x0010_0000
+    bytes.into() >> 20u32 // >>20 == /0x0010_0000
 }
 
 pub async fn database<E: From<sqlx::Error>>(

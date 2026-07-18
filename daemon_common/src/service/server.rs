@@ -825,8 +825,8 @@ impl From<bollard::models::ContainerStatsResponse> for ServerStats {
                         / 100f64
                 },
             ),
-            ram: memory_stats.usage.map(|bytes| bytes / 0x0010_0000), // bytes -> mib
-            swap: None, // TODO
+            ram: memory_stats.usage.map(|bytes| bytes >> 20u32), // bytes -> mib (>>20 == /0x0010_0000)
+            swap: None,                                          // TODO
             ..Self::default()
         }
     }
