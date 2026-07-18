@@ -26,6 +26,10 @@ pub fn from_mib(mib: impl Into<u64>) -> u64 {
     mib.into().saturating_mul(0x0010_0000)
 }
 
+pub fn to_mib(bytes: impl Into<u64>) -> u64 {
+    bytes.into() / 0x0010_0000
+}
+
 pub async fn database<E: From<sqlx::Error>>(
     conn: impl Executor<'_, Database = MySql> + Copy,
     database_id: u32,

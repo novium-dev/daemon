@@ -742,9 +742,9 @@ fn xml_set_text(element: &mut xmltree::Element, node: xmltree::XMLNode) {
 #[must_use]
 pub struct ServerStats {
     pub cpu: Option<f64>,      // in cpus
-    pub ram: Option<u64>,      // in bytes
-    pub swap: Option<u64>,     // in bytes
-    pub disk: Option<u64>,     // in bytes
+    pub ram: Option<u64>,      // in mib
+    pub swap: Option<u64>,     // in mib
+    pub disk: Option<u64>,     // in mib
     pub cpu_max: Option<f32>,  // in cpus
     pub ram_max: Option<u32>,  // in mib
     pub swap_max: Option<u32>, // in mib
@@ -825,7 +825,7 @@ impl From<bollard::models::ContainerStatsResponse> for ServerStats {
                         / 100f64
                 },
             ),
-            ram: memory_stats.usage,
+            ram: memory_stats.usage.map(|bytes| bytes / 0x0010_0000), // bytes -> mib
             swap: None, // TODO
             ..Self::default()
         }

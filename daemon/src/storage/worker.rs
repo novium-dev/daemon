@@ -234,7 +234,7 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
                     let disk_max = data.value.1.load(Ordering::Relaxed);
                     let _ = stats_sender.send(ChannelWriteData::Stats(
                         ServerStats::default()
-                            .with_disk((disk != -1).then(|| disk.unsigned_abs()))
+                            .with_disk((disk != -1).then(|| crate::utils::to_mib(disk.unsigned_abs())))
                             .with_max(
                                 cpu_max,
                                 ram_max,
