@@ -38,8 +38,6 @@ pub struct SetupNodeConfig {
 pub struct BackendNodeConfig {
     /// The publicly reachable base URL of the daemon.
     pub base_url: Url,
-    /// The publicly reachable SSH address, or `None` if SSH is disabled.
-    pub ssh: Option<HostAndPort>,
 
     pub storages: Vec<String>,
     pub backups: Vec<String>,

@@ -2,7 +2,7 @@
 pub use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use axum::http::HeaderValue;
 use core::net::SocketAddr;
-use daemon_common::node::{BackendNodeConfig, BackupStorage, HostAndPort, ServerStorage};
+use daemon_common::node::{BackendNodeConfig, BackupStorage, ServerStorage};
 use reqwest::Url;
 use russh::keys::PrivateKey;
 use russh::keys::ssh_key::private::{Ed25519Keypair, RsaKeypair};
@@ -40,7 +40,6 @@ impl DaemonConfig {
     pub fn to_node_config(&self) -> BackendNodeConfig {
         BackendNodeConfig {
             base_url: self.public_url.clone(),
-            ssh: self.ssh.as_ref().map(|ssh| ssh.public.clone()),
             storages: self.storage.keys().cloned().collect(),
             backups: self.backup.keys().cloned().collect(),
         }
@@ -60,8 +59,6 @@ pub struct SSHConfig {
     pub host_key: Vec<SSHHostKey>,
     pub auth_cache_duration: u64,
     pub auth_url: reqwest::Url,
-    /// The publicly reachable SSH address (reported to the backend).
-    pub public: HostAndPort,
 }
 
 #[derive(Clone, Serialize, Deserialize)]

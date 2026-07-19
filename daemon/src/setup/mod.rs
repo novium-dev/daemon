@@ -167,8 +167,7 @@ fn node_to_daemon_config(
                 },
             ],
             auth_url: backend_root.clone(),
-            auth_cache_duration: 30 * 1000,
-            public: public.clone(),
+            auth_cache_duration: 30 * 1000
         }),
         storage: node
             .storages
