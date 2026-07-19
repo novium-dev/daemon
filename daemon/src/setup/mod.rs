@@ -88,7 +88,7 @@ pub(crate) fn setup(
     let response = Client::default()
         .post(
             backend
-                .join("/internal/daemon/register")
+                .join("/api/internal/daemon/register")
                 .expect("register endpoint url is valid"),
         )
         .bearer_auth(code)
@@ -307,7 +307,7 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
 fn read_root_key(url: &Url, code: &str) -> Result<Option<(DaemonRootKey, bool)>, anyhow::Error> {
     let response = Client::default()
         .get(
-            url.join("/internal/daemon/root_key")
+            url.join("/api/internal/daemon/root_key")
                 .expect("root_key endpoint url is valid"),
         )
         .bearer_auth(code)
@@ -324,7 +324,7 @@ fn read_root_key(url: &Url, code: &str) -> Result<Option<(DaemonRootKey, bool)>,
 fn read_config(url: &Url, code: &str) -> Result<SetupNodeConfig, anyhow::Error> {
     let response = Client::default()
         .get(
-            url.join("/internal/daemon/config")
+            url.join("/api/internal/daemon/config")
                 .expect("config endpoint url is valid"),
         )
         .bearer_auth(code)
