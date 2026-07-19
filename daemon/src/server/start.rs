@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -136,10 +136,9 @@ impl FetchedServer {
             {
                 storage
                     .create_dir_all(parent)
-                    .await
                     .map_err(ServerStartError::IO)?;
             }
-        
+
             let file = storage
                 .open_with(
                     file_path,
