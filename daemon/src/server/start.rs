@@ -131,6 +131,15 @@ impl FetchedServer {
         }
 
         for (file_path, file_write) in &self.files_write {
+            if let Some(parent) = Path::new(file_path).parent()
+                && parent != Path::new("")
+            {
+                storage
+                    .create_dir_all(parent)
+                    .await
+                    .map_err(ServerStartError::IO)?;
+            }
+        
             let file = storage
                 .open_with(
                     file_path,
