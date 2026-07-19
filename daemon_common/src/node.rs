@@ -18,7 +18,6 @@ pub struct NodeRegistrationRequest {
     pub csr: Vec<u8>,
 
     pub default_bind: String,
-    pub default_host: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]

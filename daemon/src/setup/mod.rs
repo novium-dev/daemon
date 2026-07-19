@@ -78,7 +78,6 @@ pub(crate) fn setup(
     }
 
     let request = config_to_register_request(
-        &node,
         temp_key
             .cert
             .first()
@@ -155,7 +154,10 @@ fn node_to_daemon_config(
         backend_url: backend_root.clone(),
         tls: None,
         ssh: node.ssh.as_ref().map(|public| SSHConfig {
-            listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), public.port)]),
+            listeners: HashSet::from([SocketAddr::new(
+                IpAddr::V6(Ipv6Addr::UNSPECIFIED),
+                public.port,
+            )]),
             host_key: vec![
                 SSHHostKey::Ed25519 {
                     path: "ed25519.pem".to_owned(),
@@ -246,7 +248,6 @@ fn ensure_mariadb_plugin(mysql: &str) {
 }
 
 fn config_to_register_request(
-    node: &SetupNodeConfig,
     cert: &CertificateDer<'static>,
     csr: &CertificateSigningRequestDer<'static>,
 ) -> NodeRegistrationRequest {
@@ -254,11 +255,6 @@ fn config_to_register_request(
         cert: cert.to_vec(),
         csr: csr.to_vec(),
         default_bind: "0.0.0.0".to_owned(),
-        default_host: node
-            .base_url
-            .host_str()
-            .expect("node base url has a host")
-            .to_owned(),
     }
 }
 
