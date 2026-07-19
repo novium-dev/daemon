@@ -155,7 +155,7 @@ fn node_to_daemon_config(
         backend_url: backend_root.clone(),
         tls: None,
         ssh: node.ssh.as_ref().map(|public| SSHConfig {
-            listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), 22)]),
+            listeners: HashSet::from([SocketAddr::new(IpAddr::V6(Ipv6Addr::UNSPECIFIED), public.port)]),
             host_key: vec![
                 SSHHostKey::Ed25519 {
                     path: "ed25519.pem".to_owned(),
