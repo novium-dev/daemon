@@ -20,6 +20,7 @@ use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
 use bollard::query_parameters::StatsOptions;
 use core::sync::atomic::AtomicU16;
+use core::sync::atomic::Ordering;
 use core::time::Duration;
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
@@ -44,7 +45,6 @@ use futures::TryStreamExt as _;
 use sqlx::{Connection as _, MySql, Transaction, query, query_scalar};
 use std::collections::HashSet;
 use std::sync::Arc;
-use std::sync::atomic::Ordering;
 use tokio::time::timeout;
 use tracing::{debug, error, warn};
 
