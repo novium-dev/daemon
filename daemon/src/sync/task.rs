@@ -5,7 +5,7 @@ use core::{
 use std::{collections::BTreeMap, sync::Arc};
 
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use daemon_common::task::TaskDescriptor;
 use tokio::sync::{
     OwnedRwLockReadGuard, OwnedRwLockWriteGuard, RwLock, RwLockReadGuard, RwLockWriteGuard,
     TryLockError,
@@ -15,15 +15,6 @@ struct TaskDesc<Task: Send + Sync + Clone + 'static> {
     time: DateTime<Utc>,
     write: bool,
     data: Arc<std::sync::RwLock<Task>>,
-}
-
-#[derive(Clone, Serialize)]
-pub struct TaskDescriptor<Task: Send + Sync + 'static> {
-    pub id: u64,
-    pub time: DateTime<Utc>,
-    pub write: bool,
-    #[serde(flatten)]
-    pub data: Task,
 }
 
 pub struct TaskRwLock<Task: Send + Sync + Clone + 'static, Data: Send + Sync> {
@@ -85,7 +76,7 @@ impl<Task: Send + Sync + Clone + 'static, Data: Send + Sync> TaskRwLock<Task, Da
             .iter()
             .map(|(id, task)| TaskDescriptor {
                 id: *id,
-                time: task.time,
+                time: task.time.timestamp_millis(),
                 write: task.write,
                 data: task.data.read().expect("Unable to lock task").clone(),
             })

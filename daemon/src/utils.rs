@@ -2,18 +2,13 @@
 use crate::ServerData;
 use crate::server::status::InternalServerState;
 use crate::server::*;
-use crate::sync::task::TaskDescriptor;
 use async_trait::async_trait;
-use axum::extract::ws::Message;
 use cap_async_std::fs::{Dir, MetadataExt as _};
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
 use daemon_common::service::error_server_not_found::FromServerNotFound;
-use daemon_common::service::files::task::StorageTask;
-use daemon_common::service::server::ServerStats;
-use daemon_common::service::server::task::ServerTask;
-use serde::Serialize;
+use daemon_common::service::server::{ServerStats, TasksData};
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::io;
@@ -238,26 +233,5 @@ impl<
         Self: Sized,
     {
         A::send_ping()
-    }
-}
-
-#[derive(Clone, Serialize)]
-pub struct TasksData {
-    pub storage: Vec<TaskDescriptor<StorageTask>>,
-    pub server: Vec<TaskDescriptor<ServerTask>>,
-}
-
-impl TasksData {
-    #[must_use]
-    pub fn as_websocket_message(&self) -> Message {
-        const TASKS_MAGIC: &str = "TASKS!";
-        Message::Text(
-            format!(
-                "{TASKS_MAGIC}{}",
-                serde_json::to_string(self)
-                    .expect("Unable to serialize stats to websocket message")
-            )
-            .into(),
-        )
     }
 }

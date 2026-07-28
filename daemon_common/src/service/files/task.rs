@@ -3,17 +3,19 @@
 use core::sync::atomic::AtomicU64;
 use std::sync::Arc;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum StorageTask {
     BackupRestore {
         location: BackupLocation,
+        #[schema(value_type = Option<AtomicProgress>)]
         progress: Option<Arc<AtomicProgress>>,
     },
     BackupCreate {
         location: Option<BackupLocation>,
+        #[schema(value_type = Option<u64>)]
         progress: Option<Arc<AtomicU64>>,
     },
     BackupDownload {
@@ -37,13 +39,15 @@ pub enum StorageTask {
     ServerRunning,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct AtomicProgress {
+    #[schema(value_type = u64)]
     pub current: AtomicU64,
+    #[schema(value_type = u64)]
     pub max: AtomicU64,
 }
 
-#[derive(Copy, Clone, Serialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case", tag = "type")]
 pub enum FileOperationKind {
     ArchiveCreate,
@@ -61,7 +65,7 @@ pub enum FileOperationKind {
     WriteByTemplate,
 }
 
-#[derive(Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct BackupLocation {
     pub storage: String,
     pub id: i64,

@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::ServerData;
 use crate::server::{FetchedServer, ServerLock};
-use crate::sync::task::TaskDescriptor;
 use crate::utils::ChannelWriteData;
 use axum::extract::ws::Message;
 use bollard::Docker;
@@ -12,6 +11,7 @@ use core::fmt::{Display, Formatter};
 use core::sync::atomic::Ordering;
 use daemon_common::service::server::PublicServerState;
 use daemon_common::service::server::task::ServerTask;
+use daemon_common::task::TaskDescriptor;
 use serde::{Serialize, Serializer};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
