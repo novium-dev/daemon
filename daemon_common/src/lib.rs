@@ -13,6 +13,7 @@ pub mod node;
 pub mod service;
 #[cfg(feature = "ssh")]
 pub mod ssh;
+#[cfg(feature = "service")]
 pub mod task;
 #[cfg(feature = "service")]
 pub mod user;
