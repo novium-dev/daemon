@@ -186,7 +186,7 @@ pub async fn watch(
     let mut buffer = buffer.lock().await;
     FetchedServer::console(&server_data.sender, &mut buffer, "\n".to_owned());
     FetchedServer::log(&server_data.sender, &mut buffer, "Server stopped!");
-    if failure_exceeded {
+    if failure_exceeded && !do_restart {
         FetchedServer::log(
             &server_data.sender,
             &mut buffer,
