@@ -7,7 +7,7 @@ use liblzma::write::XzEncoder;
 use serde::de::{Error, Visitor};
 use serde::{Deserialize, Serialize, Serializer};
 use std::io;
-use std::io::{IoSlice, Read, Seek, SeekFrom, Write};
+use std::io::{IoSlice, Read, Write};
 use tracing::error;
 
 #[derive(Serialize, Deserialize, Copy, Clone, Debug, PartialEq, Eq)]
@@ -60,60 +60,6 @@ pub enum ArchiveCompression {
 }
 
 impl ArchiveCompression {
-    pub(crate) fn detect_blocking<'a, R: Read + Seek + Send + Sync + 'a>(
-        mut read: R,
-    ) -> Result<Option<Self>, io::Error> {
-        const TAR_MAGIC_OFFSET: u64 = 257;
-
-        let mut buf = [0u8; 8];
-        read.seek(SeekFrom::Start(0))?;
-        read.read_exact(&mut buf)?;
-
-        // Sources: https://en.wikipedia.org/wiki/List_of_file_signatures
-        let compression = match buf {
-            [0x28, 0xB5, 0x2F, 0xFD, _, _, _, _] => Self::Zstd {
-                level: CompressionLevel::Default,
-            },
-            [0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00, _, _] => Self::Xz {
-                level: CompressionLevel::Default,
-            },
-            [
-                0x78,
-                0x01 | 0x5E | 0x9C | 0xDA | 0x20 | 0x7D | 0xBB | 0xF9,
-                _,
-                _,
-                _,
-                _,
-                _,
-                _,
-            ] => Self::Zlib {
-                level: CompressionLevel::Default,
-            },
-            [0x04, 0x22, 0x4D, 0x18, _, _, _, _] => Self::Lz4 {
-                level: CompressionLevel::Default,
-            },
-            [0x1F, 0x8B, _, _, _, _, _, _] => Self::Gzip {
-                level: CompressionLevel::Default,
-            },
-            [0x42, 0x5A, 0x68, _, _, _, _, _] => Self::Bzip2 {
-                level: CompressionLevel::Default,
-            },
-            _ => Self::None,
-        };
-        read.seek(SeekFrom::Start(0))?;
-        let mut decoder = compression.create_decoder(&mut read)?;
-        decoder.read_exact(&mut [0; TAR_MAGIC_OFFSET as usize])?;
-        decoder.read_exact(&mut buf)?;
-        drop(decoder);
-        if buf != [0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
-            && buf != [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00]
-        {
-            return Ok(None);
-        }
-        read.seek(SeekFrom::Start(0))?;
-        Ok(Some(compression))
-    }
-
     pub(crate) fn valid_level(&self) -> bool {
         match self {
             Self::Zstd {

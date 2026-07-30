@@ -154,6 +154,11 @@ features = []
 [dependencies.lz4]
 version = "1.28.1"
 
+[dependencies.zip]
+version = "3.0.0"
+default-features = false
+features = ["deflate-flate2", "deflate64", "bzip2", "zstd"]
+
 [build-dependencies.bindgen]
 version = "0.72.1"
 default-features = false

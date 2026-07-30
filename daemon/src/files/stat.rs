@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::files::{IntoFileEntry as _, storage_path};
 use crate::storage::StorageIdentifier;
-use crate::storage::archive::compression::ArchiveCompression;
+use crate::storage::archive::format::ArchiveFormat;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::{Daemon, DaemonExtra};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
@@ -80,7 +80,7 @@ pub async fn stat_file<
         archive = tokio::task::spawn_blocking(move || {
             let fd: OwnedFd = file.into_std().into();
             let file = std::fs::File::from(fd);
-            if let Ok(Some(_)) = ArchiveCompression::detect_blocking(file) {
+            if let Ok(Some(_)) = ArchiveFormat::detect_blocking(file) {
                 Ok::<_, io::Error>(true)
             } else {
                 Ok(false)
