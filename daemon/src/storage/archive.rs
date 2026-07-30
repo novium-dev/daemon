@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 pub mod compression;
+pub mod format;
 
 use std::collections::HashSet;
-use std::io::{Error, Read, Write};
+use std::io::{Error, Read, Seek, Write};
 use std::path::{Path, PathBuf};
 use std::{fs, io, thread};
 use tar::{Archive, Builder};
+use zip::ZipArchive;
 
 #[cfg(target_os = "linux")]
 fn chroot(dest: PathBuf) -> Result<(), io::Error> {
@@ -28,6 +30,17 @@ fn chroot_path(chroot_dest: &Path, target_dest: &PathBuf) -> PathBuf {
 }
 
 pub trait TarSandboxedUnpackExt {
+    async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
+        self,
+        chroot_dst: P,
+        target_dst: E,
+        lock: T,
+    ) -> Result<T, io::Error>
+    where
+        Self: Sized;
+}
+
+pub trait ZipSandboxedUnpackExt {
     async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
         self,
         chroot_dst: P,
@@ -99,6 +112,36 @@ impl<R: Read + Send + 'static> TarSandboxedUnpackExt for Archive<R> {
                 #[cfg(target_os = "macos")]
                 let target_dst = chroot_path(&chroot_dst, &target_dst);
                 self.unpack(target_dst)?;
+                Ok(lock)
+            })
+            .join()
+            .expect("Archive unpack task panicked")
+        })
+        .await?
+    }
+}
+
+impl<R: Read + Seek + Send + 'static> ZipSandboxedUnpackExt for ZipArchive<R> {
+    async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
+        mut self,
+        chroot_dst: P,
+        target_dst: E,
+        lock: T,
+    ) -> Result<T, io::Error> {
+        let chroot_dst = chroot_dst.as_ref();
+        let chroot_dst = PathBuf::from(chroot_dst);
+        let target_dst = target_dst.as_ref();
+        let target_dst = PathBuf::from(target_dst);
+
+        tokio::task::spawn_blocking(move || {
+            thread::spawn(move || {
+                #[cfg(target_os = "linux")]
+                {
+                    chroot(chroot_dst)?;
+                };
+                #[cfg(target_os = "macos")]
+                let target_dst = chroot_path(&chroot_dst, &target_dst);
+                self.extract(target_dst).map_err(io::Error::from)?;
                 Ok(lock)
             })
             .join()

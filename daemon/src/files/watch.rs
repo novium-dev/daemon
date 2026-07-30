@@ -1,4 +1,4 @@
-use crate::config::ArchiveCompression;
+use crate::storage::archive::format::ArchiveFormat;
 use crate::files::{IntoFileEntry as _, storage_path_root};
 use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
 use crate::storage::{STORAGE_TOKEN_MAGIC, StorageIdentifier};
@@ -527,7 +527,7 @@ async fn resolve_list(
                 let file = entry.open()?;
                 let fd: OwnedFd = file.into_std().into();
                 let file = std::fs::File::from(fd);
-                if let Ok(Some(_)) = ArchiveCompression::detect_blocking(file) {
+                if let Ok(Some(_)) = ArchiveFormat::detect_blocking(file) {
                     Ok::<_, io::Error>(true)
                 } else {
                     Ok(false)

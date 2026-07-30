@@ -2,7 +2,10 @@
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
-use crate::storage::archive::{TarSandboxedAppendExt as _, TarSandboxedUnpackExt as _};
+use crate::storage::archive::format::ArchiveFormat;
+use crate::storage::archive::{
+    TarSandboxedAppendExt as _, TarSandboxedUnpackExt as _, ZipSandboxedUnpackExt as _,
+};
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::storage_parent_ino;
 use crate::{Daemon, DaemonExtra, StorageNotification};
@@ -21,6 +24,7 @@ use std::path::PathBuf;
 use tar::{Archive, Builder};
 use tokio::sync::broadcast::Sender;
 use tracing::{debug, error, warn};
+use zip::ZipArchive;
 
 /// Cancel safe
 #[inline(always)]
@@ -73,13 +77,13 @@ pub async fn unpack_archive<
     let fd: OwnedFd = file.into_std().into();
     let mut file = std::fs::File::from(fd);
     match tokio::task::spawn_blocking(move || {
-        Ok::<_, io::Error>((ArchiveCompression::detect_blocking(&mut file)?, file))
+        Ok::<_, io::Error>((ArchiveFormat::detect_blocking(&mut file)?, file))
     })
     .await
     .inspect_err(|err| debug!("Failed to unpack archive (detect): {err:?}"))
     .map_err(io::Error::from)?
     {
-        Ok((Some(compression), file)) => {
+        Ok((Some(ArchiveFormat::Tar(compression)), file)) => {
             let archive = Archive::new(compression.create_decoder(file)?);
             archive
                 .unpack_sandboxed(dest_storage_path, &dest_path, ())
@@ -90,6 +94,37 @@ pub async fn unpack_archive<
                     }
                     _ => error!("Failed to unpack archive (unpack): {err:?}"),
                 })?;
+        }
+        Ok((Some(ArchiveFormat::Zip), file)) => {
+            let archive = match tokio::task::spawn_blocking(move || ZipArchive::new(file))
+                .await
+                .inspect_err(|err| debug!("Failed to unpack archive (zip open): {err:?}"))
+                .map_err(io::Error::from)?
+            {
+                Ok(archive) => archive,
+                // Encrypted, spanned or otherwise malformed zip archives cannot be unpacked
+                Err(err) => {
+                    debug!("Failed to unpack archive (zip open): {err:?}");
+                    return Err(<E as FromCompressionUnsupported>::from());
+                }
+            };
+            if let Err(err) = archive
+                .unpack_sandboxed(dest_storage_path, &dest_path, ())
+                .await
+                .inspect_err(|err| match err.kind() {
+                    ErrorKind::InvalidData | ErrorKind::Unsupported | ErrorKind::QuotaExceeded => {
+                        debug!("Failed to unpack archive (unpack): {err:?}");
+                    }
+                    _ => error!("Failed to unpack archive (unpack): {err:?}"),
+                })
+            {
+                // Entries using a compression method or encryption we do not support
+                return Err(if err.kind() == ErrorKind::Unsupported {
+                    <E as FromCompressionUnsupported>::from()
+                } else {
+                    <E as From<io::Error>>::from(err)
+                });
+            }
         }
         Ok(_) => return Err(<E as FromCompressionUnsupported>::from()),
         Err(err) if err.kind() == ErrorKind::UnexpectedEof => {
