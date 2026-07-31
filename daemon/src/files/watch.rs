@@ -1,5 +1,5 @@
-use crate::storage::archive::format::ArchiveFormat;
 use crate::files::{IntoFileEntry as _, storage_path_root};
+use crate::storage::archive::format::ArchiveFormat;
 use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
 use crate::storage::{STORAGE_TOKEN_MAGIC, StorageIdentifier};
 use crate::{Daemon, DaemonExtra, StorageNotification};
