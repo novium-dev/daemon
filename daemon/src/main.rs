@@ -7,6 +7,7 @@ use clap::*;
 use daemon::*;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use std::io::ErrorKind;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::fs::{self, File};
 use tokio::io::AsyncReadExt as _;
@@ -90,6 +91,15 @@ fn main() {
                 .required(false)
                 .value_parser(value_parser!(u16))
                 .default_value("8080"),
+        )
+        .arg(
+            Arg::new("runtime-dir")
+                .short(None)
+                .long("runtime-dir")
+                .env("DAEMON_RUNTIME_DIR")
+                .help("Runtime directory to use. Must be path identical on docker host")
+                .action(ArgAction::Set)
+                .default_value(daemon_common::DAEMON_DEFAULT_RUNTIME_DIR),
         )
         .get_matches();
 
@@ -183,11 +193,15 @@ async fn main0(matches: ArgMatches) {
         .await
         .expect("Setup failed");
     } else {
-        run(database_url).await;
+        let runtime_dir = matches
+            .get_one::<String>("runtime-dir")
+            .expect("runtime-dir is required for operation");
+
+        run(database_url, PathBuf::from(runtime_dir)).await;
     }
 }
 
-async fn run(database_url: Url) {
+async fn run(database_url: Url, runtime_dir: PathBuf) {
     let mut config_buffer = String::new();
     File::open("config.toml")
         .await
@@ -228,7 +242,7 @@ async fn run(database_url: Url) {
 
     info!("Starting Daemon on version {GIT_HASH}");
 
-    let daemon = Daemon::init(config, Arc::new(root), Arc::new(key))
+    let daemon = Daemon::init(config, Arc::new(root), Arc::new(key), runtime_dir)
         .await
         .expect("Unable to initialize daemon");
 

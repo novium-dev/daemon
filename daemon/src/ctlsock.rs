@@ -9,7 +9,6 @@ use core::sync::atomic::Ordering;
 use rustix::fs::Mode;
 use rustix::process::umask;
 use std::io;
-use std::path::PathBuf;
 use tokio::net::{UnixListener, unix::UCred};
 use tracing::{error, warn};
 
@@ -26,7 +25,7 @@ impl connect_info::Connected<IncomingStream<'_, UnixListener>> for UdsConnectInf
 }
 
 pub async fn run(daemon: Daemon<impl DaemonExtra>) -> Result<(), io::Error> {
-    let path = PathBuf::from("./control.sock");
+    let path = daemon.runtime_dir.join("control.sock");
     let _ = tokio::fs::remove_file(&path).await; // Ignore any errors
 
     // Use mode 0o777 so containers can access it

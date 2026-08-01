@@ -27,8 +27,7 @@ pub const HOSTNAME: &[&str] = &["daemon_host"];
 
 pub const DAEMON_TERMINAL_BUFFER_LIMIT: usize = 1024 * 1024; // 1 MiB
 
-pub const STORAGE_SCAN_INTERVAL: ::core::time::Duration =
-    ::core::time::Duration::from_mins(30);
+pub const STORAGE_SCAN_INTERVAL: ::core::time::Duration = ::core::time::Duration::from_mins(30);
 pub const SSH_BANNER_PREFIX: &str = "SSH-2.0-Daemon-";
 
 pub const DAEMON_BACKUP_NAME_XATTR: &str = "user.novium_daemon.backup_name";
@@ -38,3 +37,5 @@ pub const BRIDGE_INTERNET_IPV6_PREFIX: &str = "fdcb:c049:22d3:b::/64";
 
 pub const DAEMON_ROOT_KEY_COMMON_NAME: &str = "Novium CA";
 pub const DAEMON_BACKEND_KEY_COMMON_NAME: &str = "Novium Backend";
+
+pub const DAEMON_DEFAULT_RUNTIME_DIR: &str = "/run/novium_daemon";
