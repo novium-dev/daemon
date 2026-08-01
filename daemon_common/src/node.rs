@@ -41,6 +41,8 @@ pub struct BackendNodeConfig {
 
     pub storages: Vec<String>,
     pub backups: Vec<String>,
+
+    pub ssh_port: Option<u16>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, ToSchema)]

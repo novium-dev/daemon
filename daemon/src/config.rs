@@ -38,10 +38,15 @@ impl DaemonConfig {
     /// Builds the logical [`NodeConfig`] reported to the backend during a backend-driven update.
     #[must_use]
     pub fn to_node_config(&self) -> BackendNodeConfig {
+        let ssh_port = self
+            .ssh
+            .as_ref()
+            .and_then(|ssh| ssh.listeners.iter().next().map(core::net::SocketAddr::port));
         BackendNodeConfig {
             base_url: self.public_url.clone(),
             storages: self.storage.keys().cloned().collect(),
             backups: self.backup.keys().cloned().collect(),
+            ssh_port,
         }
     }
 }
