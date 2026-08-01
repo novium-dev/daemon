@@ -46,6 +46,7 @@ async fn new_stats_session<
     let mut recv = server_data.stats_sender.subscribe();
     let mut last_sent = Instant::now();
     let mut ping_sent = false;
+    let mut tasks = Instant::now();
 
     let _ = state
         .write(ChannelWriteData::Status(
@@ -70,7 +71,7 @@ async fn new_stats_session<
         }
         #[rustfmt::skip]
         tokio::select! {
-            _timeout = tokio::time::sleep(Duration::from_secs(1)) => {
+            _timeout = tokio::time::sleep_until(tasks) => {
                 let storage_tasks = storage_lock.tasks();
                 let server_tasks = server_data.lock.tasks();
 
@@ -87,6 +88,7 @@ async fn new_stats_session<
                     return;
                 }
                 state.flush().await;
+                tasks = Instant::now() + Duration::from_secs(1);
             }
             stdout = recv.recv() => {
                 match stdout {
