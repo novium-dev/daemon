@@ -88,7 +88,13 @@ async fn new_stats_session<
                     return;
                 }
                 state.flush().await;
-                tasks = Instant::now() + Duration::from_secs(1);
+                if let Some(new) = Instant::now().checked_add(Duration::from_secs(1)) {
+                	tasks = new;
+                } else {
+                	error!("Instant overflow. Disconnecting channel");
+                 	state.close().await;
+                	return;
+                }
             }
             stdout = recv.recv() => {
                 match stdout {
