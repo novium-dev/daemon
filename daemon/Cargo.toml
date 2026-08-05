@@ -77,9 +77,9 @@ either.workspace = true
 tower-layer.workspace = true
 tokio-rustls.workspace = true
 thiserror.workspace = true
-http-body-util = "0.1.3"
+http-body-util = "0.1.4"
 
-sysinfo = "0.38.4"
+sysinfo = "0.39.6"
 num-traits = "0.2.19"
 ringbuffer = "0.16.0"
 fs_extra = "1.3.0"
@@ -96,7 +96,7 @@ workspace = true
 features = ["full"]
 
 [dependencies.anyhow]
-version = "1.0.102"
+version = "1.0.104"
 features = ["std"]
 
 [dependencies.sentry]
@@ -116,7 +116,7 @@ workspace = true
 features = ["docker", "service", "ssh", "keys"]
 
 [dependencies.tar]
-version = "0.4.45"
+version = "0.4.46"
 
 [dependencies.reqwest]
 workspace = true
@@ -127,10 +127,10 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.61.2"
+version = "0.62.5"
 
 [dependencies.russh-sftp]
-version = "2.3.0"
+version = "2.4.0"
 
 [dependencies.rustix]
 version = "1.1.4"
@@ -148,14 +148,14 @@ features = ["zlib"]
 version = "0.6.1"
 
 [dependencies.liblzma]
-version = "0.4.6"
+version = "0.4.7"
 features = []
 
 [dependencies.lz4]
 version = "1.28.1"
 
 [dependencies.zip]
-version = "3.0.0"
+version = "8.6.0"
 default-features = false
 features = ["deflate-flate2", "deflate64", "bzip2", "zstd"]
 

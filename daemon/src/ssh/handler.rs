@@ -12,7 +12,7 @@ use daemon_common::service::files::task::StorageTask;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
 use russh::keys::PublicKey;
 use russh::keys::ssh_key::Fingerprint;
-use russh::server::{Auth, Handler, Msg, Session};
+use russh::server::{Auth, ChannelOpenHandle, Handler, Msg, Session};
 use russh::{Channel, ChannelId, Pty};
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -302,8 +302,11 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
     async fn channel_open_session(
         &mut self,
         channel: Channel<Msg>,
+        handle: ChannelOpenHandle,
         _session: &mut Session,
-    ) -> Result<bool, Self::Error> {
+    ) -> Result<(), Self::Error> {
+        handle.accept().await;
+
         self.channels.insert(
             channel.id(),
             DaemonChannel {
@@ -311,7 +314,8 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                 ..DaemonChannel::default()
             },
         );
-        Ok(true)
+
+        Ok(())
     }
 
     async fn subsystem_request(
