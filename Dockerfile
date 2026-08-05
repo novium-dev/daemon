@@ -1,4 +1,4 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.95.0-alpine AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.97.1-alpine AS chef
 WORKDIR /work
 
 ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C link-arg=-Wl,--icf=safe"

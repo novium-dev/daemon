@@ -5,7 +5,7 @@ stages:
 
 .rust-default:
   image:
-    name: rust:1.95.0-alpine
+    name: rust:1.97.1-alpine
     pull_policy: if-not-present
   parallel:
   interruptible: true
@@ -23,7 +23,7 @@ stages:
 
 .rust-build-default:
   image:
-    name: rust:1.95.0-alpine
+    name: rust:1.97.1-alpine
     pull_policy: if-not-present
   parallel:
   interruptible: true
@@ -214,4 +214,3 @@ deploy_mariadb:
     - docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from $CI_REGISTRY_IMAGE:mariadb-latest -f mariadb.Dockerfile --tag $CI_REGISTRY_IMAGE:mariadb-${CI_COMMIT_SHA:0:8} --tag $CI_REGISTRY_IMAGE:mariadb-latest .
     - docker push $CI_REGISTRY_IMAGE:mariadb-${CI_COMMIT_SHA:0:8}
     - docker push $CI_REGISTRY_IMAGE:mariadb-latest
-
