@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::files::{
-    copy_file, create_archive, delete_file, download_file, list_files, mkdir_file, rename_file,
-    stat_file, symlink_file, unpack_archive, watch_files, wipe, write_file, write_file_by_template,
-    write_file_by_url,
+    chmod_file, copy_file, create_archive, delete_file, download_file, list_files, mkdir_file,
+    rename_file, stat_file, symlink_file, unpack_archive, watch_files, wipe, write_file,
+    write_file_by_template, write_file_by_url,
 };
 use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra};
@@ -13,7 +13,7 @@ use axum_extra::headers::ContentLength;
 use daemon_common::service::files::FileEntry;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::files::files_service_error::{
-    ServerCopyFileError, ServerCreateArchiveError, ServerCreateDirectoryError,
+    ServerChmodError, ServerCopyFileError, ServerCreateArchiveError, ServerCreateDirectoryError,
     ServerDeleteFileError, ServerDownloadFileError, ServerDownloadFileUserError,
     ServerListFilesError, ServerRenameFileError, ServerStatFileError, ServerSymlinkError,
     ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
@@ -163,6 +163,16 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
     ) -> Result<(), ServerCreateDirectoryError> {
         let storage = StorageIdentifier::Primary(server_id);
         mkdir_file(self, storage, path, recursive).await
+    }
+
+    async fn server_chmod(
+        &self,
+        server_id: u32,
+        path: String,
+        mode: u32,
+    ) -> Result<(), ServerChmodError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        chmod_file(self, storage, path, mode).await
     }
 
     async fn server_symlink(
