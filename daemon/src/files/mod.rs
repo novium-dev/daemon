@@ -22,6 +22,7 @@ pub use archive::{create_archive, unpack_archive};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, FileTypeExt as _, Metadata, MetadataExt as _};
 pub use chmod::chmod_file;
+pub use chown::chown_file;
 pub use copy::copy_file;
 use core::str::FromStr as _;
 use daemon_common::files::FileMode;
@@ -40,7 +41,6 @@ use tracing::error;
 use uuid::Uuid;
 pub use watch::watch_files;
 pub use wipe::wipe;
-pub use chown::chown_file;
 pub use write::{write_file, write_file_by_template, write_file_by_url};
 
 async fn storage_path_root(

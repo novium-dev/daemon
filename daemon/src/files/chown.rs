@@ -10,9 +10,12 @@ use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::error_file_not_found::FromFileNotFound;
 use daemon_common::service::files::task::{FileOperationKind, StorageTask};
+use rustix::{
+    fs::{AtFlags, Gid, Uid, chownat},
+    io::Errno,
+};
 use std::io;
 use tracing::warn;
-use rustix::{io::Errno, fs::{AtFlags, chownat, Uid, Gid}};
 
 /// Cancel safe
 #[inline(always)]
@@ -50,9 +53,18 @@ pub async fn chown_file<
     let ino = storage.symlink_metadata(&path).await.map(|meta| meta.ino());
 
     tokio::task::spawn_blocking(move || {
-        chownat(storage.into_std_file(), path, uid.map(Uid::from_raw), gid.map(Gid::from_raw), AtFlags::SYMLINK_NOFOLLOW)
+        chownat(
+            storage.into_std_file(),
+            path,
+            uid.map(Uid::from_raw),
+            gid.map(Gid::from_raw),
+            AtFlags::SYMLINK_NOFOLLOW,
+        )
     })
-    .await.map_err(io::Error::from)?.map_err(Errno::raw_os_error).map_err(io::Error::from_raw_os_error)?;
+    .await
+    .map_err(io::Error::from)?
+    .map_err(Errno::raw_os_error)
+    .map_err(io::Error::from_raw_os_error)?;
 
     let _ = notify
         .send(StorageNotification::Update {
