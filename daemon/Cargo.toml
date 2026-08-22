@@ -77,7 +77,7 @@ either.workspace = true
 tower-layer.workspace = true
 tokio-rustls.workspace = true
 thiserror.workspace = true
-http-body-util = "0.1.4"
+http-body-util = "0.1.5"
 
 sysinfo = "0.39.6"
 num-traits = "0.2.19"
@@ -108,7 +108,7 @@ version = "9.0.2"
 features = ["axum"]
 
 [dependencies.cap-async-std]
-version = "3.4.5"
+version = "3.4.6"
 features = ["tokio1"]
 
 [dependencies.daemon_common]
@@ -127,7 +127,7 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.62.5"
+version = "0.63.0"
 
 [dependencies.russh-sftp]
 version = "2.4.0"
@@ -148,7 +148,7 @@ features = ["zlib"]
 version = "0.6.1"
 
 [dependencies.liblzma]
-version = "0.4.7"
+version = "0.4.8"
 features = []
 
 [dependencies.lz4]

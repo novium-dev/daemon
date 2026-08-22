@@ -194,7 +194,7 @@ little_endian_bytes = "deny"
 
 
 [workspace.dependencies]
-bollard = "0.21.0"
+bollard = "0.21.1"
 libc = "0.2"
 toml = "1.1.4"
 xmltree = "0.12.0"
@@ -211,16 +211,16 @@ tracing-subscriber = "0.3.23"
 hex = "0.4.3"
 java-properties = "2.0.0"
 ini = { package = "rust-ini", version = "0.21.3" }
-futures = "0.3.33"
+futures = "0.3.34"
 anyhow = "1.0.104"
 bytes = "1.12.1"
-futures-util = "0.3.33"
-either = "1.17.0"
+futures-util = "0.3.34"
+either = "1.18.0"
 tower-layer = "0.3.3"
 pastey = "0.2.3"
 itertools = "0.15.0"
 arc-swap = "1.9.2"
-thiserror = "2.0.19"
+thiserror = "2.0.20"
 lazy-regex = "3.6.1"
 
 [workspace.dependencies.daemon_common]
@@ -307,7 +307,7 @@ version = "0.12.6"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.clap]
-version = "4.6.5"
+version = "4.6.6"
 features = ["color", "env", "cargo"]
 
 [workspace.dependencies.utoipa]
@@ -349,7 +349,7 @@ version = "0.4.45"
 features = ["serde"]
 
 [workspace.dependencies.uuid]
-version = "1.24.0"
+version = "1.25.0"
 features = ["serde", "v4"]
 
 [workspace.dependencies.pkcs8]
@@ -369,8 +369,7 @@ version = "2.14.0"
 features = ["serde"]
 
 [workspace.dependencies.rcgen]
-# See https://github.com/rustls/rcgen/issues/400
-version = "=0.14.7"
+version = "0.14.9"
 default-features = false
 features = ["crypto", "pem", "x509-parser", "aws_lc_rs"]
 
