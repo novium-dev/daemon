@@ -1,3 +1,5 @@
+use axum::http::HeaderValue;
+
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
 use std::io;
@@ -13,6 +15,20 @@ pub enum ArchiveFormat {
 }
 
 impl ArchiveFormat {
+    #[rustfmt::skip]
+    pub(crate) const fn content_type(&self) -> HeaderValue {
+        match self {
+            Self::Zip => HeaderValue::from_static("application/zip"),
+            Self::Tar(ArchiveCompression::None) => HeaderValue::from_static("application/x-tar"),
+            Self::Tar(ArchiveCompression::Zstd { .. }) => HeaderValue::from_static("application/zstd"),
+            Self::Tar(ArchiveCompression::Xz { .. }) => HeaderValue::from_static("application/x-xz"),
+            Self::Tar(ArchiveCompression::Zlib { .. }) => HeaderValue::from_static("application/zlib"),
+            Self::Tar(ArchiveCompression::Lz4 { .. }) => HeaderValue::from_static("application/x-lz4"),
+            Self::Tar(ArchiveCompression::Gzip { .. }) => HeaderValue::from_static("application/gzip"),
+            Self::Tar(ArchiveCompression::Bzip2 { .. }) => HeaderValue::from_static("application/x-bzip2"),
+        }
+    }
+
     pub(crate) fn detect_blocking<'a, R: Read + Seek + Send + Sync + 'a>(
         mut read: R,
     ) -> Result<Option<Self>, io::Error> {

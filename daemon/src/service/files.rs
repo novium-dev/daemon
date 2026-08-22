@@ -8,8 +8,6 @@ use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
-use axum_extra::TypedHeader;
-use axum_extra::headers::ContentLength;
 use daemon_common::service::files::FileEntry;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::files::files_service_error::{
@@ -98,11 +96,10 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
         &self,
         server_id: u32,
         path: String,
-        length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), ServerUploadFileError> {
         let storage = StorageIdentifier::Primary(server_id);
-        write_file(self, storage, path, length, data).await
+        write_file(self, storage, path, data).await
     }
 
     async fn server_upload_file_user(
@@ -111,7 +108,6 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
         path: String,
         timestamp: i64,
         verify: UserSignature,
-        length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), ServerUploadFileUserError> {
         verify.verify_server_file_upload::<ServerUploadFileUserError>(
@@ -122,7 +118,7 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
             &path,
         )?;
         let storage = StorageIdentifier::Primary(server_id);
-        write_file(self, storage, path, length, data).await
+        write_file(self, storage, path, data).await
     }
 
     async fn server_write_file_by_url(

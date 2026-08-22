@@ -6,8 +6,6 @@ use crate::user::*;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use url::Url;
-use zelus::axum_extra::TypedHeader;
-use zelus::axum_extra::headers::ContentLength;
 use zelus::define_query_variable;
 use zelus::responses::FileResponse;
 use zelus::types::DataStream;
@@ -86,7 +84,6 @@ pub trait FilesService {
         &self,
         server_id: u32,
         path: String,
-        length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), _>;
 
@@ -102,7 +99,6 @@ pub trait FilesService {
         path: String,
         timestamp: i64,
         verify: UserSignature,
-        length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), _>;
 
