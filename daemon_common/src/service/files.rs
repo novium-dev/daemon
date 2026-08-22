@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
 use crate::service::server::ServerFileWrite;
@@ -191,18 +193,15 @@ pub trait FilesService {
     ) -> Result<(), _>;
 
     /// Creates an archive
-    #[route("/archive/create", method = GET, query = [
-        path "The source directory for the archive contents",
-        src "The file location where the archive should be created",
-        compression "The compression algorithm to use for the archive"
-    ])]
+    #[route("/archive/create", method = POST)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
         file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory]},
         compression::unsupported, sql::failure <- [sql:*])]
     async fn server_create_archive(
         &self,
         server_id: u32,
-        src: String,
+        sources: HashSet<String>,
+        exclude: HashSet<String>,
         path: String,
         compression: String,
     ) -> Result<(), _>;

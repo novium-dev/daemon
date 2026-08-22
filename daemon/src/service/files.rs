@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::files::{
     chmod_file, chown_file, copy_file, create_archive, delete_file, download_file, list_files,
@@ -205,12 +207,13 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
     async fn server_create_archive(
         &self,
         server_id: u32,
-        src: String,
+        sources: HashSet<String>,
+        exclude: HashSet<String>,
         path: String,
         compression: String,
     ) -> Result<(), ServerCreateArchiveError> {
         let storage = StorageIdentifier::Primary(server_id);
-        create_archive(self, storage, path, src, compression).await
+        create_archive(self, storage, path, sources, exclude, compression).await
     }
 
     async fn server_watch_files(
