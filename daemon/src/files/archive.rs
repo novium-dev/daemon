@@ -3,9 +3,7 @@ use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::format::ArchiveFormat;
-use crate::storage::archive::{
-    TarSandboxedAppendExt as _, TarSandboxedUnpackExt as _, ZipSandboxedUnpackExt as _,
-};
+use crate::storage::archive::{ArchiveSandboxedUnpackExt as _, TarSandboxedAppendExt as _};
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::storage_parent_ino;
 use crate::{Daemon, DaemonExtra, StorageNotification};
