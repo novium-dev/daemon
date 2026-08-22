@@ -169,6 +169,19 @@ pub trait FilesService {
         sql::failure <- [sql:*])]
     async fn server_chmod(&self, server_id: u32, path: String, mode: u32) -> Result<(), _>;
 
+    /// Changes the mode of a file or directory
+    #[route("/chown", method = GET, query = [ path, uid "User ID", gid "Group ID" ])]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied]},
+        sql::failure <- [sql:*])]
+    async fn server_chown(
+        &self,
+        server_id: u32,
+        path: String,
+        uid: Option<u32>,
+        gid: Option<u32>,
+    ) -> Result<(), _>;
+
     /// Unpacks an existing archive
     #[route("/archive/unpack", method = GET, query = [ path "The location of the existing archive", dest "The destination directory location" ])]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},

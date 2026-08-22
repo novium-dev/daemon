@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::files::{
-    chmod_file, copy_file, create_archive, delete_file, download_file, list_files, mkdir_file,
-    rename_file, stat_file, symlink_file, unpack_archive, watch_files, wipe, write_file,
-    write_file_by_template, write_file_by_url,
+    chmod_file, chown_file, copy_file, create_archive, delete_file, download_file, list_files,
+    mkdir_file, rename_file, stat_file, symlink_file, unpack_archive, watch_files, wipe,
+    write_file, write_file_by_template, write_file_by_url,
 };
 use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra};
@@ -13,10 +13,10 @@ use axum_extra::headers::ContentLength;
 use daemon_common::service::files::FileEntry;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::files::files_service_error::{
-    ServerChmodError, ServerCopyFileError, ServerCreateArchiveError, ServerCreateDirectoryError,
-    ServerDeleteFileError, ServerDownloadFileError, ServerDownloadFileUserError,
-    ServerListFilesError, ServerRenameFileError, ServerStatFileError, ServerSymlinkError,
-    ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
+    ServerChmodError, ServerChownError, ServerCopyFileError, ServerCreateArchiveError,
+    ServerCreateDirectoryError, ServerDeleteFileError, ServerDownloadFileError,
+    ServerDownloadFileUserError, ServerListFilesError, ServerRenameFileError, ServerStatFileError,
+    ServerSymlinkError, ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
     ServerWatchFilesError, ServerWatchFilesUserError, ServerWriteFileByTemplateError,
     ServerWriteFileByUrlError, WipeServerError,
 };
@@ -173,6 +173,17 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
     ) -> Result<(), ServerChmodError> {
         let storage = StorageIdentifier::Primary(server_id);
         chmod_file(self, storage, path, mode).await
+    }
+
+    async fn server_chown(
+        &self,
+        server_id: u32,
+        path: String,
+        uid: Option<u32>,
+        gid: Option<u32>,
+    ) -> Result<(), ServerChownError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        chown_file(self, storage, path, uid, gid).await
     }
 
     async fn server_symlink(

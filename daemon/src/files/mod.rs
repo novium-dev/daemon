@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 mod archive;
 mod chmod;
+mod chown;
 mod copy;
 mod delete;
 mod download;
@@ -39,6 +40,7 @@ use tracing::error;
 use uuid::Uuid;
 pub use watch::watch_files;
 pub use wipe::wipe;
+pub use chown::chown_file;
 pub use write::{write_file, write_file_by_template, write_file_by_url};
 
 async fn storage_path_root(

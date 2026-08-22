@@ -134,7 +134,7 @@ version = "2.4.0"
 
 [dependencies.rustix]
 version = "1.1.4"
-features = ["thread"]
+features = ["thread", "fs"]
 
 [dependencies.zstd]
 version = "0.13.3"
