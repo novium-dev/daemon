@@ -52,6 +52,8 @@ pub struct AtomicProgress {
 pub enum FileOperationKind {
     ArchiveCreate,
     ArchiveUnpack,
+    Chmod,
+    Chown,
     CopyFile,
     Delete { recursive: bool },
     Download,

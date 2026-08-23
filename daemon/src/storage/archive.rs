@@ -2,6 +2,7 @@
 pub mod compression;
 pub mod format;
 
+use std::borrow::Borrow;
 use std::collections::HashSet;
 use std::io::{Error, Read, Seek, Write};
 use std::path::{Path, PathBuf};
@@ -29,18 +30,7 @@ fn chroot_path(chroot_dest: &Path, target_dest: &PathBuf) -> PathBuf {
     )
 }
 
-pub trait TarSandboxedUnpackExt {
-    async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
-        self,
-        chroot_dst: P,
-        target_dst: E,
-        lock: T,
-    ) -> Result<T, io::Error>
-    where
-        Self: Sized;
-}
-
-pub trait ZipSandboxedUnpackExt {
+pub trait ArchiveSandboxedUnpackExt {
     async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
         self,
         chroot_dst: P,
@@ -58,12 +48,13 @@ pub trait TarSandboxedAppendExt {
         F: AsRef<Path>,
         E: AsRef<Path>,
         T: Send + 'static,
+        X: Borrow<HashSet<String>> + Send + 'static,
     >(
         self,
         chroot_dst: P,
         path: F,
         target_dst: E,
-        exclude: HashSet<String>,
+        exclude: X,
         lock: T,
         finish: bool,
         follow_symlinks: bool,
@@ -77,12 +68,13 @@ pub trait TarSandboxedAppendExt {
         F: AsRef<Path>,
         E: AsRef<Path>,
         T: Send + 'static,
+        X: Borrow<HashSet<String>> + Send + 'static,
     >(
         self,
         chroot_dst: P,
         path: F,
         target_dst: E,
-        exclude: HashSet<String>,
+        exclude: X,
         lock: T,
         finish: bool,
         follow_symlinks: bool,
@@ -91,7 +83,7 @@ pub trait TarSandboxedAppendExt {
         Self: Sized;
 }
 
-impl<R: Read + Send + 'static> TarSandboxedUnpackExt for Archive<R> {
+impl<R: Read + Send + 'static> ArchiveSandboxedUnpackExt for Archive<R> {
     async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
         mut self,
         chroot_dst: P,
@@ -121,7 +113,7 @@ impl<R: Read + Send + 'static> TarSandboxedUnpackExt for Archive<R> {
     }
 }
 
-impl<R: Read + Seek + Send + 'static> ZipSandboxedUnpackExt for ZipArchive<R> {
+impl<R: Read + Seek + Send + 'static> ArchiveSandboxedUnpackExt for ZipArchive<R> {
     async fn unpack_sandboxed<P: AsRef<Path>, E: AsRef<Path>, T: Send + 'static>(
         mut self,
         chroot_dst: P,
@@ -157,12 +149,13 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
         F: AsRef<Path>,
         E: AsRef<Path>,
         T: Send + 'static,
+        X: Borrow<HashSet<String>> + Send + 'static,
     >(
         self,
         chroot_dst: P,
         path: F,
         target_dst: E,
-        exclude: HashSet<String>,
+        exclude: X,
         lock: T,
         finish: bool,
         follow_symlinks: bool,
@@ -196,12 +189,13 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
         F: AsRef<Path>,
         E: AsRef<Path>,
         T: Send + 'static,
+        X: Borrow<HashSet<String>> + Send + 'static,
     >(
         mut self,
         chroot_dst: P,
         path: F,
         target_dst: E,
-        exclude: HashSet<String>,
+        exclude: X,
         lock: T,
         finish: bool,
         follow_symlinks: bool,
@@ -223,7 +217,13 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
             };
             #[cfg(target_os = "macos")]
             let target_dst = chroot_path(&chroot_dst, &target_dst);
-            append_dir_all(&mut self, &path, &target_dst, &exclude, follow_symlinks)?;
+            append_dir_all(
+                &mut self,
+                &path,
+                &target_dst,
+                exclude.borrow(),
+                follow_symlinks,
+            )?;
             if finish {
                 self.finish()?;
             }

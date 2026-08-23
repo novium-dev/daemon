@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
 use crate::service::server::ServerFileWrite;
@@ -6,8 +8,6 @@ use crate::user::*;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use url::Url;
-use zelus::axum_extra::TypedHeader;
-use zelus::axum_extra::headers::ContentLength;
 use zelus::define_query_variable;
 use zelus::responses::FileResponse;
 use zelus::types::DataStream;
@@ -86,7 +86,6 @@ pub trait FilesService {
         &self,
         server_id: u32,
         path: String,
-        length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), _>;
 
@@ -102,7 +101,6 @@ pub trait FilesService {
         path: String,
         timestamp: i64,
         verify: UserSignature,
-        length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), _>;
 
@@ -162,6 +160,26 @@ pub trait FilesService {
         sql::failure <- [sql:*])]
     async fn server_symlink(&self, server_id: u32, path: String, content: String) -> Result<(), _>;
 
+    /// Changes the mode of a file or directory
+    #[route("/chmod", method = GET, query = [ path, mode "file mode" ])]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied]},
+        sql::failure <- [sql:*])]
+    async fn server_chmod(&self, server_id: u32, path: String, mode: u32) -> Result<(), _>;
+
+    /// Changes the mode of a file or directory
+    #[route("/chown", method = GET, query = [ path, uid "User ID", gid "Group ID" ])]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+        file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied]},
+        sql::failure <- [sql:*])]
+    async fn server_chown(
+        &self,
+        server_id: u32,
+        path: String,
+        uid: Option<u32>,
+        gid: Option<u32>,
+    ) -> Result<(), _>;
+
     /// Unpacks an existing archive
     #[route("/archive/unpack", method = GET, query = [ path "The location of the existing archive", dest "The destination directory location" ])]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
@@ -175,18 +193,15 @@ pub trait FilesService {
     ) -> Result<(), _>;
 
     /// Creates an archive
-    #[route("/archive/create", method = GET, query = [
-        path "The source directory for the archive contents",
-        src "The file location where the archive should be created",
-        compression "The compression algorithm to use for the archive"
-    ])]
+    #[route("/archive/create", method = POST)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
         file::{not_found <- [io:NotFound], sandbox_violated <- [io:PermissionDenied], is_directory <- [io:IsADirectory]},
         compression::unsupported, sql::failure <- [sql:*])]
     async fn server_create_archive(
         &self,
         server_id: u32,
-        src: String,
+        sources: HashSet<String>,
+        exclude: HashSet<String>,
         path: String,
         compression: String,
     ) -> Result<(), _>;

@@ -3,8 +3,8 @@ use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::{Daemon, DaemonExtra};
-use axum::http;
-use axum::http::{HeaderMap, HeaderValue};
+use axum_extra::headers::ContentLength;
+use axum_extra::response::Attachment;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
@@ -68,14 +68,13 @@ pub async fn download_file<
         return Err(<E as FromFileLimitReached>::from());
     }
 
-    let mut headers =
-        HeaderMap::from_iter([(http::header::CONTENT_LENGTH, HeaderValue::from(length))]);
-    if let Some(filename) = path.file_name().map(|str| str.to_string_lossy())
-        && let Ok(filename) = format!("attachment; filename=\"{filename}\"").parse()
-    {
-        headers.insert(http::header::CONTENT_DISPOSITION, filename);
-    }
     let fd = tokio::fs::File::from_std(std::fs::File::from(fd));
     drop(lock);
-    Ok(FileResponse(Some(headers), DataStream::by_read(fd)))
+    let mut attachment = Attachment::new(DataStream::by_read(fd, Some(ContentLength(length))));
+    if let Some(filename) = path.file_name()
+        && let Some(filename) = filename.to_str()
+    {
+        attachment = attachment.filename(filename);
+    }
+    Ok(FileResponse::Axum(attachment))
 }

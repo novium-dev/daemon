@@ -1,22 +1,22 @@
+use std::collections::HashSet;
+
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::files::{
-    copy_file, create_archive, delete_file, download_file, list_files, mkdir_file, rename_file,
-    stat_file, symlink_file, unpack_archive, watch_files, wipe, write_file, write_file_by_template,
-    write_file_by_url,
+    chmod_file, chown_file, copy_file, create_archive, delete_file, download_file, list_files,
+    mkdir_file, rename_file, stat_file, symlink_file, unpack_archive, watch_files, wipe,
+    write_file, write_file_by_template, write_file_by_url,
 };
 use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
-use axum_extra::TypedHeader;
-use axum_extra::headers::ContentLength;
 use daemon_common::service::files::FileEntry;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::files::files_service_error::{
-    ServerCopyFileError, ServerCreateArchiveError, ServerCreateDirectoryError,
-    ServerDeleteFileError, ServerDownloadFileError, ServerDownloadFileUserError,
-    ServerListFilesError, ServerRenameFileError, ServerStatFileError, ServerSymlinkError,
-    ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
+    ServerChmodError, ServerChownError, ServerCopyFileError, ServerCreateArchiveError,
+    ServerCreateDirectoryError, ServerDeleteFileError, ServerDownloadFileError,
+    ServerDownloadFileUserError, ServerListFilesError, ServerRenameFileError, ServerStatFileError,
+    ServerSymlinkError, ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
     ServerWatchFilesError, ServerWatchFilesUserError, ServerWriteFileByTemplateError,
     ServerWriteFileByUrlError, WipeServerError,
 };
@@ -98,11 +98,10 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
         &self,
         server_id: u32,
         path: String,
-        length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), ServerUploadFileError> {
         let storage = StorageIdentifier::Primary(server_id);
-        write_file(self, storage, path, length, data).await
+        write_file(self, storage, path, data).await
     }
 
     async fn server_upload_file_user(
@@ -111,7 +110,6 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
         path: String,
         timestamp: i64,
         verify: UserSignature,
-        length: Option<TypedHeader<ContentLength>>,
         data: DataStream,
     ) -> Result<(), ServerUploadFileUserError> {
         verify.verify_server_file_upload::<ServerUploadFileUserError>(
@@ -122,7 +120,7 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
             &path,
         )?;
         let storage = StorageIdentifier::Primary(server_id);
-        write_file(self, storage, path, length, data).await
+        write_file(self, storage, path, data).await
     }
 
     async fn server_write_file_by_url(
@@ -165,6 +163,27 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
         mkdir_file(self, storage, path, recursive).await
     }
 
+    async fn server_chmod(
+        &self,
+        server_id: u32,
+        path: String,
+        mode: u32,
+    ) -> Result<(), ServerChmodError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        chmod_file(self, storage, path, mode).await
+    }
+
+    async fn server_chown(
+        &self,
+        server_id: u32,
+        path: String,
+        uid: Option<u32>,
+        gid: Option<u32>,
+    ) -> Result<(), ServerChownError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        chown_file(self, storage, path, uid, gid).await
+    }
+
     async fn server_symlink(
         &self,
         server_id: u32,
@@ -188,12 +207,13 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
     async fn server_create_archive(
         &self,
         server_id: u32,
-        src: String,
+        sources: HashSet<String>,
+        exclude: HashSet<String>,
         path: String,
         compression: String,
     ) -> Result<(), ServerCreateArchiveError> {
         let storage = StorageIdentifier::Primary(server_id);
-        create_archive(self, storage, path, src, compression).await
+        create_archive(self, storage, path, sources, exclude, compression).await
     }
 
     async fn server_watch_files(

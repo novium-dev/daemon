@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::config::{BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
-use crate::storage::archive::TarSandboxedUnpackExt as _;
+use crate::storage::archive::ArchiveSandboxedUnpackExt as _;
 use crate::storage::sync::{StorageLockData, storage_write_timeout};
 use crate::sync::task::TaskOwnedRwLockWriteGuard;
 use crate::{Daemon, DaemonExtra, storage};
