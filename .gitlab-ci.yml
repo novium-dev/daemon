@@ -34,7 +34,7 @@ stages:
     CARGO_HOME: "$CI_PROJECT_DIR/.cargo_home"
     LLVM_CONFIG_PATH: "/tmp/llvm-config-static.sh"
     CARGO_TERM_COLOR: "always"
-    RUSTFLAGS: "-C opt-level=0 -C linker=clang-21 -C link-arg=-fuse-ld=lld"
+    RUSTFLAGS: "-C opt-level=0 -C linker=clang-22 -C link-arg=-fuse-ld=lld"
 
     FF_USE_FASTZIP: "true"
     ARTIFACT_COMPRESSION_LEVEL: "fastest"
@@ -43,8 +43,8 @@ stages:
   before_script:
     - rustc --version && cargo --version
     - mkdir .cargo_home -p
-    - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-21 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-21 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
-    - apk add --no-cache libxml2-utils musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm21-static llvm21-dev clang21 clang21-static lld21 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+    - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-22 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-22 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
+    - apk add --no-cache libxml2-utils musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
     - apk upgrade --no-cache gcc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
     - until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
     - crates/sqlx-cli/bin/sqlx database create --database-url "$DAEMON_DATABASE_URL"
