@@ -45,7 +45,6 @@ stages:
     - mkdir .cargo_home -p
     - echo '#!/bin/ash' > /tmp/llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-22 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-22 "$@"; fi' >> /tmp/llvm-config-static.sh && chmod +x /tmp/llvm-config-static.sh
     - apk add --no-cache libxml2-utils musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
-    - apk upgrade --no-cache gcc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
     - until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
     - crates/sqlx-cli/bin/sqlx database create --database-url "$DAEMON_DATABASE_URL"
     - crates/sqlx-cli/bin/sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
