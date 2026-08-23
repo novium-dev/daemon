@@ -5,7 +5,7 @@ stages:
 
 .rust-default:
   image:
-    name: rust:1.97.1-alpine
+    name: rust:1.98.0-alpine
     pull_policy: if-not-present
   parallel:
   interruptible: true
@@ -23,7 +23,7 @@ stages:
 
 .rust-build-default:
   image:
-    name: rust:1.97.1-alpine
+    name: rust:1.98.0-alpine
     pull_policy: if-not-present
   parallel:
   interruptible: true
@@ -113,18 +113,10 @@ clippy:
       paths:
         - .cargo_home/
         - target/
-        - crates/gitlab_clippy
       policy: pull-push
   script:
-    - mkdir crates/gitlab_clippy -p
     - rustup component add clippy
-    - cargo install --color always --verbose gitlab_clippy --root crates/gitlab_clippy
-    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps --message-format=json | crates/gitlab_clippy/bin/gitlab-clippy > gl-code-quality-report.json
-  artifacts:
-    reports:
-      codequality:
-      - gl-code-quality-report.json
-    expire_in: 1 week
+    - cargo clippy --color always --verbose --no-default-features --features ci --no-deps
   rules:
     - if: $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_REF_PROTECTED != "true"
       when: never
@@ -172,16 +164,10 @@ test:
         - .cargo_home/
         - target/
       policy: pull-push
-    - key: rust-cargo2junit-default
-      paths:
-        - crates/cargo2junit
-      policy: pull-push
   needs: ["cli_shared"]
   script:
-    - mkdir crates/cargo2junit -p
-    - cargo install --color always --verbose cargo2junit --root crates/cargo2junit
     - curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-x86_64-unknown-linux-musl.tar.bz2 | tar jxf -
-    - RUSTC_BOOTSTRAP=1 RUSTFLAGS="$RUSTFLAGS -C instrument-coverage" LLVM_PROFILE_FILE="coverage.profraw" cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci -- -Zunstable-options --format json --report-time | crates/cargo2junit/bin/cargo2junit > report.xml
+    - RUSTC_BOOTSTRAP=1 RUSTFLAGS="$RUSTFLAGS -C instrument-coverage" LLVM_PROFILE_FILE="coverage.profraw" cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci
     - ./grcov . --llvm-path /usr/lib/llvm21/bin/ --binary-path ./target/debug/ -s . -t cobertura --branch --ignore-not-existing --ignore "*cargo*" -o coverage.xml
     - xmllint --xpath "concat('Coverage - ', 100 * string(//coverage/@line-rate), '%')" coverage.xml
   coverage: '/Coverage - \d+(?:\.\d+)?/'
@@ -192,8 +178,6 @@ test:
   artifacts:
     when: always
     reports:
-      junit:
-        - report.xml
       coverage_report:
         coverage_format: cobertura
         path: coverage.xml

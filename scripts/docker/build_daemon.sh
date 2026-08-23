@@ -1,7 +1,7 @@
 #!/bin/sh
 
 mkdir /run/mysqld -p
-mariadbd --user=root --skip-name-resolve --skip-networking=0 --silent-startup &
+mariadbd --user=root --skip-name-resolve --skip-networking=1 --silent-startup &
 until mariadb-admin ping --user root; do sleep 0.250; done
 
 export DAEMON_DATABASE_URL="mysql://root@localhost/daemon?socket=/run/mysqld/mysqld.sock"
