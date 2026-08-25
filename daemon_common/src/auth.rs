@@ -130,7 +130,9 @@ fn verify(
     for algorithm in candidates {
         match end_entity.verify_signature(*algorithm, message, signature) {
             Ok(()) => return Ok(()),
-            Err(webpki::Error::UnsupportedSignatureAlgorithmForPublicKey) => continue,
+            // A scheme maps to several algorithms, so only a mismatch against
+            // the public key is worth retrying with the next candidate.
+            Err(webpki::Error::UnsupportedSignatureAlgorithmForPublicKeyContext(_)) => {}
             Err(_err) => return Err(AuthError::Signature),
         }
     }
@@ -181,7 +183,7 @@ impl NodeToken {
             i64::try_from(validity.as_secs()).unwrap_or(i64::MAX),
         );
 
-        let certificate = key.end_entity_cert()?.clone();
+        let certificate = key.end_entity_cert()?.clone().into_owned();
         let (scheme, signature) = sign(
             key,
             &message(
@@ -303,7 +305,6 @@ pub struct Challenge([u8; 32]);
 
 impl Challenge {
     /// Generates a fresh challenge.
-    #[must_use]
     pub fn generate() -> Self {
         Self(rand::random())
     }
@@ -347,7 +348,7 @@ impl Attestation {
     /// Signs `challenge` with the node key.
     pub fn sign(key: &CertifiedKey, node: Uuid, challenge: Challenge) -> Result<Self, AuthError> {
         let issued_at = Utc::now().timestamp();
-        let certificate = key.end_entity_cert()?.clone();
+        let certificate = key.end_entity_cert()?.clone().into_owned();
         let (scheme, signature) = sign(
             key,
             &message(
@@ -485,7 +486,6 @@ mod tests {
     use core::time::Duration;
     use rcgen::{CertificateSigningRequestParams, KeyPair};
     use rustls::pki_types::PrivateKeyDer;
-    use std::sync::Arc;
     use uuid::Uuid;
 
     struct Fixture {
@@ -641,18 +641,18 @@ mod tests {
 
     #[test]
     fn unrelated_authority_is_rejected() {
-        let fixture = fixture();
-        let other = fixture();
+        let ours = fixture();
+        let theirs = fixture();
         let id = Uuid::new_v4();
 
-        let backend = other
+        let backend = theirs
             .root
-            .new_backend_key(&other.certificate_authority, &KeyPair::generate().unwrap())
+            .new_backend_key(&theirs.certificate_authority, &KeyPair::generate().unwrap())
             .unwrap();
         let token = NodeToken::issue(&backend.tls_cert, id, Duration::from_secs(3600)).unwrap();
         let parsed: NodeToken = token.to_string().parse().unwrap();
 
-        assert!(parsed.verify(&fixture.root.cert_store, id).is_err());
-        let _ = Arc::clone(&fixture.root.cert_store);
+        // Signed by a valid backend key, but one our root CA never issued.
+        assert!(parsed.verify(&ours.root.cert_store, id).is_err());
     }
 }

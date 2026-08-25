@@ -14,7 +14,7 @@
 use axum::Router;
 use axum::extract::{Query, State};
 use axum::http::{HeaderValue, StatusCode};
-use axum::response::{IntoResponse, Response};
+use axum::response::{IntoResponse as _, Response};
 use axum::routing::get;
 use daemon_common::auth::{Attestation, Challenge};
 use daemon_common::key::DaemonKey;

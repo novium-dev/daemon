@@ -43,6 +43,7 @@ pub struct DaemonKey {
     pub tls_cert: Arc<CertifiedKey>,
 }
 
+#[derive(Debug)]
 pub struct BackendKey {
     pub privkey: PrivateKeyDer<'static>,
     pub cert: Vec<CertificateDer<'static>>,
@@ -632,9 +633,9 @@ mod tests {
 
     #[test]
     fn keys() {
-        rustls::crypto::aws_lc_rs::default_provider()
-            .install_default()
-            .unwrap();
+        // Other tests in this binary install the same provider, so a lost race
+        // here is expected and harmless.
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
         // Root
         let ca = KeyPair::generate().unwrap();

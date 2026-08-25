@@ -46,7 +46,7 @@ pub const DAEMON_ATTESTATION_HEADER: &str = "x-novium-attestation";
 pub const DAEMON_ATTEST_PATH: &str = "attest";
 /// Default lifetime of a node token before the SDK has to reissue it.
 pub const DAEMON_NODE_TOKEN_VALIDITY: ::core::time::Duration =
-    ::core::time::Duration::from_secs(60 * 60 * 24 * 30);
+    ::core::time::Duration::from_hours(720);
 
 #[cfg(target_os = "macos")]
 pub const DAEMON_DEFAULT_RUNTIME_DIR: &str = "/private/tmp/novium_daemon";

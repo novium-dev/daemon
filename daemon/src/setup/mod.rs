@@ -24,7 +24,6 @@ use daemon_common::service::setup::setup_service_error::ConfigError;
 use reqwest::blocking::Client;
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, CertificateSigningRequestDer};
-use rustls::server::WebPkiClientVerifier;
 use sqlx::{Connection as _, MySqlConnection, QueryBuilder, query_scalar};
 use std::collections::HashSet;
 use std::path::PathBuf;

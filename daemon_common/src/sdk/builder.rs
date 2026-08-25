@@ -85,17 +85,6 @@ pub struct DaemonSDKBuilder<T: DaemonSDKBuilderState + Send + Sync> {
 }
 
 impl<T: DaemonSDKBuilderState + Send + Sync> DaemonSDKBuilder<T> {
-    const fn advance<N: DaemonSDKBuilderState + Send + Sync>(
-        self,
-        inner: N::Inner,
-    ) -> DaemonSDKBuilder<N> {
-        DaemonSDKBuilder {
-            inner,
-            transport: self.transport,
-            token_validity: self.token_validity,
-        }
-    }
-
     /// Selects how the node is reached. Defaults to [`Transport::Direct`].
     pub const fn with_transport(mut self, transport: Transport) -> Self {
         self.transport = transport;
@@ -125,59 +114,97 @@ impl DaemonSDK<()> {
 
 impl DaemonSDKBuilder<RequiresIdentifier> {
     pub const fn with_identifier(self, identifier: Uuid) -> DaemonSDKBuilder<RequiresRootKey> {
-        self.advance::<RequiresRootKey>(identifier)
+        DaemonSDKBuilder {
+            inner: identifier,
+            transport: self.transport,
+            token_validity: self.token_validity,
+        }
     }
 }
 
 impl DaemonSDKBuilder<RequiresRootKey> {
-    pub fn with_root_key(self, root: Arc<DaemonRootKey>) -> DaemonSDKBuilder<RequiresBackendKey> {
-        let identifier = self.inner;
-        self.advance::<RequiresBackendKey>((identifier, Either::Left(root)))
+    pub const fn with_root_key(self, root: Arc<DaemonRootKey>) -> DaemonSDKBuilder<RequiresBackendKey> {
+        let Self {
+            inner: identifier,
+            transport,
+            token_validity,
+        } = self;
+        DaemonSDKBuilder {
+            inner: (identifier, Either::Left(root)),
+            transport,
+            token_validity,
+        }
     }
 
-    pub fn with_custom_cert_store(
+    pub const fn with_custom_cert_store(
         self,
         der: Arc<RootCertStore>,
     ) -> DaemonSDKBuilder<RequiresBackendKey> {
-        let identifier = self.inner;
-        self.advance::<RequiresBackendKey>((identifier, Either::Right(der)))
+        let Self {
+            inner: identifier,
+            transport,
+            token_validity,
+        } = self;
+        DaemonSDKBuilder {
+            inner: (identifier, Either::Right(der)),
+            transport,
+            token_validity,
+        }
     }
 }
 
 impl DaemonSDKBuilder<RequiresBackendKey> {
     pub fn with_backend_key(self, backend: Arc<BackendKey>) -> DaemonSDKBuilder<RequiresBaseURL> {
-        let (identifier, root) = self.inner;
-        self.advance::<RequiresBaseURL>((identifier, root, backend))
+        let Self {
+            inner: (identifier, root),
+            transport,
+            token_validity,
+        } = self;
+        DaemonSDKBuilder {
+            inner: (identifier, root, backend),
+            transport,
+            token_validity,
+        }
     }
 }
 
 impl DaemonSDKBuilder<RequiresBaseURL> {
     pub fn with_url(self, mut url: Url) -> DaemonSDKBuilder<()> {
         base_url(&mut url);
-        let (identifier, root, backend) = self.inner;
-        self.advance::<()>((identifier, root, backend, url))
+        let Self {
+            inner: (identifier, root, backend),
+            transport,
+            token_validity,
+        } = self;
+        DaemonSDKBuilder {
+            inner: (identifier, root, backend, url),
+            transport,
+            token_validity,
+        }
     }
 }
 
 impl DaemonSDKBuilder<()> {
     pub fn with_user_key(self, user_key: SigningKey) -> DaemonSDKBuilder<WithUserKey> {
-        let (identifier, root, backend, url) = self.inner;
-        self.advance::<WithUserKey>((identifier, root, backend, url, user_key))
+        let Self {
+            inner: (identifier, root, backend, url),
+            transport,
+            token_validity,
+        } = self;
+        DaemonSDKBuilder {
+            inner: (identifier, root, backend, url, user_key),
+            transport,
+            token_validity,
+        }
     }
 
     pub fn build(self) -> DaemonSDK<()> {
-        let transport = self.transport;
-        let token_validity = self.token_validity;
-        let (identifier, root, backend, url) = self.inner;
-        DaemonSDKBuilder::<()>::build0(
-            identifier,
-            root,
-            backend,
-            url,
+        let Self {
+            inner: (identifier, root, backend, url),
             transport,
             token_validity,
-            (),
-        )
+        } = self;
+        Self::build0(identifier, root, backend, url, transport, token_validity, ())
     }
 }
 
@@ -271,9 +298,11 @@ impl DaemonSDKBuilderState for WithUserKey {
 
 impl DaemonSDKBuilder<WithUserKey> {
     pub fn build(self) -> DaemonSDK<WithUserKey> {
-        let transport = self.transport;
-        let token_validity = self.token_validity;
-        let (identifier, root, backend, url, user_key) = self.inner;
+        let Self {
+            inner: (identifier, root, backend, url, user_key),
+            transport,
+            token_validity,
+        } = self;
         Self::build0(
             identifier,
             root,

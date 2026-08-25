@@ -16,11 +16,10 @@ impl ResolvesServerCert for DaemonCertResolver {
         debug!("Expected node name: node-{}", self.2);
         match (&self.1, client_hello.server_name()) {
             // No public certificate configured, so everything gets the node one.
-            (None, _) => Some(Arc::clone(&self.0.tls_cert)),
-            // The backend connects directly by address and pins the node name
-            // through its certificate verifier rather than through SNI, so an
-            // absent server name means the node certificate is wanted.
-            (Some(_), None) => Some(Arc::clone(&self.0.tls_cert)),
+            // Likewise when no server name is offered: the backend connects
+            // directly by address and pins the node name through its certificate
+            // verifier rather than through SNI.
+            (None, _) | (Some(_), None) => Some(Arc::clone(&self.0.tls_cert)),
             (Some(_), Some(name)) if name == format!("node-{}", self.2) => {
                 Some(Arc::clone(&self.0.tls_cert))
             }
