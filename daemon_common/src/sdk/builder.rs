@@ -123,7 +123,10 @@ impl DaemonSDKBuilder<RequiresIdentifier> {
 }
 
 impl DaemonSDKBuilder<RequiresRootKey> {
-    pub const fn with_root_key(self, root: Arc<DaemonRootKey>) -> DaemonSDKBuilder<RequiresBackendKey> {
+    pub const fn with_root_key(
+        self,
+        root: Arc<DaemonRootKey>,
+    ) -> DaemonSDKBuilder<RequiresBackendKey> {
         let Self {
             inner: identifier,
             transport,
@@ -204,7 +207,15 @@ impl DaemonSDKBuilder<()> {
             transport,
             token_validity,
         } = self;
-        Self::build0(identifier, root, backend, url, transport, token_validity, ())
+        Self::build0(
+            identifier,
+            root,
+            backend,
+            url,
+            transport,
+            token_validity,
+            (),
+        )
     }
 }
 

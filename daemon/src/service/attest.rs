@@ -29,7 +29,10 @@ pub struct AttestQuery {
 
 pub fn router(key: Arc<DaemonKey>) -> Router {
     Router::new()
-        .route(&format!("/{}", daemon_common::DAEMON_ATTEST_PATH), get(attest))
+        .route(
+            &format!("/{}", daemon_common::DAEMON_ATTEST_PATH),
+            get(attest),
+        )
         .with_state(key)
 }
 

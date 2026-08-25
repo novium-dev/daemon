@@ -96,9 +96,8 @@ fn verify(
     message: &[u8],
     signature: &[u8],
 ) -> Result<(), AuthError> {
-    let provider = CryptoProvider::get_default().ok_or(rustls::Error::General(
-        "No crypto provider set".to_owned(),
-    ))?;
+    let provider = CryptoProvider::get_default()
+        .ok_or(rustls::Error::General("No crypto provider set".to_owned()))?;
     let algorithms = &provider.signature_verification_algorithms;
 
     let end_entity =
@@ -179,9 +178,8 @@ impl NodeToken {
         validity: core::time::Duration,
     ) -> Result<Self, AuthError> {
         let issued_at = Utc::now().timestamp();
-        let expires_at = issued_at.saturating_add(
-            i64::try_from(validity.as_secs()).unwrap_or(i64::MAX),
-        );
+        let expires_at =
+            issued_at.saturating_add(i64::try_from(validity.as_secs()).unwrap_or(i64::MAX));
 
         let certificate = key.end_entity_cert()?.clone().into_owned();
         let (scheme, signature) = sign(
@@ -521,7 +519,10 @@ mod tests {
         let fixture = fixture();
         let backend = fixture
             .root
-            .new_backend_key(&fixture.certificate_authority, &KeyPair::generate().unwrap())
+            .new_backend_key(
+                &fixture.certificate_authority,
+                &KeyPair::generate().unwrap(),
+            )
             .unwrap();
         let id = Uuid::new_v4();
 
@@ -537,7 +538,10 @@ mod tests {
         let fixture = fixture();
         let backend = fixture
             .root
-            .new_backend_key(&fixture.certificate_authority, &KeyPair::generate().unwrap())
+            .new_backend_key(
+                &fixture.certificate_authority,
+                &KeyPair::generate().unwrap(),
+            )
             .unwrap();
 
         let token =
@@ -545,7 +549,11 @@ mod tests {
         let parsed: NodeToken = token.to_string().parse().unwrap();
 
         // A different node must not accept a token issued for someone else.
-        assert!(parsed.verify(&fixture.root.cert_store, Uuid::new_v4()).is_err());
+        assert!(
+            parsed
+                .verify(&fixture.root.cert_store, Uuid::new_v4())
+                .is_err()
+        );
     }
 
     #[test]
@@ -553,7 +561,10 @@ mod tests {
         let fixture = fixture();
         let backend = fixture
             .root
-            .new_backend_key(&fixture.certificate_authority, &KeyPair::generate().unwrap())
+            .new_backend_key(
+                &fixture.certificate_authority,
+                &KeyPair::generate().unwrap(),
+            )
             .unwrap();
         let id = Uuid::new_v4();
 
