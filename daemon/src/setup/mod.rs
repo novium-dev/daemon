@@ -11,8 +11,8 @@ use core::error::Error;
 use core::net::{IpAddr, Ipv6Addr, SocketAddr};
 use core::time::Duration;
 use daemon::config::MountPoint;
-use daemon::internal::middleware;
-use daemon::key::{DaemonCertResolver, TlsAcceptor};
+use daemon::internal::{AuthData, middleware};
+use daemon::key::DaemonCertResolver;
 use daemon_common::key::rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use daemon_common::node::{
@@ -269,13 +269,7 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
     }
 
     let mut rustls = ServerConfig::builder()
-        .with_client_cert_verifier(
-            WebPkiClientVerifier::builder(Arc::clone(&root.cert_store))
-                .allow_unauthenticated()
-                .allow_unknown_revocation_status()
-                .build()
-                .expect("failed to build client certificate verifier"),
-        )
+        .with_no_client_auth()
         .with_cert_resolver(Arc::new(DaemonCertResolver(Arc::clone(key), None, uuid)));
     rustls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
     let rustls = RustlsConfig::from_config(Arc::new(rustls));
@@ -284,14 +278,18 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
         let (router,) = framework_router!(ConnectionTestWrapper ConnectionTestWrapper (default,) { SetupService });
         let router = OpenApiRouter::new()
             .merge(router.into_openapi())
-            .layer(axum::middleware::from_fn(middleware));
+            .layer(axum::middleware::from_fn(middleware))
+            .layer(axum::Extension(AuthData {
+                cert_store: Arc::clone(&root.cert_store),
+                node: uuid,
+            }));
         let (router, _) = router.split_for_parts();
 
         info!("Starting temporary setup server on {listener}...");
 
         tokio::task::spawn(
             Server::bind(listener)
-                .acceptor(TlsAcceptor(RustlsAcceptor::new(rustls.clone())))
+                .acceptor(RustlsAcceptor::new(rustls.clone()))
                 .serve(router.into_make_service()),
         );
     }

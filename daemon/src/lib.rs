@@ -203,5 +203,5 @@ compile_error!("SSH Auth Bypass was enabled in production!");
 
 #[doc(hidden)]
 pub mod internal {
-    pub use crate::service::middleware::middleware;
+    pub use crate::service::middleware::{AuthData, middleware};
 }

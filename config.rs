@@ -38,6 +38,16 @@ pub const BRIDGE_INTERNET_IPV6_PREFIX: &str = "fdcb:c049:22d3:b::/64";
 pub const DAEMON_ROOT_KEY_COMMON_NAME: &str = "Novium CA";
 pub const DAEMON_BACKEND_KEY_COMMON_NAME: &str = "Novium Backend";
 
+/// Header carrying the backend's node scoped capability token.
+pub const DAEMON_AUTH_HEADER: &str = "x-novium-auth";
+/// Header carrying a node's answer to an attestation challenge.
+pub const DAEMON_ATTESTATION_HEADER: &str = "x-novium-attestation";
+/// Path, relative to the daemon base url, serving node attestations.
+pub const DAEMON_ATTEST_PATH: &str = "attest";
+/// Default lifetime of a node token before the SDK has to reissue it.
+pub const DAEMON_NODE_TOKEN_VALIDITY: ::core::time::Duration =
+    ::core::time::Duration::from_secs(60 * 60 * 24 * 30);
+
 #[cfg(target_os = "macos")]
 pub const DAEMON_DEFAULT_RUNTIME_DIR: &str = "/private/tmp/novium_daemon";
 

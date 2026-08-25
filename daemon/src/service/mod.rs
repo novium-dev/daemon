@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use crate::key::{DaemonCertResolver, TlsAcceptor};
+use crate::key::DaemonCertResolver;
 use crate::{Daemon, DaemonExtra};
 use axum::Router;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
@@ -15,7 +15,6 @@ use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::setup::SetupService;
 use rustls::ServerConfig;
-use rustls::server::WebPkiClientVerifier;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 use tower_http::compression::CompressionLayer;
@@ -24,6 +23,7 @@ use tracing::{error, info};
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
+pub mod attest;
 mod backup;
 mod database;
 mod files;
@@ -56,11 +56,22 @@ impl<T: DaemonExtra> Daemon<T> {
 
         let compression = CompressionLayer::new().gzip(true).zstd(true).br(true);
 
+        let auth = middleware::AuthData {
+            cert_store: Arc::clone(&self.root.cert_store),
+            node: self.key.id,
+        };
+
         let (mut router, api) = OpenApiRouter::with_openapi(ApiDoc::openapi())
-            .merge(router.layer(axum::middleware::from_fn(middleware::middleware)))
+            .merge(
+                router
+                    .layer(axum::middleware::from_fn(middleware::middleware))
+                    .layer(axum::Extension(auth)),
+            )
             .merge(router_user.layer(cors))
             .layer(compression)
             .split_for_parts();
+
+        router = router.merge(attest::router(Arc::clone(&self.key)));
 
         #[cfg(debug_assertions)]
         {
@@ -93,13 +104,10 @@ impl<T: DaemonExtra> Daemon<T> {
             None
         };
 
+        // Client authentication happens at the HTTP layer now, so the handshake
+        // no longer asks for a certificate. See `service::middleware`.
         let mut rustls = ServerConfig::builder()
-            .with_client_cert_verifier(
-                WebPkiClientVerifier::builder(Arc::clone(&self.root.cert_store))
-                    .allow_unauthenticated()
-                    .allow_unknown_revocation_status()
-                    .build()?,
-            )
+            .with_no_client_auth()
             .with_cert_resolver(Arc::new(DaemonCertResolver(
                 Arc::clone(&self.key),
                 tls,
@@ -116,7 +124,7 @@ impl<T: DaemonExtra> Daemon<T> {
             let rustls = rustls.clone();
             server_task.spawn(async move {
                 let _ = Server::bind(listener)
-                    .acceptor(TlsAcceptor(RustlsAcceptor::new(rustls.clone())))
+                    .acceptor(RustlsAcceptor::new(rustls.clone()))
                     .handle(handle)
                     .serve(router.into_make_service())
                     .await

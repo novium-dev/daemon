@@ -2,9 +2,6 @@
 members = ["daemon", "daemon_common", "daemon_mariadb_plugin"]
 resolver = "3"
 
-[patch.crates-io]
-reqwest.git = "https://github.com/0xIO32/reqwest.git"
-
 [workspace.lints.rust]
 unused = { level = "deny", priority = -1 }
 private_bounds = "allow"
@@ -232,6 +229,12 @@ git = "https://github.com/0xIO32/zelus.git"
 default-features = false
 features = ["error", "sqlx", "io"]
 
+[workspace.dependencies.webpki]
+package = "rustls-webpki"
+version = "0.103.15"
+default-features = false
+features = ["std", "aws-lc-rs"]
+
 [workspace.dependencies.rustls]
 version = "0.23.43"
 #default-features = false
@@ -248,7 +251,7 @@ version = "0.26.4"
 #features = ["ring", "tls12", "logging"]
 
 [workspace.dependencies.reqwest]
-git = "https://github.com/0xIO32/reqwest.git"
+version = "0.13.4"
 features = ["http2", "json", "stream", "zstd"]
 
 [workspace.dependencies.sentry]
