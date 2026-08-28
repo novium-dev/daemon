@@ -157,7 +157,7 @@ impl FetchedServer {
             binds.push(format!("{}:{}:{}", mount.src, mount.dest, mount.mode));
         }
 
-        let control_path = tokio::fs::canonicalize("./control.sock")
+        let control_path = tokio::fs::canonicalize(daemon.runtime_dir.join("control.sock"))
             .await
             .map_err(ServerStartError::IO)?;
 
