@@ -152,6 +152,7 @@ fn node_to_daemon_config(
             })
             .collect(),
         backend_url: backend_root.clone(),
+        shutdown_stop_servers: false,
         tls: None,
         ssh: node.ssh.as_ref().map(|public| SSHConfig {
             listeners: HashSet::from([SocketAddr::new(

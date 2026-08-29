@@ -297,24 +297,27 @@ impl<T: DaemonExtra> Daemon<T> {
         debug!("Server tasks down");
         self.schedule_task.lock().await.shutdown().await;
         debug!("Stopped schedules");
-        let servers = self.servers.lock().await;
-        let mut set = JoinSet::new();
-        for (server_id, server) in &*servers {
-            let id = *server_id;
-            let server = Arc::clone(server);
-            let docker = Arc::clone(&self.docker);
-            set.spawn(async move {
-                let _ = FetchedServer {
-                    id,
-                    ..FetchedServer::default()
-                }
-                .stop(&docker, &server, &server.lock.read(ServerTask::Stop).await)
-                .await;
-            });
+
+        if self.config.shutdown_stop_servers {
+            let servers = self.servers.lock().await;
+            let mut set = JoinSet::new();
+            for (server_id, server) in &*servers {
+                let id = *server_id;
+                let server = Arc::clone(server);
+                let docker = Arc::clone(&self.docker);
+                set.spawn(async move {
+                    let _ = FetchedServer {
+                        id,
+                        ..FetchedServer::default()
+                    }
+                    .stop(&docker, &server, &server.lock.read(ServerTask::Stop).await)
+                    .await;
+                });
+            }
+            drop(servers);
+            set.join_all().await;
+            debug!("Stopped servers");
         }
-        drop(servers);
-        set.join_all().await;
-        debug!("Stopped servers");
 
         info!("Daemon shutdown complete");
         tokio::time::sleep(Duration::from_millis(500)).await;

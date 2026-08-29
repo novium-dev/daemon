@@ -17,6 +17,7 @@ use std::path::PathBuf;
 #[derive(Clone, Serialize, Deserialize)]
 pub struct DaemonConfig {
     pub backend_url: Url,
+    pub shutdown_stop_servers: bool,
     /// The publicly reachable base URL of this daemon (reported to the backend).
     pub public_url: Url,
     pub listeners: HashSet<SocketAddr>,
