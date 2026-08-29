@@ -25,6 +25,7 @@ use std::collections::HashMap;
 use std::io::{self, ErrorKind};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 use tokio::fs;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
@@ -247,6 +248,7 @@ impl<T: DaemonExtra> Daemon<T> {
             schedules: Arc::default(),
             docker: Arc::new(docker),
             runtime_dir,
+            started: Instant::now(),
             conn: Arc::new(conn),
             client: Arc::default(),
             extra: Arc::new(extra),

@@ -3,7 +3,7 @@ mod backup;
 mod config;
 mod database;
 mod docker;
-mod schema;
+pub mod schema;
 mod storage;
 
 use crate::config::DaemonConfig;

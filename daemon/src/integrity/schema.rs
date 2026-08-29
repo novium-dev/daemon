@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use daemon_common::integrity::{
     IntegrityCategory, IntegrityFinding, IntegritySchema, IntegritySchemaTable,
 };
-use sqlx::{MySql, Pool, Row as _, query, query_scalar};
+use sqlx::{AssertSqlSafe, MySql, Pool, Row as _, query, query_scalar};
 
 pub async fn dump(conn: &Pool<MySql>) -> Result<IntegritySchema, sqlx::Error> {
     let database: String = query_scalar("SELECT DATABASE()")
@@ -23,7 +23,7 @@ pub async fn dump(conn: &Pool<MySql>) -> Result<IntegritySchema, sqlx::Error> {
         if name.contains('`') {
             continue;
         }
-        let row = query(&format!("SHOW CREATE TABLE `{name}`"))
+        let row = query(AssertSqlSafe(format!("SHOW CREATE TABLE `{name}`")))
             .fetch_one(conn)
             .await?;
         let definition = row
