@@ -136,14 +136,8 @@ async fn run_one(ctx: &IntegrityContext, check: &dyn Check) -> IntegrityCheckRes
     let outcome = tokio::time::timeout(CHECK_TIMEOUT, check.run(ctx)).await;
 
     let (severity, findings, skipped) = match outcome {
-        Ok(Ok(findings)) => (
-            IntegrityCheckResult::severity_of(&findings),
-            findings,
-            None,
-        ),
-        Ok(Err(CheckError::Skipped(reason))) => {
-            (IntegritySeverity::Ok, Vec::new(), Some(reason))
-        }
+        Ok(Ok(findings)) => (IntegrityCheckResult::severity_of(&findings), findings, None),
+        Ok(Err(CheckError::Skipped(reason))) => (IntegritySeverity::Ok, Vec::new(), Some(reason)),
         Ok(Err(CheckError::Failed(reason))) => {
             error!("Integrity check {} failed: {reason}", check.id());
             (

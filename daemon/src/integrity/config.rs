@@ -20,8 +20,10 @@ async fn check_directory(label: &str, name: &str, path: &str) -> Vec<IntegrityFi
     let target = Path::new(path);
     match fs::metadata(target).await {
         Err(err) => vec![
-            IntegrityFinding::error(format!("The {label} directory of {name} is unusable: {err}"))
-                .with_subject(path.to_owned()),
+            IntegrityFinding::error(format!(
+                "The {label} directory of {name} is unusable: {err}"
+            ))
+            .with_subject(path.to_owned()),
         ],
         Ok(metadata) if !metadata.is_dir() => vec![
             IntegrityFinding::error(format!(

@@ -10,7 +10,7 @@ use std::io::{self, BufReader, Read as _};
 use std::path::{Path, PathBuf};
 
 const TAIL_LEN: usize = 1024;
-const CHUNK_LEN: usize = 65_536;
+const CHUNK_LEN: usize = 0x0001_0000;
 
 struct ServerBackups {
     storage: String,
@@ -160,10 +160,12 @@ async fn check_backup_names(
     for (entry, path, is_dir) in backups {
         let subject = path.to_string_lossy().into_owned();
         let named = match backup {
-            BackupEntry::Archive { compression, .. } => entry
-                .strip_suffix(&format!(".tar{}", compression.ext()))
-                .is_some_and(|stem| stem.parse::<i64>().is_ok())
-                && !is_dir,
+            BackupEntry::Archive { compression, .. } => {
+                entry
+                    .strip_suffix(&format!(".tar{}", compression.ext()))
+                    .is_some_and(|stem| stem.parse::<i64>().is_ok())
+                    && !is_dir
+            }
             #[cfg(feature = "btrfs")]
             BackupEntry::Btrfs { .. } => entry.parse::<i64>().is_ok() && is_dir,
         };
@@ -461,7 +463,7 @@ impl Check for BackupSubvolume {
                     findings.extend(subvolume_finding(
                         &target,
                         parent,
-                        format!("Backup {backup_entry} of server {server} in storage {name}"),
+                        &format!("Backup {backup_entry} of server {server} in storage {name}"),
                     ));
                 }
             }
@@ -481,7 +483,7 @@ impl Check for BackupSubvolume {
 pub(super) fn subvolume_finding(
     path: &Path,
     parent: Option<u64>,
-    label: String,
+    label: &str,
 ) -> Option<IntegrityFinding> {
     let subject = path.to_string_lossy().into_owned();
 

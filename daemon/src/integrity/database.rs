@@ -19,7 +19,9 @@ async fn schema_names(ctx: &IntegrityContext) -> Result<HashSet<String>, CheckEr
     Ok(names)
 }
 
-async fn account_names(ctx: &IntegrityContext) -> Result<Option<Vec<(String, String)>>, CheckError> {
+async fn account_names(
+    ctx: &IntegrityContext,
+) -> Result<Option<Vec<(String, String)>>, CheckError> {
     let Ok(rows) = query("SELECT User, Host, plugin FROM mysql.user")
         .fetch_all(&*ctx.conn)
         .await
@@ -63,11 +65,9 @@ impl Check for MariadbDatabases {
     }
 
     async fn run(&self, ctx: &IntegrityContext) -> Result<Vec<IntegrityFinding>, CheckError> {
-        let databases = query!(
-            r#"SELECT `id` AS `id: u32`, `name_suffix` FROM `databases`"#
-        )
-        .fetch_all(&*ctx.conn)
-        .await?;
+        let databases = query!(r#"SELECT `id` AS `id: u32`, `name_suffix` FROM `databases`"#)
+            .fetch_all(&*ctx.conn)
+            .await?;
 
         let schemas = schema_names(ctx).await?;
         let prefix = crate::common::MARIADB_DATABASE_PREFIX;
@@ -134,16 +134,16 @@ impl Check for MariadbUsers {
             ));
         };
 
-        let users = query!(
-            r#"SELECT `database` AS `database: u32`, `name_suffix` FROM `database_user`"#
+        let users =
+            query!(r#"SELECT `database` AS `database: u32`, `name_suffix` FROM `database_user`"#)
+                .fetch_all(&*ctx.conn)
+                .await?;
+
+        let passwordless = query_scalar!(
+            r#"SELECT DISTINCT `server` AS `server: u32` FROM `database_passwordless`"#
         )
         .fetch_all(&*ctx.conn)
         .await?;
-
-        let passwordless =
-            query_scalar!(r#"SELECT DISTINCT `server` AS `server: u32` FROM `database_passwordless`"#)
-                .fetch_all(&*ctx.conn)
-                .await?;
 
         let present: HashSet<&str> = accounts
             .iter()
@@ -196,12 +196,12 @@ impl Check for MariadbUsers {
                 }
                 continue;
             }
-            let daemon_owned =
-                user.starts_with(user_prefix) || user.starts_with("server_");
+            let daemon_owned = user.starts_with(user_prefix) || user.starts_with("server_");
             if daemon_owned && !expected.contains(user.as_str()) {
                 findings.push(
                     IntegrityFinding::error(
-                        "A MariaDB account carries a daemon prefix but is not registered".to_owned(),
+                        "A MariaDB account carries a daemon prefix but is not registered"
+                            .to_owned(),
                     )
                     .with_subject(user.clone()),
                 );
@@ -216,12 +216,11 @@ impl Check for MariadbUsers {
             ));
         }
 
-        let plugin_loaded = query(
-            "SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME = ?",
-        )
-        .bind(crate::common::MARIADB_PLUGIN_NAME)
-        .fetch_optional(&*ctx.conn)
-        .await?;
+        let plugin_loaded =
+            query("SELECT PLUGIN_STATUS FROM information_schema.PLUGINS WHERE PLUGIN_NAME = ?")
+                .bind(crate::common::MARIADB_PLUGIN_NAME)
+                .fetch_optional(&*ctx.conn)
+                .await?;
 
         match plugin_loaded {
             None => findings.push(IntegrityFinding::error(format!(

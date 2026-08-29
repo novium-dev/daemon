@@ -18,7 +18,9 @@ pub(super) async fn known_servers(ctx: &IntegrityContext) -> Result<HashSet<u32>
         .collect())
 }
 
-pub(super) async fn entries(dir: &Path) -> Result<Option<Vec<(String, PathBuf, bool)>>, CheckError> {
+pub(super) async fn entries(
+    dir: &Path,
+) -> Result<Option<Vec<(String, PathBuf, bool)>>, CheckError> {
     let mut read_dir = match fs::read_dir(dir).await {
         Ok(read_dir) => read_dir,
         Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
@@ -179,7 +181,7 @@ impl Check for StorageSubvolume {
                 findings.extend(super::backup::subvolume_finding(
                     &target,
                     parent,
-                    format!("Server storage {entry} on storage {name}"),
+                    &format!("Server storage {entry} on storage {name}"),
                 ));
             }
         }
