@@ -7,6 +7,9 @@ use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 use crate::service::files::{
     FilesService, FilesServiceClientImpl, FilesServiceURL, FilesServiceUserKeyExtension,
 };
+use crate::service::integrity::{
+    IntegrityService, IntegrityServiceClientImpl, IntegrityServiceURL,
+};
 use crate::service::network::{NetworkService, NetworkServiceClientImpl, NetworkServiceURL};
 use crate::service::resource::{ResourceService, ResourceServiceClientImpl, ResourceServiceURL};
 use crate::service::schedule::{ScheduleService, ScheduleServiceClientImpl, ScheduleServiceURL};
@@ -30,6 +33,7 @@ pub use zelus::types::{DataStream, JsonVec};
 pub mod backup;
 pub mod database;
 pub mod files;
+pub mod integrity;
 pub mod network;
 pub mod resource;
 pub mod schedule;
@@ -109,6 +113,7 @@ pub trait DaemonServices:
     + DatabaseService
     + ScheduleService
     + SetupService
+    + IntegrityService
 {
     fn id(&self) -> Uuid;
 }
@@ -121,6 +126,7 @@ pub trait DaemonServicesClientImpl:
     + DatabaseServiceClientImpl
     + ScheduleServiceClientImpl
     + SetupServiceClientImpl
+    + IntegrityServiceClientImpl
 {
 }
 
@@ -134,6 +140,7 @@ pub trait DaemonServicesURL:
     + DatabaseServiceURL
     + ScheduleServiceURL
     + SetupServiceURL
+    + IntegrityServiceURL
 {
 }
 
