@@ -119,8 +119,9 @@ impl Check for MariadbUsers {
     }
 
     fn description(&self) -> &'static str {
-        "Every database user and passwordless server grant must have a MariaDB account, the \
-         shared proxy account must use the daemon auth plugin, and that plugin must be loaded."
+        "Every database user and passwordless server grant must have a MariaDB account. The \
+         shared proxy account and its auth plugin are only required once a server actually holds \
+         a passwordless grant, so a node running without the plugin is left alone until then."
     }
 
     fn category(&self) -> IntegrityCategory {
@@ -128,12 +129,6 @@ impl Check for MariadbUsers {
     }
 
     async fn run(&self, ctx: &IntegrityContext) -> Result<Vec<IntegrityFinding>, CheckError> {
-        let Some(accounts) = account_names(ctx).await? else {
-            return Err(CheckError::Skipped(
-                "The daemon may not read mysql.user on this MariaDB instance".to_owned(),
-            ));
-        };
-
         let users =
             query!(r#"SELECT `database` AS `database: u32`, `name_suffix` FROM `database_user`"#)
                 .fetch_all(&*ctx.conn)
@@ -144,6 +139,22 @@ impl Check for MariadbUsers {
         )
         .fetch_all(&*ctx.conn)
         .await?;
+
+        if users.is_empty() && passwordless.is_empty() {
+            return Err(CheckError::Skipped(
+                "No server database has been provisioned on this node, so nothing depends on the \
+                 daemon's MariaDB accounts yet"
+                    .to_owned(),
+            ));
+        }
+
+        let Some(accounts) = account_names(ctx).await? else {
+            return Err(CheckError::Skipped(
+                "The daemon may not read mysql.user on this MariaDB instance".to_owned(),
+            ));
+        };
+
+        let uses_passwordless = !passwordless.is_empty();
 
         let present: HashSet<&str> = accounts
             .iter()
@@ -208,10 +219,14 @@ impl Check for MariadbUsers {
             }
         }
 
+        if !uses_passwordless {
+            return Ok(findings);
+        }
+
         if !present.contains("server") {
-            findings.push(IntegrityFinding::warning(
-                "The shared proxy account does not exist yet; servers cannot use passwordless \
-                 database access until a database grants it"
+            findings.push(IntegrityFinding::error(
+                "Servers on this node have passwordless database access, but the shared proxy \
+                 account does not exist; none of them can connect"
                     .to_owned(),
             ));
         }
@@ -224,7 +239,8 @@ impl Check for MariadbUsers {
 
         match plugin_loaded {
             None => findings.push(IntegrityFinding::error(format!(
-                "The authentication plugin {} is not installed in MariaDB",
+                "Servers on this node have passwordless database access, but the authentication \
+                 plugin {} is not installed in MariaDB",
                 crate::common::MARIADB_PLUGIN_NAME
             ))),
             Some(row) => {

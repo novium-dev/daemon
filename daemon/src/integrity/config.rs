@@ -4,8 +4,9 @@ use crate::config::{BackupEntry, StorageEntry};
 use async_trait::async_trait;
 use daemon_common::integrity::{IntegrityCategory, IntegrityFinding};
 use std::ffi::CString;
+use std::io::ErrorKind;
 use std::os::unix::ffi::OsStrExt as _;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tokio::fs;
 
 pub(super) fn writable(path: &Path) -> bool {
@@ -16,9 +17,31 @@ pub(super) fn writable(path: &Path) -> bool {
     unsafe { libc::access(raw.as_ptr(), libc::W_OK | libc::X_OK) == 0i32 }
 }
 
+async fn nearest_existing(target: &Path) -> Option<PathBuf> {
+    for ancestor in target.ancestors().skip(1usize) {
+        if ancestor.as_os_str().is_empty() {
+            continue;
+        }
+        if let Ok(metadata) = fs::metadata(ancestor).await {
+            return metadata.is_dir().then(|| ancestor.to_path_buf());
+        }
+    }
+    None
+}
+
 async fn check_directory(label: &str, name: &str, path: &str) -> Vec<IntegrityFinding> {
     let target = Path::new(path);
     match fs::metadata(target).await {
+        Err(err) if err.kind() == ErrorKind::NotFound => match nearest_existing(target).await {
+            Some(parent) if writable(&parent) => Vec::new(),
+            _ => vec![
+                IntegrityFinding::error(format!(
+                    "The {label} directory of {name} does not exist and cannot be created; no \
+                         parent of it is a directory the daemon may write to"
+                ))
+                .with_subject(path.to_owned()),
+            ],
+        },
         Err(err) => vec![
             IntegrityFinding::error(format!(
                 "The {label} directory of {name} is unusable: {err}"
@@ -50,13 +73,14 @@ impl Check for ConfigPaths {
     }
 
     fn title(&self) -> &'static str {
-        "Configured paths exist and are usable"
+        "Configured paths are usable"
     }
 
     fn description(&self) -> &'static str {
-        "Every storage, backup storage and bind mount in the daemon config must point at an \
-         existing, writable directory. A storage configured as btrfs must really live on a btrfs \
-         filesystem, with quotas enabled where the config asks for them."
+        "Storage and backup directories are created on first use, so they may still be missing; \
+         what matters is that the daemon could create them and write to them. A storage \
+         configured as btrfs must really live on a btrfs filesystem, with quotas enabled where \
+         the config asks for them, and every configured bind mount source must already exist."
     }
 
     fn category(&self) -> IntegrityCategory {
@@ -119,6 +143,10 @@ fn check_btrfs(label: &str, name: &str, path: &str, quota: bool) -> Vec<Integrit
     use std::collections::HashMap;
 
     let mut findings = Vec::new();
+
+    if !Path::new(path).is_dir() {
+        return findings;
+    }
 
     if let Err(err) = btrfs::get_subvol_id(std::fs::File::open(path)) {
         findings.push(
