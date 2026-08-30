@@ -14,6 +14,12 @@ pub trait IntegrityService {
     #[error(sql::failure <- [sql:*])]
     async fn integrity_status(&self) -> Result<IntegrityStatus, _>;
 
+    /// Lists the ids of every server in the daemon database, so the backend can
+    /// diff them against the servers it believes this node runs.
+    #[route("/servers", method = GET)]
+    #[error(sql::failure <- [sql:*])]
+    async fn integrity_servers(&self) -> Result<Vec<u32>, _>;
+
     /// Lists every integrity check this daemon can run.
     #[route("/checks", method = GET)]
     #[error()]

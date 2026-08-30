@@ -35,6 +35,11 @@ pub const DAEMON_BACKUP_NAME_XATTR: &str = "user.novium_daemon.backup_name";
 pub const BRIDGE_DEFAULT_IPV6_PREFIX: &str = "fdcb:c049:22d3:a::/64";
 pub const BRIDGE_INTERNET_IPV6_PREFIX: &str = "fdcb:c049:22d3:b::/64";
 
+// Bump whenever the daemon changes the shape of an API the backend calls, or
+// adds one the backend may rely on. The backend refuses nodes below its own
+// minimum and warns about nodes above the version it was built against.
+pub const DAEMON_PROTOCOL_VERSION: u32 = 1;
+
 pub const DAEMON_ROOT_KEY_COMMON_NAME: &str = "Novium CA";
 pub const DAEMON_BACKEND_KEY_COMMON_NAME: &str = "Novium Backend";
 

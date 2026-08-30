@@ -6,7 +6,8 @@ use daemon_common::integrity::{
 };
 use daemon_common::service::integrity::IntegrityService;
 use daemon_common::service::integrity::integrity_service_error::{
-    IntegrityChecksError, IntegrityRunError, IntegritySchemaError, IntegrityStatusError,
+    IntegrityChecksError, IntegrityRunError, IntegritySchemaError, IntegrityServersError,
+    IntegrityStatusError,
 };
 use sqlx::query_scalar;
 
@@ -19,9 +20,18 @@ impl<T: DaemonExtra> IntegrityService for Daemon<T> {
 
         Ok(IntegrityStatus {
             version: GIT_HASH.trim().to_owned(),
+            protocol: daemon_common::DAEMON_PROTOCOL_VERSION,
             uptime: self.started.elapsed().as_secs(),
             server_count: usize::try_from(server_count).unwrap_or(0usize),
         })
+    }
+
+    async fn integrity_servers(&self) -> Result<Vec<u32>, IntegrityServersError> {
+        Ok(
+            query_scalar!(r#"SELECT `id` AS `id: u32` FROM `servers` ORDER BY `id`"#)
+                .fetch_all(&*self.conn)
+                .await?,
+        )
     }
 
     async fn integrity_checks(&self) -> Result<Vec<IntegrityCheckInfo>, IntegrityChecksError> {

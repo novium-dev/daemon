@@ -166,6 +166,8 @@ impl IntegrityReport {
 #[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct IntegrityStatus {
     pub version: String,
+    #[serde(default)]
+    pub protocol: u32,
     pub uptime: u64,
     pub server_count: usize,
 }
