@@ -167,7 +167,7 @@ impl IntegrityReport {
 pub struct IntegrityStatus {
     pub version: String,
     #[serde(default)]
-    pub protocol: u32,
+    pub api_hash: String,
     pub uptime: u64,
     pub server_count: usize,
 }
