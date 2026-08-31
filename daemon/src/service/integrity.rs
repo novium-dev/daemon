@@ -20,7 +20,7 @@ impl<T: DaemonExtra> IntegrityService for Daemon<T> {
 
         Ok(IntegrityStatus {
             version: GIT_HASH.trim().to_owned(),
-            api_hash: daemon_common::API_HASH.to_owned(),
+            api_hash: daemon_common::service::api_hash(self),
             uptime: self.started.elapsed().as_secs(),
             server_count: usize::try_from(server_count).unwrap_or(0usize),
         })
