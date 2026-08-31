@@ -2,6 +2,8 @@
 #![forbid(unsafe_code)]
 
 pub mod files;
+#[cfg(feature = "service")]
+pub mod integrity;
 #[cfg(feature = "keys")]
 pub mod key;
 #[cfg(feature = "sdk")]

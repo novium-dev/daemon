@@ -9,6 +9,7 @@ use crate::sdk::builder::WithUserKey;
 use crate::service::backup::BackupServiceClientImpl;
 use crate::service::database::DatabaseServiceClientImpl;
 use crate::service::files::FilesServiceClientImpl;
+use crate::service::integrity::IntegrityServiceClientImpl;
 use crate::service::network::NetworkServiceClientImpl;
 use crate::service::resource::ResourceServiceClientImpl;
 use crate::service::schedule::ScheduleServiceClientImpl;
@@ -61,6 +62,7 @@ impl<T: DaemonSDKExtra + Send + Sync> ResourceServiceClientImpl for DaemonSDK<T>
 impl<T: DaemonSDKExtra + Send + Sync> DatabaseServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> ScheduleServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> SetupServiceClientImpl for DaemonSDK<T> {}
+impl<T: DaemonSDKExtra + Send + Sync> IntegrityServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> DaemonServices for DaemonSDK<T> {
     fn id(&self) -> Uuid {
         self.identifier

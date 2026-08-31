@@ -9,6 +9,7 @@ use daemon_common::service::backup::BackupService;
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::framework_router;
+use daemon_common::service::integrity::IntegrityService;
 use daemon_common::service::network::NetworkService;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::schedule::ScheduleService;
@@ -27,6 +28,7 @@ use utoipa_axum::router::OpenApiRouter;
 mod backup;
 mod database;
 mod files;
+mod integrity;
 pub mod middleware;
 mod network;
 mod resource;
@@ -42,7 +44,8 @@ impl<T: DaemonExtra> Daemon<T> {
 
         let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
             ServerService, BackupService, FilesService, NetworkService,
-            ResourceService, DatabaseService, ScheduleService, SetupService
+            ResourceService, DatabaseService, ScheduleService, SetupService,
+            IntegrityService
         });
         let router = router.into_openapi();
         let router_user = router_user.into_openapi();

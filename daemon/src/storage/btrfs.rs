@@ -8,7 +8,7 @@
     clippy::cast_possible_wrap,
     reason = "ioctl can differ on different platform, for example u64 on glibc and i32 on musl"
 )]
-mod sys;
+pub(crate) mod sys;
 
 use crate::utils;
 use libc::ioctl;
