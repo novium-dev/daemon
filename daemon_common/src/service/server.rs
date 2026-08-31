@@ -852,7 +852,7 @@ impl From<bollard::models::ContainerStatsResponse> for ServerStats {
                         * f64::from(cpu_stats.online_cpus.unwrap_or_default())
                         * 10000f64)
                         .round()
-                        / 100f64
+                        / 10000f64
                 },
             ),
             ram: memory_stats.usage.map(|bytes| bytes >> 20u32), // bytes -> mib (>>20 == /0x0010_0000)
