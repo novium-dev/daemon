@@ -2,7 +2,7 @@
 use crate::{Daemon, DaemonExtra, GIT_HASH, integrity};
 use async_trait::async_trait;
 use daemon_common::integrity::{
-    IntegrityCheckInfo, IntegrityReport, IntegritySchema, IntegrityStatus,
+    IntegrityCheckInfo, IntegrityExpectation, IntegrityReport, IntegritySchema, IntegrityStatus,
 };
 use daemon_common::service::integrity::IntegrityService;
 use daemon_common::service::integrity::integrity_service_error::{
@@ -42,8 +42,11 @@ impl<T: DaemonExtra> IntegrityService for Daemon<T> {
         &self,
         checks: Option<Vec<String>>,
         deep: bool,
+        expected: Option<IntegrityExpectation>,
     ) -> Result<IntegrityReport, IntegrityRunError> {
-        Ok(integrity::run(&self.integrity_context(), checks.as_deref(), deep).await)
+        let ctx = self.integrity_context(expected.unwrap_or_default());
+
+        Ok(integrity::run(&ctx, checks.as_deref(), deep).await)
     }
 
     async fn integrity_schema(&self) -> Result<IntegritySchema, IntegritySchemaError> {

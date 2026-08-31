@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use super::storage::{PRIMARY_DIR, entries, known_servers};
+use super::storage::{PRIMARY_DIR, entries, known_servers, subvolume_finding};
 use super::{Check, CheckError, IntegrityContext};
 use crate::config::BackupEntry;
 use crate::storage::archive::compression::ArchiveCompression;
@@ -138,7 +138,7 @@ impl Check for BackupNaming {
                     continue;
                 }
 
-                findings.extend(check_backup_names(name, server, &path, backup).await?);
+                check_backup_names(&mut findings, name, server, &path, backup).await?;
             }
         }
 
@@ -147,16 +147,16 @@ impl Check for BackupNaming {
 }
 
 async fn check_backup_names(
+    findings: &mut Vec<IntegrityFinding>,
     storage: &str,
     server: u32,
     dir: &Path,
     backup: &BackupEntry,
-) -> Result<Vec<IntegrityFinding>, CheckError> {
+) -> Result<(), CheckError> {
     let Some(backups) = entries(dir).await? else {
-        return Ok(Vec::new());
+        return Ok(());
     };
 
-    let mut findings = Vec::new();
     for (entry, path, is_dir) in backups {
         let subject = path.to_string_lossy().into_owned();
         let named = match backup {
@@ -182,7 +182,7 @@ async fn check_backup_names(
         }
     }
 
-    Ok(findings)
+    Ok(())
 }
 
 pub struct BackupCompression;
@@ -452,7 +452,6 @@ impl Check for BackupSubvolume {
                 if !is_dir {
                     continue;
                 }
-                let parent = super::storage::root_dir_of(&server_dir);
                 let Some(backups) = entries(&server_dir).await? else {
                     continue;
                 };
@@ -460,11 +459,12 @@ impl Check for BackupSubvolume {
                     if !backup_is_dir || backup_entry.parse::<i64>().is_err() {
                         continue;
                     }
-                    findings.extend(subvolume_finding(
+                    subvolume_finding(
+                        &mut findings,
                         &target,
-                        parent,
                         &format!("Backup {backup_entry} of server {server} in storage {name}"),
-                    ));
+                    )
+                    .await;
                 }
             }
         }
@@ -476,31 +476,5 @@ impl Check for BackupSubvolume {
         }
 
         Ok(findings)
-    }
-}
-
-#[cfg(feature = "btrfs")]
-pub(super) fn subvolume_finding(
-    path: &Path,
-    parent: Option<u64>,
-    label: &str,
-) -> Option<IntegrityFinding> {
-    let subject = path.to_string_lossy().into_owned();
-
-    match crate::storage::btrfs::get_subvol_id(std::fs::File::open(path)) {
-        Err(err) => Some(
-            IntegrityFinding::error(format!(
-                "{label} could not be probed for a btrfs subvolume: {err}"
-            ))
-            .with_subject(subject),
-        ),
-        Ok(id) if parent == Some(id) => Some(
-            IntegrityFinding::error(format!(
-                "{label} is a plain directory inside its parent subvolume, not a subvolume of its \
-                 own. It was most likely copied instead of snapshotted"
-            ))
-            .with_subject(subject),
-        ),
-        Ok(_id) => None,
     }
 }

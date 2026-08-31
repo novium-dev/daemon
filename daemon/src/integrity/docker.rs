@@ -33,7 +33,7 @@ impl Check for DockerReachable {
     async fn run(&self, ctx: &IntegrityContext) -> Result<Vec<IntegrityFinding>, CheckError> {
         match ctx.docker.ping().await {
             Ok(version) => Ok(vec![
-                IntegrityFinding::info("The container engine responded to a ping".to_owned())
+                IntegrityFinding::info("The container engine responded to a ping")
                     .with_detail("response", version),
             ]),
             Err(err) => Ok(vec![IntegrityFinding::error(format!(
@@ -57,7 +57,9 @@ impl Check for DockerContainers {
 
     fn description(&self) -> &'static str {
         "Every container owned by the daemon must belong to a server in the daemon database. \
-         A leftover container keeps ports, volumes and an ip address allocated."
+         Containers are removed when they stop and killed on daemon startup, so one that is \
+         still here without a server survived both and is keeping ports, volumes and an ip \
+         address allocated."
     }
 
     fn category(&self) -> IntegrityCategory {
@@ -89,8 +91,7 @@ impl Check for DockerContainers {
                 let Ok(id) = suffix.parse::<u32>() else {
                     findings.push(
                         IntegrityFinding::warning(
-                            "A container carries the daemon prefix but no numeric server id"
-                                .to_owned(),
+                            "A container carries the daemon prefix but no numeric server id",
                         )
                         .with_subject(name.clone()),
                     );
@@ -172,7 +173,7 @@ impl Check for DockerNetworks {
                 }
                 Err(_err) => findings.push(
                     IntegrityFinding::warning(
-                        "A docker network carries the daemon prefix but no numeric id".to_owned(),
+                        "A docker network carries the daemon prefix but no numeric id",
                     )
                     .with_subject(name),
                 ),
@@ -197,7 +198,7 @@ impl Check for DockerNetworks {
             if !names.contains(shared) {
                 findings.push(
                     IntegrityFinding::error(
-                        "A shared bridge the daemon attaches servers to is missing".to_owned(),
+                        "A shared bridge the daemon attaches servers to is missing",
                     )
                     .with_subject(shared.to_owned()),
                 );

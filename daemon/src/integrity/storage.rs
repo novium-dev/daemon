@@ -169,7 +169,6 @@ impl Check for StorageSubvolume {
             };
             checked = checked.saturating_add(1usize);
 
-            let parent = root_dir_of(&PathBuf::from(path).join(PRIMARY_DIR));
             let Some(servers) = entries(&PathBuf::from(path).join(PRIMARY_DIR)).await? else {
                 continue;
             };
@@ -178,11 +177,12 @@ impl Check for StorageSubvolume {
                 if !is_dir || entry.parse::<u32>().is_err() {
                     continue;
                 }
-                findings.extend(super::backup::subvolume_finding(
+                subvolume_finding(
+                    &mut findings,
                     &target,
-                    parent,
                     &format!("Server storage {entry} on storage {name}"),
-                ));
+                )
+                .await;
             }
         }
 
@@ -196,7 +196,29 @@ impl Check for StorageSubvolume {
     }
 }
 
+/// A btrfs subvolume is always inode 256 at its root, so a plain directory in
+/// its place is visible from `stat` alone.
 #[cfg(feature = "btrfs")]
-pub(super) fn root_dir_of(path: &Path) -> Option<u64> {
-    crate::storage::btrfs::get_subvol_id(std::fs::File::open(path)).ok()
+pub(super) async fn subvolume_finding(
+    findings: &mut Vec<IntegrityFinding>,
+    path: &Path,
+    label: &str,
+) {
+    use crate::storage::btrfs::sys::BTRFS_FIRST_FREE_OBJECTID;
+    use std::os::unix::fs::MetadataExt as _;
+
+    match fs::symlink_metadata(path).await {
+        Err(err) => findings.push(
+            IntegrityFinding::error(format!("{label} could not be inspected: {err}"))
+                .with_subject(path.to_string_lossy().into_owned()),
+        ),
+        Ok(metadata) if metadata.ino() != u64::from(BTRFS_FIRST_FREE_OBJECTID) => findings.push(
+            IntegrityFinding::error(format!(
+                "{label} is a plain directory, not a subvolume of its own. It was most likely \
+                 copied instead of snapshotted"
+            ))
+            .with_subject(path.to_string_lossy().into_owned()),
+        ),
+        Ok(_metadata) => {}
+    }
 }

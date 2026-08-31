@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+mod backend;
 mod backup;
 mod config;
 mod database;
@@ -12,8 +13,8 @@ use async_trait::async_trait;
 use bollard::Docker;
 use core::time::Duration;
 use daemon_common::integrity::{
-    IntegrityCategory, IntegrityCheckInfo, IntegrityCheckResult, IntegrityFinding, IntegrityReport,
-    IntegritySeverity,
+    IntegrityCategory, IntegrityCheckInfo, IntegrityCheckResult, IntegrityExpectation,
+    IntegrityFinding, IntegrityReport, IntegritySeverity,
 };
 use sqlx::{MySql, Pool};
 use std::io;
@@ -21,20 +22,22 @@ use std::sync::Arc;
 use std::time::Instant;
 use tracing::{error, warn};
 
-pub const CHECK_TIMEOUT: Duration = Duration::from_secs(600);
+pub const CHECK_TIMEOUT: Duration = Duration::from_mins(10);
 
 pub struct IntegrityContext {
     pub config: Arc<DaemonConfig>,
     pub conn: Arc<Pool<MySql>>,
     pub docker: Arc<Docker>,
+    pub expected: IntegrityExpectation,
 }
 
 impl<T: DaemonExtra> Daemon<T> {
-    pub(crate) fn integrity_context(&self) -> IntegrityContext {
+    pub(crate) fn integrity_context(&self, expected: IntegrityExpectation) -> IntegrityContext {
         IntegrityContext {
             config: Arc::clone(&self.config),
             conn: Arc::clone(&self.conn),
             docker: Arc::clone(&self.docker),
+            expected,
         }
     }
 }
@@ -76,27 +79,28 @@ pub trait Check: Send + Sync {
     async fn run(&self, ctx: &IntegrityContext) -> Result<Vec<IntegrityFinding>, CheckError>;
 }
 
-fn catalogue() -> Vec<Box<dyn Check>> {
-    vec![
-        Box::new(docker::DockerReachable),
-        Box::new(docker::DockerContainers),
-        Box::new(docker::DockerNetworks),
-        Box::new(database::MariadbDatabases),
-        Box::new(database::MariadbUsers),
-        Box::new(config::ConfigPaths),
-        Box::new(storage::StorageNaming),
-        Box::new(storage::StorageSubvolume),
-        Box::new(backup::BackupNaming),
-        Box::new(backup::BackupCompression),
-        Box::new(backup::BackupSubvolume),
-        Box::new(backup::BackupTrailer),
-        Box::new(schema::SchemaDump),
-    ]
-}
+const CHECKS: &[&dyn Check] = &[
+    &docker::DockerReachable,
+    &docker::DockerContainers,
+    &docker::DockerNetworks,
+    &database::MariadbDatabases,
+    &database::MariadbUsers,
+    &database::MariadbGrants,
+    &database::MariadbProxyGrants,
+    &backend::BackendRecords,
+    &config::ConfigPaths,
+    &storage::StorageNaming,
+    &storage::StorageSubvolume,
+    &backup::BackupNaming,
+    &backup::BackupCompression,
+    &backup::BackupSubvolume,
+    &backup::BackupTrailer,
+    &schema::SchemaDump,
+];
 
 #[must_use]
 pub fn checks() -> Vec<IntegrityCheckInfo> {
-    catalogue()
+    CHECKS
         .iter()
         .map(|check| IntegrityCheckInfo {
             id: check.id().to_owned(),
@@ -116,12 +120,12 @@ pub async fn run(
     let started = Instant::now();
     let mut results = Vec::new();
 
-    for check in catalogue() {
+    for check in CHECKS {
         let wanted = selected.is_none_or(|ids| ids.iter().any(|id| id == check.id()));
         if !wanted || (check.deep() && !deep) {
             continue;
         }
-        results.push(run_one(ctx, check.as_ref()).await);
+        results.push(run_one(ctx, *check).await);
     }
 
     IntegrityReport::new(
@@ -153,7 +157,7 @@ async fn run_one(ctx: &IntegrityContext, check: &dyn Check) -> IntegrityCheckRes
             (
                 IntegritySeverity::Error,
                 vec![IntegrityFinding::error(
-                    "The check timed out before it could finish".to_owned(),
+                    "The check timed out before it could finish",
                 )],
                 None,
             )

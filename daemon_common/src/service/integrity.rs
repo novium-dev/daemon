@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
-use crate::integrity::{IntegrityCheckInfo, IntegrityReport, IntegritySchema, IntegrityStatus};
+use crate::integrity::{
+    IntegrityCheckInfo, IntegrityExpectation, IntegrityReport, IntegritySchema, IntegrityStatus,
+};
 use zelus::service;
 
 define_error!(integrity {
@@ -28,13 +30,15 @@ pub trait IntegrityService {
     /// Runs the selected integrity checks and returns their report.
     ///
     /// Passing no selection runs every check that is not marked as deep, unless
-    /// `deep` is set.
+    /// `deep` is set. `expected` carries the backend's own view of this node so
+    /// the daemon can report records the backend knows about but it does not.
     #[route("/run", method = PUT)]
     #[error(integrity::unavailable)]
     async fn integrity_run(
         &self,
         checks: Option<Vec<String>>,
         deep: bool,
+        expected: Option<IntegrityExpectation>,
     ) -> Result<IntegrityReport, _>;
 
     /// Dumps the `CREATE TABLE` statement of every table in the daemon database.
