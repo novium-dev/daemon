@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use crate::schedule::worker::task;
+use crate::schedule::worker::{task, trigger};
 use crate::utils::server_required;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::schedule::schedule_service_error::{
-    CreateScheduleError, DeleteScheduleError, UpdateScheduleError,
+    CreateScheduleError, DeleteScheduleError, RunScheduleError, UpdateScheduleError,
 };
 use daemon_common::service::schedule::{SchedulePayload, ScheduleRunPolicy};
+use sqlx::types::JsonValue;
 use sqlx::{Connection as _, query, query_scalar};
 use tracing::error;
 
@@ -146,6 +147,48 @@ impl<T: DaemonExtra> ScheduleService for Daemon<T> {
 
             Ok(())
         }).await.expect("Schedule update task panicked")
+    }
+
+    async fn run_schedule(&self, server_id: u32, schedule_id: u32) -> Result<(), RunScheduleError> {
+        let (_, server_data) =
+            server_required::<RunScheduleError>(&self.conn, &self.servers, server_id).await?;
+        let mut conn = self.conn.acquire().await?;
+
+        let Some(_) = query_scalar!(
+            "SELECT `id` FROM `schedules` WHERE `id` = ? AND `server` = ?",
+            schedule_id,
+            server_id
+        )
+        .fetch_optional(&mut *conn)
+        .await
+        .inspect_err(|err| error!("Failed to select schedule: {err:?}"))?
+        else {
+            return Err(RunScheduleError::ScheduleNotFound);
+        };
+
+        let raw = query_scalar!(
+            "SELECT `value` AS `value: JsonValue` FROM `schedule_steps` WHERE `schedule` = ? \
+             ORDER BY `index` ASC",
+            schedule_id
+        )
+        .fetch_all(&mut *conn)
+        .await
+        .inspect_err(|err| error!("Failed to select schedule steps: {err:?}"))?;
+
+        let mut steps = Vec::with_capacity(raw.len());
+        for step in raw {
+            match serde_json::from_value(step) {
+                Ok(step) => steps.push(step),
+                Err(err) => {
+                    error!("Unable to parse schedule step in {schedule_id}: {err:?}");
+                    return Err(RunScheduleError::ScheduleNotFound);
+                }
+            }
+        }
+
+        trigger(server_id, server_data, self.clone(), steps);
+
+        Ok(())
     }
 
     async fn delete_schedule(
