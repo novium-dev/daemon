@@ -24,15 +24,12 @@ pub async fn init(state: &Daemon<impl DaemonExtra>) -> Result<(), sqlx::Error> {
     let mut set = state.schedule_task.lock().await;
     let mut schedules = state.schedules.lock().await;
     'sched: for schedule in query!(
-        "SELECT `id` AS `id: u32`, `server` AS `server: u32`, `enabled` AS `enabled: bool`, \
-         `policy`, `schedule`, `timezone` FROM `schedules`"
+        "SELECT `id` AS `id: u32`, `server` AS `server: u32`, `policy`, `schedule`, `timezone` \
+         FROM `schedules` WHERE `enabled`"
     )
     .fetch_all(&mut *conn)
     .await?
     {
-        if !schedule.enabled {
-            continue;
-        }
         let Some(policy) = ScheduleRunPolicy::parse(&schedule.policy) else {
             continue;
         };
