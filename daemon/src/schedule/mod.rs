@@ -23,15 +23,18 @@ pub async fn init(state: &Daemon<impl DaemonExtra>) -> Result<(), sqlx::Error> {
 
     let mut set = state.schedule_task.lock().await;
     let mut schedules = state.schedules.lock().await;
-    'sched: for schedule in query!("SELECT * FROM `schedules`")
-        .fetch_all(&mut *conn)
-        .await?
+    'sched: for schedule in query!(
+        "SELECT `id` AS `id: u32`, `server` AS `server: u32`, `enabled` AS `enabled: bool`, \
+         `policy`, `schedule`, `timezone` FROM `schedules`"
+    )
+    .fetch_all(&mut *conn)
+    .await?
     {
-        let policy = match schedule.policy.as_str() {
-            "always" => ScheduleRunPolicy::Always,
-            "running" => ScheduleRunPolicy::Running,
-            "stopped" => ScheduleRunPolicy::Stopped,
-            _ => continue,
+        if !schedule.enabled {
+            continue;
+        }
+        let Some(policy) = ScheduleRunPolicy::parse(&schedule.policy) else {
+            continue;
         };
         let server = schedule.server;
         let cron = match Schedule::from_str(&schedule.schedule) {
