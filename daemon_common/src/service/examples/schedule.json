@@ -1,7 +1,9 @@
 {
+  "name": "Nightly restart",
+  "enabled": true,
   "policy": "running",
-  "schedule": "*/5 * * * *",
-  "timezone": "Etc/Utc",
+  "schedule": "0 0 4 * * *",
+  "timezone": "Etc/UTC",
   "steps": [
     {
       "type": "restart"

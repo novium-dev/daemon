@@ -14,6 +14,11 @@ define_error!(schedule {
 
 #[service(path = "/schedule/{server_id}", tag = "schedule")]
 pub trait ScheduleService {
+    /// Lists every schedule of an existing server
+    #[route("", method = GET)]
+    #[error(server::not_found, sql::failure <- [sql:*])]
+    async fn list_schedules(&self, server_id: u32) -> Result<Vec<ScheduleResponse>, _>;
+
     /// Creates a new schedule
     #[route("", method = PUT)]
     #[error(server::not_found, sql::failure <- [sql:*])]
@@ -66,11 +71,45 @@ pub enum ScheduleRunPolicy {
     Stopped,
 }
 
+impl ScheduleRunPolicy {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Always => "always",
+            Self::Running => "running",
+            Self::Stopped => "stopped",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "always" => Some(Self::Always),
+            "running" => Some(Self::Running),
+            "stopped" => Some(Self::Stopped),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SchedulePayload {
+    pub name: String,
+    pub enabled: bool,
     pub policy: ScheduleRunPolicy,
     pub schedule: Schedule,
     pub timezone: Tz,
+    pub steps: Vec<ScheduleStep>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ScheduleResponse {
+    pub id: u32,
+    pub name: String,
+    pub enabled: bool,
+    pub policy: ScheduleRunPolicy,
+    pub schedule: String,
+    pub timezone: String,
     pub steps: Vec<ScheduleStep>,
 }
 
@@ -78,10 +117,14 @@ impl PartialSchema for SchedulePayload {
     fn schema() -> RefOr<Schema> {
         RefOr::T(Schema::Object(
             Object::builder()
+                .property("name", String::schema())
+                .property("enabled", bool::schema())
                 .property("policy", ScheduleRunPolicy::schema())
                 .property("schedule", String::schema())
                 .property("timezone", String::schema())
                 .property("steps", <Vec<ScheduleStep>>::schema())
+                .required("name")
+                .required("enabled")
                 .required("policy")
                 .required("schedule")
                 .required("timezone")
