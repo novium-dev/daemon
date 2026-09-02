@@ -38,6 +38,29 @@ pub async fn task(
     }));
 }
 
+/// Runs a schedule's steps once, right now.
+///
+/// The run policy is deliberately not consulted: a trigger is somebody asking
+/// for these steps explicitly, so the guard that keeps unattended runs off a
+/// server in the wrong state does not apply.
+pub fn trigger(
+    server_id: u32,
+    server_data: Arc<ServerData>,
+    daemon: Daemon<impl DaemonExtra>,
+    steps: Vec<ScheduleStep>,
+) {
+    drop(tokio::task::spawn(async move {
+        run(
+            daemon,
+            server_id,
+            &server_data,
+            ScheduleRunPolicy::Always,
+            &steps,
+        )
+        .await;
+    }));
+}
+
 #[inline(always)]
 fn determine_next_run(schedule: &Schedule, timezone: &(impl TimeZone + Copy)) -> Option<Instant> {
     schedule

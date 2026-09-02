@@ -31,6 +31,11 @@ pub trait ScheduleService {
         payload: SchedulePayload,
     ) -> Result<(), _>;
 
+    /// Runs a schedule's steps immediately, whatever its cron says
+    #[route("/{schedule_id}/run", method = POST)]
+    #[error(server::not_found, schedule::not_found, sql::failure <- [sql:*])]
+    async fn run_schedule(&self, server_id: u32, schedule_id: u32) -> Result<(), _>;
+
     /// Deletes a schedule
     #[route("/{schedule_id}", method = DELETE)]
     #[error(server::not_found, sql::failure <- [sql:*])]
