@@ -8,6 +8,7 @@
 //! additive: a backup survives as soon as a single counter keeps it.
 use chrono::DateTime;
 use chrono_tz::Tz;
+use core::cmp::Reverse;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -101,7 +102,7 @@ impl BackupRetention {
     #[must_use]
     pub fn apply(&self, candidates: &[RetentionCandidate], timezone: Tz) -> RetentionOutcome {
         let mut sorted: Vec<RetentionCandidate> = candidates.to_vec();
-        sorted.sort_unstable_by(|first, second| second.id.cmp(&first.id));
+        sorted.sort_unstable_by_key(|candidate| Reverse(candidate.id));
 
         if self.is_noop() {
             return RetentionOutcome {
@@ -129,7 +130,13 @@ impl BackupRetention {
             (self.keep_monthly, Period::Monthly),
             (self.keep_yearly, Period::Yearly),
         ] {
-            mark_period(&mut marks, &sorted, timezone, keep.unwrap_or_default(), period);
+            mark_period(
+                &mut marks,
+                &sorted,
+                timezone,
+                keep.unwrap_or_default(),
+                period,
+            );
         }
 
         let mut outcome = RetentionOutcome::default();
@@ -162,7 +169,7 @@ impl Period {
     /// The bucket a backup falls into. Two backups sharing a bucket compete for
     /// the same slot, so only the newer one of them is kept.
     fn bucket(self, candidate: RetentionCandidate, timezone: Tz) -> Option<String> {
-        if let Self::Last = self {
+        if matches!(self, Self::Last) {
             return Some(candidate.id.to_string());
         }
         let time = DateTime::from_timestamp_millis(candidate.id)?.with_timezone(&timezone);

@@ -288,6 +288,36 @@ pub enum StorageError {
     BackupStorageUnsuitable,
 }
 
+impl StorageError {
+    /// Converts into the error type of a service route, so that a storage
+    /// operation called with a concrete error type can still be reported
+    /// through a route's generated error enum.
+    pub fn into_service_error<
+        E: From<io::Error>
+            + From<sqlx::Error>
+            + FromStorageNotFound
+            + FromStorageMutexLocked
+            + FromStorageFailure
+            + FromBackupStorageLocationNotFound,
+    >(
+        self,
+    ) -> E {
+        match self {
+            Self::Sqlx(err) => <E as From<sqlx::Error>>::from(err),
+            Self::IO(err) => <E as From<io::Error>>::from(err),
+            Self::Failure => <E as FromStorageFailure>::from(),
+            Self::Timeout => <E as FromStorageMutexLocked>::from(),
+            Self::NotFound => <E as FromStorageNotFound>::from(),
+            Self::BackupStorageNotFound => <E as FromBackupStorageLocationNotFound>::from(),
+            // Neither has a counterpart on every route, and both mean the
+            // daemon's own configuration cannot serve the request.
+            Self::BackupStorageIncompatible | Self::BackupStorageUnsuitable => {
+                <E as FromStorageFailure>::from()
+            }
+        }
+    }
+}
+
 impl Error for StorageError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {

@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::storage::StorageIdentifier;
 use crate::storage::backup::{delete_backup, list_backups};
+use crate::storage::sync::StorageError;
 use crate::{Daemon, DaemonExtra};
 use chrono_tz::Tz;
+use core::cmp::Reverse;
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::backup::{BackupPruneEntry, BackupRetention, RetentionCandidate};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use std::collections::HashMap;
-use tracing::{debug, info};
+use std::io::ErrorKind;
+use tracing::{debug, info, warn};
 
 /// Applies `retention` to the backups of `id` and deletes everything it does not
 /// keep.
@@ -75,7 +78,14 @@ pub async fn prune_backups<
         for backup_id in outcome.remove {
             if !dry_run {
                 info!("Retention policy removes backup {backup_id} of {id:?} on {storage}");
-                delete_backup::<E>(daemon, id, backup_id, &storage).await?;
+                match delete_backup::<StorageError>(daemon, id, backup_id, &storage).await {
+                    Ok(()) => {}
+                    // Gone already: the policy wanted it gone, so this is done.
+                    Err(StorageError::IO(err)) if err.kind() == ErrorKind::NotFound => {
+                        warn!("Backup {backup_id} of {id:?} on {storage} was already gone");
+                    }
+                    Err(err) => return Err(err.into_service_error()),
+                }
             }
             result.push(BackupPruneEntry {
                 time: backup_id,
@@ -86,6 +96,6 @@ pub async fn prune_backups<
         }
     }
     // Newest first, so the caller sees the same order as a backup listing.
-    result.sort_unstable_by(|first, second| second.time.cmp(&first.time));
+    result.sort_unstable_by_key(|entry| Reverse(entry.time));
     Ok(result)
 }

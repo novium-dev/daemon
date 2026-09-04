@@ -306,8 +306,8 @@ async fn kill(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepR
     .unwrap_or(ScheduleStepResult::Interrupt)
 }
 
-/// Creates a backup and, when the step carries a retention policy, prunes the
-/// storage it was written to afterwards.
+/// Creates a backup and, when the step carries a retention policy, applies that
+/// policy afterwards.
 ///
 /// A failed backup interrupts the schedule; a failed prune does not, since the
 /// backup itself did land and the next run will prune again.

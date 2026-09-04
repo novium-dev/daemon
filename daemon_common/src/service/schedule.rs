@@ -60,12 +60,14 @@ pub enum ScheduleStep {
     TerminalCommand { command: String },
     #[serde(rename = "container")]
     ContainerCommand { command: Vec<String> },
-    /// Creates a backup and, if a retention policy is given, prunes the backups
-    /// of the storage it was written to afterwards.
+    /// Creates a backup and, if a retention policy is given, applies it to the
+    /// same set of storages afterwards.
     #[serde(rename = "backup")]
     Backup {
-        /// The backup storage to write to. Chosen by configured order when
-        /// unset.
+        /// The backup storage to write to, which is also the only one a
+        /// retention policy of this step touches. Unset writes to the storage
+        /// with the lowest configured order and lets the policy cover every
+        /// storage.
         #[serde(default)]
         storage: Option<String>,
         #[serde(default)]
@@ -74,8 +76,8 @@ pub enum ScheduleStep {
     /// Applies a retention policy without creating a backup first.
     #[serde(rename = "prune")]
     Prune {
-        /// The backup storage to prune. All of them, each on its own, when
-        /// unset.
+        /// The backup storage to prune. All of them, each judged on its own,
+        /// when unset.
         #[serde(default)]
         storage: Option<String>,
         retention: BackupRetention,

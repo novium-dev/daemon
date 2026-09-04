@@ -2,6 +2,7 @@
 use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra, storage};
 use async_trait::async_trait;
+use chrono_tz::Tz;
 use daemon_common::service::FileResponse;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::backup::backup_service_error::{
@@ -10,11 +11,8 @@ use daemon_common::service::backup::backup_service_error::{
     ServerDownloadRealtimeUserError, ServerListBackupsError, ServerPruneBackupsError,
     ServerRestoreBackupError, ServerSetBackupNameError, ServerSetBackupProtectedError,
 };
-use daemon_common::service::backup::{
-    BackupPruneEntry, BackupPrunePayload, BackupResponseEntry,
-};
+use daemon_common::service::backup::{BackupPruneEntry, BackupPrunePayload, BackupResponseEntry};
 use daemon_common::user::UserSignature;
-use chrono_tz::Tz;
 
 #[async_trait]
 impl<T: DaemonExtra> BackupService for Daemon<T> {
