@@ -3,7 +3,6 @@ use crate::storage::StorageIdentifier;
 use crate::storage::backup::{delete_backup, list_backups};
 use crate::storage::sync::StorageError;
 use crate::{Daemon, DaemonExtra};
-use chrono_tz::Tz;
 use core::cmp::Reverse;
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::backup::{BackupPruneEntry, BackupRetention, RetentionCandidate};
@@ -17,7 +16,7 @@ use tracing::{debug, info, warn};
 /// Applies `retention` to the backups of `id` and deletes everything it does not
 /// keep.
 ///
-/// Each backup storage is pruned on its own, so a policy asking for seven daily
+/// Each backup storage is judged on its own, so a policy asking for seven daily
 /// backups yields seven daily backups per storage rather than seven in total.
 /// When `backup_storage` names a storage, only that one is considered; the
 /// backups on every other storage are left alone and not reported.
@@ -35,7 +34,6 @@ pub async fn prune_backups<
     id: StorageIdentifier,
     backup_storage: Option<&String>,
     retention: BackupRetention,
-    timezone: Tz,
     dry_run: bool,
 ) -> Result<Vec<BackupPruneEntry>, E> {
     if let Some(backup_storage) = backup_storage
@@ -65,7 +63,7 @@ pub async fn prune_backups<
             .iter()
             .map(|candidate| (candidate.id, candidate.protected))
             .collect();
-        let outcome = retention.apply(&candidates, timezone);
+        let outcome = retention.apply(&candidates);
 
         for backup_id in outcome.keep {
             result.push(BackupPruneEntry {

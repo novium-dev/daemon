@@ -65,20 +65,18 @@ pub enum ScheduleStep {
     #[serde(rename = "backup")]
     Backup {
         /// The backup storage to write to, which is also the only one a
-        /// retention policy of this step touches. Unset writes to the storage
+        /// retention policy of this step touches. `null` writes to the storage
         /// with the lowest configured order and lets the policy cover every
-        /// storage.
-        #[serde(default)]
+        /// storage, each judged on its own.
         storage: Option<String>,
-        #[serde(default)]
+        /// The policy to apply after the backup, `null` to keep every backup.
         retention: Option<BackupRetention>,
     },
     /// Applies a retention policy without creating a backup first.
     #[serde(rename = "prune")]
     Prune {
         /// The backup storage to prune. All of them, each judged on its own,
-        /// when unset.
-        #[serde(default)]
+        /// when `null`.
         storage: Option<String>,
         retention: BackupRetention,
     },

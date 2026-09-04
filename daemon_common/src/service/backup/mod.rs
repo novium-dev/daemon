@@ -3,7 +3,6 @@ use super::*;
 use crate::service::service;
 use crate::user::*;
 use chrono::Utc;
-use chrono_tz::Tz;
 use serde::{Deserialize, Serialize};
 use url::Url;
 use zelus::define_query_variable;
@@ -98,15 +97,19 @@ pub trait BackupService {
         compression: String,
     ) -> Result<FileResponse, _>;
 
-    /// Sets the name of a backup
+    /// Updates the metadata of a backup: `name` is its new name and `null`
+    /// gives it none, `protected` exempts it from retention policies and `null`
+    /// leaves that as it is
     #[route("/{backup_storage}/{backup_id}", method = PATCH)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup::not_found <- [io:NotFound], backup_storage::location_not_found, sql::failure <- [sql:*])]
-    async fn server_set_backup_name(
+    #[example("examples/update.json")]
+    async fn server_update_backup(
         &self,
         server_id: u32,
         backup_storage: String,
         backup_id: i64,
         name: Option<String>,
+        protected: Option<bool>,
     ) -> Result<(), _>;
 
     /// Deletes a backup
@@ -119,25 +122,18 @@ pub trait BackupService {
         backup_id: i64,
     ) -> Result<(), _>;
 
-    /// Marks a backup as protected, exempting it from retention policies
-    #[route("/{backup_storage}/{backup_id}/protected", method = PATCH)]
-    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup::not_found <- [io:NotFound], backup_storage::location_not_found, sql::failure <- [sql:*])]
-    async fn server_set_backup_protected(
-        &self,
-        server_id: u32,
-        backup_storage: String,
-        backup_id: i64,
-        protected: bool,
-    ) -> Result<(), _>;
-
-    /// Applies a retention policy, deleting every backup it does not keep
-    #[route("/prune", method = POST)]
+    /// Applies a retention policy to a backup storage, deleting every backup of
+    /// it the policy does not keep. A `dry_run` reports the same decisions
+    /// without deleting anything
+    #[route("/{backup_storage}/prune", method = POST)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::location_not_found, sql::failure <- [sql:*])]
     #[example("examples/prune.json")]
     async fn server_prune_backups(
         &self,
         server_id: u32,
-        payload: BackupPrunePayload,
+        backup_storage: String,
+        retention: BackupRetention,
+        dry_run: bool,
     ) -> Result<Vec<BackupPruneEntry>, _>;
 
     /// Restores a backup
@@ -208,25 +204,7 @@ pub struct BackupResponseEntry {
     pub name: Option<String>,
     pub size: Option<u64>,
     /// Whether the backup is exempt from retention policies.
-    #[serde(default)]
     pub protected: bool,
-}
-
-/// Which backups a retention policy is applied to, and how.
-#[derive(Clone, Debug, Default, Serialize, Deserialize, utoipa::ToSchema)]
-pub struct BackupPrunePayload {
-    /// The backup storage to prune. All of them, each on its own, when unset.
-    #[serde(default)]
-    pub storage: Option<String>,
-    /// The timezone the policy's hours, days, weeks, months and years are
-    /// counted in. UTC when unset.
-    #[serde(default)]
-    #[schema(value_type = Option<String>)]
-    pub timezone: Option<Tz>,
-    /// Report what the policy would do without deleting anything.
-    #[serde(default)]
-    pub dry_run: bool,
-    pub retention: BackupRetention,
 }
 
 /// What a retention policy decided about a single backup.

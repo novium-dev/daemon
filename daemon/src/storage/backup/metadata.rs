@@ -16,8 +16,13 @@ use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::{debug, error};
 
+/// Updates the metadata a backup carries in its extended attributes.
+///
+/// `name` is the backup's new name and `None` removes it. `protected` exempts
+/// the backup from retention policies, and `None` leaves that as it is.
+///
 /// Cancel safe
-pub async fn set_backup_name<
+pub async fn update_backup<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -30,38 +35,17 @@ pub async fn set_backup_name<
     backup_id: i64,
     backup_storage: &String,
     name: Option<String>,
+    protected: Option<bool>,
 ) -> Result<(), E> {
     let (file, lock) = open_for_update::<E>(state, id, backup_id, backup_storage).await?;
     file.set_backup_name(name)
         .await
-        .inspect_err(|err| error!("Failed to set backup name (set): {err:?}"))?;
-
-    drop(lock);
-
-    Ok(())
-}
-
-/// Marks a backup as exempt from retention policies (or lifts that exemption).
-///
-/// Cancel safe
-pub async fn set_backup_protected<
-    E: From<io::Error>
-        + From<sqlx::Error>
-        + FromStorageNotFound
-        + FromStorageMutexLocked
-        + FromStorageFailure
-        + FromBackupStorageLocationNotFound,
->(
-    state: &Daemon<impl DaemonExtra>,
-    id: StorageIdentifier,
-    backup_id: i64,
-    backup_storage: &String,
-    protected: bool,
-) -> Result<(), E> {
-    let (file, lock) = open_for_update::<E>(state, id, backup_id, backup_storage).await?;
-    file.set_backup_protected(protected)
-        .await
-        .inspect_err(|err| error!("Failed to set backup protection (set): {err:?}"))?;
+        .inspect_err(|err| error!("Failed to update a backup (name): {err:?}"))?;
+    if let Some(protected) = protected {
+        file.set_backup_protected(protected)
+            .await
+            .inspect_err(|err| error!("Failed to update a backup (protected): {err:?}"))?;
+    }
 
     drop(lock);
 

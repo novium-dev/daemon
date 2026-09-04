@@ -10,7 +10,6 @@ use crate::storage::sync::{StorageError, storage_read_timeout};
 use crate::utils::server;
 use crate::{Daemon, DaemonExtra, ServerData};
 use chrono::{DateTime, TimeDelta, TimeZone, Utc};
-use chrono_tz::Tz;
 use core::time::Duration;
 use cron::Schedule;
 use daemon_common::service::backup::BackupRetention;
@@ -31,20 +30,12 @@ pub async fn task(
     policy: ScheduleRunPolicy,
     steps: Vec<ScheduleStep>,
     schedule: Schedule,
-    timezone: Tz,
+    timezone: impl TimeZone + Copy + Send + 'static,
 ) {
     drop(tokio::task::spawn(async move {
         while let Some(next) = determine_next_run(&schedule, &timezone) {
             tokio::time::sleep_until(next).await;
-            run(
-                daemon.clone(),
-                server_id,
-                &server_data,
-                policy,
-                &steps,
-                timezone,
-            )
-            .await;
+            run(daemon.clone(), server_id, &server_data, policy, &steps).await;
         }
     }));
 }
@@ -59,7 +50,6 @@ pub fn trigger(
     server_data: Arc<ServerData>,
     daemon: Daemon<impl DaemonExtra>,
     steps: Vec<ScheduleStep>,
-    timezone: Tz,
 ) {
     drop(tokio::task::spawn(async move {
         run(
@@ -68,7 +58,6 @@ pub fn trigger(
             &server_data,
             ScheduleRunPolicy::Always,
             &steps,
-            timezone,
         )
         .await;
     }));
@@ -97,7 +86,6 @@ async fn run(
     server_data: &ServerData,
     policy: ScheduleRunPolicy,
     steps: &Vec<ScheduleStep>,
-    timezone: Tz,
 ) {
     let lock = server_data.lock.read(ServerTask::ScheduleTaskRun).await;
     let running = match FetchedServer::state(server_id, &HashSet::new(), &daemon.docker, server_data).await {
@@ -141,24 +129,11 @@ async fn run(
                     exec(daemon.clone(), server_id, command.clone()).await
                 }
                 ScheduleStep::Backup { storage, retention } => {
-                    backup(
-                        daemon.clone(),
-                        server_id,
-                        storage.as_ref(),
-                        *retention,
-                        timezone,
-                    )
-                    .await
+                    backup(daemon.clone(), server_id, storage.clone(), *retention).await
                 }
                 ScheduleStep::Prune { storage, retention } => {
-                    prune(
-                        daemon.clone(),
-                        server_id,
-                        storage.as_ref(),
-                        *retention,
-                        timezone,
-                    )
-                    .await
+                    prune(daemon.clone(), server_id, storage.clone(), *retention).await;
+                    ScheduleStepResult::Continue
                 }
             }
         {
@@ -309,66 +284,77 @@ async fn kill(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepR
 /// Creates a backup and, when the step carries a retention policy, applies that
 /// policy afterwards.
 ///
-/// A failed backup interrupts the schedule; a failed prune does not, since the
-/// backup itself did land and the next run will prune again.
+/// A failed backup interrupts the schedule. A failed prune does not, since the
+/// backup itself did land and the next run prunes again.
 #[inline(always)]
 async fn backup(
     daemon: Daemon<impl DaemonExtra>,
     server_id: u32,
-    storage: Option<&String>,
+    storage: Option<String>,
     retention: Option<BackupRetention>,
-    timezone: Tz,
 ) -> ScheduleStepResult {
-    let id = StorageIdentifier::Primary(server_id);
-    let created = match storage {
-        Some(storage) => backup::create_backup::<StorageError>(&daemon, id, storage).await,
-        None => backup::create_backup_order::<StorageError>(&daemon, id).await,
-    };
-    match created {
-        Ok(backup_id) => info!("Schedule created backup {backup_id} of server {server_id}"),
-        Err(err) => {
-            error!("Schedule failed to create a backup of server {server_id}: {err:?}");
-            return ScheduleStepResult::Interrupt;
+    // Ensure neither the backup nor the prune that follows it gets cancelled
+    // half way through when the schedule is removed or updated.
+    tokio::task::spawn(async move {
+        let id = StorageIdentifier::Primary(server_id);
+        let created = match storage.as_ref() {
+            Some(storage) => backup::create_backup::<StorageError>(&daemon, id, storage).await,
+            None => backup::create_backup_order::<StorageError>(&daemon, id).await,
+        };
+        match created {
+            Ok(backup_id) => info!("Schedule created backup {backup_id} of server {server_id}"),
+            Err(err) => {
+                error!("Schedule failed to create a backup of server {server_id}: {err:?}");
+                return ScheduleStepResult::Interrupt;
+            }
         }
-    }
 
-    match retention {
-        None => ScheduleStepResult::Continue,
-        Some(retention) => prune(daemon, server_id, storage, retention, timezone).await,
-    }
+        if let Some(retention) = retention {
+            prune(daemon, server_id, storage, retention).await;
+        }
+
+        ScheduleStepResult::Continue
+    })
+    .await
+    .unwrap_or(ScheduleStepResult::Interrupt)
 }
 
 /// Applies a retention policy to a server's backups.
+///
+/// A prune that fails is logged and forgotten: the next run applies the same
+/// policy again, so nothing is lost by letting the schedule carry on.
 #[inline(always)]
 async fn prune(
     daemon: Daemon<impl DaemonExtra>,
     server_id: u32,
-    storage: Option<&String>,
+    storage: Option<String>,
     retention: BackupRetention,
-    timezone: Tz,
-) -> ScheduleStepResult {
-    match backup::prune_backups::<StorageError>(
-        &daemon,
-        StorageIdentifier::Primary(server_id),
-        storage,
-        retention,
-        timezone,
-        false,
-    )
-    .await
-    {
-        Ok(entries) => {
+) {
+    // Ensure a prune that has started deleting is not cancelled part way.
+    let pruned = tokio::task::spawn(async move {
+        backup::prune_backups::<StorageError>(
+            &daemon,
+            StorageIdentifier::Primary(server_id),
+            storage.as_ref(),
+            retention,
+            false,
+        )
+        .await
+    })
+    .await;
+
+    match pruned {
+        Ok(Ok(entries)) => {
             let removed = entries.iter().filter(|entry| !entry.keep).count();
             info!(
                 "Retention policy removed {removed} of {} backups of server {server_id}",
                 entries.len()
             );
-            ScheduleStepResult::Continue
         }
-        Err(err) => {
+        Ok(Err(err)) => {
             error!("Schedule failed to prune the backups of server {server_id}: {err:?}");
-            ScheduleStepResult::Continue
         }
+        Err(err) => error!("Prune task of server {server_id} panicked: {err:?}"),
     }
 }
 

@@ -17,8 +17,7 @@ pub use delete::delete_backup;
 pub use download::backup_to_stream;
 pub use download::stream_realtime;
 pub use list::list_backups;
-pub use metadata::set_backup_name;
-pub use metadata::set_backup_protected;
+pub use metadata::update_backup;
 pub use prune::prune_backups;
 pub use restore::restore_backup;
 
