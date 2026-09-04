@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
+use crate::service::backup::BackupRetention;
 use chrono_tz::Tz;
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
@@ -59,6 +60,26 @@ pub enum ScheduleStep {
     TerminalCommand { command: String },
     #[serde(rename = "container")]
     ContainerCommand { command: Vec<String> },
+    /// Creates a backup and, if a retention policy is given, prunes the backups
+    /// of the storage it was written to afterwards.
+    #[serde(rename = "backup")]
+    Backup {
+        /// The backup storage to write to. Chosen by configured order when
+        /// unset.
+        #[serde(default)]
+        storage: Option<String>,
+        #[serde(default)]
+        retention: Option<BackupRetention>,
+    },
+    /// Applies a retention policy without creating a backup first.
+    #[serde(rename = "prune")]
+    Prune {
+        /// The backup storage to prune. All of them, each on its own, when
+        /// unset.
+        #[serde(default)]
+        storage: Option<String>,
+        retention: BackupRetention,
+    },
 }
 
 #[derive(Clone, Copy, Hash, Debug, Serialize, Deserialize, utoipa::ToSchema)]

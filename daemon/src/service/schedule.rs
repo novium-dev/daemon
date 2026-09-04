@@ -3,6 +3,7 @@ use crate::schedule::worker::{task, trigger};
 use crate::utils::server_required;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
+use chrono_tz::Tz;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::schedule::schedule_service_error::{
     CreateScheduleError, DeleteScheduleError, RunScheduleError, UpdateScheduleError,
@@ -154,8 +155,8 @@ impl<T: DaemonExtra> ScheduleService for Daemon<T> {
             server_required::<RunScheduleError>(&self.conn, &self.servers, server_id).await?;
         let mut conn = self.conn.acquire().await?;
 
-        let Some(_) = query_scalar!(
-            "SELECT `id` FROM `schedules` WHERE `id` = ? AND `server` = ?",
+        let Some(timezone) = query_scalar!(
+            "SELECT `timezone` FROM `schedules` WHERE `id` = ? AND `server` = ?",
             schedule_id,
             server_id
         )
@@ -165,6 +166,12 @@ impl<T: DaemonExtra> ScheduleService for Daemon<T> {
         else {
             return Err(RunScheduleError::ScheduleNotFound);
         };
+        // Only the retention steps care about the timezone, and a schedule that
+        // cannot be parsed here would not have been started either.
+        let timezone: Tz = timezone.parse().unwrap_or_else(|_err| {
+            error!("Unable to find timezone in schedule {schedule_id}: {timezone:?}");
+            Tz::UTC
+        });
 
         let raw = query_scalar!(
             "SELECT `value` AS `value: JsonValue` FROM `schedule_steps` WHERE `schedule` = ? \
@@ -186,7 +193,7 @@ impl<T: DaemonExtra> ScheduleService for Daemon<T> {
             }
         }
 
-        trigger(server_id, server_data, self.clone(), steps);
+        trigger(server_id, server_data, self.clone(), steps, timezone);
 
         Ok(())
     }

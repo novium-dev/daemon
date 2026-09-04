@@ -3,15 +3,18 @@ use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra, storage};
 use async_trait::async_trait;
 use daemon_common::service::FileResponse;
-use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::backup::backup_service_error::{
     ServerCreateBackupError, ServerCreateBackupOrderError, ServerDeleteBackupError,
     ServerDownloadBackupError, ServerDownloadBackupUserError, ServerDownloadRealtimeError,
-    ServerDownloadRealtimeUserError, ServerListBackupsError, ServerRestoreBackupError,
-    ServerSetBackupNameError,
+    ServerDownloadRealtimeUserError, ServerListBackupsError, ServerPruneBackupsError,
+    ServerRestoreBackupError, ServerSetBackupNameError, ServerSetBackupProtectedError,
+};
+use daemon_common::service::backup::{
+    BackupPruneEntry, BackupPrunePayload, BackupResponseEntry,
 };
 use daemon_common::user::UserSignature;
+use chrono_tz::Tz;
 
 #[async_trait]
 impl<T: DaemonExtra> BackupService for Daemon<T> {
@@ -106,6 +109,35 @@ impl<T: DaemonExtra> BackupService for Daemon<T> {
     ) -> Result<(), ServerSetBackupNameError> {
         let storage = StorageIdentifier::Primary(server_id);
         storage::backup::set_backup_name(self, storage, backup_id, &backup_storage, name).await
+    }
+
+    async fn server_set_backup_protected(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        backup_id: i64,
+        protected: bool,
+    ) -> Result<(), ServerSetBackupProtectedError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        storage::backup::set_backup_protected(self, storage, backup_id, &backup_storage, protected)
+            .await
+    }
+
+    async fn server_prune_backups(
+        &self,
+        server_id: u32,
+        payload: BackupPrunePayload,
+    ) -> Result<Vec<BackupPruneEntry>, ServerPruneBackupsError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        storage::backup::prune_backups(
+            self,
+            storage,
+            payload.storage.as_ref(),
+            payload.retention,
+            payload.timezone.unwrap_or(Tz::UTC),
+            payload.dry_run,
+        )
+        .await
     }
 
     async fn server_delete_backup(

@@ -11,6 +11,9 @@ use core::fmt::{Debug, Display, Formatter};
 use core::sync::atomic::AtomicI64;
 use core::sync::atomic::{AtomicU64, Ordering};
 use core::time::Duration;
+use daemon_common::service::backup::error_backup_storage_incompatible::FromBackupStorageIncompatible;
+use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
+use daemon_common::service::backup::error_backup_storage_no_suitable_found::FromBackupStorageNoSuitableFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
@@ -277,6 +280,12 @@ pub enum StorageError {
     IO(io::Error),
     Timeout,
     NotFound,
+    /// The named backup storage is not configured on this daemon.
+    BackupStorageNotFound,
+    /// The backup storage cannot hold backups of this server storage.
+    BackupStorageIncompatible,
+    /// No configured backup storage is compatible with this server storage.
+    BackupStorageUnsuitable,
 }
 
 impl Error for StorageError {
@@ -284,7 +293,12 @@ impl Error for StorageError {
         match self {
             Self::Sqlx(err) => Some(err),
             Self::IO(err) => Some(err),
-            Self::Timeout | Self::NotFound | Self::Failure => None,
+            Self::Timeout
+            | Self::NotFound
+            | Self::Failure
+            | Self::BackupStorageNotFound
+            | Self::BackupStorageIncompatible
+            | Self::BackupStorageUnsuitable => None,
         }
     }
 }
@@ -325,6 +339,33 @@ impl FromStorageFailure for StorageError {
         Self: Sized,
     {
         Self::Failure
+    }
+}
+
+impl FromBackupStorageLocationNotFound for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::BackupStorageNotFound
+    }
+}
+
+impl FromBackupStorageIncompatible for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::BackupStorageIncompatible
+    }
+}
+
+impl FromBackupStorageNoSuitableFound for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::BackupStorageUnsuitable
     }
 }
 
