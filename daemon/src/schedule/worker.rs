@@ -190,9 +190,9 @@ async fn start(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStep
     ) else {
         return ScheduleStepResult::Continue;
     };
-    let Err(StorageError::Timeout) = storage else {
+    if matches!(storage, Err(StorageError::Timeout)) {
         return ScheduleStepResult::Continue;
-    };
+    }
     let Ok(storage) = storage.inspect_err(|err| error!("Unable to acquire storage lock: {err:?}"))
     else {
         return ScheduleStepResult::Interrupt;
