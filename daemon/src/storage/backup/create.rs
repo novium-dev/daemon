@@ -199,18 +199,11 @@ async fn create_backup0<E: From<std::io::Error>>(
         });
     });
 
-    // The path the finished backup lives at, so that a name can be attached to
-    // it without a second round trip through the API.
+    // Also yields the path the finished backup lives at, so that a name can be
+    // attached to it without a second round trip through the API.
     let target = match backup {
         BackupEntry::Archive { compression, .. } => {
-            target_dir.join(format!("{timestamp}.tar{}", compression.ext()))
-        }
-        #[cfg(feature = "btrfs")]
-        BackupEntry::Btrfs { .. } => target_dir.join(timestamp.to_string()),
-    };
-
-    match backup {
-        BackupEntry::Archive { compression, .. } => {
+            let target = target_dir.join(format!("{timestamp}.tar{}", compression.ext()));
             lock = tokio::task::spawn(create_archive_backup(
                 dir,
                 target_dir,
@@ -221,6 +214,7 @@ async fn create_backup0<E: From<std::io::Error>>(
             ))
             .await
             .map_err(io::Error::from)??;
+            target
         }
         #[cfg(feature = "btrfs")]
         BackupEntry::Btrfs { .. } => {
@@ -231,8 +225,9 @@ async fn create_backup0<E: From<std::io::Error>>(
             super::super::btrfs::new_snapshot(subvol_fd, &target_dir, &timestamp.to_string(), true)
                 .await
                 .inspect_err(|err| debug!("Backup creation failed (snapshot): {:?}", err))?;
+            target_dir.join(timestamp.to_string())
         }
-    }
+    };
 
     if let Some(name) = name.filter(|name| !name.is_empty()) {
         tokio::fs::File::open(&target)

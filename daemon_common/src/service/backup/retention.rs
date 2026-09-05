@@ -87,21 +87,28 @@ impl BackupRetention {
             && self.keep_yearly == 0
     }
 
-    /// The most backups this policy can ever keep.
+    /// The most backups this policy can ever keep, or `None` when it keeps
+    /// everything and therefore has no ceiling at all.
     ///
     /// Every counter keeps at most its own number of backups and the counters
     /// are a union, so their sum is the ceiling. Check a policy against a quota
     /// with this before accepting it: a policy whose ceiling is above the quota
-    /// asks for more backups than will ever exist. Protected backups are not
-    /// covered, they are kept on top of whatever the policy decides.
+    /// asks for more backups than will ever exist, and a `None` asks for an
+    /// unbounded number of them. Protected backups are not covered, they are
+    /// kept on top of whatever the policy decides.
     #[must_use]
-    pub const fn max_kept(&self) -> u64 {
-        (self.keep_last as u64)
-            .saturating_add(self.keep_hourly as u64)
-            .saturating_add(self.keep_daily as u64)
-            .saturating_add(self.keep_weekly as u64)
-            .saturating_add(self.keep_monthly as u64)
-            .saturating_add(self.keep_yearly as u64)
+    pub const fn max_kept(&self) -> Option<u64> {
+        if self.is_noop() {
+            return None;
+        }
+        Some(
+            (self.keep_last as u64)
+                .saturating_add(self.keep_hourly as u64)
+                .saturating_add(self.keep_daily as u64)
+                .saturating_add(self.keep_weekly as u64)
+                .saturating_add(self.keep_monthly as u64)
+                .saturating_add(self.keep_yearly as u64),
+        )
     }
 
     /// Splits `candidates` into the backups this policy keeps and the ones it
@@ -403,8 +410,12 @@ mod tests {
             keep_weekly: 4,
             ..BackupRetention::default()
         };
-        assert_eq!(policy.max_kept(), 14);
-        assert_eq!(BackupRetention::default().max_kept(), 0);
+        assert_eq!(policy.max_kept(), Some(14));
+        assert_eq!(
+            BackupRetention::default().max_kept(),
+            None,
+            "a policy that keeps everything has no ceiling"
+        );
 
         // The ceiling is reached when no two counters pick the same backup.
         let list = candidates(&[
@@ -420,7 +431,10 @@ mod tests {
             ..BackupRetention::default()
         }
         .apply(&list);
-        assert!(outcome.keep.len() as u64 <= policy.max_kept());
+        assert!(
+            outcome.keep.len() as u64
+                <= policy.max_kept().expect("this policy has active counters")
+        );
         assert_eq!(outcome.keep.len(), 3, "the counters overlap here");
     }
 
