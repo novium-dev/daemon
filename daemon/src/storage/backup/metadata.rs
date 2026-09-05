@@ -18,8 +18,9 @@ use tracing::{debug, error};
 
 /// Updates the metadata a backup carries in its extended attributes.
 ///
-/// `name` is the backup's new name and `None` removes it. `protected` exempts
-/// the backup from retention policies, and `None` leaves that as it is.
+/// A `None` leaves the respective attribute untouched, so that protection can
+/// be changed without touching the name and the other way round. An empty
+/// `name` removes the name.
 ///
 /// Cancel safe
 pub async fn update_backup<
@@ -38,9 +39,11 @@ pub async fn update_backup<
     protected: Option<bool>,
 ) -> Result<(), E> {
     let (file, lock) = open_for_update::<E>(state, id, backup_id, backup_storage).await?;
-    file.set_backup_name(name)
-        .await
-        .inspect_err(|err| error!("Failed to update a backup (name): {err:?}"))?;
+    if let Some(name) = name {
+        file.set_backup_name(Some(name).filter(|name| !name.is_empty()))
+            .await
+            .inspect_err(|err| error!("Failed to update a backup (name): {err:?}"))?;
+    }
     if let Some(protected) = protected {
         file.set_backup_protected(protected)
             .await

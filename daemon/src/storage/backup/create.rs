@@ -2,6 +2,7 @@
 use crate::config::{ArchiveCompression, BackupEntry, StorageEntry};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedAppendExt as _;
+use crate::storage::backup::BackupMetadataExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::sync::task::TaskOwnedRwLockReadGuard;
 use crate::{Daemon, DaemonExtra};
@@ -32,6 +33,7 @@ pub async fn create_backup_order<
 >(
     daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
+    name: Option<String>,
 ) -> Result<i64, E> {
     let StorageLockData {
         path,
@@ -69,9 +71,16 @@ pub async fn create_backup_order<
     match suitable {
         None => Err(<E as FromBackupStorageNoSuitableFound>::from()),
         Some((backup_storage, backup_entry)) => {
-            let (id, lock) =
-                create_backup0::<E>(path, id, backup_storage, backup_entry, lock, backup_exclude)
-                    .await?;
+            let (id, lock) = create_backup0::<E>(
+                path,
+                id,
+                backup_storage,
+                backup_entry,
+                lock,
+                backup_exclude,
+                name,
+            )
+            .await?;
             drop(lock); // Ensure lock hasn't been unlocked until now
             Ok(id)
         }
@@ -112,6 +121,7 @@ pub async fn create_backup<
     state: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     backup_storage: &String,
+    name: Option<String>,
 ) -> Result<i64, E> {
     let backup = state
         .config
@@ -148,6 +158,7 @@ pub async fn create_backup<
         backup,
         lock,
         backup_exclude,
+        name,
     )
     .await?;
     drop(lock);
@@ -162,6 +173,7 @@ async fn create_backup0<E: From<std::io::Error>>(
     backup: &BackupEntry,
     mut lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
     mut exclude: HashSet<String>,
+    name: Option<String>,
 ) -> Result<(i64, TaskOwnedRwLockReadGuard<StorageTask, ()>), E> {
     exclude.insert(".tmp/".to_owned());
 
@@ -187,6 +199,16 @@ async fn create_backup0<E: From<std::io::Error>>(
         });
     });
 
+    // The path the finished backup lives at, so that a name can be attached to
+    // it without a second round trip through the API.
+    let target = match backup {
+        BackupEntry::Archive { compression, .. } => {
+            target_dir.join(format!("{timestamp}.tar{}", compression.ext()))
+        }
+        #[cfg(feature = "btrfs")]
+        BackupEntry::Btrfs { .. } => target_dir.join(timestamp.to_string()),
+    };
+
     match backup {
         BackupEntry::Archive { compression, .. } => {
             lock = tokio::task::spawn(create_archive_backup(
@@ -211,6 +233,16 @@ async fn create_backup0<E: From<std::io::Error>>(
                 .inspect_err(|err| debug!("Backup creation failed (snapshot): {:?}", err))?;
         }
     }
+
+    if let Some(name) = name.filter(|name| !name.is_empty()) {
+        tokio::fs::File::open(&target)
+            .await
+            .inspect_err(|err| debug!("Backup creation failed (open for name): {err:?}"))?
+            .set_backup_name(Some(name))
+            .await
+            .inspect_err(|err| debug!("Backup creation failed (set name): {err:?}"))?;
+    }
+
     Ok((timestamp, lock))
 }
 

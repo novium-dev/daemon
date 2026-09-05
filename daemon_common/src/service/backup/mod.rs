@@ -48,12 +48,23 @@ pub trait BackupService {
     /// Creates a new backup (selecting the backup storage by order)
     #[route("", method = PUT)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::no_suitable_found, sql::failure <- [sql:*])]
-    async fn server_create_backup_order(&self, server_id: u32) -> Result<i64, _>;
+    #[example("examples/create.json")]
+    async fn server_create_backup_order(
+        &self,
+        server_id: u32,
+        name: Option<String>,
+    ) -> Result<i64, _>;
 
     /// Creates a new backup
     #[route("/{backup_storage}", method = PUT)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::{incompatible, location_not_found}, sql::failure <- [sql:*])]
-    async fn server_create_backup(&self, server_id: u32, backup_storage: String) -> Result<i64, _>;
+    #[example("examples/create.json")]
+    async fn server_create_backup(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        name: Option<String>,
+    ) -> Result<i64, _>;
 
     /// Downloads a backup
     #[route("/{backup_storage}/{backup_id}", method = GET, raw)]
@@ -97,9 +108,9 @@ pub trait BackupService {
         compression: String,
     ) -> Result<FileResponse, _>;
 
-    /// Updates the metadata of a backup: `name` is its new name and `null`
-    /// gives it none, `protected` exempts it from retention policies and `null`
-    /// leaves that as it is
+    /// Updates the metadata of a backup. Every field left `null` is untouched:
+    /// `name` renames the backup and an empty `name` removes its name,
+    /// `protected` exempts it from retention policies
     #[route("/{backup_storage}/{backup_id}", method = PATCH)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup::not_found <- [io:NotFound], backup_storage::location_not_found, sql::failure <- [sql:*])]
     #[example("examples/update.json")]

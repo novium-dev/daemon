@@ -87,6 +87,23 @@ impl BackupRetention {
             && self.keep_yearly == 0
     }
 
+    /// The most backups this policy can ever keep.
+    ///
+    /// Every counter keeps at most its own number of backups and the counters
+    /// are a union, so their sum is the ceiling. Check a policy against a quota
+    /// with this before accepting it: a policy whose ceiling is above the quota
+    /// asks for more backups than will ever exist. Protected backups are not
+    /// covered, they are kept on top of whatever the policy decides.
+    #[must_use]
+    pub const fn max_kept(&self) -> u64 {
+        (self.keep_last as u64)
+            .saturating_add(self.keep_hourly as u64)
+            .saturating_add(self.keep_daily as u64)
+            .saturating_add(self.keep_weekly as u64)
+            .saturating_add(self.keep_monthly as u64)
+            .saturating_add(self.keep_yearly as u64)
+    }
+
     /// Splits `candidates` into the backups this policy keeps and the ones it
     /// removes.
     #[must_use]
@@ -139,7 +156,7 @@ impl BackupRetention {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum Period {
     Last,
     Hourly,
@@ -153,7 +170,7 @@ impl Period {
     /// The period a backup falls into. Backups sharing a period compete for the
     /// same slot, so only the newest of them is kept.
     fn of(self, id: i64) -> Option<String> {
-        if matches!(self, Self::Last) {
+        if self == Self::Last {
             // Every backup is its own period, which makes the counter a plain
             // "keep the newest n".
             return Some(id.to_string());
@@ -187,7 +204,7 @@ fn mark_period(marks: &mut BTreeMap<i64, RetentionMark>, keep: u32, period: Peri
     for (id, mark) in marks.iter_mut().rev() {
         // Protected backups are exempt from the policy entirely: they neither
         // represent a period nor use up a counter.
-        if matches!(*mark, RetentionMark::Protected) {
+        if *mark == RetentionMark::Protected {
             continue;
         }
         let Some(current) = period.of(*id) else {
@@ -376,6 +393,35 @@ mod tests {
         .apply(&list);
         assert_eq!(outcome.keep, vec![at("2026-01-01T12:00:00Z")]);
         assert_eq!(outcome.remove, vec![at("2025-12-29T12:00:00Z")]);
+    }
+
+    #[test]
+    fn max_kept_is_the_sum_of_the_counters() {
+        let policy = BackupRetention {
+            keep_last: 3,
+            keep_daily: 7,
+            keep_weekly: 4,
+            ..BackupRetention::default()
+        };
+        assert_eq!(policy.max_kept(), 14);
+        assert_eq!(BackupRetention::default().max_kept(), 0);
+
+        // The ceiling is reached when no two counters pick the same backup.
+        let list = candidates(&[
+            "2026-01-05T12:00:00Z",
+            "2026-01-04T12:00:00Z",
+            "2026-01-03T12:00:00Z",
+            "2026-01-02T12:00:00Z",
+            "2026-01-01T12:00:00Z",
+        ]);
+        let outcome = BackupRetention {
+            keep_last: 2,
+            keep_daily: 3,
+            ..BackupRetention::default()
+        }
+        .apply(&list);
+        assert!(outcome.keep.len() as u64 <= policy.max_kept());
+        assert_eq!(outcome.keep.len(), 3, "the counters overlap here");
     }
 
     #[test]

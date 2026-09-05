@@ -286,6 +286,8 @@ async fn kill(daemon: Daemon<impl DaemonExtra>, server_id: u32) -> ScheduleStepR
 ///
 /// A failed backup interrupts the schedule. A failed prune does not, since the
 /// backup itself did land and the next run prunes again.
+///
+/// Cancel safe
 #[inline(always)]
 async fn backup(
     daemon: Daemon<impl DaemonExtra>,
@@ -298,8 +300,10 @@ async fn backup(
     tokio::task::spawn(async move {
         let id = StorageIdentifier::Primary(server_id);
         let created = match storage.as_ref() {
-            Some(storage) => backup::create_backup::<StorageError>(&daemon, id, storage).await,
-            None => backup::create_backup_order::<StorageError>(&daemon, id).await,
+            Some(storage) => {
+                backup::create_backup::<StorageError>(&daemon, id, storage, None).await
+            }
+            None => backup::create_backup_order::<StorageError>(&daemon, id, None).await,
         };
         match created {
             Ok(backup_id) => info!("Schedule created backup {backup_id} of server {server_id}"),
@@ -310,7 +314,7 @@ async fn backup(
         }
 
         if let Some(retention) = retention {
-            prune(daemon, server_id, storage, retention).await;
+            prune_logged(&daemon, server_id, storage.as_ref(), retention).await;
         }
 
         ScheduleStepResult::Continue
@@ -321,8 +325,7 @@ async fn backup(
 
 /// Applies a retention policy to a server's backups.
 ///
-/// A prune that fails is logged and forgotten: the next run applies the same
-/// policy again, so nothing is lost by letting the schedule carry on.
+/// Cancel safe
 #[inline(always)]
 async fn prune(
     daemon: Daemon<impl DaemonExtra>,
@@ -331,30 +334,46 @@ async fn prune(
     retention: BackupRetention,
 ) {
     // Ensure a prune that has started deleting is not cancelled part way.
-    let pruned = tokio::task::spawn(async move {
-        backup::prune_backups::<StorageError>(
-            &daemon,
-            StorageIdentifier::Primary(server_id),
-            storage.as_ref(),
-            retention,
-            false,
-        )
-        .await
+    if let Err(err) = tokio::task::spawn(async move {
+        prune_logged(&daemon, server_id, storage.as_ref(), retention).await;
     })
-    .await;
+    .await
+    {
+        error!("Prune task of server {server_id} panicked: {err:?}");
+    }
+}
 
-    match pruned {
-        Ok(Ok(entries)) => {
+/// Applies a retention policy, reporting the outcome to the log.
+///
+/// A prune that fails is logged and forgotten: the next run applies the same
+/// policy again, so nothing is lost by letting the schedule carry on.
+///
+/// Not cancel safe, run it inside a task of its own.
+async fn prune_logged(
+    daemon: &Daemon<impl DaemonExtra>,
+    server_id: u32,
+    storage: Option<&String>,
+    retention: BackupRetention,
+) {
+    match backup::prune_backups::<StorageError>(
+        daemon,
+        StorageIdentifier::Primary(server_id),
+        storage,
+        retention,
+        false,
+    )
+    .await
+    {
+        Ok(entries) => {
             let removed = entries.iter().filter(|entry| !entry.keep).count();
             info!(
                 "Retention policy removed {removed} of {} backups of server {server_id}",
                 entries.len()
             );
         }
-        Ok(Err(err)) => {
+        Err(err) => {
             error!("Schedule failed to prune the backups of server {server_id}: {err:?}");
         }
-        Err(err) => error!("Prune task of server {server_id} panicked: {err:?}"),
     }
 }
 
