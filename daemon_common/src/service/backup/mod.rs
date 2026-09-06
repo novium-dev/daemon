@@ -8,6 +8,10 @@ use url::Url;
 use zelus::define_query_variable;
 use zelus::responses::FileResponse;
 
+pub mod retention;
+
+pub use retention::{BackupRetention, RetentionCandidate, RetentionOutcome};
+
 define_path_variable!(
     backup_storage "The storage where the backup will be/is stored"
 );
@@ -44,12 +48,23 @@ pub trait BackupService {
     /// Creates a new backup (selecting the backup storage by order)
     #[route("", method = PUT)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::no_suitable_found, sql::failure <- [sql:*])]
-    async fn server_create_backup_order(&self, server_id: u32) -> Result<i64, _>;
+    #[example("examples/create.json")]
+    async fn server_create_backup_order(
+        &self,
+        server_id: u32,
+        name: Option<String>,
+    ) -> Result<i64, _>;
 
     /// Creates a new backup
     #[route("/{backup_storage}", method = PUT)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::{incompatible, location_not_found}, sql::failure <- [sql:*])]
-    async fn server_create_backup(&self, server_id: u32, backup_storage: String) -> Result<i64, _>;
+    #[example("examples/create.json")]
+    async fn server_create_backup(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        name: Option<String>,
+    ) -> Result<i64, _>;
 
     /// Downloads a backup
     #[route("/{backup_storage}/{backup_id}", method = GET, raw)]
@@ -93,15 +108,19 @@ pub trait BackupService {
         compression: String,
     ) -> Result<FileResponse, _>;
 
-    /// Sets the name of a backup
+    /// Updates the metadata of a backup. Every field left `null` is untouched:
+    /// `name` renames the backup and an empty `name` removes its name,
+    /// `protected` exempts it from retention policies
     #[route("/{backup_storage}/{backup_id}", method = PATCH)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup::not_found <- [io:NotFound], backup_storage::location_not_found, sql::failure <- [sql:*])]
-    async fn server_set_backup_name(
+    #[example("examples/update.json")]
+    async fn server_update_backup(
         &self,
         server_id: u32,
         backup_storage: String,
         backup_id: i64,
         name: Option<String>,
+        protected: Option<bool>,
     ) -> Result<(), _>;
 
     /// Deletes a backup
@@ -113,6 +132,20 @@ pub trait BackupService {
         backup_storage: String,
         backup_id: i64,
     ) -> Result<(), _>;
+
+    /// Applies a retention policy to a backup storage, deleting every backup of
+    /// it the policy does not keep. A `dry_run` reports the same decisions
+    /// without deleting anything
+    #[route("/{backup_storage}/prune", method = POST)]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, backup_storage::location_not_found, sql::failure <- [sql:*])]
+    #[example("examples/prune.json")]
+    async fn server_prune_backups(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        retention: BackupRetention,
+        dry_run: bool,
+    ) -> Result<Vec<BackupPruneEntry>, _>;
 
     /// Restores a backup
     #[route("/{backup_storage}/{backup_id}/restore", method = GET)]
@@ -175,10 +208,24 @@ impl<T: BackupServiceURL + UserKeyProvider> BackupServiceUserKeyExtension for T 
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
-#[schema(example = json!({"time": 1_731_160_477_597i64, "storage": "local"}))]
+#[schema(example = json!({"time": 1_731_160_477_597i64, "storage": "local", "protected": false}))]
 pub struct BackupResponseEntry {
     pub time: i64,
     pub storage: String,
     pub name: Option<String>,
     pub size: Option<u64>,
+    /// Whether the backup is exempt from retention policies.
+    pub protected: bool,
+}
+
+/// What a retention policy decided about a single backup.
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+#[schema(example = json!({"time": 1_731_160_477_597i64, "storage": "local", "keep": true, "protected": false}))]
+pub struct BackupPruneEntry {
+    pub time: i64,
+    pub storage: String,
+    /// Whether the policy kept this backup. A `false` here means the backup was
+    /// deleted, unless the prune was a dry run.
+    pub keep: bool,
+    pub protected: bool,
 }

@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
-use crate::storage::backup::BackupNameExt as _;
+use crate::storage::backup::BackupMetadataExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::sync::task::TaskOwnedRwLockReadGuard;
 use crate::{Daemon, DaemonExtra};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
@@ -15,8 +16,14 @@ use std::path::PathBuf;
 use tokio::fs::File;
 use tracing::{debug, error};
 
+/// Updates the metadata a backup carries in its extended attributes.
+///
+/// A `None` leaves the respective attribute untouched, so that protection can
+/// be changed without touching the name and the other way round. An empty
+/// `name` removes the name.
+///
 /// Cancel safe
-pub async fn set_backup_name<
+pub async fn update_backup<
     E: From<io::Error>
         + From<sqlx::Error>
         + FromStorageNotFound
@@ -29,7 +36,42 @@ pub async fn set_backup_name<
     backup_id: i64,
     backup_storage: &String,
     name: Option<String>,
+    protected: Option<bool>,
 ) -> Result<(), E> {
+    let (file, lock) = open_for_update::<E>(state, id, backup_id, backup_storage).await?;
+    if let Some(name) = name {
+        file.set_backup_name(Some(name).filter(|name| !name.is_empty()))
+            .await
+            .inspect_err(|err| error!("Failed to update a backup (name): {err:?}"))?;
+    }
+    if let Some(protected) = protected {
+        file.set_backup_protected(protected)
+            .await
+            .inspect_err(|err| error!("Failed to update a backup (protected): {err:?}"))?;
+    }
+
+    drop(lock);
+
+    Ok(())
+}
+
+/// Opens the archive (or subvolume) a backup is stored as, holding the storage
+/// read lock for as long as the returned guard lives.
+///
+/// Cancel safe
+async fn open_for_update<
+    E: From<io::Error>
+        + From<sqlx::Error>
+        + FromStorageNotFound
+        + FromStorageMutexLocked
+        + FromStorageFailure
+        + FromBackupStorageLocationNotFound,
+>(
+    state: &Daemon<impl DaemonExtra>,
+    id: StorageIdentifier,
+    backup_id: i64,
+    backup_storage: &String,
+) -> Result<(File, TaskOwnedRwLockReadGuard<StorageTask, ()>), E> {
     let backup = state
         .config
         .backup
@@ -60,16 +102,10 @@ pub async fn set_backup_name<
     };
     let file = File::open(target).await.inspect_err(|err| {
         if err.kind() == ErrorKind::NotFound {
-            debug!("Failed to set backup name (open): {err:?}");
+            debug!("Failed to open a backup for an update: {err:?}");
         } else {
-            error!("Failed to set backup name (open): {err:?}");
+            error!("Failed to open a backup for an update: {err:?}");
         }
     })?;
-    file.set_backup_name(name)
-        .await
-        .inspect_err(|err| error!("Failed to set backup name (set): {err:?}"))?;
-
-    drop(lock);
-
-    Ok(())
+    Ok((file, lock))
 }

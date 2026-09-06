@@ -3,14 +3,14 @@ use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra, storage};
 use async_trait::async_trait;
 use daemon_common::service::FileResponse;
-use daemon_common::service::backup::BackupResponseEntry;
 use daemon_common::service::backup::BackupService;
 use daemon_common::service::backup::backup_service_error::{
     ServerCreateBackupError, ServerCreateBackupOrderError, ServerDeleteBackupError,
     ServerDownloadBackupError, ServerDownloadBackupUserError, ServerDownloadRealtimeError,
-    ServerDownloadRealtimeUserError, ServerListBackupsError, ServerRestoreBackupError,
-    ServerSetBackupNameError,
+    ServerDownloadRealtimeUserError, ServerListBackupsError, ServerPruneBackupsError,
+    ServerRestoreBackupError, ServerUpdateBackupError,
 };
+use daemon_common::service::backup::{BackupPruneEntry, BackupResponseEntry, BackupRetention};
 use daemon_common::user::UserSignature;
 
 #[async_trait]
@@ -26,18 +26,20 @@ impl<T: DaemonExtra> BackupService for Daemon<T> {
     async fn server_create_backup_order(
         &self,
         server_id: u32,
+        name: Option<String>,
     ) -> Result<i64, ServerCreateBackupOrderError> {
         let storage = StorageIdentifier::Primary(server_id);
-        storage::backup::create_backup_order(self, storage).await
+        storage::backup::create_backup_order(self, storage, name).await
     }
 
     async fn server_create_backup(
         &self,
         server_id: u32,
         backup_storage: String,
+        name: Option<String>,
     ) -> Result<i64, ServerCreateBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
-        storage::backup::create_backup(self, storage, &backup_storage).await
+        storage::backup::create_backup(self, storage, &backup_storage, name).await
     }
 
     async fn server_download_backup(
@@ -97,15 +99,29 @@ impl<T: DaemonExtra> BackupService for Daemon<T> {
         storage::backup::stream_realtime(self, storage, compression).await
     }
 
-    async fn server_set_backup_name(
+    async fn server_update_backup(
         &self,
         server_id: u32,
         backup_storage: String,
         backup_id: i64,
         name: Option<String>,
-    ) -> Result<(), ServerSetBackupNameError> {
+        protected: Option<bool>,
+    ) -> Result<(), ServerUpdateBackupError> {
         let storage = StorageIdentifier::Primary(server_id);
-        storage::backup::set_backup_name(self, storage, backup_id, &backup_storage, name).await
+        storage::backup::update_backup(self, storage, backup_id, &backup_storage, name, protected)
+            .await
+    }
+
+    async fn server_prune_backups(
+        &self,
+        server_id: u32,
+        backup_storage: String,
+        retention: BackupRetention,
+        dry_run: bool,
+    ) -> Result<Vec<BackupPruneEntry>, ServerPruneBackupsError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        storage::backup::prune_backups(self, storage, Some(&backup_storage), retention, dry_run)
+            .await
     }
 
     async fn server_delete_backup(

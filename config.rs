@@ -31,6 +31,7 @@ pub const STORAGE_SCAN_INTERVAL: ::core::time::Duration = ::core::time::Duration
 pub const SSH_BANNER_PREFIX: &str = "SSH-2.0-Daemon-";
 
 pub const DAEMON_BACKUP_NAME_XATTR: &str = "user.novium_daemon.backup_name";
+pub const DAEMON_BACKUP_PROTECTED_XATTR: &str = "user.novium_daemon.backup_protected";
 
 pub const BRIDGE_DEFAULT_IPV6_PREFIX: &str = "fdcb:c049:22d3:a::/64";
 pub const BRIDGE_INTERNET_IPV6_PREFIX: &str = "fdcb:c049:22d3:b::/64";

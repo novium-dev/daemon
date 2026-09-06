@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
-use crate::storage::backup::BackupNameExt as _;
+use crate::storage::backup::BackupMetadataExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::{Daemon, DaemonExtra};
 use daemon_common::service::backup::BackupResponseEntry;
@@ -75,12 +75,16 @@ pub async fn list_backups<
                     let name = file.get_backup_name().await.inspect_err(|err| {
                         error!("Failed to list backups (get_name): {err:?}");
                     })?;
+                    let protected = file.get_backup_protected().await.inspect_err(|err| {
+                        error!("Failed to list backups (get_protected): {err:?}");
+                    })?;
                     if let Ok(entry) = entry {
                         entries.push(BackupResponseEntry {
                             time: entry,
                             storage: storage.clone(),
                             size: Some(size),
                             name,
+                            protected,
                         });
                     }
                 }
@@ -130,6 +134,9 @@ pub async fn list_backups<
                     let name = file.get_backup_name().await.inspect_err(|err| {
                         error!("Failed to list backups (get_name): {err:?}");
                     })?;
+                    let protected = file.get_backup_protected().await.inspect_err(|err| {
+                        error!("Failed to list backups (get_protected): {err:?}");
+                    })?;
                     let size = if *quota {
                         match tokio::task::spawn_blocking(move || {
                             super::super::btrfs::get_subvol_id(Ok(file))
@@ -159,6 +166,7 @@ pub async fn list_backups<
                             storage: storage.clone(),
                             size,
                             name,
+                            protected,
                         });
                     }
                 }
