@@ -13,7 +13,7 @@ pub async fn realpath(session: &DaemonSftpSession, path: String) -> Result<Vec<F
         temp_prefix,
         temp_suffix,
     } = session.resolve_path(path)?;
-    let mut path = PathBuf::new();
+    let mut path = PathBuf::from("/");
 
     for entry in temp_prefix {
         path = path.join(entry);
