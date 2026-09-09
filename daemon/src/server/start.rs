@@ -389,12 +389,12 @@ impl FetchedServer {
         let root_user = if uid == 0 {
             ""
         } else {
-            "root:x:0:0:root:/root:/bin/sh\n"
+            "root:x:0:0::/root:/bin/sh\n"
         };
         let nobody_user = if uid == NOBODY {
             String::new()
         } else {
-            format!("nobody:x:{NOBODY}:{NOBODY}:nobody:/nonexistent:/bin/false\n")
+            format!("nobody:x:{NOBODY}:{NOBODY}::/var/empty:/bin/sh\n")
         };
         let root_group = if gid == 0 { "" } else { "root:x:0:\n" };
         let nobody_group = if gid == NOBODY {
@@ -403,10 +403,8 @@ impl FetchedServer {
             format!("nogroup:x:{NOBODY}:\n")
         };
 
-        // The entry of the server comes first, so that it is the one resolved for its uid
-        // even if it collides with one of the entries below.
-        let passwd = format!("{user}:x:{uid}:{gid}::{home}:/bin/sh\n{root_user}{nobody_user}");
-        let group = format!("{user}:x:{gid}:\n{root_group}{nobody_group}");
+        let passwd = format!("{root_user}{user}:x:{uid}:{gid}::{home}:/bin/sh\n{nobody_user}");
+        let group = format!("{root_group}{user}:x:{gid}:\n{nobody_group}");
 
         let dir = runtime_dir.join("containers").join(server_id.to_string());
         tokio::fs::create_dir_all(&dir).await?;
