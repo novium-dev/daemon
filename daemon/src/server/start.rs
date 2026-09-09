@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
+use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::warn;
@@ -163,7 +164,21 @@ impl FetchedServer {
 
         binds.push(format!("{}:/control.sock", control_path.to_string_lossy()));
 
-        binds.push(format!("{storage_path}:/work"));
+        binds.push(format!(
+            "{storage_path}:{}",
+            crate::common::CONTAINER_WORK_DIR
+        ));
+
+        let uid = self.uid.unwrap_or(crate::common::CONTAINER_DEFAULT_UID);
+        let gid = self.gid.unwrap_or(crate::common::CONTAINER_DEFAULT_GID);
+
+        let (passwd_path, group_path) =
+            Self::write_user_database(&daemon.runtime_dir, self.id, uid, gid)
+                .await
+                .map_err(ServerStartError::IO)?;
+
+        binds.push(format!("{}:/etc/passwd:ro", passwd_path.to_string_lossy()));
+        binds.push(format!("{}:/etc/group:ro", group_path.to_string_lossy()));
 
         let mut networks = HashMap::with_capacity(1);
 
@@ -216,9 +231,16 @@ impl FetchedServer {
 
         Self::log(&server_data.sender, &mut buffer, "Creating Environment...");
 
-        let mut env: HashMap<String, String> =
-            HashMap::from_iter([("TERM".to_owned(), "xterm-256color".to_owned())]);
-        env.extend(self.environment.clone());
+        let mut env: HashMap<String, String> = HashMap::from_iter([
+            ("TERM".to_owned(), "xterm-256color".to_owned()),
+            ("TZ".to_owned(), utils::host_timezone().to_owned()),
+            (
+                "HOME".to_owned(),
+                crate::common::CONTAINER_WORK_DIR.to_owned(),
+            ),
+            ("USER".to_owned(), crate::common::CONTAINER_USER.to_owned()),
+        ]);
+        env.extend(self.environment.clone()); // the server may override the defaults above
         let env = env
             .into_iter()
             .map(|(key, value)| format!("{key}={value}"))
@@ -241,11 +263,9 @@ impl FetchedServer {
 
                     image: Some(image),
 
-                    user: Some(format!(
-                        "{}:{}",
-                        self.uid.unwrap_or(crate::common::CONTAINER_DEFAULT_UID),
-                        self.gid.unwrap_or(crate::common::CONTAINER_DEFAULT_GID)
-                    )),
+                    user: Some(format!("{uid}:{gid}")),
+
+                    working_dir: Some(crate::common::CONTAINER_WORK_DIR.to_owned()),
 
                     attach_stdout: Some(true),
                     attach_stderr: Some(true),
@@ -344,6 +364,64 @@ impl FetchedServer {
         .await?;
 
         Ok(())
+    }
+
+    /// Generates the `/etc/passwd` and `/etc/group` that are mounted into the container
+    /// and returns their paths on the host.
+    ///
+    /// The images are not aware of the uid a server runs as and the root filesystem of the
+    /// container is read-only, so the uid would not resolve to any user at all. Everything
+    /// that looks up the home directory would then fall back to `/`, which is not writable
+    /// (e.g. a jvm trying to write to `/.cache`). The generated entry points the home
+    /// directory at the storage mount instead, comparable to the `container` user of the
+    /// Pterodactyl images living in `/home/container`.
+    async fn write_user_database(
+        runtime_dir: &Path,
+        server_id: u32,
+        uid: u16,
+        gid: u16,
+    ) -> Result<(PathBuf, PathBuf), io::Error> {
+        const NOBODY: u16 = 0xFFFE;
+
+        let user = crate::common::CONTAINER_USER;
+        let home = crate::common::CONTAINER_WORK_DIR;
+
+        let root_user = if uid == 0 {
+            ""
+        } else {
+            "root:x:0:0:root:/root:/bin/sh\n"
+        };
+        let nobody_user = if uid == NOBODY {
+            String::new()
+        } else {
+            format!("nobody:x:{NOBODY}:{NOBODY}:nobody:/nonexistent:/bin/false\n")
+        };
+        let root_group = if gid == 0 { "" } else { "root:x:0:\n" };
+        let nobody_group = if gid == NOBODY {
+            String::new()
+        } else {
+            format!("nogroup:x:{NOBODY}:\n")
+        };
+
+        // The entry of the server comes first, so that it is the one resolved for its uid
+        // even if it collides with one of the entries below.
+        let passwd = format!("{user}:x:{uid}:{gid}::{home}:/bin/sh\n{root_user}{nobody_user}");
+        let group = format!("{user}:x:{gid}:\n{root_group}{nobody_group}");
+
+        let dir = runtime_dir.join("containers").join(server_id.to_string());
+        tokio::fs::create_dir_all(&dir).await?;
+        let dir = tokio::fs::canonicalize(&dir).await?;
+
+        let passwd_path = dir.join("passwd");
+        let group_path = dir.join("group");
+
+        for (path, content) in [(&passwd_path, passwd), (&group_path, group)] {
+            tokio::fs::write(path, content).await?;
+            // The container has to be able to read them, no matter which umask the daemon runs with
+            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).await?;
+        }
+
+        Ok((passwd_path, group_path))
     }
 
     pub(crate) async fn queue_start(

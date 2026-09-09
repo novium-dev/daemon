@@ -13,9 +13,23 @@ use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
-use tracing::error;
+use tracing::{error, warn};
+
+/// The IANA timezone name of the host, e.g. `Europe/Berlin`.
+///
+/// It is resolved once and reused afterwards, so a timezone change on the host
+/// only takes effect after a restart of the daemon.
+pub fn host_timezone() -> &'static str {
+    static TIMEZONE: LazyLock<String> = LazyLock::new(|| {
+        iana_time_zone::get_timezone().unwrap_or_else(|err| {
+            warn!("Unable to detect the timezone of the host, falling back to UTC: {err:?}");
+            "UTC".to_owned()
+        })
+    });
+    &TIMEZONE
+}
 
 pub fn from_mib(mib: impl Into<u64>) -> u64 {
     mib.into().saturating_mul(0x0010_0000)

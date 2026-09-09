@@ -1320,6 +1320,7 @@ dependencies = [
  "futures-util",
  "hex",
  "http-body-util",
+ "iana-time-zone",
  "indexmap",
  "lazy-regex",
  "libc",
