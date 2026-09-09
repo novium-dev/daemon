@@ -9,6 +9,7 @@ use core::marker::PhantomData;
 use core::pin::Pin;
 use daemon_common::service::error_server_not_found::FromServerNotFound;
 use daemon_common::service::server::{ServerStats, TasksData};
+use sha2::{Digest as _, Sha256};
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::io;
@@ -29,6 +30,67 @@ pub fn host_timezone() -> &'static str {
         })
     });
     &TIMEZONE
+}
+
+/// The machine id of the host, which the machine ids of the servers are derived from.
+///
+/// It is resolved once and reused afterwards.
+fn host_machine_id() -> &'static str {
+    static MACHINE_ID: LazyLock<String> = LazyLock::new(|| {
+        for path in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
+            if let Ok(machine_id) = std::fs::read_to_string(path)
+                && !machine_id.trim().is_empty()
+            {
+                return machine_id.trim().to_owned();
+            }
+        }
+        warn!("The host has no machine id, falling back to its hostname");
+        sysinfo::System::host_name().unwrap_or_default()
+    });
+    &MACHINE_ID
+}
+
+/// The `/etc/machine-id` of a server, unique per host and server.
+///
+/// Hytale encrypts its tokens with the machine id, so it has to stay the same across
+/// restarts of a server. It is derived from the machine id of the host instead of being
+/// random, so that it does not have to be persisted anywhere, comparable to what
+/// `sd_id128_get_machine_app_specific` does for application specific ids.
+pub fn server_machine_id(server_id: u32) -> String {
+    /// A machine id is 16 bytes, written as 32 hexadecimal characters.
+    const LENGTH: usize = 16;
+
+    let mut hasher = Sha256::new();
+    hasher.update(host_machine_id().as_bytes());
+    hasher.update(b"-");
+    hasher.update(server_id.to_string().as_bytes());
+    hex::encode(
+        hasher
+            .finalize()
+            .into_iter()
+            .take(LENGTH)
+            .collect::<Vec<u8>>(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::server_machine_id;
+
+    #[test]
+    fn machine_id_has_the_id128_format() {
+        let machine_id = server_machine_id(1);
+
+        assert_eq!(machine_id.len(), 32);
+        assert!(
+            machine_id
+                .chars()
+                .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
+        );
+
+        assert_eq!(machine_id, server_machine_id(1), "not stable");
+        assert_ne!(machine_id, server_machine_id(2), "not unique per server");
+    }
 }
 
 pub fn from_mib(mib: impl Into<u64>) -> u64 {

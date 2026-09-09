@@ -172,13 +172,16 @@ impl FetchedServer {
         let uid = self.uid.unwrap_or(crate::common::CONTAINER_DEFAULT_UID);
         let gid = self.gid.unwrap_or(crate::common::CONTAINER_DEFAULT_GID);
 
-        let (passwd_path, group_path) =
-            Self::write_user_database(&daemon.runtime_dir, self.id, uid, gid)
-                .await
-                .map_err(ServerStartError::IO)?;
+        let etc = Self::write_container_etc(&daemon.runtime_dir, self.id, uid, gid)
+            .await
+            .map_err(ServerStartError::IO)?;
 
-        binds.push(format!("{}:/etc/passwd:ro", passwd_path.to_string_lossy()));
-        binds.push(format!("{}:/etc/group:ro", group_path.to_string_lossy()));
+        for file in ["passwd", "group", "machine-id"] {
+            binds.push(format!(
+                "{}:/etc/{file}:ro",
+                etc.join(file).to_string_lossy()
+            ));
+        }
 
         let mut networks = HashMap::with_capacity(1);
 
@@ -366,21 +369,25 @@ impl FetchedServer {
         Ok(())
     }
 
-    /// Generates the `/etc/passwd` and `/etc/group` that are mounted into the container
-    /// and returns their paths on the host.
+    /// Generates the files that are mounted into `/etc` of the container and returns the
+    /// directory they were written to on the host.
     ///
-    /// The images are not aware of the uid a server runs as and the root filesystem of the
-    /// container is read-only, so the uid would not resolve to any user at all. Everything
-    /// that looks up the home directory would then fall back to `/`, which is not writable
-    /// (e.g. a jvm trying to write to `/.cache`). The generated entry points the home
-    /// directory at the storage mount instead, comparable to the `container` user of the
-    /// Pterodactyl images living in `/home/container`.
-    async fn write_user_database(
+    /// `passwd` and `group` are generated because the images are not aware of the uid a
+    /// server runs as and the root filesystem of the container is read-only, so the uid
+    /// would not resolve to any user at all. Everything that looks up the home directory
+    /// would then fall back to `/`, which is not writable (e.g. a jvm trying to write to
+    /// `/.cache`). The generated entry points the home directory at the storage mount
+    /// instead, comparable to the `container` user of the Pterodactyl images living in
+    /// `/home/container`.
+    ///
+    /// `machine-id` is generated because the read-only root filesystem leaves the servers
+    /// without one, while some of them (e.g. Hytale) require it.
+    async fn write_container_etc(
         runtime_dir: &Path,
         server_id: u32,
         uid: u16,
         gid: u16,
-    ) -> Result<(PathBuf, PathBuf), io::Error> {
+    ) -> Result<PathBuf, io::Error> {
         const NOBODY: u16 = 0xFFFE;
 
         let user = crate::common::CONTAINER_USER;
@@ -406,20 +413,24 @@ impl FetchedServer {
         let passwd = format!("{root_user}{user}:x:{uid}:{gid}::{home}:/bin/sh\n{nobody_user}");
         let group = format!("{root_group}{user}:x:{gid}:\n{nobody_group}");
 
+        let machine_id = format!("{}\n", utils::server_machine_id(server_id));
+
         let dir = runtime_dir.join("containers").join(server_id.to_string());
         tokio::fs::create_dir_all(&dir).await?;
         let dir = tokio::fs::canonicalize(&dir).await?;
 
-        let passwd_path = dir.join("passwd");
-        let group_path = dir.join("group");
-
-        for (path, content) in [(&passwd_path, passwd), (&group_path, group)] {
-            tokio::fs::write(path, content).await?;
+        for (file, content) in [
+            ("passwd", passwd),
+            ("group", group),
+            ("machine-id", machine_id),
+        ] {
+            let path = dir.join(file);
+            tokio::fs::write(&path, content).await?;
             // The container has to be able to read them, no matter which umask the daemon runs with
-            tokio::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).await?;
+            tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).await?;
         }
 
-        Ok((passwd_path, group_path))
+        Ok(dir)
     }
 
     pub(crate) async fn queue_start(
