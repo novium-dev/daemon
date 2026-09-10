@@ -175,7 +175,7 @@ workspace = true
 optional = true
 
 [dependencies.sha2]
-version = "0.11.0"
+workspace = true
 optional = true
 
 [dependencies.chrono]

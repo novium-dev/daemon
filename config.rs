@@ -14,7 +14,7 @@ pub const CONTAINER_DEFAULT_GID: u16 = CONTAINER_DEFAULT_UID;
 
 /// The storage mount inside the container, used as working directory and home directory.
 pub const CONTAINER_WORK_DIR: &str = "/work";
-/// The name the container uid is exposed as in the generated `/etc/passwd`.
+/// The name the images are expected to give the user a server runs as.
 pub const CONTAINER_USER: &str = "container";
 
 pub const MARIADB_PLUGIN_NAME: &str = "novium_daemon_auth";

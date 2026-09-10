@@ -162,7 +162,7 @@ impl FetchedServer {
             .await
             .map_err(ServerStartError::IO)?;
 
-        binds.push(format!("{}:/control.sock", control_path.to_string_lossy()));
+        binds.push(Self::bind(&control_path, "/control.sock").map_err(ServerStartError::IO)?);
 
         binds.push(format!(
             "{storage_path}:{}",
@@ -172,16 +172,13 @@ impl FetchedServer {
         let uid = self.uid.unwrap_or(crate::common::CONTAINER_DEFAULT_UID);
         let gid = self.gid.unwrap_or(crate::common::CONTAINER_DEFAULT_GID);
 
-        let etc = Self::write_container_etc(&daemon.runtime_dir, self.id, uid, gid)
+        let machine_id_path = Self::write_machine_id(&daemon.runtime_dir, self.id)
             .await
             .map_err(ServerStartError::IO)?;
 
-        for file in ["passwd", "group", "machine-id"] {
-            binds.push(format!(
-                "{}:/etc/{file}:ro",
-                etc.join(file).to_string_lossy()
-            ));
-        }
+        binds.push(
+            Self::bind(&machine_id_path, "/etc/machine-id:ro").map_err(ServerStartError::IO)?,
+        );
 
         let mut networks = HashMap::with_capacity(1);
 
@@ -369,68 +366,40 @@ impl FetchedServer {
         Ok(())
     }
 
-    /// Generates the files that are mounted into `/etc` of the container and returns the
-    /// directory they were written to on the host.
+    /// Formats a bind mount of `source` on the host to `target` in the container.
     ///
-    /// `passwd` and `group` are generated because the images are not aware of the uid a
-    /// server runs as and the root filesystem of the container is read-only, so the uid
-    /// would not resolve to any user at all. Everything that looks up the home directory
-    /// would then fall back to `/`, which is not writable (e.g. a jvm trying to write to
-    /// `/.cache`). The generated entry points the home directory at the storage mount
-    /// instead, comparable to the `container` user of the Pterodactyl images living in
-    /// `/home/container`.
+    /// Bind mounts are passed to docker as a string, so a path that is not valid utf-8
+    /// can not be mounted at all and has to be rejected instead of being mangled.
+    fn bind(source: &Path, target: &str) -> Result<String, io::Error> {
+        let Some(source) = source.to_str() else {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "the path {} is not valid utf-8 and can not be mounted",
+                    source.display()
+                ),
+            ));
+        };
+
+        Ok(format!("{source}:{target}"))
+    }
+
+    /// Generates the `/etc/machine-id` that is mounted into the container and returns its
+    /// path on the host.
     ///
-    /// `machine-id` is generated because the read-only root filesystem leaves the servers
-    /// without one, while some of them (e.g. Hytale) require it.
-    async fn write_container_etc(
-        runtime_dir: &Path,
-        server_id: u32,
-        uid: u16,
-        gid: u16,
-    ) -> Result<PathBuf, io::Error> {
-        const NOBODY: u16 = 0xFFFE;
-
-        let user = crate::common::CONTAINER_USER;
-        let home = crate::common::CONTAINER_WORK_DIR;
-
-        let root_user = if uid == 0 {
-            ""
-        } else {
-            "root:x:0:0::/root:/bin/sh\n"
-        };
-        let nobody_user = if uid == NOBODY {
-            String::new()
-        } else {
-            format!("nobody:x:{NOBODY}:{NOBODY}::/var/empty:/bin/sh\n")
-        };
-        let root_group = if gid == 0 { "" } else { "root:x:0:\n" };
-        let nobody_group = if gid == NOBODY {
-            String::new()
-        } else {
-            format!("nogroup:x:{NOBODY}:\n")
-        };
-
-        let passwd = format!("{root_user}{user}:x:{uid}:{gid}::{home}:/bin/sh\n{nobody_user}");
-        let group = format!("{root_group}{user}:x:{gid}:\n{nobody_group}");
-
-        let machine_id = format!("{}\n", utils::server_machine_id(server_id));
-
+    /// The read-only root filesystem leaves the servers without a machine id, while some of
+    /// them (e.g. Hytale, which derives the encryption of its tokens from it) require one.
+    async fn write_machine_id(runtime_dir: &Path, server_id: u32) -> Result<PathBuf, io::Error> {
         let dir = runtime_dir.join("containers").join(server_id.to_string());
         tokio::fs::create_dir_all(&dir).await?;
         let dir = tokio::fs::canonicalize(&dir).await?;
 
-        for (file, content) in [
-            ("passwd", passwd),
-            ("group", group),
-            ("machine-id", machine_id),
-        ] {
-            let path = dir.join(file);
-            tokio::fs::write(&path, content).await?;
-            // The container has to be able to read them, no matter which umask the daemon runs with
-            tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).await?;
-        }
+        let path = dir.join("machine-id");
+        tokio::fs::write(&path, format!("{}\n", utils::server_machine_id(server_id))).await?;
+        // The container has to be able to read it, no matter which umask the daemon runs with
+        tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).await?;
 
-        Ok(dir)
+        Ok(path)
     }
 
     pub(crate) async fn queue_start(
