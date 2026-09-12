@@ -20,7 +20,7 @@ use std::io;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tracing::debug;
+use tracing::{debug, error};
 
 /// Cancel safe
 pub async fn create_backup_order<
@@ -181,11 +181,11 @@ async fn create_backup0<E: From<std::io::Error>>(
     let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
     if !tokio::fs::try_exists(&target_dir)
         .await
-        .inspect_err(|err| debug!("Backup creation failed (try_exists): {:?}", err))?
+        .inspect_err(|err| error!("Backup creation failed (try_exists): {:?}", err))?
     {
         tokio::fs::create_dir_all(&target_dir)
             .await
-            .inspect_err(|err| debug!("Backup creation failed (create_dir_all): {:?}", err))?;
+            .inspect_err(|err| error!("Backup creation failed (create_dir_all): {:?}", err))?;
     }
     let timestamp = Utc::now().timestamp_millis();
 
@@ -220,11 +220,11 @@ async fn create_backup0<E: From<std::io::Error>>(
         BackupEntry::Btrfs { .. } => {
             let subvol_fd = tokio::fs::File::open(&dir)
                 .await
-                .inspect_err(|err| debug!("Backup creation failed (open): {:?}", err))?;
+                .inspect_err(|err| error!("Backup creation failed (open): {:?}", err))?;
 
             super::super::btrfs::new_snapshot(subvol_fd, &target_dir, &timestamp.to_string(), true)
                 .await
-                .inspect_err(|err| debug!("Backup creation failed (snapshot): {:?}", err))?;
+                .inspect_err(|err| error!("Backup creation failed (snapshot): {:?}", err))?;
             target_dir.join(timestamp.to_string())
         }
     };
@@ -232,10 +232,10 @@ async fn create_backup0<E: From<std::io::Error>>(
     if let Some(name) = name.filter(|name| !name.is_empty()) {
         tokio::fs::File::open(&target)
             .await
-            .inspect_err(|err| debug!("Backup creation failed (open for name): {err:?}"))?
+            .inspect_err(|err| error!("Backup creation failed (open for name): {err:?}"))?
             .set_backup_name(Some(name))
             .await
-            .inspect_err(|err| debug!("Backup creation failed (set name): {err:?}"))?;
+            .inspect_err(|err| error!("Backup creation failed (set name): {err:?}"))?;
     }
 
     Ok((timestamp, lock))
@@ -276,13 +276,13 @@ async fn create_archive_backup(
 
     let encoder = compression
         .create_encoder(wrapper)
-        .inspect_err(|err| debug!("Backup creation failed (create_encoder): {err:?}"))?;
+        .inspect_err(|err| error!("Backup creation failed (create_encoder): {err:?}"))?;
     let mut archive = tar::Builder::new(encoder);
     archive.follow_symlinks(false);
     let (archive, ()) = archive
         .append_dir_all_sandboxed(&dir, "", "/", exclude, (), true, false)
         .await
-        .inspect_err(|err| debug!("Backup creation failed (append_dir_all): {err:?}"))?;
+        .inspect_err(|err| error!("Backup creation failed (append_dir_all): {err:?}"))?;
     tokio::task::spawn_blocking(move || {
         archive
             .into_inner()
@@ -291,9 +291,9 @@ async fn create_archive_backup(
             .flush()
     })
     .await
-    .inspect_err(|err| debug!("Backup creation failed (spawn_blocking): {err:?}"))
+    .inspect_err(|err| error!("Backup creation failed (spawn_blocking): {err:?}"))
     .map_err(io::Error::from)?
-    .inspect_err(|err| debug!("Backup creation failed (flush): {err:?}"))?;
+    .inspect_err(|err| error!("Backup creation failed (flush): {err:?}"))?;
     Ok(lock)
 }
 
