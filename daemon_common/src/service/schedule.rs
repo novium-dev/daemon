@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
+use crate::service::backup::BackupRetention;
 use chrono_tz::Tz;
 use cron::Schedule;
 use serde::{Deserialize, Serialize};
@@ -31,6 +32,11 @@ pub trait ScheduleService {
         payload: SchedulePayload,
     ) -> Result<(), _>;
 
+    /// Runs a schedule's steps immediately, whatever its cron says
+    #[route("/{schedule_id}/run", method = POST)]
+    #[error(server::not_found, schedule::not_found, sql::failure <- [sql:*])]
+    async fn run_schedule(&self, server_id: u32, schedule_id: u32) -> Result<(), _>;
+
     /// Deletes a schedule
     #[route("/{schedule_id}", method = DELETE)]
     #[error(server::not_found, sql::failure <- [sql:*])]
@@ -54,6 +60,26 @@ pub enum ScheduleStep {
     TerminalCommand { command: String },
     #[serde(rename = "container")]
     ContainerCommand { command: Vec<String> },
+    /// Creates a backup and, if a retention policy is given, applies it to the
+    /// same set of storages afterwards.
+    #[serde(rename = "backup")]
+    Backup {
+        /// The backup storage to write to, which is also the only one a
+        /// retention policy of this step touches. `null` writes to the storage
+        /// with the lowest configured order and lets the policy cover every
+        /// storage, each judged on its own.
+        storage: Option<String>,
+        /// The policy to apply after the backup, `null` to keep every backup.
+        retention: Option<BackupRetention>,
+    },
+    /// Applies a retention policy without creating a backup first.
+    #[serde(rename = "prune")]
+    Prune {
+        /// The backup storage to prune. All of them, each judged on its own,
+        /// when `null`.
+        storage: Option<String>,
+        retention: BackupRetention,
+    },
 }
 
 #[derive(Clone, Copy, Hash, Debug, Serialize, Deserialize, utoipa::ToSchema)]

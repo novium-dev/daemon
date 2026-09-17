@@ -85,7 +85,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
 
     async fn realpath(&mut self, id: u32, path: String) -> Result<Name, Self::Error> {
         debug!("Realpath {id} {path}");
-        super::files::realpath(path)
+        super::files::realpath(self, path)
             .await
             .map(|files| Name { id, files })
     }

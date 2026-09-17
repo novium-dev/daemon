@@ -151,6 +151,11 @@ impl FetchedServer {
                     args.insert("BACKEND_URL".to_owned(), backend_url.to_string());
                 }
 
+                args.entry("CONTAINER_UID".to_owned())
+                    .or_insert_with(|| crate::common::CONTAINER_DEFAULT_UID.to_string());
+                args.entry("CONTAINER_GID".to_owned())
+                    .or_insert_with(|| crate::common::CONTAINER_DEFAULT_GID.to_string());
+
                 let mut image = docker.build_image(
                     BuildImageOptions {
                         buildargs: Some(args),

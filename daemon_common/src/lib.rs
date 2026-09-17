@@ -2,17 +2,21 @@
 #![forbid(unsafe_code)]
 
 pub mod files;
+#[cfg(feature = "service")]
+pub mod integrity;
 #[cfg(feature = "keys")]
 pub mod key;
 #[cfg(feature = "sdk")]
 pub mod sdk;
 
-#[cfg(feature = "backend")]
+#[cfg(any(feature = "backend", feature = "service"))]
 pub mod node;
 #[cfg(feature = "service")]
 pub mod service;
 #[cfg(feature = "ssh")]
 pub mod ssh;
+#[cfg(feature = "service")]
+pub mod task;
 #[cfg(feature = "service")]
 pub mod user;
 pub mod utils;

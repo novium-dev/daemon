@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use url::{Host, Url};
 use utoipa::{PartialSchema as _, ToSchema};
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct HostAndPort {
     #[schema(schema_with = String::schema)]
     pub host: Host,
@@ -14,27 +14,35 @@ pub struct HostAndPort {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct NodeRegistrationRequest {
-    pub base_url: Url,
-
-    pub ssh: Option<HostAndPort>,
     pub cert: Vec<u8>,
     pub csr: Vec<u8>,
 
     pub default_bind: String,
-    pub default_host: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct SetupNodeConfig {
+    /// The publicly reachable base URL of the daemon.
+    pub base_url: Url,
+    /// The publicly reachable SSH address, or `None` if SSH is disabled.
+    pub ssh: Option<HostAndPort>,
+    /// Origins whitelisted for CORS requests against this daemon.
+    #[serde(default)]
+    pub origins: Vec<String>,
 
     pub storages: HashMap<String, ServerStorage>,
     pub backups: HashMap<String, BackupStorage>,
 }
 
-#[derive(Debug, Serialize, Deserialize, ToSchema)]
-pub struct NodeUpdateRequest {
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
+pub struct BackendNodeConfig {
+    /// The publicly reachable base URL of the daemon.
     pub base_url: Url,
 
-    pub ssh: Option<HostAndPort>,
+    pub storages: Vec<String>,
+    pub backups: Vec<String>,
 
-    pub storages: HashMap<String, ServerStorage>,
-    pub backups: HashMap<String, BackupStorage>,
+    pub ssh_port: Option<u16>,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, Eq, PartialEq, ToSchema)]

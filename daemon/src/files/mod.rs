@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 mod archive;
+mod chmod;
+mod chown;
 mod copy;
 mod delete;
 mod download;
@@ -19,6 +21,8 @@ use crate::utils::path_relative;
 pub use archive::{create_archive, unpack_archive};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, FileTypeExt as _, Metadata, MetadataExt as _};
+pub use chmod::chmod_file;
+pub use chown::chown_file;
 pub use copy::copy_file;
 use core::str::FromStr as _;
 use daemon_common::files::FileMode;

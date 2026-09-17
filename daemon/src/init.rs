@@ -22,8 +22,11 @@ use signal_hook::iterator::Signals;
 use sqlx::mysql::MySqlPoolOptions;
 use sqlx::query;
 use std::collections::HashMap;
-use std::io::ErrorKind;
+use std::io::{self, ErrorKind};
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
+use tokio::fs;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::task::JoinSet;
@@ -32,6 +35,7 @@ use url::Url;
 
 #[derive(Debug)]
 pub enum DaemonInitError {
+    Io(io::Error),
     Sql(sqlx::Error),
     Docker(bollard::errors::Error),
 }
@@ -49,8 +53,9 @@ impl Daemon<()> {
         config: DaemonConfig,
         root: Arc<DaemonRootKey>,
         key: Arc<DaemonKey>,
+        runtime_dir: PathBuf,
     ) -> Result<Self, DaemonInitError> {
-        Self::init_internal(config, root, key, ()).await
+        Self::init_internal(config, root, key, runtime_dir, ()).await
     }
 }
 
@@ -59,12 +64,19 @@ impl Daemon<WithUserKey> {
         config: DaemonConfig,
         root: Arc<DaemonRootKey>,
         key: Arc<DaemonKey>,
-
+        runtime_dir: PathBuf,
         mut base_url: Url,
         user_key: SigningKey,
     ) -> Result<Self, DaemonInitError> {
         crate::common::utils::base_url(&mut base_url);
-        Self::init_internal(config, root, key, WithUserKey { base_url, user_key }).await
+        Self::init_internal(
+            config,
+            root,
+            key,
+            runtime_dir,
+            WithUserKey { base_url, user_key },
+        )
+        .await
     }
 }
 
@@ -73,6 +85,7 @@ impl<T: DaemonExtra> Daemon<T> {
         config: DaemonConfig,
         root: Arc<DaemonRootKey>,
         key: Arc<DaemonKey>,
+        runtime_dir: PathBuf,
         extra: T,
     ) -> Result<Self, DaemonInitError> {
         #[cfg(target_os = "macos")]
@@ -88,6 +101,15 @@ impl<T: DaemonExtra> Daemon<T> {
             info!("Deamon startup will be delayed by 10 sec");
             //tokio::time::sleep(Duration::from_secs(10)).await;
         };
+
+        if !fs::try_exists(&runtime_dir)
+            .await
+            .map_err(DaemonInitError::Io)?
+        {
+            fs::create_dir_all(&runtime_dir)
+                .await
+                .map_err(DaemonInitError::Io)?;
+        }
 
         let servers = HashMap::new();
 
@@ -225,6 +247,8 @@ impl<T: DaemonExtra> Daemon<T> {
             schedule_task: Arc::default(),
             schedules: Arc::default(),
             docker: Arc::new(docker),
+            runtime_dir,
+            started: Instant::now(),
             conn: Arc::new(conn),
             client: Arc::default(),
             extra: Arc::new(extra),
@@ -275,24 +299,27 @@ impl<T: DaemonExtra> Daemon<T> {
         debug!("Server tasks down");
         self.schedule_task.lock().await.shutdown().await;
         debug!("Stopped schedules");
-        let servers = self.servers.lock().await;
-        let mut set = JoinSet::new();
-        for (server_id, server) in &*servers {
-            let id = *server_id;
-            let server = Arc::clone(server);
-            let docker = Arc::clone(&self.docker);
-            set.spawn(async move {
-                let _ = FetchedServer {
-                    id,
-                    ..FetchedServer::default()
-                }
-                .stop(&docker, &server, &server.lock.read(ServerTask::Stop).await)
-                .await;
-            });
+
+        if self.config.shutdown_stop_servers {
+            let servers = self.servers.lock().await;
+            let mut set = JoinSet::new();
+            for (server_id, server) in &*servers {
+                let id = *server_id;
+                let server = Arc::clone(server);
+                let docker = Arc::clone(&self.docker);
+                set.spawn(async move {
+                    let _ = FetchedServer {
+                        id,
+                        ..FetchedServer::default()
+                    }
+                    .stop(&docker, &server, &server.lock.read(ServerTask::Stop).await)
+                    .await;
+                });
+            }
+            drop(servers);
+            set.join_all().await;
+            debug!("Stopped servers");
         }
-        drop(servers);
-        set.join_all().await;
-        debug!("Stopped servers");
 
         info!("Daemon shutdown complete");
         tokio::time::sleep(Duration::from_millis(500)).await;

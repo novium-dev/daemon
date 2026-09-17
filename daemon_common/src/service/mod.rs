@@ -7,6 +7,9 @@ use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 use crate::service::files::{
     FilesService, FilesServiceClientImpl, FilesServiceURL, FilesServiceUserKeyExtension,
 };
+use crate::service::integrity::{
+    IntegrityService, IntegrityServiceClientImpl, IntegrityServiceURL,
+};
 use crate::service::network::{NetworkService, NetworkServiceClientImpl, NetworkServiceURL};
 use crate::service::resource::{ResourceService, ResourceServiceClientImpl, ResourceServiceURL};
 use crate::service::schedule::{ScheduleService, ScheduleServiceClientImpl, ScheduleServiceURL};
@@ -29,6 +32,7 @@ pub use zelus::types::{DataStream, JsonVec};
 pub mod backup;
 pub mod database;
 pub mod files;
+pub mod integrity;
 pub mod network;
 pub mod resource;
 pub mod schedule;
@@ -99,6 +103,56 @@ define_header_variable!(auth "The authentication token");
 
 error!(BlankError, auth::invalid);
 
+/// Builds the `OpenAPI` document describing every route the daemon serves.
+///
+/// Both the daemon and the backend can call this: the routes come from the
+/// service definitions in this crate, and the instance only backs the handler
+/// closures, which the document does not describe.
+#[must_use]
+pub fn api_document<T>(instance: &T) -> utoipa::openapi::OpenApi
+where
+    T: DaemonServices + Clone + Send + Sync + Sized + 'static,
+{
+    use utoipa::OpenApi as _;
+
+    #[derive(utoipa::OpenApi)]
+    #[openapi()]
+    struct ApiDoc;
+
+    let (with_auth, without_auth) = framework_router!(T instance (with_auth,without_auth,) {
+        ServerService, BackupService, FilesService, NetworkService,
+        ResourceService, DatabaseService, ScheduleService, SetupService,
+        IntegrityService
+    });
+
+    let (_router, api) = utoipa_axum::router::OpenApiRouter::with_openapi(ApiDoc::openapi())
+        .merge(with_auth.into_openapi())
+        .merge(without_auth.into_openapi())
+        .split_for_parts();
+
+    api
+}
+
+/// Fingerprint of the daemon's `OpenAPI` document, so the backend can tell a node
+/// serving a different API surface from one that merely sits on a different
+/// commit.
+#[must_use]
+pub fn api_hash<T>(instance: &T) -> String
+where
+    T: DaemonServices + Clone + Send + Sync + Sized + 'static,
+{
+    use core::fmt::Write as _;
+    use sha2::Digest as _;
+
+    let document = serde_json::to_string(&api_document(instance)).unwrap_or_default();
+
+    let mut out = String::new();
+    for byte in sha2::Sha256::digest(document.as_bytes()) {
+        let _ = write!(out, "{byte:02x}");
+    }
+    out
+}
+
 pub trait DaemonServices:
     ServerService
     + BackupService
@@ -108,6 +162,7 @@ pub trait DaemonServices:
     + DatabaseService
     + ScheduleService
     + SetupService
+    + IntegrityService
 {
     fn id(&self) -> Uuid;
 }
@@ -120,6 +175,7 @@ pub trait DaemonServicesClientImpl:
     + DatabaseServiceClientImpl
     + ScheduleServiceClientImpl
     + SetupServiceClientImpl
+    + IntegrityServiceClientImpl
 {
 }
 
@@ -133,6 +189,7 @@ pub trait DaemonServicesURL:
     + DatabaseServiceURL
     + ScheduleServiceURL
     + SetupServiceURL
+    + IntegrityServiceURL
 {
 }
 
@@ -143,4 +200,59 @@ pub trait DaemonServicesURLWithUserKey:
     + FilesServiceUserKeyExtension
     + UserKeyProvider
 {
+}
+
+#[cfg(all(test, feature = "sdk"))]
+mod tests {
+    use super::api_hash;
+    use crate::key::rcgen::KeyPair;
+    use crate::key::{BackendKey, DaemonRootKey};
+    use crate::sdk::DaemonSDK;
+    use ed25519_dalek::SigningKey;
+    use std::sync::Arc;
+    use url::Url;
+    use uuid::Uuid;
+
+    fn keys() -> (Arc<DaemonRootKey>, Arc<BackendKey>) {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
+        let root_keypair = KeyPair::generate().expect("root keypair");
+        let root = DaemonRootKey::new(&root_keypair, None).expect("root key");
+        let backend_keypair = KeyPair::generate().expect("backend keypair");
+        let backend = root
+            .new_backend_key(&root_keypair, &backend_keypair)
+            .expect("backend key");
+
+        (Arc::new(root), Arc::new(backend))
+    }
+
+    #[test]
+    fn api_hash_does_not_depend_on_the_instance() {
+        let (root, backend) = keys();
+
+        let plain = DaemonSDK::builder()
+            .with_identifier(Uuid::nil())
+            .with_root_key(Arc::clone(&root))
+            .with_backend_key(Arc::clone(&backend))
+            .with_url(Url::parse("https://one.invalid").expect("url"))
+            .build();
+
+        let with_user_key = DaemonSDK::builder()
+            .with_identifier(Uuid::max())
+            .with_root_key(root)
+            .with_backend_key(backend)
+            .with_url(Url::parse("https://two.invalid").expect("url"))
+            .with_user_key(SigningKey::from_bytes(&[7u8; 32]))
+            .build();
+
+        let first = api_hash(&plain);
+        let second = api_hash(&with_user_key);
+
+        assert_eq!(
+            first, second,
+            "the hash must describe the api, not the client it was built from"
+        );
+        assert_eq!(first.len(), 64, "sha256 renders as 64 hex characters");
+        println!("API_HASH={first}");
+    }
 }

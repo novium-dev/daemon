@@ -15,6 +15,7 @@ mod storage;
 
 mod ctlsock;
 pub mod init;
+mod integrity;
 pub mod key;
 mod network;
 mod schedule;
@@ -36,6 +37,8 @@ use reqwest::Client;
 use ringbuffer::AllocRingBuffer;
 use sqlx::{MySql, Pool};
 use std::collections::HashMap;
+use std::path::PathBuf;
+use std::time::Instant;
 use tokio::io::AsyncWrite;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
@@ -72,7 +75,9 @@ where
     pub(crate) schedules: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerScheduleData>>>>>,
     pub(crate) docker: Arc<Docker>,
     pub(crate) conn: Arc<Pool<MySql>>,
+    pub(crate) runtime_dir: PathBuf,
     pub(crate) client: Arc<Client>,
+    pub(crate) started: Instant,
     pub(crate) extra: Arc<T>,
 
     pub(crate) root: Arc<DaemonRootKey>,

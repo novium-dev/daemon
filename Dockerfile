@@ -1,8 +1,8 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.95.0-alpine AS chef
+FROM lukemathwalker/cargo-chef:latest-rust-1.98.0-alpine AS chef
 WORKDIR /work
 
-ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C link-arg=-Wl,--icf=safe"
-ENV RUSTFLAGS="-C linker=clang-21 -C link-arg=-fuse-ld=lld $FLAGS"
+ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C link-arg=-Wl,--icf=safe -C linker-plugin-lto -C lto=thin -C embed-bitcode"
+ENV RUSTFLAGS="-C linker=clang-22 -C link-arg=-fuse-ld=lld $FLAGS"
 
 FROM chef AS utils
 
@@ -10,9 +10,7 @@ RUN RUSTFLAGS="-C opt-level=0" cargo install sqlx-cli --no-default-features --fe
 
 FROM chef AS dependencies
 
-RUN apk add --no-cache ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm21-static llvm21-dev git mariadb mariadb-client musl-dev llvm21 clang21 clang21-static lld21 curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
-
-RUN apk upgrade --no-cache gcc --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+RUN apk add --no-cache ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev git mariadb mariadb-client musl-dev llvm22 clang22 clang22-static lld22 curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 FROM dependencies AS mariadb
 
@@ -25,7 +23,7 @@ RUN cargo chef prepare --recipe-path recipe.json
 
 FROM dependencies AS builder
 
-RUN echo '#!/bin/ash' > /llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-21 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-21 "$@"; fi' >> /llvm-config-static.sh && chmod +x /llvm-config-static.sh
+RUN echo '#!/bin/ash' > /llvm-config-static.sh && echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-22 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-22 "$@"; fi' >> /llvm-config-static.sh && chmod +x /llvm-config-static.sh
 ENV LLVM_CONFIG_PATH="/llvm-config-static.sh"
 
 COPY --from=planner /work/recipe.json recipe.json

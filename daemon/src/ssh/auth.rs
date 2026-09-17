@@ -47,7 +47,7 @@ pub async fn password_auth(
 ) -> Result<DaemonBackendAuthResponse, io::Error> {
     let mut url = ssh
         .auth_url
-        .join("/internal/auth/password")
+        .join("/api/internal/auth/password")
         .map_err(io::Error::other)?;
     url.query_pairs_mut()
         .append_pair("node", &daemon.key.id.to_string());
@@ -78,7 +78,7 @@ pub async fn publickey_auth(
 ) -> Result<DaemonBackendAuthResponse, io::Error> {
     let mut url = ssh
         .auth_url
-        .join("/internal/auth/publickey")
+        .join("/api/internal/auth/publickey")
         .map_err(io::Error::other)?;
     url.query_pairs_mut()
         .append_pair("node", &daemon.key.id.to_string());

@@ -28,7 +28,8 @@ use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
-use std::path::PathBuf;
+use std::os::unix::fs::PermissionsExt as _;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tracing::warn;
 
@@ -85,7 +86,7 @@ impl FetchedServer {
         }: StorageLockData<TaskOwnedRwLockReadGuard<StorageTask, ()>>,
         daemon: &Daemon<impl DaemonExtra>,
     ) -> Result<(), ServerStartError> {
-        if !Self::state(self.id, &self.locks, &docker, &server_data)
+        if !Self::container_state(self.id, &self.locks, &docker, &server_data)
             .await
             .map_err(ServerStartError::Docker)?
             .start()
@@ -131,6 +132,14 @@ impl FetchedServer {
         }
 
         for (file_path, file_write) in &self.files_write {
+            if let Some(parent) = Path::new(file_path).parent()
+                && parent != Path::new("")
+            {
+                storage
+                    .create_dir_all(parent)
+                    .map_err(ServerStartError::IO)?;
+            }
+
             let file = storage
                 .open_with(
                     file_path,
@@ -149,13 +158,27 @@ impl FetchedServer {
             binds.push(format!("{}:{}:{}", mount.src, mount.dest, mount.mode));
         }
 
-        let control_path = tokio::fs::canonicalize("./control.sock")
+        let control_path = tokio::fs::canonicalize(daemon.runtime_dir.join("control.sock"))
             .await
             .map_err(ServerStartError::IO)?;
 
-        binds.push(format!("{}:/control.sock", control_path.to_string_lossy()));
+        binds.push(Self::bind(&control_path, "/control.sock").map_err(ServerStartError::IO)?);
 
-        binds.push(format!("{storage_path}:/work"));
+        binds.push(format!(
+            "{storage_path}:{}",
+            crate::common::CONTAINER_WORK_DIR
+        ));
+
+        let uid = self.uid.unwrap_or(crate::common::CONTAINER_DEFAULT_UID);
+        let gid = self.gid.unwrap_or(crate::common::CONTAINER_DEFAULT_GID);
+
+        let machine_id_path = Self::write_machine_id(&daemon.runtime_dir, self.id)
+            .await
+            .map_err(ServerStartError::IO)?;
+
+        binds.push(
+            Self::bind(&machine_id_path, "/etc/machine-id:ro").map_err(ServerStartError::IO)?,
+        );
 
         let mut networks = HashMap::with_capacity(1);
 
@@ -214,9 +237,16 @@ impl FetchedServer {
 
         Self::log(&server_data.sender, &mut buffer, "Creating Environment...");
 
-        let mut env: HashMap<String, String> =
-            HashMap::from_iter([("TERM".to_owned(), "xterm-256color".to_owned())]);
-        env.extend(self.environment.clone());
+        let mut env: HashMap<String, String> = HashMap::from_iter([
+            ("TERM".to_owned(), "xterm-256color".to_owned()),
+            ("TZ".to_owned(), utils::host_timezone().to_owned()),
+            (
+                "HOME".to_owned(),
+                crate::common::CONTAINER_WORK_DIR.to_owned(),
+            ),
+            ("USER".to_owned(), crate::common::CONTAINER_USER.to_owned()),
+        ]);
+        env.extend(self.environment.clone()); // the server may override the defaults above
         let env = env
             .into_iter()
             .map(|(key, value)| format!("{key}={value}"))
@@ -239,11 +269,9 @@ impl FetchedServer {
 
                     image: Some(image),
 
-                    user: Some(format!(
-                        "{}:{}",
-                        self.uid.unwrap_or(crate::common::CONTAINER_DEFAULT_UID),
-                        self.gid.unwrap_or(crate::common::CONTAINER_DEFAULT_GID)
-                    )),
+                    user: Some(format!("{uid}:{gid}")),
+
+                    working_dir: Some(crate::common::CONTAINER_WORK_DIR.to_owned()),
 
                     attach_stdout: Some(true),
                     attach_stderr: Some(true),
@@ -342,6 +370,42 @@ impl FetchedServer {
         .await?;
 
         Ok(())
+    }
+
+    /// Formats a bind mount of `source` on the host to `target` in the container.
+    ///
+    /// Bind mounts are passed to docker as a string, so a path that is not valid utf-8
+    /// can not be mounted at all and has to be rejected instead of being mangled.
+    fn bind(source: &Path, target: &str) -> Result<String, io::Error> {
+        let Some(source) = source.to_str() else {
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                format!(
+                    "the path {} is not valid utf-8 and can not be mounted",
+                    source.display()
+                ),
+            ));
+        };
+
+        Ok(format!("{source}:{target}"))
+    }
+
+    /// Generates the `/etc/machine-id` that is mounted into the container and returns its
+    /// path on the host.
+    ///
+    /// The read-only root filesystem leaves the servers without a machine id, while some of
+    /// them (e.g. Hytale, which derives the encryption of its tokens from it) require one.
+    async fn write_machine_id(runtime_dir: &Path, server_id: u32) -> Result<PathBuf, io::Error> {
+        let dir = runtime_dir.join("containers").join(server_id.to_string());
+        tokio::fs::create_dir_all(&dir).await?;
+        let dir = tokio::fs::canonicalize(&dir).await?;
+
+        let path = dir.join("machine-id");
+        tokio::fs::write(&path, format!("{}\n", utils::server_machine_id(server_id))).await?;
+        // The container has to be able to read it, no matter which umask the daemon runs with
+        tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).await?;
+
+        Ok(path)
     }
 
     pub(crate) async fn queue_start(

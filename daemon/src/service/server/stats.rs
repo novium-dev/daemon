@@ -3,10 +3,11 @@ use crate::ServerData;
 use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
 use crate::sync::task::TaskRwLock;
-use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData, TasksData};
+use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use axum::extract::ws::WebSocket;
 use core::time::Duration;
 use daemon_common::service::files::task::StorageTask;
+use daemon_common::service::server::TasksData;
 use sqlx::{MySql, Pool};
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
@@ -45,6 +46,7 @@ async fn new_stats_session<
     let mut recv = server_data.stats_sender.subscribe();
     let mut last_sent = Instant::now();
     let mut ping_sent = false;
+    let mut tasks = Instant::now();
 
     let _ = state
         .write(ChannelWriteData::Status(
@@ -69,7 +71,7 @@ async fn new_stats_session<
         }
         #[rustfmt::skip]
         tokio::select! {
-            _timeout = tokio::time::sleep(Duration::from_secs(1)) => {
+            _timeout = tokio::time::sleep_until(tasks) => {
                 let storage_tasks = storage_lock.tasks();
                 let server_tasks = server_data.lock.tasks();
 
@@ -86,6 +88,13 @@ async fn new_stats_session<
                     return;
                 }
                 state.flush().await;
+                if let Some(new) = Instant::now().checked_add(Duration::from_secs(1)) {
+                	tasks = new;
+                } else {
+                	error!("Instant overflow. Disconnecting channel");
+                 	state.close().await;
+                	return;
+                }
             }
             stdout = recv.recv() => {
                 match stdout {

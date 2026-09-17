@@ -2,28 +2,103 @@
 use crate::ServerData;
 use crate::server::status::InternalServerState;
 use crate::server::*;
-use crate::sync::task::TaskDescriptor;
 use async_trait::async_trait;
-use axum::extract::ws::Message;
 use cap_async_std::fs::{Dir, MetadataExt as _};
 use core::future::Future;
 use core::marker::PhantomData;
 use core::pin::Pin;
 use daemon_common::service::error_server_not_found::FromServerNotFound;
-use daemon_common::service::files::task::StorageTask;
-use daemon_common::service::server::ServerStats;
-use daemon_common::service::server::task::ServerTask;
-use serde::Serialize;
+use daemon_common::service::server::{ServerStats, TasksData};
+use sha2::{Digest as _, Sha256};
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
-use tracing::error;
+use tracing::{error, warn};
+
+/// The IANA timezone name of the host, e.g. `Europe/Berlin`.
+///
+/// It is resolved once and reused afterwards, so a timezone change on the host
+/// only takes effect after a restart of the daemon.
+pub fn host_timezone() -> &'static str {
+    static TIMEZONE: LazyLock<String> = LazyLock::new(|| {
+        iana_time_zone::get_timezone().unwrap_or_else(|err| {
+            warn!("Unable to detect the timezone of the host, falling back to UTC: {err:?}");
+            "UTC".to_owned()
+        })
+    });
+    &TIMEZONE
+}
+
+/// The machine id of the host, which the machine ids of the servers are derived from.
+///
+/// It is resolved once and reused afterwards.
+fn host_machine_id() -> &'static str {
+    static MACHINE_ID: LazyLock<String> = LazyLock::new(|| {
+        for path in ["/etc/machine-id", "/var/lib/dbus/machine-id"] {
+            if let Ok(machine_id) = std::fs::read_to_string(path)
+                && !machine_id.trim().is_empty()
+            {
+                return machine_id.trim().to_owned();
+            }
+        }
+        warn!("The host has no machine id, falling back to its hostname");
+        sysinfo::System::host_name().unwrap_or_default()
+    });
+    &MACHINE_ID
+}
+
+/// The `/etc/machine-id` of a server, unique per host and server.
+///
+/// Hytale encrypts its tokens with the machine id, so it has to stay the same across
+/// restarts of a server. It is derived from the machine id of the host instead of being
+/// random, so that it does not have to be persisted anywhere, comparable to what
+/// `sd_id128_get_machine_app_specific` does for application specific ids.
+pub fn server_machine_id(server_id: u32) -> String {
+    /// A machine id is 16 bytes, written as 32 hexadecimal characters.
+    const LENGTH: usize = 16;
+
+    let mut hasher = Sha256::new();
+    hasher.update(host_machine_id().as_bytes());
+    hasher.update(b"-");
+    hasher.update(server_id.to_string().as_bytes());
+    hex::encode(
+        hasher
+            .finalize()
+            .into_iter()
+            .take(LENGTH)
+            .collect::<Vec<u8>>(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::server_machine_id;
+
+    #[test]
+    fn machine_id_has_the_id128_format() {
+        let machine_id = server_machine_id(1);
+
+        assert_eq!(machine_id.len(), 32);
+        assert!(
+            machine_id
+                .chars()
+                .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
+        );
+
+        assert_eq!(machine_id, server_machine_id(1), "not stable");
+        assert_ne!(machine_id, server_machine_id(2), "not unique per server");
+    }
+}
 
 pub fn from_mib(mib: impl Into<u64>) -> u64 {
     mib.into().saturating_mul(0x0010_0000)
+}
+
+pub fn to_mib(bytes: impl Into<u64>) -> u64 {
+    bytes.into() >> 20u32 // >>20 == /0x0010_0000
 }
 
 pub async fn database<E: From<sqlx::Error>>(
@@ -234,26 +309,5 @@ impl<
         Self: Sized,
     {
         A::send_ping()
-    }
-}
-
-#[derive(Clone, Serialize)]
-pub struct TasksData {
-    pub storage: Vec<TaskDescriptor<StorageTask>>,
-    pub server: Vec<TaskDescriptor<ServerTask>>,
-}
-
-impl TasksData {
-    #[must_use]
-    pub fn as_websocket_message(&self) -> Message {
-        const TASKS_MAGIC: &str = "TASKS!";
-        Message::Text(
-            format!(
-                "{TASKS_MAGIC}{}",
-                serde_json::to_string(self)
-                    .expect("Unable to serialize stats to websocket message")
-            )
-            .into(),
-        )
     }
 }

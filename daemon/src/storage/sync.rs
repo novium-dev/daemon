@@ -11,6 +11,9 @@ use core::fmt::{Debug, Display, Formatter};
 use core::sync::atomic::AtomicI64;
 use core::sync::atomic::{AtomicU64, Ordering};
 use core::time::Duration;
+use daemon_common::service::backup::error_backup_storage_incompatible::FromBackupStorageIncompatible;
+use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
+use daemon_common::service::backup::error_backup_storage_no_suitable_found::FromBackupStorageNoSuitableFound;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
@@ -277,6 +280,42 @@ pub enum StorageError {
     IO(io::Error),
     Timeout,
     NotFound,
+    /// The named backup storage is not configured on this daemon.
+    BackupStorageNotFound,
+    /// The backup storage cannot hold backups of this server storage.
+    BackupStorageIncompatible,
+    /// No configured backup storage is compatible with this server storage.
+    BackupStorageUnsuitable,
+}
+
+impl StorageError {
+    /// Converts into the error type of a service route, so that a storage
+    /// operation called with a concrete error type can still be reported
+    /// through a route's generated error enum.
+    pub fn into_service_error<
+        E: From<io::Error>
+            + From<sqlx::Error>
+            + FromStorageNotFound
+            + FromStorageMutexLocked
+            + FromStorageFailure
+            + FromBackupStorageLocationNotFound,
+    >(
+        self,
+    ) -> E {
+        match self {
+            Self::Sqlx(err) => <E as From<sqlx::Error>>::from(err),
+            Self::IO(err) => <E as From<io::Error>>::from(err),
+            Self::Failure => <E as FromStorageFailure>::from(),
+            Self::Timeout => <E as FromStorageMutexLocked>::from(),
+            Self::NotFound => <E as FromStorageNotFound>::from(),
+            Self::BackupStorageNotFound => <E as FromBackupStorageLocationNotFound>::from(),
+            // Neither has a counterpart on every route, and both mean the
+            // daemon's own configuration cannot serve the request.
+            Self::BackupStorageIncompatible | Self::BackupStorageUnsuitable => {
+                <E as FromStorageFailure>::from()
+            }
+        }
+    }
 }
 
 impl Error for StorageError {
@@ -284,7 +323,12 @@ impl Error for StorageError {
         match self {
             Self::Sqlx(err) => Some(err),
             Self::IO(err) => Some(err),
-            Self::Timeout | Self::NotFound | Self::Failure => None,
+            Self::Timeout
+            | Self::NotFound
+            | Self::Failure
+            | Self::BackupStorageNotFound
+            | Self::BackupStorageIncompatible
+            | Self::BackupStorageUnsuitable => None,
         }
     }
 }
@@ -325,6 +369,33 @@ impl FromStorageFailure for StorageError {
         Self: Sized,
     {
         Self::Failure
+    }
+}
+
+impl FromBackupStorageLocationNotFound for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::BackupStorageNotFound
+    }
+}
+
+impl FromBackupStorageIncompatible for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::BackupStorageIncompatible
+    }
+}
+
+impl FromBackupStorageNoSuitableFound for StorageError {
+    fn from() -> Self
+    where
+        Self: Sized,
+    {
+        Self::BackupStorageUnsuitable
     }
 }
 

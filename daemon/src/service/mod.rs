@@ -9,10 +9,12 @@ use daemon_common::service::backup::BackupService;
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::framework_router;
+use daemon_common::service::integrity::IntegrityService;
 use daemon_common::service::network::NetworkService;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
+use daemon_common::service::setup::SetupService;
 use rustls::ServerConfig;
 use rustls::server::WebPkiClientVerifier;
 use std::sync::Arc;
@@ -26,6 +28,7 @@ use utoipa_axum::router::OpenApiRouter;
 mod backup;
 mod database;
 mod files;
+mod integrity;
 pub mod middleware;
 mod network;
 mod resource;
@@ -41,14 +44,15 @@ impl<T: DaemonExtra> Daemon<T> {
 
         let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
             ServerService, BackupService, FilesService, NetworkService,
-            ResourceService, DatabaseService, ScheduleService
+            ResourceService, DatabaseService, ScheduleService, SetupService,
+            IntegrityService
         });
         let router = router.into_openapi();
         let router_user = router_user.into_openapi();
 
         let cors = tower_http::cors::CorsLayer::new()
-            .allow_origin(tower_http::cors::AllowOrigin::exact(
-                self.config.origin.clone(),
+            .allow_origin(tower_http::cors::AllowOrigin::list(
+                self.config.origins.iter().cloned(),
             ))
             .allow_methods([axum::http::Method::GET, axum::http::Method::PUT])
             .allow_headers(tower_http::cors::AllowHeaders::any());

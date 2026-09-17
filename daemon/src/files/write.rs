@@ -4,8 +4,6 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::storage_parent_ino;
 use crate::{Daemon, DaemonExtra, StorageNotification};
-use axum_extra::TypedHeader;
-use axum_extra::headers::ContentLength;
 use cap_async_std::fs::{Dir, MetadataExt as _, OpenOptions};
 use daemon_common::service::DataStream;
 use daemon_common::service::error_http_request_failed::FromHttpRequestFailed;
@@ -39,11 +37,8 @@ pub async fn write_file<
     daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
-    length: Option<TypedHeader<ContentLength>>,
     stream: DataStream,
 ) -> Result<(), E> {
-    let _length = length.map(|header| header.0.0);
-
     let StorageLockData {
         lock,
         storage,

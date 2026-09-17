@@ -77,10 +77,10 @@ either.workspace = true
 tower-layer.workspace = true
 tokio-rustls.workspace = true
 thiserror.workspace = true
-http-body-util = "0.1.3"
+http-body-util = "0.1.5"
 
-sysinfo = "0.38.4"
-inquire = "0.9.4"
+sysinfo = "0.39.6"
+iana-time-zone = "0.1.65"
 num-traits = "0.2.19"
 ringbuffer = "0.16.0"
 fs_extra = "1.3.0"
@@ -90,6 +90,7 @@ rtnetlink = "0.21.0"
 bytes.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
+sha2.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 capctl = "0.2.4"
@@ -99,7 +100,7 @@ workspace = true
 features = ["full"]
 
 [dependencies.anyhow]
-version = "1.0.102"
+version = "1.0.104"
 features = ["std"]
 
 [dependencies.sentry]
@@ -111,7 +112,7 @@ version = "9.0.2"
 features = ["axum"]
 
 [dependencies.cap-async-std]
-version = "3.4.5"
+version = "3.4.6"
 features = ["tokio1"]
 
 [dependencies.daemon_common]
@@ -119,7 +120,7 @@ workspace = true
 features = ["docker", "service", "ssh", "keys"]
 
 [dependencies.tar]
-version = "0.4.45"
+version = "0.4.46"
 
 [dependencies.reqwest]
 workspace = true
@@ -130,14 +131,14 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-git = "https://github.com/0xIO32/russh.git"
+version = "0.63.0"
 
 [dependencies.russh-sftp]
-version = "2.3.0"
+version = "2.4.0"
 
 [dependencies.rustix]
 version = "1.1.4"
-features = ["thread"]
+features = ["thread", "fs"]
 
 [dependencies.zstd]
 version = "0.13.3"
@@ -151,11 +152,16 @@ features = ["zlib"]
 version = "0.6.1"
 
 [dependencies.liblzma]
-version = "0.4.6"
+version = "0.4.8"
 features = []
 
 [dependencies.lz4]
 version = "1.28.1"
+
+[dependencies.zip]
+version = "8.6.0"
+default-features = false
+features = ["deflate-flate2", "deflate64", "bzip2", "zstd"]
 
 [build-dependencies.bindgen]
 version = "0.72.1"

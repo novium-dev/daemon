@@ -172,7 +172,8 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
                         let allowed = data.value.1.load(Ordering::Relaxed);
                         let exceeded = allowed != -1
                             && size != -1
-                            && u128::from(size_unsigned) > u128::from(allowed.unsigned_abs()); // 0x100000 = 1024*1024
+                            && u128::from(size_unsigned)
+                                > u128::from(allowed.unsigned_abs()) * 0x0010_0000; // MiB -> bytes
                         if let Some(server_id) = *server_id {
                             if exceeded {
                                 if let Err(err) = Handle::current().block_on(query!("INSERT IGNORE INTO `server_locks` (`server`, `lock`) VALUES (?, 'storage')", server_id)
@@ -233,12 +234,14 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
                     let disk_max = data.value.1.load(Ordering::Relaxed);
                     let _ = stats_sender.send(ChannelWriteData::Stats(
                         ServerStats::default()
-                            .with_disk((disk == -1).then(|| disk.unsigned_abs()))
+                            .with_disk(
+                                (disk != -1).then(|| crate::utils::to_mib(disk.unsigned_abs())),
+                            )
                             .with_max(
                                 cpu_max,
                                 ram_max,
                                 swap_max,
-                                (disk_max == -1).then(|| disk_max.unsigned_abs()),
+                                (disk_max != -1).then(|| disk_max.unsigned_abs()),
                             ),
                     ));
                 }

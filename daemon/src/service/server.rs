@@ -5,6 +5,7 @@ mod terminal;
 
 use crate::server::FetchedServer;
 use crate::server::start::ServerStartError;
+use crate::server::status::InternalServerState;
 use crate::server::stop::ServerStopError;
 use crate::service::server::exec::exec_websocket_handle;
 use crate::service::server::stats::stats_websocket_handle;
@@ -17,14 +18,14 @@ use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
 use base64::Engine as _;
 use base64::prelude::BASE64_STANDARD;
+use bollard::query_parameters::StatsOptions;
 use core::sync::atomic::AtomicU16;
+use core::sync::atomic::Ordering;
 use core::time::Duration;
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::network::error_network_not_found::FromNetworkNotFound;
 use daemon_common::service::network::error_network_suffix_collision::FromNetworkSuffixCollision;
 use daemon_common::service::network::error_network_suffix_invalid::FromNetworkSuffixInvalid;
-use daemon_common::service::server::PublicServerState;
-use daemon_common::service::server::ServerService;
 use daemon_common::service::server::error_server_image_different::FromServerImageDifferent;
 use daemon_common::service::server::error_server_image_missing_tag::FromServerImageMissingTag;
 use daemon_common::service::server::server_service_error::{
@@ -38,8 +39,12 @@ use daemon_common::service::server::{
     ServerBuildImage, ServerBuildPayload, ServerFileWrite, ServerNetworkPayload,
     ServerPortEntryPayload, ServerResourcePayload,
 };
+use daemon_common::service::server::{ServerService, TasksData};
+use daemon_common::service::server::{ServerStats, ServerStatus};
 use daemon_common::service::{JsonVec, WebsocketResponse};
+use daemon_common::task::TaskDescriptor;
 use daemon_common::user::UserSignature;
+use futures::TryStreamExt as _;
 use sqlx::{Connection as _, MySql, Transaction, query, query_scalar};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -165,17 +170,96 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         }
     }
 
-    async fn server_status(&self, server_id: u32) -> Result<PublicServerState, ServerStatusError> {
+    #[expect(clippy::similar_names, reason = "its fine")]
+    async fn server_status(&self, server_id: u32) -> Result<ServerStatus, ServerStatusError> {
         let (server, server_data) =
             server_required::<ServerStatusError>(&self.conn, &self.servers, server_id).await?;
 
-        match FetchedServer::state(server.id, &server.locks, &self.docker, &server_data).await {
-            Ok(state) => Ok(state.public()),
-            Err(docker) => {
-                error!("Failed to retrieve server status: {:?}", docker);
-                Err(ServerStatusError::DockerFailure)
+        let (_, storage_lock, _, _, storage_value, _, _, _) = storage_lock(
+            &self.config,
+            &*self.conn,
+            &self.storages,
+            StorageIdentifier::Primary(server_id),
+        )
+        .await?
+        .ok_or(ServerStatusError::ServerNotFound)?;
+
+        let mut state =
+            FetchedServer::container_state(server.id, &server.locks, &self.docker, &server_data)
+                .await
+                .map_err(|err| {
+                    error!("Failed to retrieve server status: {err:?}");
+                    ServerStatusError::DockerFailure
+                })?;
+
+        let storage_tasks = storage_lock.tasks();
+        let server_tasks = server_data.lock.tasks();
+
+        let disk = storage_value.0.load(Ordering::Relaxed);
+        let disk_max = storage_value.1.load(Ordering::Relaxed);
+
+        let mut stats = ServerStats::default();
+
+        if matches!(
+            state,
+            InternalServerState::Running(_, _)
+                | InternalServerState::Restarting(_)
+                | InternalServerState::Stopping(_)
+                | InternalServerState::Unhealthy(_, _)
+                | InternalServerState::Starting(_, _)
+        ) {
+            let mut stream = self.docker.stats(
+                &FetchedServer::container_name(server_id),
+                Some(StatsOptions {
+                    stream: false,
+                    one_shot: true,
+                }),
+            );
+            match stream.try_next().await {
+                Ok(Some(response)) => stats = ServerStats::from(response),
+                Ok(None) => {}
+                Err(err) => {
+                    warn!("Failed to retrieve container stats: {err:?}");
+                }
             }
         }
+        stats = stats
+            .with_disk(if disk == -1 {
+                None
+            } else {
+                Some(crate::utils::to_mib(disk.unsigned_abs()))
+            })
+            .with_max(
+                server.cpu,
+                server.ram,
+                server.swap,
+                if disk_max == -1 {
+                    None
+                } else {
+                    Some(disk_max.unsigned_abs())
+                },
+            );
+
+        if server_tasks.iter().any(|desc| {
+            matches!(
+                desc,
+                TaskDescriptor {
+                    data: ServerTask::Start,
+                    ..
+                }
+            )
+        }) {
+            state = InternalServerState::Preparing;
+        }
+
+        Ok(ServerStatus {
+            state: state.public(),
+            tasks: TasksData {
+                server: server_tasks,
+                storage: storage_tasks,
+            },
+            stats,
+        })
     }
 
     async fn start_server(&self, server_id: u32) -> Result<(), StartServerError> {

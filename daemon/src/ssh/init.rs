@@ -21,6 +21,7 @@ impl<T: DaemonExtra> Daemon<T> {
             }
             let mut methods = MethodSet::empty();
             methods.push(MethodKind::Password);
+            methods.push(MethodKind::PublicKey);
             let ssh_config = Arc::new(Config {
                 keys,
                 server_id: SshId::Standard(Cow::Owned(format!(

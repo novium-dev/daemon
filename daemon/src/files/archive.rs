@@ -2,7 +2,8 @@
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::compression::ArchiveCompression;
-use crate::storage::archive::{TarSandboxedAppendExt as _, TarSandboxedUnpackExt as _};
+use crate::storage::archive::format::ArchiveFormat;
+use crate::storage::archive::{ArchiveSandboxedUnpackExt as _, TarSandboxedAppendExt as _};
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::utils::storage_parent_ino;
 use crate::{Daemon, DaemonExtra, StorageNotification};
@@ -18,9 +19,11 @@ use std::io;
 use std::io::ErrorKind;
 use std::os::fd::OwnedFd;
 use std::path::PathBuf;
+use std::sync::Arc;
 use tar::{Archive, Builder};
 use tokio::sync::broadcast::Sender;
 use tracing::{debug, error, warn};
+use zip::ZipArchive;
 
 /// Cancel safe
 #[inline(always)]
@@ -73,13 +76,13 @@ pub async fn unpack_archive<
     let fd: OwnedFd = file.into_std().into();
     let mut file = std::fs::File::from(fd);
     match tokio::task::spawn_blocking(move || {
-        Ok::<_, io::Error>((ArchiveCompression::detect_blocking(&mut file)?, file))
+        Ok::<_, io::Error>((ArchiveFormat::detect_blocking(&mut file)?, file))
     })
     .await
     .inspect_err(|err| debug!("Failed to unpack archive (detect): {err:?}"))
     .map_err(io::Error::from)?
     {
-        Ok((Some(compression), file)) => {
+        Ok((Some(ArchiveFormat::Tar(compression)), file)) => {
             let archive = Archive::new(compression.create_decoder(file)?);
             archive
                 .unpack_sandboxed(dest_storage_path, &dest_path, ())
@@ -90,6 +93,37 @@ pub async fn unpack_archive<
                     }
                     _ => error!("Failed to unpack archive (unpack): {err:?}"),
                 })?;
+        }
+        Ok((Some(ArchiveFormat::Zip), file)) => {
+            let archive = match tokio::task::spawn_blocking(move || ZipArchive::new(file))
+                .await
+                .inspect_err(|err| debug!("Failed to unpack archive (zip open): {err:?}"))
+                .map_err(io::Error::from)?
+            {
+                Ok(archive) => archive,
+                // Encrypted, spanned or otherwise malformed zip archives cannot be unpacked
+                Err(err) => {
+                    debug!("Failed to unpack archive (zip open): {err:?}");
+                    return Err(<E as FromCompressionUnsupported>::from());
+                }
+            };
+            if let Err(err) = archive
+                .unpack_sandboxed(dest_storage_path, &dest_path, ())
+                .await
+                .inspect_err(|err| match err.kind() {
+                    ErrorKind::InvalidData | ErrorKind::Unsupported | ErrorKind::QuotaExceeded => {
+                        debug!("Failed to unpack archive (unpack): {err:?}");
+                    }
+                    _ => error!("Failed to unpack archive (unpack): {err:?}"),
+                })
+            {
+                // Entries using a compression method or encryption we do not support
+                return Err(if err.kind() == ErrorKind::Unsupported {
+                    <E as FromCompressionUnsupported>::from()
+                } else {
+                    <E as From<io::Error>>::from(err)
+                });
+            }
         }
         Ok(_) => return Err(<E as FromCompressionUnsupported>::from()),
         Err(err) if err.kind() == ErrorKind::UnexpectedEof => {
@@ -141,7 +175,8 @@ pub async fn create_archive<
     daemon: &Daemon<impl DaemonExtra>,
     id: StorageIdentifier,
     path: String,
-    src: String,
+    sources: HashSet<String>,
+    exclude: HashSet<String>,
     compression: String,
 ) -> Result<(), E> {
     let StorageLockData {
@@ -165,13 +200,26 @@ pub async fn create_archive<
     }))
     .map_err(|_err| <E as FromCompressionUnsupported>::from())?;
 
-    let (_, src_storage_path, src_path) = storage_path(id, &storage, src, &tokens).await?;
+    // I wish I could use a JoinSet here, but we want to avoid unnecessary allocations and need to
+    // check for path errors, before we create the archive.
+    let mut sources_processed = Vec::with_capacity(sources.len());
+    for source in sources {
+        let (_, src_storage_path, src_path) = storage_path(id, &storage, source, &tokens).await?;
+        // Every source keeps its own name inside the archive, otherwise archiving more than one
+        // directory would merge their contents together. The storage root has no name, so its
+        // contents end up at the archive root.
+        let name = src_path.file_name().unwrap_or_default().to_owned();
+        sources_processed.push((PathBuf::from(name), src_storage_path, src_path));
+    }
+
+    let exclude = Arc::new(exclude);
+
     let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
     tokio::task::spawn(create_archive0::<E>(
         storage,
-        src_storage_path,
         path,
-        src_path,
+        sources_processed,
+        exclude,
         compression,
         notify,
     ))
@@ -184,9 +232,9 @@ pub async fn create_archive<
 #[inline(always)]
 async fn create_archive0<E: From<io::Error>>(
     storage: Dir,
-    src_storage_path: PathBuf,
     path: PathBuf,
-    src: PathBuf,
+    sources: Vec<(PathBuf, PathBuf, PathBuf)>,
+    exclude: Arc<HashSet<String>>,
     compression: ArchiveCompression,
     notify: Sender<StorageNotification>,
 ) -> Result<(), E> {
@@ -210,18 +258,30 @@ async fn create_archive0<E: From<io::Error>>(
 
     let fd: OwnedFd = file.into_std().into();
     let file = std::fs::File::from(fd);
-    let archive = Builder::new(
+    let mut archive = Builder::new(
         compression
             .create_encoder(file)
             .inspect_err(|err| error!("Failed to create archive (create_encoder): {err:?}"))?,
     );
-    let (archive, ()) = archive
-        .append_dir_all_sandboxed(src_storage_path, "", src, HashSet::new(), (), true, false)
-        .await
-        .inspect_err(|err| match err.kind() {
-            ErrorKind::QuotaExceeded => debug!("Failed to create archive (create): {err:?}"),
-            _ => error!("Failed to create archive (create): {err:?}"),
-        })?;
+
+    for (name, src_storage_path, src_path) in sources {
+        let (archive_return, ()) = archive
+            .append_dir_all_sandboxed(
+                src_storage_path,
+                name,
+                src_path,
+                Arc::clone(&exclude),
+                (),
+                false,
+                false,
+            )
+            .await
+            .inspect_err(|err| match err.kind() {
+                ErrorKind::QuotaExceeded => debug!("Failed to create archive (append): {err:?}"),
+                _ => error!("Failed to create archive (append): {err:?}"),
+            })?;
+        archive = archive_return;
+    }
 
     tokio::task::spawn_blocking(move || {
         use std::io::Write as _;

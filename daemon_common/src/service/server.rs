@@ -2,6 +2,9 @@
 use super::*;
 use crate::service::error_storage_patch_failed::FromStoragePatchFailed;
 use crate::service::network::*;
+use crate::service::files::task::StorageTask;
+use crate::service::server::task::ServerTask;
+use crate::task::TaskDescriptor;
 use crate::user::*;
 use crate::utils::{JsonExt as _, io_sync, io_sync_seek_truncate};
 use axum::extract::ws::Message;
@@ -72,7 +75,7 @@ pub trait ServerService {
     /// Gets the status of an existing server
     #[route("/{server_id}", method = GET)]
     #[error(server::not_found, docker::failure, sql::failure <- [sql:*])]
-    async fn server_status(&self, server_id: u32) -> Result<PublicServerState, _>;
+    async fn server_status(&self, server_id: u32) -> Result<ServerStatus, _>;
 
     /// Starts an existing server
     #[route("/{server_id}/start", method = GET)]
@@ -323,7 +326,34 @@ pub struct ServerPortEntryPayload {
     pub protocol: String,
 }
 
-#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct ServerStatus {
+    pub state: PublicServerState,
+    pub stats: ServerStats,
+    pub tasks: TasksData,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct TasksData {
+    pub storage: Vec<TaskDescriptor<StorageTask>>,
+    pub server: Vec<TaskDescriptor<ServerTask>>,
+}
+
+impl TasksData {
+    #[must_use]
+    pub fn as_websocket_message(&self) -> Message {
+        const TASKS_MAGIC: &str = "TASKS!";
+        Message::Text(
+            format!(
+                "{TASKS_MAGIC}{}",
+                serde_json::to_string(self)
+                    .expect("Unable to serialize stats to websocket message")
+            )
+            .into(),
+        )
+    }
+}
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[schema(example = json!({"label": "Running", "healthcheck": null, "start": false, "stop": true, "kill": false, "time": 0}))]
 pub struct PublicServerState {
     pub label: String,
@@ -741,13 +771,13 @@ fn xml_set_text(element: &mut xmltree::Element, node: xmltree::XMLNode) {
     element.children.push(node);
 }
 
-#[derive(Default, Copy, Clone, Serialize, Deserialize)]
+#[derive(Debug, Default, Copy, Clone, Serialize, Deserialize, utoipa::ToSchema)]
 #[must_use]
 pub struct ServerStats {
     pub cpu: Option<f64>,      // in cpus
-    pub ram: Option<u64>,      // in bytes
-    pub swap: Option<u64>,     // in bytes
-    pub disk: Option<u64>,     // in bytes
+    pub ram: Option<u64>,      // in mib
+    pub swap: Option<u64>,     // in mib
+    pub disk: Option<u64>,     // in mib
     pub cpu_max: Option<f32>,  // in cpus
     pub ram_max: Option<u32>,  // in mib
     pub swap_max: Option<u32>, // in mib
@@ -825,11 +855,11 @@ impl From<bollard::models::ContainerStatsResponse> for ServerStats {
                         * f64::from(cpu_stats.online_cpus.unwrap_or_default())
                         * 10000f64)
                         .round()
-                        / 100f64
+                        / 10000f64
                 },
             ),
-            ram: memory_stats.usage,
-            swap: None, // TODO
+            ram: memory_stats.usage.map(|bytes| bytes >> 20u32), // bytes -> mib (>>20 == /0x0010_0000)
+            swap: None,                                          // TODO
             ..Self::default()
         }
     }
