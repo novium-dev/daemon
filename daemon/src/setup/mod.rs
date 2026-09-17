@@ -13,7 +13,7 @@ use core::time::Duration;
 use daemon::config::MountPoint;
 use daemon::internal::middleware;
 use daemon::key::{DaemonCertResolver, TlsAcceptor};
-use daemon_common::key::rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
+use daemon_common::key::rcgen::PKCS_ECDSA_P256_SHA256;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use daemon_common::node::{
     BackendNodeConfig, BackupStorage, NodeRegistrationRequest, ServerStorage, SetupNodeConfig,
