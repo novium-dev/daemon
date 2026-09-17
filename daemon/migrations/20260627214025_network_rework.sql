@@ -23,6 +23,7 @@ CREATE TABLE `wireguard_peers`
 (
 	`tunnel` INT UNSIGNED NOT NULL,
 	`endpoint` VARCHAR(255) NULL,
+	`public_key` BINARY(32) NOT NULL,
 	`preshared_key` BINARY(32) NOT NULL,
 	`ip` BINARY(8) NOT NULL,
 	UNIQUE (`tunnel`, `endpoint`),

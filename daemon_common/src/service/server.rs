@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::*;
 use crate::service::error_storage_patch_failed::FromStoragePatchFailed;
-use crate::service::network::*;
 use crate::service::files::task::StorageTask;
+use crate::service::network::*;
 use crate::service::server::task::ServerTask;
 use crate::task::TaskDescriptor;
 use crate::user::*;

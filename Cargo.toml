@@ -190,7 +190,7 @@ alloc_instead_of_core = "deny"
 
 big_endian_bytes = "deny"
 host_endian_bytes = "deny"
-little_endian_bytes = "deny"
+little_endian_bytes = "allow"
 
 
 [workspace.dependencies]

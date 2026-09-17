@@ -48,8 +48,7 @@ pub(crate) fn setup(
     let backend = Url::parse(url).expect("SETUP_URL is not a valid URL");
 
     info!("Retrieving daemon root key...");
-    let Some((root, rsa)) =
-        read_root_key(&backend, code).expect("failed to retrieve daemon root key")
+    let Some(root) = read_root_key(&backend, code).expect("failed to retrieve daemon root key")
     else {
         return;
     };
@@ -60,12 +59,8 @@ pub(crate) fn setup(
 
     let config = node_to_daemon_config(&backend, &node, database_url, port);
 
-    let keypair = crate::common::key::rcgen::KeyPair::generate_for(if rsa {
-        &PKCS_RSA_SHA256
-    } else {
-        &PKCS_ECDSA_P256_SHA256
-    })
-    .expect("failed to generate key pair");
+    let keypair = crate::common::key::rcgen::KeyPair::generate_for(&PKCS_ECDSA_P256_SHA256)
+        .expect("failed to generate key pair");
 
     let csr =
         DaemonKey::new_request(&keypair).expect("failed to build certificate signing request");
@@ -300,7 +295,7 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
     thread::sleep(Duration::from_secs(5));
 }
 
-fn read_root_key(url: &Url, code: &str) -> Result<Option<(DaemonRootKey, bool)>, anyhow::Error> {
+fn read_root_key(url: &Url, code: &str) -> Result<Option<DaemonRootKey>, anyhow::Error> {
     let response = Client::default()
         .get(
             url.join("/api/internal/daemon/root_key")
@@ -312,9 +307,8 @@ fn read_root_key(url: &Url, code: &str) -> Result<Option<(DaemonRootKey, bool)>,
         warn!("Code is invalid");
         return Ok(None);
     }
-    let rsa = response.headers().contains_key("X-Prefer-RSA-Key");
     let str: String = response.json().map_err(std::io::Error::other)?;
-    Ok(Some((DaemonRootKey::parse(str)?.0, rsa)))
+    Ok(Some(DaemonRootKey::parse(str)?.0))
 }
 
 fn read_config(url: &Url, code: &str) -> Result<SetupNodeConfig, anyhow::Error> {
