@@ -305,8 +305,6 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
         handle: ChannelOpenHandle,
         _session: &mut Session,
     ) -> Result<(), Self::Error> {
-        handle.accept().await;
-
         self.channels.insert(
             channel.id(),
             DaemonChannel {
@@ -314,7 +312,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                 ..DaemonChannel::default()
             },
         );
-
+        handle.accept().await;
         Ok(())
     }
 

@@ -1,4 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+#![expect(
+    clippy::std_instead_of_core,
+    reason = "for now, because it also triggers for std::io, but core_io is unstable"
+)]
 
 pub mod config;
 mod database;
