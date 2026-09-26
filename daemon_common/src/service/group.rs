@@ -16,7 +16,7 @@ pub trait GroupService {
     /// If the group does not exist, it will be created.
     /// A group will be automatically deleted if it has no server and no custom configuration.
     #[route("", method = PATCH)]
-    #[error(group::invalid_name, sql::failure <- [sql:*])]
+    #[error(group::invalid_name <- [sql:check], sql::failure <- [sql:*])]
     #[example("examples/group.configure.json")]
     async fn configure_group(
         &self,
