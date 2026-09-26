@@ -12,7 +12,7 @@ define_error!(group {
 pub trait GroupService {
     /// Configure group.
     ///
-    /// Every group name must match the regex `^[A-Za-z0-9_-]+$`.
+    /// Every group name must match the regex `^[A-Za-z0-9_-]{1,64}$`.
     /// If the group does not exist, it will be created.
     /// A group will be automatically deleted if it has no server and no custom configuration.
     #[route("", method = PATCH)]
