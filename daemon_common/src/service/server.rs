@@ -2,6 +2,8 @@
 use super::*;
 use crate::service::error_storage_patch_failed::FromStoragePatchFailed;
 use crate::service::files::task::StorageTask;
+#[cfg(doc)]
+use crate::service::group::GroupService;
 use crate::service::server::task::ServerTask;
 use crate::task::TaskDescriptor;
 use crate::user::*;
@@ -39,6 +41,9 @@ define_query_variable!(command "The command to be executed encoded as json strin
 #[service(path = "/server", tag = "server")]
 pub trait ServerService {
     /// Creates a new server
+    ///
+    /// A empty group string counts as no group.
+    /// See [`GroupService::configure_group`] for group conditions.
     #[route("", method = PUT)]
     #[error(server::{image_different, image_missing_tag}, storage::location_not_found, sql::failure <- [sql:*])]
     #[example("examples/server.create.json")]
@@ -49,9 +54,13 @@ pub trait ServerService {
         build: ServerBuildPayload,
         ports: Vec<ServerPortEntryPayload>,
         network: ServerNetworkPayload,
+        group: String,
     ) -> Result<u32, _>;
 
     /// Updates an existing server
+    ///
+    /// A empty group string counts as no group.
+    /// See [`GroupService::configure_group`] for group conditions.
     #[route("/{server_id}", method = PATCH)]
     #[error(server::{not_found, image_different, image_missing_tag}, sql::failure <- [sql:*])]
     #[example("examples/server.update.json")]
@@ -62,6 +71,7 @@ pub trait ServerService {
         build: Option<ServerBuildPayload>,
         ports: Option<Vec<ServerPortEntryPayload>>,
         network: Option<ServerNetworkPayload>,
+        group: Option<String>,
     );
 
     /// Deletes an existing server

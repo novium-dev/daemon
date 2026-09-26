@@ -1,0 +1,12 @@
+-- Add migration script here
+
+CREATE TABLE `groups` (
+	`id` INT(255) UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+	`cpu` FLOAT(255,2) NULL,
+    `ram` INT UNSIGNED NULL,
+    `swap` INT UNSIGNED NULL,
+);
+
+ALTER TABLE `servers`
+	ADD COLUMN `group` INT(255) UNSIGNED NULL,
+	ADD FOREIGN KEY (`group`) REFERENCES `groups`(`id`) ON DELETE SET NULL;
