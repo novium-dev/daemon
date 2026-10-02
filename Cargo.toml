@@ -8,12 +8,12 @@ reqwest.git = "https://github.com/0xIO32/reqwest.git"
 [workspace.lints.rust]
 unused = { level = "deny", priority = -1 }
 private_bounds = "allow"
-deprecated = "warn"
-nonstandard-style = "deny"
-let-underscore = "allow"
-refining-impl-trait = "deny"
-keyword-idents = "deny"
-future-incompatible = "deny"
+deprecated = "deny"
+nonstandard_style = { level = "deny", priority = -1 }
+let_underscore = { level = "allow", priority = -1 }
+refining_impl_trait = { level = "deny", priority = -1 }
+keyword_idents = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
 
 [workspace.lints.clippy]
 correctness = { level = "deny", priority = -1 }
@@ -52,7 +52,7 @@ wildcard_imports = "allow"
 impl_trait_in_params = "allow"
 float_arithmetic = "allow"
 single_match_else = "allow"
-missing-assert-message = "allow"
+missing_assert_message = "allow"
 
 significant_drop_in_scrutinee = "forbid"
 
@@ -142,7 +142,6 @@ lossy_float_literal = "deny"
 map_err_ignore = "deny"
 map_with_unused_argument_over_ranges = "deny"
 mem_forget = "deny"
-missing_assert_message = "deny"
 missing_asserts_for_indexing = "deny"
 mixed_read_write_in_expression = "forbid"
 modulo_arithmetic = "deny"
