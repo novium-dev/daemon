@@ -37,6 +37,7 @@ pub async fn init(config: &DaemonConfig) -> Result<(Cgroup, Cgroup), DaemonInitE
 }
 
 impl<T: DaemonExtra> Daemon<T> {
+    /// Cancel safe, kinda.
     pub async fn sync_cgroups<E: From<sqlx::Error> + From<io::Error>>(&self) -> Result<(), E> {
         let _guard = self.cgroup_lock.lock().await;
 
