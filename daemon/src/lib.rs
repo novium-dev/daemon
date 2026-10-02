@@ -9,6 +9,7 @@ mod sql;
 mod ssh;
 mod storage;
 
+mod cgroups;
 mod ctlsock;
 pub mod init;
 mod integrity;
@@ -22,6 +23,7 @@ mod utils;
 mod websocket;
 
 use bollard::Docker;
+use cgroups_rs::fs::Cgroup;
 use core::pin::Pin;
 use core::sync::atomic::AtomicI64;
 use core::sync::atomic::AtomicU16;
@@ -70,6 +72,8 @@ where
     pub(crate) schedule_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) schedules: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerScheduleData>>>>>,
     pub(crate) docker: Arc<Docker>,
+    pub(crate) cgroup_system: Arc<Cgroup>,
+    pub(crate) cgroup_server: Arc<Cgroup>,
     pub(crate) conn: Arc<Pool<MySql>>,
     pub(crate) runtime_dir: PathBuf,
     pub(crate) client: Arc<Client>,

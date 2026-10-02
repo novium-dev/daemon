@@ -4,12 +4,12 @@ use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
-use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, schedule, sql, storage};
+use crate::{Daemon, DaemonExtra, WithUserKey, cgroups, ctlsock, schedule, sql, storage};
 use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
 use bollard::query_parameters::{
     InspectNetworkOptions, KillContainerOptions, ListContainersOptions,
 };
-use core::fmt::{Debug, Display, Formatter};
+use core::fmt::Debug;
 use core::mem;
 use core::time::Duration;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
@@ -29,24 +29,27 @@ use std::time::Instant;
 use tokio::fs;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
-use tokio::task::JoinSet;
+use tokio::task::{JoinError, JoinSet};
 use tracing::{debug, error, info, warn};
 use url::Url;
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum DaemonInitError {
-    Io(io::Error),
-    Sql(sqlx::Error),
-    Docker(bollard::errors::Error),
+    #[error("init math error")]
+    Math,
+    #[error("init join error: {0}")]
+    Join(#[from] JoinError),
+    #[error("init io error: {0}")]
+    Io(#[from] io::Error),
+    #[error("init sql error: {0}")]
+    Sql(#[from] sqlx::Error),
+    #[error("init docker error: {0}")]
+    Docker(#[from] bollard::errors::Error),
+    #[error("init cgroup error: {0}")]
+    Cgroup(#[from] cgroups_rs::fs::error::Error),
+    #[error("init cgroup error: Cgroup Controller `{0}` not available")]
+    CgroupControllerMissing(cgroups_rs::fs::Controllers),
 }
-
-impl Display for DaemonInitError {
-    fn fmt(&self, formatter: &mut Formatter<'_>) -> core::fmt::Result {
-        <Self as Debug>::fmt(self, formatter)
-    }
-}
-
-impl core::error::Error for DaemonInitError {}
 
 impl Daemon<()> {
     pub async fn init(
@@ -102,13 +105,8 @@ impl<T: DaemonExtra> Daemon<T> {
             //tokio::time::sleep(Duration::from_secs(10)).await;
         };
 
-        if !fs::try_exists(&runtime_dir)
-            .await
-            .map_err(DaemonInitError::Io)?
-        {
-            fs::create_dir_all(&runtime_dir)
-                .await
-                .map_err(DaemonInitError::Io)?;
+        if !fs::try_exists(&runtime_dir).await? {
+            fs::create_dir_all(&runtime_dir).await?;
         }
 
         let servers = HashMap::new();
@@ -116,13 +114,11 @@ impl<T: DaemonExtra> Daemon<T> {
         let docker = if cfg!(target_os = "linux") {
             info!("Connecting to Podman/Docker...");
             bollard::Docker::connect_with_podman_defaults()
-                .inspect_err(|err| error!("Failed to connect to podman: {err:?}"))
-                .map_err(DaemonInitError::Docker)?
+                .inspect_err(|err| error!("Failed to connect to podman: {err:?}"))?
         } else {
             info!("Connecting to Podman/Docker...");
             bollard::Docker::connect_with_local_defaults()
-                .inspect_err(|err| error!("Failed to connect to docker: {err:?}"))
-                .map_err(DaemonInitError::Docker)?
+                .inspect_err(|err| error!("Failed to connect to docker: {err:?}"))?
         };
 
         match docker
@@ -235,6 +231,10 @@ impl<T: DaemonExtra> Daemon<T> {
             }
         };
 
+        info!("Initializing CGroups...");
+
+        let (cgroup_system, cgroup_server) = cgroups::init(&config).await?;
+
         let config = Arc::new(config);
         let daemon = Self {
             config: Arc::clone(&config),
@@ -247,6 +247,8 @@ impl<T: DaemonExtra> Daemon<T> {
             schedule_task: Arc::default(),
             schedules: Arc::default(),
             docker: Arc::new(docker),
+            cgroup_system: Arc::new(cgroup_system),
+            cgroup_server: Arc::new(cgroup_server),
             runtime_dir,
             started: Instant::now(),
             conn: Arc::new(conn),
@@ -258,17 +260,19 @@ impl<T: DaemonExtra> Daemon<T> {
         };
         sql::init(&daemon.conn)
             .await
-            .inspect_err(|err| error!("Failed to initialize sql: {:?}", err))
-            .map_err(DaemonInitError::Sql)?;
+            .inspect_err(|err| error!("Failed to initialize sql: {err:?}"))?;
 
         daemon.reattach_container().await;
+
+        info!("Initializing CGroups...");
+
+        daemon.sync_cgroups::<DaemonInitError>().await?;
 
         info!("Running schedules...");
 
         schedule::init(&daemon)
             .await
-            .inspect_err(|err| error!("Failed to run schedules: {:?}", err))
-            .map_err(DaemonInitError::Sql)?;
+            .inspect_err(|err| error!("Failed to run schedules: {:?}", err))?;
 
         daemon.server_task_cancellable.lock().await.spawn(
             ctlsock::run(daemon.clone())

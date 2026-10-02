@@ -5,7 +5,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::sync::task::{AnyTaskRwLockWriteGuard, TaskOwnedRwLockReadGuard};
 use crate::utils::from_mib;
-use crate::{Daemon, DaemonExtra, ServerData, utils};
+use crate::{Daemon, DaemonExtra, ServerData, cgroups, utils};
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, EndpointSettings, HostConfig, NetworkingConfig, PortBinding,
@@ -304,10 +304,10 @@ impl FetchedServer {
                         cap_add: Some(self.cap_add.iter().cloned().collect()),
                         cap_drop: Some(self.cap_drop.iter().cloned().collect()),
 
-                        cpu_period: self.cpu.map(|_| 100_000i64),
+                        cpu_period: self.cpu.map(|_| cgroups::CPU_PERIOD),
                         cpu_quota: if let Some(cpu) = self.cpu {
                             Some(
-                                i64::from_f64((f64::from(cpu) * 100_000.0f64).round())
+                                i64::from_f64((f64::from(cpu) * cgroups::CPU_PERIOD_F).round())
                                     .ok_or(ServerStartError::MathError)?,
                             )
                         } else {

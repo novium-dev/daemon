@@ -57,6 +57,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         build: ServerBuildPayload,
         ports: Vec<ServerPortEntryPayload>,
         network: ServerNetworkPayload,
+        group: String,
     ) -> Result<u32, CreateServerError> {
         let Some(_) = self.config.storage.get(&storage) else {
             return Err(CreateServerError::StorageLocationNotFound);
@@ -88,6 +89,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         build: Option<ServerBuildPayload>,
         ports: Option<Vec<ServerPortEntryPayload>>,
         network: Option<ServerNetworkPayload>,
+        group: Option<String>,
     ) -> Result<(), UpdateServerError> {
         server_required::<UpdateServerError>(&self.conn, &self.servers, server_id).await?;
 

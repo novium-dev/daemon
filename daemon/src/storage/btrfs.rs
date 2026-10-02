@@ -159,7 +159,7 @@ pub async fn apply_qgroup_limit(dir: &PathBuf, disk: Option<u64>) -> Result<(), 
         ioctl(file.as_raw_fd(), BTRFS_IOC_QGROUP_LIMIT as _, &args)
     })
     .await
-    .map_err(io::Error::other)?;
+    .map_err(io::Error::from)?;
     if ret < 0i32 {
         return Err(io::Error::last_os_error());
     }
