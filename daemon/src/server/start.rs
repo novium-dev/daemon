@@ -256,7 +256,7 @@ impl FetchedServer {
 
         let cgroup = self.group.as_deref().map_or_else(
             || cgroup_absolute_path(&daemon.cgroup_server),
-            cgroup_absolute_path_by_name,
+            |group| cgroup_absolute_path_by_name(&daemon.config.cgroup, group),
         );
 
         docker
@@ -343,7 +343,6 @@ impl FetchedServer {
                                 format!("cgroup path is invalid: {}", osstr.display()),
                             )
                         })?),
-
                         ..HostConfig::default()
                     }),
                     ..ContainerCreateBody::default()

@@ -6,9 +6,10 @@ use std::{
 };
 
 use cgroups_rs::fs::{
-    Cgroup, ControllIdentifier as _, Hierarchy as _, cpu::CpuController,
-    cpuacct::CpuAcctController, hierarchies::V2, memory::MemController,
+    Cgroup, ControllIdentifier as _, Hierarchy as _, cpu::CpuController, hierarchies::V2,
+    memory::MemController,
 };
+use itertools::Itertools as _;
 use num_traits::FromPrimitive as _;
 use sqlx::query;
 use tokio_stream::{StreamExt as _, wrappers::ReadDirStream};
@@ -16,7 +17,7 @@ use tracing::{error, warn};
 
 use crate::{
     Daemon, DaemonExtra,
-    config::{DaemonConfig, LimitConfig},
+    config::{CgroupConfig, DaemonConfig, LimitConfig},
     init::DaemonInitError,
     utils::from_mib,
 };
@@ -26,10 +27,11 @@ pub const CPU_PERIOD_F: f64 = 100_000f64;
 
 pub async fn init(config: &DaemonConfig) -> Result<(Cgroup, Cgroup), DaemonInitError> {
     let limit = config.limit;
+    let cgroup_config = config.cgroup.clone();
     tokio::task::spawn_blocking(move || {
         Ok((
             V2::new().root_control_group(),
-            init_cgroup_blocking(crate::common::DAEMON_CGROUP_ROOT, limit)?,
+            init_cgroup_blocking(&cgroup_config, &[crate::common::DAEMON_CGROUP_ROOT], limit)?,
         ))
     })
     .await
@@ -72,17 +74,17 @@ impl<T: DaemonExtra> Daemon<T> {
             })
             .collect();
 
-        let current = cgroup_children_names(&self.cgroup_server).await?;
+        let current = cgroup_children_names(&self.config.cgroup, &self.cgroup_server).await?;
 
         for name in current
             .into_iter()
             .filter(|name| !groups.contains_key(name))
         {
-            let path = format!("{}/{name}", crate::common::DAEMON_CGROUP_ROOT); // Validated by sql constraint
+            let cgroup_config = self.config.cgroup.clone();
             tokio::task::spawn_blocking(move || {
                 let cgroup = Cgroup::load_with_specified_controllers(
                     Box::new(V2::new()),
-                    path,
+                    into_path(&cgroup_config, &[crate::common::DAEMON_CGROUP_ROOT, &name]),
                     controllers(),
                 );
 
@@ -103,19 +105,34 @@ impl<T: DaemonExtra> Daemon<T> {
         }
 
         for (name, limit) in groups {
-            let path = format!("{}/{name}", crate::common::DAEMON_CGROUP_ROOT); // Validated by sql constraint
-            tokio::task::spawn_blocking(move || init_cgroup_blocking(&path, limit))
-                .await
-                .map_err(io::Error::from)?
-                .map_err(io::Error::other)?;
+            let cgroup_config = self.config.cgroup.clone();
+
+            tokio::task::spawn_blocking(move || {
+                init_cgroup_blocking(
+                    &cgroup_config,
+                    &[crate::common::DAEMON_CGROUP_ROOT, &name],
+                    limit,
+                )
+            })
+            .await
+            .map_err(io::Error::from)?
+            .map_err(io::Error::other)?;
         }
 
         Ok(())
     }
 }
 
-fn init_cgroup_blocking(path: &str, limit: LimitConfig) -> Result<Cgroup, DaemonInitError> {
-    let cgroup = Cgroup::load_with_specified_controllers(Box::new(V2::new()), path, controllers());
+fn init_cgroup_blocking(
+    cgroup: &CgroupConfig,
+    path: &[&str],
+    limit: LimitConfig,
+) -> Result<Cgroup, DaemonInitError> {
+    let cgroup = Cgroup::load_with_specified_controllers(
+        Box::new(V2::new()),
+        into_path(cgroup, path),
+        controllers(),
+    );
 
     if !cgroup_exists_blocking(&cgroup).map_err(DaemonInitError::Io)? {
         cgroup
@@ -169,13 +186,16 @@ fn cgroup_exists_blocking(cgroup: &Cgroup) -> Result<bool, io::Error> {
         .inspect_err(|err| error!("Failed to check if cgroup does exist: {err:?}"))
 }
 
-pub async fn cgroup_children(cgroup: &Cgroup) -> Result<HashMap<String, Cgroup>, io::Error> {
-    let names = cgroup_children_names(cgroup).await?;
+pub async fn cgroup_children(
+    config: CgroupConfig,
+    cgroup: &Cgroup,
+) -> Result<HashMap<String, Cgroup>, io::Error> {
+    let names = cgroup_children_names(&config, cgroup).await?;
     tokio::task::spawn_blocking(move || {
         names
             .into_iter()
             .map(|name| {
-                let path = format!("{}/{name}", crate::common::DAEMON_CGROUP_ROOT);
+                let path = into_path(&config, &[crate::common::DAEMON_CGROUP_ROOT, &name]);
                 (
                     name,
                     Cgroup::load_with_specified_controllers(
@@ -191,29 +211,62 @@ pub async fn cgroup_children(cgroup: &Cgroup) -> Result<HashMap<String, Cgroup>,
     .map_err(io::Error::from)
 }
 
-async fn cgroup_children_names(cgroup: &Cgroup) -> Result<HashSet<String>, io::Error> {
+async fn cgroup_children_names(
+    config: &CgroupConfig,
+    cgroup: &Cgroup,
+) -> Result<HashSet<String>, io::Error> {
     let readdir = tokio::fs::read_dir(cgroup_absolute_path(cgroup))
         .await
         .inspect_err(|err| error!("Failed to iterate children of cgroup: {err:?}"))?;
     ReadDirStream::new(readdir)
-        .map(|entry| {
-            entry?
+        .then(async |entry| {
+            let entry = entry?;
+            if !entry.file_type().await?.is_dir() {
+                return Ok(String::new());
+            }
+            entry
                 .file_name()
-                .into_string()
-                .map_err(|str| io::Error::other(format!("Invalid cgroup found: {}", str.display())))
+                .to_str()
+                .ok_or_else(|| {
+                    io::Error::other(format!(
+                        "Invalid cgroup found: {}",
+                        entry.file_name().display()
+                    ))
+                })?
+                .strip_suffix(&config.suffix)
+                .map(String::from)
+                .ok_or_else(|| {
+                    io::Error::other(format!(
+                        "Invalid cgroup found: {}",
+                        entry.file_name().display()
+                    ))
+                })
         })
+        .filter(|str| str.as_ref().map_or(true, |str| !str.is_empty()))
         .collect()
         .await
 }
 
 #[inline]
 pub(crate) fn cgroup_absolute_path(cgroup: &Cgroup) -> PathBuf {
-    cgroup_absolute_path_by_name(cgroup.path())
+    V2::new().root().join(cgroup.path())
 }
 
 #[inline]
-pub(crate) fn cgroup_absolute_path_by_name(name: &str) -> PathBuf {
-    V2::new().root().join(name)
+pub(crate) fn cgroup_absolute_path_by_name(cgroup: &CgroupConfig, name: &str) -> PathBuf {
+    V2::new().root().join(into_path(
+        cgroup,
+        &[crate::common::DAEMON_CGROUP_ROOT, name],
+    ))
+}
+
+#[expect(unstable_name_collisions)]
+#[inline]
+fn into_path(cgroup: &CgroupConfig, path: &[&str]) -> String {
+    path.iter()
+        .map(|str| format!("{str}{}", cgroup.suffix))
+        .intersperse("/".to_owned())
+        .collect::<String>()
 }
 
 #[inline]
@@ -232,6 +285,6 @@ where
 pub fn controllers() -> Vec<String> {
     vec![
         CpuController::controller_type().to_string(),
-        CpuAcctController::controller_type().to_string(),
+        MemController::controller_type().to_string(),
     ]
 }

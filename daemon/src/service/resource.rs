@@ -3,7 +3,6 @@ use crate::cgroups::{cgroup_absolute_path, cgroup_children};
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use cgroups_rs::fs::cpu::CpuController;
-use cgroups_rs::fs::cpuacct::CpuAcctController;
 use cgroups_rs::fs::memory::MemController;
 use cgroups_rs::fs::{Cgroup, MaxValue, parse_max_value};
 use core::time::Duration;
@@ -11,12 +10,14 @@ use daemon_common::service::resource::ResourceService;
 use daemon_common::service::resource::resource_service_error::ResourceInfoError;
 use daemon_common::service::resource::{ResourceResponse, ResourceSubset};
 use num_traits::ToPrimitive as _;
-use procfs::{CpuInfo, Current as _, CurrentSI as _, KernelStats, Meminfo};
+use procfs::{CpuInfo, Current as _, Meminfo};
 use sqlx::query;
 use sqlx::types::BigDecimal;
 use std::collections::HashMap;
+use std::io::ErrorKind;
 use std::sync::Arc;
 use std::{fs, io, thread};
+use tokio::time::Instant;
 use tracing::error;
 
 #[async_trait]
@@ -32,7 +33,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
 
         let cgroup_system = Arc::clone(&self.cgroup_system);
         let cgroup_server = Arc::clone(&self.cgroup_server);
-        let cgroups = cgroup_children(&cgroup_server)
+        let cgroups = cgroup_children(self.config.cgroup.clone(), &cgroup_server)
             .await
             .map_err(|_err| ResourceInfoError::Resource)?;
 
@@ -40,55 +41,64 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             let mut usage_prev = HashMap::with_capacity(cgroups.len());
             let mut usage_now = HashMap::with_capacity(cgroups.len());
 
-            // fast path start
-            let kernel_stats_prev = KernelStats::current()?;
-            let usage_system_prev = cgroup_system
-                .controller_of::<CpuAcctController>()
-                .ok_or_else(|| io::Error::other("CPU Account Controller not available"))?
-                .cpuacct()
-                .usage;
-            let usage_server_prev = cgroup_system
-                .controller_of::<CpuAcctController>()
-                .ok_or_else(|| io::Error::other("CPU Account Controller not available"))?
-                .cpuacct()
-                .usage;
+            let usage_system_prev = usage_time(
+                &cgroup_system
+                    .controller_of::<CpuController>()
+                    .ok_or_else(|| io::Error::other("CPU Controller not available"))?
+                    .cpu()
+                    .stat,
+            )?;
+            let usage_server_prev = usage_time(
+                &cgroup_server
+                    .controller_of::<CpuController>()
+                    .ok_or_else(|| io::Error::other("CPU Controller not available"))?
+                    .cpu()
+                    .stat,
+            )?;
             for (name, cgroup) in &cgroups {
                 usage_prev.insert(
                     name,
-                    cgroup
-                        .controller_of::<CpuAcctController>()
-                        .ok_or_else(|| io::Error::other("CPU Account Controller not available"))?
-                        .cpuacct()
-                        .usage,
+                    usage_time(
+                        &cgroup
+                            .controller_of::<CpuController>()
+                            .ok_or_else(|| {
+                                io::Error::other("CPU Account Controller not available")
+                            })?
+                            .cpu()
+                            .stat,
+                    )?,
                 );
             }
-            // fast path end
+            let dummy_prev = (0, Instant::now());
 
             thread::sleep(Duration::from_millis(200)); // Recommended time by sysinfo
 
-            // fast path start
-            let kernel_stats_now = KernelStats::current()?;
-            let usage_system_now = cgroup_system
-                .controller_of::<CpuAcctController>()
-                .ok_or_else(|| io::Error::other("CPU Account Controller not available"))?
-                .cpuacct()
-                .usage;
-            let usage_server_now = cgroup_system
-                .controller_of::<CpuAcctController>()
-                .ok_or_else(|| io::Error::other("CPU Account Controller not available"))?
-                .cpuacct()
-                .usage;
+            let usage_system_now = usage_time(
+                &cgroup_system
+                    .controller_of::<CpuController>()
+                    .ok_or_else(|| io::Error::other("CPU Controller not available"))?
+                    .cpu()
+                    .stat,
+            )?;
+            let usage_server_now = usage_time(
+                &cgroup_server
+                    .controller_of::<CpuController>()
+                    .ok_or_else(|| io::Error::other("CPU Controller not available"))?
+                    .cpu()
+                    .stat,
+            )?;
             for (name, cgroup) in &cgroups {
                 usage_now.insert(
                     name,
-                    cgroup
-                        .controller_of::<CpuAcctController>()
-                        .ok_or_else(|| io::Error::other("CPU Account Controller not available"))?
-                        .cpuacct()
-                        .usage,
+                    usage_time(
+                        &cgroup
+                            .controller_of::<CpuController>()
+                            .ok_or_else(|| io::Error::other("CPU Controller not available"))?
+                            .cpu()
+                            .stat,
+                    )?,
                 );
             }
-            // fast path end
 
             let cpu = CpuInfo::current()?;
             let mem = Meminfo::current()?;
@@ -103,8 +113,6 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             let system = new_resource_subset(
                 (&cgroup_system, &cgroup_server),
                 Some(&cgroup_system),
-                &kernel_stats_prev,
-                &kernel_stats_now,
                 usage_system_prev,
                 usage_system_now,
                 &alloc,
@@ -113,13 +121,12 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             let server = new_resource_subset(
                 (&cgroup_system, &cgroup_server),
                 Some(&cgroup_server),
-                &kernel_stats_prev,
-                &kernel_stats_now,
                 usage_server_prev,
                 usage_server_now,
                 &alloc,
             )?;
 
+            let dummy_now = (0, Instant::now());
             for (name, cgroup) in &cgroups {
                 let alloc = allocation.get(name).cloned().unwrap_or_default();
                 groups.insert(
@@ -127,10 +134,8 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
                     new_resource_subset(
                         (&cgroup_system, &cgroup_server),
                         Some(cgroup),
-                        &kernel_stats_prev,
-                        &kernel_stats_now,
-                        usage_prev.get(name).copied().unwrap_or_default(),
-                        usage_now.get(name).copied().unwrap_or_default(),
+                        usage_prev.get(name).copied().unwrap_or(dummy_prev),
+                        usage_now.get(name).copied().unwrap_or(dummy_now),
                         &alloc,
                     )?,
                 );
@@ -145,10 +150,8 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
                     new_resource_subset(
                         (&cgroup_system, &cgroup_server),
                         None,
-                        &kernel_stats_prev,
-                        &kernel_stats_now,
-                        0,
-                        0,
+                        dummy_prev,
+                        dummy_now,
                         &alloc,
                     )?,
                 );
@@ -177,14 +180,12 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
 fn new_resource_subset(
     (cgroup_system, cgroup_server): (&Cgroup, &Cgroup),
     cgroup: Option<&Cgroup>,
-    kernel_prev: &KernelStats,
-    kernel_new: &KernelStats,
-    cpu_prev: u64,
-    cpu_new: u64,
+    cpu_prev: (u64, Instant),
+    cpu_new: (u64, Instant),
     (alloc_cpu, alloc_ram, alloc_swap): &(f64, BigDecimal, BigDecimal),
 ) -> Result<ResourceSubset, io::Error> {
-    let cpu_delta = cpu_new.saturating_sub(cpu_prev) as f64;
-    let system_delta = total_time(kernel_new).saturating_sub(total_time(kernel_prev)) as f64;
+    let cpu_delta = cpu_new.0.saturating_sub(cpu_prev.0) as f64;
+    let system_delta = cpu_new.1.duration_since(cpu_prev.1).as_micros() as f64;
 
     let mut cpu_limit = None;
     let mut mem_limit = None;
@@ -215,11 +216,7 @@ fn new_resource_subset(
     };
 
     Ok(ResourceSubset {
-        cpu_used: ((cpu_delta / system_delta)
-            * f64::from(u32::try_from(kernel_new.cpu_time.len()).unwrap_or(1))
-            * 10000f64)
-            .round()
-            / 10000f64,
+        cpu_used: ((cpu_delta / system_delta) * 10000f64).round() / 10000f64,
         cpu_allocated: *alloc_cpu,
         cpu_limit,
         mem_allocated: alloc_ram.to_u64().unwrap_or(u64::MAX),
@@ -239,6 +236,9 @@ fn apply_limit(
     ram: &mut Option<u64>,
     swap: &mut Option<u64>,
 ) -> Result<(), io::Error> {
+    if cgroup.path().is_empty() {
+        return Ok(());
+    }
     if let Some(controller) = cgroup.controller_of::<CpuController>() {
         let period = controller.cfs_period().map_err(io::Error::other)?;
         let quota = controller.cfs_quota().map_err(io::Error::other)?;
@@ -282,17 +282,15 @@ fn apply_limit(
     Ok(())
 }
 
-fn total_time(kernel: &KernelStats) -> u64 {
-    kernel
-        .total
-        .user
-        .saturating_add(kernel.total.nice)
-        .saturating_add(kernel.total.system)
-        .saturating_add(kernel.total.irq.unwrap_or_default())
-        .saturating_add(kernel.total.softirq.unwrap_or_default())
-        .saturating_add(kernel.total.idle)
-        .saturating_add(kernel.total.iowait.unwrap_or_default())
-        .saturating_add(kernel.total.guest.unwrap_or_default())
-        .saturating_add(kernel.total.guest_nice.unwrap_or_default())
-        .saturating_add(kernel.total.steal.unwrap_or_default())
+fn usage_time(stat: &str) -> Result<(u64, Instant), io::Error> {
+    let time = Instant::now();
+    for line in stat.lines() {
+        if let Some(value) = line.strip_prefix("usage_usec ") {
+            return Ok((value.parse().map_err(io::Error::other)?, time));
+        }
+    }
+    Err(io::Error::new(
+        ErrorKind::InvalidData,
+        "usage_usec not found",
+    ))
 }
