@@ -136,21 +136,21 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.63.0"
+version = "0.63.3"
 
 [dependencies.russh-sftp]
-version = "2.4.0"
+version = "3.0.1"
 
 [dependencies.rustix]
-version = "1.1.4"
+version = "1.1.5"
 features = ["thread", "fs"]
 
 [dependencies.zstd]
-version = "0.13.3"
+version = "0.14.0"
 features = []
 
 [dependencies.flate2]
-version = "1.1.9"
+version = "1.1.10"
 features = ["zlib"]
 
 [dependencies.bzip2]
