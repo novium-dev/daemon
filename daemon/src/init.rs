@@ -247,6 +247,7 @@ impl<T: DaemonExtra> Daemon<T> {
             schedule_task: Arc::default(),
             schedules: Arc::default(),
             docker: Arc::new(docker),
+            cgroup_lock: Arc::default(),
             cgroup_system: Arc::new(cgroup_system),
             cgroup_server: Arc::new(cgroup_server),
             runtime_dir,

@@ -2,6 +2,7 @@
 use std::{
     collections::{HashMap, HashSet},
     fs, io,
+    path::PathBuf,
 };
 
 use cgroups_rs::fs::{
@@ -37,6 +38,8 @@ pub async fn init(config: &DaemonConfig) -> Result<(Cgroup, Cgroup), DaemonInitE
 
 impl<T: DaemonExtra> Daemon<T> {
     pub async fn sync_cgroups<E: From<sqlx::Error> + From<io::Error>>(&self) -> Result<(), E> {
+        let _guard = self.cgroup_lock.lock().await;
+
         let mut conn = self.conn.acquire().await?;
 
         query!(
@@ -113,7 +116,7 @@ impl<T: DaemonExtra> Daemon<T> {
 fn init_cgroup_blocking(path: &str, limit: LimitConfig) -> Result<Cgroup, DaemonInitError> {
     let cgroup = Cgroup::load_with_specified_controllers(Box::new(V2::new()), path, controllers());
 
-    if !cgroup_exists(&cgroup).map_err(DaemonInitError::Io)? {
+    if !cgroup_exists_blocking(&cgroup).map_err(DaemonInitError::Io)? {
         cgroup
             .create()
             .inspect_err(|err| error!("Failed to create cgroup: {err:?}"))
@@ -166,8 +169,8 @@ fn init_cgroup_blocking(path: &str, limit: LimitConfig) -> Result<Cgroup, Daemon
 }
 
 #[inline]
-fn cgroup_exists(cgroup: &Cgroup) -> Result<bool, io::Error> {
-    fs::exists(V2::new().root().join(cgroup.path()))
+fn cgroup_exists_blocking(cgroup: &Cgroup) -> Result<bool, io::Error> {
+    fs::exists(cgroup_absolute_path(cgroup))
         .inspect_err(|err| error!("Failed to check if cgroup does exist: {err:?}"))
 }
 
@@ -194,7 +197,7 @@ pub async fn cgroup_children(cgroup: &Cgroup) -> Result<HashMap<String, Cgroup>,
 }
 
 async fn cgroup_children_names(cgroup: &Cgroup) -> Result<HashSet<String>, io::Error> {
-    let readdir = tokio::fs::read_dir(V2::new().root().join(cgroup.path()))
+    let readdir = tokio::fs::read_dir(cgroup_absolute_path(cgroup))
         .await
         .inspect_err(|err| error!("Failed to iterate children of cgroup: {err:?}"))?;
     ReadDirStream::new(readdir)
@@ -206,6 +209,16 @@ async fn cgroup_children_names(cgroup: &Cgroup) -> Result<HashSet<String>, io::E
         })
         .collect()
         .await
+}
+
+#[inline]
+pub(crate) fn cgroup_absolute_path(cgroup: &Cgroup) -> PathBuf {
+    cgroup_absolute_path_by_name(cgroup.path())
+}
+
+#[inline]
+pub(crate) fn cgroup_absolute_path_by_name(name: &str) -> PathBuf {
+    V2::new().root().join(name)
 }
 
 #[inline]

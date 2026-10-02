@@ -41,6 +41,8 @@ pub struct FetchedServer {
     pub uid: Option<u16>,
     pub gid: Option<u16>,
 
+    pub group: Option<String>,
+
     pub stop_command: Option<String>,
     pub stop_timeout: u16,
 
@@ -253,6 +255,8 @@ impl Server {
             uid: self.uid,
             gid: self.gid,
 
+            group: self.group,
+
             stop_command: self.stop_command,
             stop_timeout: self.stop_timeout,
 
@@ -291,6 +295,8 @@ pub struct Server {
 
     pub uid: Option<u16>,
     pub gid: Option<u16>,
+
+    pub group: Option<String>,
 
     pub stop_command: Option<String>,
     pub stop_timeout: u16,

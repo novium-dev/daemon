@@ -72,6 +72,7 @@ where
     pub(crate) schedule_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) schedules: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerScheduleData>>>>>,
     pub(crate) docker: Arc<Docker>,
+    pub(crate) cgroup_lock: Arc<Mutex<()>>,
     pub(crate) cgroup_system: Arc<Cgroup>,
     pub(crate) cgroup_server: Arc<Cgroup>,
     pub(crate) conn: Arc<Pool<MySql>>,

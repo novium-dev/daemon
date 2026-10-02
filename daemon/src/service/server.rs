@@ -74,6 +74,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
                     Some(build),
                     Some(ports),
                     Some(network),
+                    Some(group),
                 )
                 .await?;
                 Ok(id)
@@ -96,7 +97,8 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
         let mut conn = self.conn.acquire().await?;
         conn.transaction(|tx| {
             Box::pin(async move {
-                modify0::<UpdateServerError>(tx, server_id, resource, build, ports, network).await
+                modify0::<UpdateServerError>(tx, server_id, resource, build, ports, network, group)
+                    .await
             })
         })
         .await
@@ -600,6 +602,7 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
     build: Option<ServerBuildPayload>,
     ports: Option<Vec<ServerPortEntryPayload>>,
     network: Option<ServerNetworkPayload>,
+    group: Option<String>,
 ) -> Result<(), T> {
     if let Some(resource) = &resource {
         query!(
@@ -877,6 +880,24 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 .await
                 .inspect_err(|err| error!("Unable to insert server network attachments: {err:?}"))?;
         }
+    }
+    if let Some(group) = &group {
+        if !group.is_empty() {
+            query!("INSERT IGNORE INTO `groups` (`name`) VALUES (?)", group)
+                .execute(&mut **tx)
+                .await
+                .inspect_err(|err| error!("Unable to insert group: {err:?}"))?;
+            // Do NOT sync here
+        }
+
+        query!(
+            "UPDATE `servers` SET `group` = ? WHERE `id` = ?",
+            if group.is_empty() { None } else { Some(group) },
+            server_id
+        )
+        .execute(&mut **tx)
+        .await
+        .inspect_err(|err| error!("Unable to update server group: {err:?}"))?;
     }
 
     Ok(())

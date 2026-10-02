@@ -1,3 +1,4 @@
+use crate::cgroups::{cgroup_absolute_path, cgroup_absolute_path_by_name};
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::watcher::attach;
@@ -111,6 +112,8 @@ impl FetchedServer {
         let mut buffer = buffer.lock().await;
         buffer.clear();
         Self::log(&server_data.sender, &mut buffer, "Preparing Server...");
+
+        daemon.sync_cgroups::<ServerStartError>().await?;
 
         let image = self
             .clone()
@@ -251,6 +254,11 @@ impl FetchedServer {
             .map(from_mib)
             .map(|ram| i64::try_from(ram).unwrap_or(i64::MAX));
 
+        let cgroup = self.group.as_deref().map_or_else(
+            || cgroup_absolute_path(&daemon.cgroup_server),
+            cgroup_absolute_path_by_name,
+        );
+
         docker
             .create_container(
                 Some(CreateContainerOptions {
@@ -328,6 +336,13 @@ impl FetchedServer {
                             server_data.size.1.load(Ordering::Relaxed) as usize,
                             server_data.size.0.load(Ordering::Relaxed) as usize,
                         ]),
+
+                        cgroup_parent: Some(cgroup.into_string().map_err(|osstr| {
+                            io::Error::new(
+                                ErrorKind::InvalidFilename,
+                                format!("cgroup path is invalid: {}", osstr.display()),
+                            )
+                        })?),
 
                         ..HostConfig::default()
                     }),

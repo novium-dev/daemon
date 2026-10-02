@@ -162,7 +162,7 @@ pub async fn generic_server_select(
     server_id: u32,
 ) -> Result<Option<FetchedServer>, sqlx::Error> {
     let server: Option<Server> =
-        query_as!(Server, "SELECT `id`,`image`,`cpu`,`ram`,`swap`,`disk`,`storage`,`internet` as `internet: bool`,`ipv6_suffix`,`uid`,`gid`,`stop_command`,`stop_timeout` FROM `servers` WHERE `id` = ? LIMIT 1", server_id)
+        query_as!(Server, "SELECT `id`,`image`,`cpu`,`ram`,`swap`,`disk`,`storage`,`internet` as `internet: bool`,`ipv6_suffix`,`uid`,`gid`,`group`,`stop_command`,`stop_timeout` FROM `servers` WHERE `id` = ? LIMIT 1", server_id)
             .fetch_optional(conn)
             .await?;
     match server {
