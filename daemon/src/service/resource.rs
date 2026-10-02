@@ -99,7 +99,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             let alloc = (cpu_alloc, ram_alloc, swap_alloc);
 
             let system = new_resource_subset(
-                &cgroup_system,
+                Some(&cgroup_system),
                 &kernel_stats_prev,
                 &kernel_stats_now,
                 usage_system_prev,
@@ -108,7 +108,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             )?;
 
             let server = new_resource_subset(
-                &cgroup_server,
+                Some(&cgroup_server),
                 &kernel_stats_prev,
                 &kernel_stats_now,
                 usage_server_prev,
@@ -121,13 +121,23 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
                 groups.insert(
                     name.clone(),
                     new_resource_subset(
-                        cgroup,
+                        Some(cgroup),
                         &kernel_stats_prev,
                         &kernel_stats_now,
                         usage_prev.get(name).copied().unwrap_or_default(),
                         usage_now.get(name).copied().unwrap_or_default(),
                         &alloc,
                     )?,
+                );
+            }
+
+            for (name, alloc) in allocation {
+                if groups.contains_key(&name) {
+                    continue;
+                }
+                groups.insert(
+                    name,
+                    new_resource_subset(None, &kernel_stats_prev, &kernel_stats_now, 0, 0, &alloc)?,
                 );
             }
 
@@ -156,7 +166,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
     reason = "TODO effective limit needs to walk cgroup tree"
 )]
 fn new_resource_subset(
-    _cgroup: &Cgroup,
+    _cgroup: Option<&Cgroup>,
     kernel_prev: &KernelStats,
     kernel_new: &KernelStats,
     cpu_prev: u64,
