@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use crate::cgroups::cgroup_children;
+use crate::cgroups::{cgroup_absolute_path, cgroup_children};
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
-use cgroups_rs::fs::Cgroup;
+use cgroups_rs::fs::cpu::CpuController;
 use cgroups_rs::fs::cpuacct::CpuAcctController;
+use cgroups_rs::fs::memory::MemController;
+use cgroups_rs::fs::{Cgroup, MaxValue, parse_max_value};
 use core::time::Duration;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::resource::resource_service_error::ResourceInfoError;
@@ -14,7 +16,7 @@ use sqlx::query;
 use sqlx::types::BigDecimal;
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::{io, thread};
+use std::{fs, io, thread};
 use tracing::error;
 
 #[async_trait]
@@ -99,6 +101,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             let alloc = (cpu_alloc, ram_alloc, swap_alloc);
 
             let system = new_resource_subset(
+                (&cgroup_system, &cgroup_server),
                 Some(&cgroup_system),
                 &kernel_stats_prev,
                 &kernel_stats_now,
@@ -108,6 +111,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             )?;
 
             let server = new_resource_subset(
+                (&cgroup_system, &cgroup_server),
                 Some(&cgroup_server),
                 &kernel_stats_prev,
                 &kernel_stats_now,
@@ -121,6 +125,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
                 groups.insert(
                     name.clone(),
                     new_resource_subset(
+                        (&cgroup_system, &cgroup_server),
                         Some(cgroup),
                         &kernel_stats_prev,
                         &kernel_stats_now,
@@ -137,7 +142,15 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
                 }
                 groups.insert(
                     name,
-                    new_resource_subset(None, &kernel_stats_prev, &kernel_stats_now, 0, 0, &alloc)?,
+                    new_resource_subset(
+                        (&cgroup_system, &cgroup_server),
+                        None,
+                        &kernel_stats_prev,
+                        &kernel_stats_now,
+                        0,
+                        0,
+                        &alloc,
+                    )?,
                 );
             }
 
@@ -161,22 +174,45 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
 }
 
 #[expect(clippy::cast_precision_loss, reason = "cpu doesn't have to be precise")]
-#[expect(
-    clippy::unnecessary_wraps,
-    reason = "TODO effective limit needs to walk cgroup tree"
-)]
 fn new_resource_subset(
-    _cgroup: Option<&Cgroup>,
+    (cgroup_system, cgroup_server): (&Cgroup, &Cgroup),
+    cgroup: Option<&Cgroup>,
     kernel_prev: &KernelStats,
     kernel_new: &KernelStats,
     cpu_prev: u64,
     cpu_new: u64,
     (alloc_cpu, alloc_ram, alloc_swap): &(f64, BigDecimal, BigDecimal),
 ) -> Result<ResourceSubset, io::Error> {
-    // TODO: Effective Limit
-
     let cpu_delta = cpu_new.saturating_sub(cpu_prev) as f64;
     let system_delta = total_time(kernel_new).saturating_sub(total_time(kernel_prev)) as f64;
+
+    let mut cpu_limit = None;
+    let mut mem_limit = None;
+    let mut swap_limit = None;
+
+    apply_limit(
+        cgroup_system,
+        &mut cpu_limit,
+        &mut mem_limit,
+        &mut swap_limit,
+    )?;
+    apply_limit(
+        cgroup_server,
+        &mut cpu_limit,
+        &mut mem_limit,
+        &mut swap_limit,
+    )?;
+
+    let (mem_used, swap_used) = if let Some(cgroup) = cgroup {
+        apply_limit(cgroup, &mut cpu_limit, &mut mem_limit, &mut swap_limit)?;
+        let stat = cgroup
+            .controller_of::<MemController>()
+            .ok_or_else(|| io::Error::other("Memory Controller not available"))?
+            .memory_stat();
+        (stat.usage_in_bytes, stat.swappiness)
+    } else {
+        (0, 0)
+    };
 
     Ok(ResourceSubset {
         cpu_used: ((cpu_delta / system_delta)
@@ -185,14 +221,65 @@ fn new_resource_subset(
             .round()
             / 10000f64,
         cpu_allocated: *alloc_cpu,
-        cpu_limit: None,
+        cpu_limit,
         mem_allocated: alloc_ram.to_u64().unwrap_or(u64::MAX),
-        mem_limit: None,
-        mem_used: 0,
+        mem_limit: mem_limit.map(|limit| limit >> 20u32),
+        mem_used,
         swap_allocated: alloc_swap.to_u64().unwrap_or(u64::MAX),
-        swap_limit: None,
-        swap_used: 0,
+        swap_limit: swap_limit.map(|limit| limit >> 20u32),
+        swap_used,
     })
+}
+
+#[expect(clippy::cast_precision_loss, reason = "cpu doesn't have to be precise")]
+#[inline]
+fn apply_limit(
+    cgroup: &Cgroup,
+    cpu: &mut Option<f64>,
+    ram: &mut Option<u64>,
+    swap: &mut Option<u64>,
+) -> Result<(), io::Error> {
+    if let Some(controller) = cgroup.controller_of::<CpuController>() {
+        let period = controller.cfs_period().map_err(io::Error::other)?;
+        let quota = controller.cfs_quota().map_err(io::Error::other)?;
+
+        if quota != -1 {
+            let limit = quota as f64 / period as f64;
+            if let Some(value) = cpu {
+                if *value > limit {
+                    *value = limit;
+                }
+            } else {
+                *cpu = Some(limit);
+            }
+        }
+    }
+    if let Some(controller) = cgroup.controller_of::<MemController>() {
+        if let MaxValue::Value(max_mem) = controller
+            .get_mem()
+            .map_err(io::Error::other)?
+            .max
+            .unwrap_or(MaxValue::Max)
+            && max_mem >= 0
+            && ram.is_none_or(|ram| ram > max_mem.unsigned_abs())
+        {
+            *ram = Some(max_mem.unsigned_abs());
+        }
+        // For some reason, controller.memswap_v2 creates a parse error if swap is unlimited, resulting in a error message and return value of 0.
+        let memory_swap_max =
+            fs::read_to_string(cgroup_absolute_path(cgroup).join("memory.swap.max"))
+                .inspect_err(|err| error!("failed to read swap limit: {err:?}"))?;
+        if let MaxValue::Value(max_swap) = parse_max_value(&memory_swap_max)
+            .inspect_err(|err| error!("failed to parse swap limit: {err:?}"))
+            .map_err(io::Error::other)?
+            && max_swap >= 0
+            && swap.is_none_or(|swap| swap > max_swap.unsigned_abs())
+        {
+            *swap = Some(max_swap.unsigned_abs());
+        }
+    }
+
+    Ok(())
 }
 
 fn total_time(kernel: &KernelStats) -> u64 {

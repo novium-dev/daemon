@@ -152,16 +152,10 @@ fn init_cgroup_blocking(path: &str, limit: LimitConfig) -> Result<Cgroup, Daemon
 
     mem_controller
         .set_memswap_limit(
-            memory
-                .map(|memory| {
-                    limit.swap.map(from_mib).map(|swap| {
-                        i64::try_from(swap)
-                            .unwrap_or(i64::MAX)
-                            .saturating_add(memory)
-                    })
-                })
-                .unwrap_or_default()
-                .unwrap_or(-1),
+            limit
+                .swap
+                .map(from_mib)
+                .map_or(-1, |swap| i64::try_from(swap).unwrap_or(-1)),
         )
         .inspect_err(|err| error!("Failed to set cgroup memory swap limit: {err:?}"))
         .map_err(DaemonInitError::Cgroup)?;
