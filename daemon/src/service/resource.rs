@@ -1,296 +1,263 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use crate::cgroups::{cgroup_absolute_path, cgroup_children};
+use crate::cgroup::{CgroupIdentifier, groups_flat, systemd_unit_path};
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
-use cgroups_rs::fs::cpu::CpuController;
-use cgroups_rs::fs::memory::MemController;
-use cgroups_rs::fs::{Cgroup, MaxValue, parse_max_value};
 use core::time::Duration;
 use daemon_common::service::resource::ResourceService;
 use daemon_common::service::resource::resource_service_error::ResourceInfoError;
 use daemon_common::service::resource::{ResourceResponse, ResourceSubset};
 use num_traits::ToPrimitive as _;
 use procfs::{CpuInfo, Current as _, Meminfo};
-use sqlx::query;
 use sqlx::types::BigDecimal;
-use std::collections::HashMap;
-use std::io::ErrorKind;
-use std::sync::Arc;
-use std::{fs, io, thread};
+use sqlx::{query, query_scalar};
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
+use std::{io, thread};
+use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tracing::error;
+use zbus_systemd::systemd1::SliceProxy;
 
 #[async_trait]
 impl<T: DaemonExtra> ResourceService for Daemon<T> {
     async fn resource_info(&self) -> Result<ResourceResponse, ResourceInfoError> {
+        let names: HashSet<String> = query_scalar!("SELECT `name` FROM `groups`")
+            .fetch_all(&*self.conn)
+            .await
+            .inspect_err(|err| error!("Failed to fetch group names: {err:?}"))?
+            .into_iter()
+            .flat_map(groups_flat)
+            .collect();
+
         let allocation = query!("SELECT `group`, SUM(`cpu`) AS `cpu`, SUM(`ram`) AS `ram`, SUM(`swap`) AS `swap` FROM `servers` GROUP BY `group`")
         .fetch_all(&*self.conn)
         .await
-        .inspect_err(|err| error!("Failed to retrieve memory usage from servers: {:?}", err))?
+        .inspect_err(|err| error!("Failed to fetch resource allocation: {err:?}"))?
         .into_iter()
         .filter_map(|row| row.group.map(|group| (group, (row.cpu.unwrap_or_default(), row.ram.unwrap_or_default(), row.swap.unwrap_or_default()))))
         .collect::<HashMap<_, _>>();
 
-        let cgroup_system = Arc::clone(&self.cgroup_system);
-        let cgroup_server = Arc::clone(&self.cgroup_server);
-        let cgroups = cgroup_children(self.config.cgroup.clone(), &cgroup_server)
+        let mut groups = HashMap::with_capacity(names.len());
+
+        let usage_prev = usage(&self.dbus, &names).await.map_err(resource_dbus_err)?;
+
+        thread::sleep(Duration::from_millis(200)); // Recommended time by sysinfo
+
+        let usage_now = usage(&self.dbus, &names).await.map_err(resource_dbus_err)?;
+
+        let (cpu, mem) = tokio::task::spawn_blocking(|| (CpuInfo::current(), Meminfo::current()))
             .await
-            .map_err(|_err| ResourceInfoError::Resource)?;
+            .inspect_err(|err| error!("failed to access cpu and mem info (task): {err:?}"))
+            .map_err(io::Error::from)?;
 
-        tokio::task::spawn_blocking(move || {
-            let mut usage_prev = HashMap::with_capacity(cgroups.len());
-            let mut usage_now = HashMap::with_capacity(cgroups.len());
+        let cpu = cpu
+            .inspect_err(|err| error!("failed to access cpu info: {err:?}"))
+            .map_err(io::Error::other)?;
+        let mem = mem
+            .inspect_err(|err| error!("failed to access mem info: {err:?}"))
+            .map_err(io::Error::other)?;
 
-            let usage_system_prev = usage_time(
-                &cgroup_system
-                    .controller_of::<CpuController>()
-                    .ok_or_else(|| io::Error::other("CPU Controller not available"))?
-                    .cpu()
-                    .stat,
-            )?;
-            let usage_server_prev = usage_time(
-                &cgroup_server
-                    .controller_of::<CpuController>()
-                    .ok_or_else(|| io::Error::other("CPU Controller not available"))?
-                    .cpu()
-                    .stat,
-            )?;
-            for (name, cgroup) in &cgroups {
-                usage_prev.insert(
-                    name,
-                    usage_time(
-                        &cgroup
-                            .controller_of::<CpuController>()
-                            .ok_or_else(|| {
-                                io::Error::other("CPU Account Controller not available")
-                            })?
-                            .cpu()
-                            .stat,
-                    )?,
-                );
-            }
-            let dummy_prev = (0, Instant::now());
+        let cpu_alloc = allocation.values().map(|alloc| alloc.0).sum();
+        let ram_alloc: BigDecimal = allocation.values().map(|alloc| alloc.1.clone()).sum();
+        let swap_alloc: BigDecimal = allocation.values().map(|alloc| alloc.2.clone()).sum();
+        let alloc = (cpu_alloc, ram_alloc, swap_alloc);
 
-            thread::sleep(Duration::from_millis(200)); // Recommended time by sysinfo
-
-            let usage_system_now = usage_time(
-                &cgroup_system
-                    .controller_of::<CpuController>()
-                    .ok_or_else(|| io::Error::other("CPU Controller not available"))?
-                    .cpu()
-                    .stat,
-            )?;
-            let usage_server_now = usage_time(
-                &cgroup_server
-                    .controller_of::<CpuController>()
-                    .ok_or_else(|| io::Error::other("CPU Controller not available"))?
-                    .cpu()
-                    .stat,
-            )?;
-            for (name, cgroup) in &cgroups {
-                usage_now.insert(
-                    name,
-                    usage_time(
-                        &cgroup
-                            .controller_of::<CpuController>()
-                            .ok_or_else(|| io::Error::other("CPU Controller not available"))?
-                            .cpu()
-                            .stat,
-                    )?,
-                );
-            }
-
-            let cpu = CpuInfo::current()?;
-            let mem = Meminfo::current()?;
-
-            let mut groups = HashMap::with_capacity(cgroups.len());
-
-            let cpu_alloc = allocation.values().map(|alloc| alloc.0).sum();
-            let ram_alloc: BigDecimal = allocation.values().map(|alloc| alloc.1.clone()).sum();
-            let swap_alloc: BigDecimal = allocation.values().map(|alloc| alloc.2.clone()).sum();
-            let alloc = (cpu_alloc, ram_alloc, swap_alloc);
-
-            let system = new_resource_subset(
-                (&cgroup_system, &cgroup_server),
-                Some(&cgroup_system),
-                usage_system_prev,
-                usage_system_now,
-                &alloc,
-            )?;
-
-            let server = new_resource_subset(
-                (&cgroup_system, &cgroup_server),
-                Some(&cgroup_server),
-                usage_server_prev,
-                usage_server_now,
-                &alloc,
-            )?;
-
-            let dummy_now = (0, Instant::now());
-            for (name, cgroup) in &cgroups {
-                let alloc = allocation.get(name).cloned().unwrap_or_default();
-                groups.insert(
-                    name.clone(),
-                    new_resource_subset(
-                        (&cgroup_system, &cgroup_server),
-                        Some(cgroup),
-                        usage_prev.get(name).copied().unwrap_or(dummy_prev),
-                        usage_now.get(name).copied().unwrap_or(dummy_now),
-                        &alloc,
-                    )?,
-                );
-            }
-
-            for (name, alloc) in allocation {
-                if groups.contains_key(&name) {
-                    continue;
-                }
-                groups.insert(
-                    name,
-                    new_resource_subset(
-                        (&cgroup_system, &cgroup_server),
-                        None,
-                        dummy_prev,
-                        dummy_now,
-                        &alloc,
-                    )?,
-                );
-            }
-
-            Ok::<_, anyhow::Error>(ResourceResponse {
-                cpu_count: u32::try_from(cpu.num_cores()).unwrap_or_default(),
-                mem_total: mem.mem_total,
-                swap_total: mem.swap_total,
-                system,
-                server,
-                groups,
-                backups: HashMap::new(),  // TODO
-                storages: HashMap::new(), // TODO
-            })
-        })
+        let system = new_resource_subset(
+            &self.dbus,
+            CgroupIdentifier::System,
+            &usage_prev,
+            &usage_now,
+            &alloc,
+        )
         .await
-        .inspect_err(|err| error!("Failed to provide resource info (task): {err:?}"))
-        .map_err(|_err| ResourceInfoError::Resource)?
-        .inspect_err(|err| error!("Failed to provide resource info: {err:?}"))
-        .map_err(|_err| ResourceInfoError::Resource)
+        .map_err(resource_dbus_err)?;
+
+        let server = new_resource_subset(
+            &self.dbus,
+            CgroupIdentifier::Server,
+            &usage_prev,
+            &usage_now,
+            &alloc,
+        )
+        .await
+        .map_err(resource_dbus_err)?;
+
+        for name in &names {
+            let id = CgroupIdentifier::Group(Cow::Borrowed(name));
+            let alloc = allocation.get(name).cloned().unwrap_or_default();
+            groups.insert(
+                name.to_owned(),
+                new_resource_subset(&self.dbus, id, &usage_prev, &usage_now, &alloc)
+                    .await
+                    .map_err(resource_dbus_err)?,
+            );
+        }
+
+        Ok(ResourceResponse {
+            cpu_count: u32::try_from(cpu.num_cores()).unwrap_or_default(),
+            mem_total: mem.mem_total,
+            swap_total: mem.swap_total,
+            system,
+            server,
+            groups,
+            backups: HashMap::new(),  // TODO
+            storages: HashMap::new(), // TODO
+        })
     }
 }
 
+fn resource_dbus_err(err: zbus::Error) -> io::Error {
+    error!("failed to request resource info via dbus: {err:?}");
+    io::Error::other(err)
+}
+
+async fn usage<'a>(
+    dbus: &zbus::Connection,
+    groups: &'a HashSet<String>,
+) -> Result<HashMap<CgroupIdentifier<'a>, (u64, Instant)>, zbus::Error> {
+    let mut set = JoinSet::new();
+
+    let conn = dbus.clone();
+    set.spawn(async move { usage_time(&conn, CgroupIdentifier::System).await });
+    let conn = dbus.clone();
+    set.spawn(async move { usage_time(&conn, CgroupIdentifier::Server).await });
+    for name in groups {
+        let name = name.clone();
+        let conn = dbus.clone();
+        set.spawn(
+            async move { usage_time(&conn, CgroupIdentifier::Group(Cow::Owned(name))).await },
+        );
+    }
+
+    set.join_all()
+        .await
+        .into_iter()
+        .map(|entry| {
+            let entry = entry?;
+            Ok((entry.0, (entry.1, entry.2)))
+        })
+        .collect()
+}
+
 #[expect(clippy::cast_precision_loss, reason = "cpu doesn't have to be precise")]
-fn new_resource_subset(
-    (cgroup_system, cgroup_server): (&Cgroup, &Cgroup),
-    cgroup: Option<&Cgroup>,
-    cpu_prev: (u64, Instant),
-    cpu_new: (u64, Instant),
+async fn new_resource_subset(
+    conn: &zbus::Connection,
+    id: CgroupIdentifier<'_>,
+    cpu_usage_prev: &HashMap<CgroupIdentifier<'_>, (u64, Instant)>,
+    cpu_usage_new: &HashMap<CgroupIdentifier<'_>, (u64, Instant)>,
     (alloc_cpu, alloc_ram, alloc_swap): &(f64, BigDecimal, BigDecimal),
-) -> Result<ResourceSubset, io::Error> {
-    let cpu_delta = cpu_new.0.saturating_sub(cpu_prev.0) as f64;
-    let system_delta = cpu_new.1.duration_since(cpu_prev.1).as_micros() as f64;
+) -> Result<ResourceSubset, zbus::Error> {
+    let cpu_used = if let Some(cpu_prev) = cpu_usage_prev.get(&id)
+        && let Some(cpu_new) = cpu_usage_new.get(&id)
+    {
+        let cpu_delta = cpu_new.0.saturating_sub(cpu_prev.0) as f64;
+        let system_delta = cpu_new.1.duration_since(cpu_prev.1).as_micros() as f64;
+        ((cpu_delta / system_delta) * 10000f64).round() / 10000f64
+    } else {
+        0f64
+    };
 
     let mut cpu_limit = None;
     let mut mem_limit = None;
     let mut swap_limit = None;
 
     apply_limit(
-        cgroup_system,
+        conn,
+        id.clone(),
         &mut cpu_limit,
         &mut mem_limit,
         &mut swap_limit,
-    )?;
-    apply_limit(
-        cgroup_server,
-        &mut cpu_limit,
-        &mut mem_limit,
-        &mut swap_limit,
-    )?;
+    )
+    .await?;
 
-    let (mem_used, swap_used) = if let Some(cgroup) = cgroup {
-        apply_limit(cgroup, &mut cpu_limit, &mut mem_limit, &mut swap_limit)?;
-        let stat = cgroup
-            .controller_of::<MemController>()
-            .ok_or_else(|| io::Error::other("Memory Controller not available"))?
-            .memory_stat();
-        (stat.usage_in_bytes, stat.swappiness)
-    } else {
-        (0, 0)
-    };
+    let mut cpu_limit_effective = cpu_limit;
+    let mut mem_limit_effective = mem_limit;
+    let mut swap_limit_effective = swap_limit;
+
+    if !matches!(id, CgroupIdentifier::System) {
+        apply_limit(
+            conn,
+            CgroupIdentifier::System,
+            &mut cpu_limit_effective,
+            &mut mem_limit_effective,
+            &mut swap_limit_effective,
+        )
+        .await?;
+    }
+    if !matches!(id, CgroupIdentifier::Server | CgroupIdentifier::System) {
+        apply_limit(
+            conn,
+            CgroupIdentifier::Server,
+            &mut cpu_limit_effective,
+            &mut mem_limit_effective,
+            &mut swap_limit_effective,
+        )
+        .await?;
+    }
+
+    let proxy = SliceProxy::new(conn, systemd_unit_path(id)).await?;
+
+    let mem_used = proxy.memory_current().await?;
+    let swap_used = proxy.memory_swap_current().await?;
 
     Ok(ResourceSubset {
-        cpu_used: ((cpu_delta / system_delta) * 10000f64).round() / 10000f64,
+        cpu_used,
         cpu_allocated: *alloc_cpu,
-        cpu_limit,
+        cpu_limit: cpu_limit.map(|limit| limit as f64 / 1_000_000f64),
+        cpu_limit_effective: cpu_limit_effective.map(|limit| limit as f64 / 1_000_000f64),
         mem_allocated: alloc_ram.to_u64().unwrap_or(u64::MAX),
         mem_limit: mem_limit.map(|limit| limit >> 20u32),
-        mem_used,
+        mem_limit_effective: mem_limit_effective.map(|limit| limit >> 20u32),
+        mem_used: mem_used >> 20u32,
         swap_allocated: alloc_swap.to_u64().unwrap_or(u64::MAX),
         swap_limit: swap_limit.map(|limit| limit >> 20u32),
-        swap_used,
+        swap_limit_effective: swap_limit_effective.map(|limit| limit >> 20u32),
+        swap_used: swap_used >> 20u32,
     })
 }
 
-#[expect(clippy::cast_precision_loss, reason = "cpu doesn't have to be precise")]
 #[inline]
-fn apply_limit(
-    cgroup: &Cgroup,
-    cpu: &mut Option<f64>,
-    ram: &mut Option<u64>,
+async fn apply_limit(
+    conn: &zbus::Connection,
+    id: CgroupIdentifier<'_>,
+    cpu: &mut Option<u64>,
+    mem: &mut Option<u64>,
     swap: &mut Option<u64>,
-) -> Result<(), io::Error> {
-    if cgroup.path().is_empty() {
-        return Ok(());
-    }
-    if let Some(controller) = cgroup.controller_of::<CpuController>() {
-        let period = controller.cfs_period().map_err(io::Error::other)?;
-        let quota = controller.cfs_quota().map_err(io::Error::other)?;
+) -> Result<(), zbus::Error> {
+    let proxy = SliceProxy::new(conn, systemd_unit_path(id)).await?;
 
-        if quota != -1 {
-            let limit = quota as f64 / period as f64;
-            if let Some(value) = cpu {
-                if *value > limit {
-                    *value = limit;
-                }
-            } else {
-                *cpu = Some(limit);
-            }
-        }
+    let cpu_quota = proxy.cpu_quota_per_sec_u_sec().await?;
+    let mem_max = proxy.memory_max().await?;
+    let swap_max = proxy.memory_swap_max().await?;
+
+    match (cpu, cpu_quota) {
+        (None, u64::MAX) => {}
+        (cpu @ None, quota) => *cpu = Some(quota),
+        (Some(current), quota) => *current = (*current).min(quota),
     }
-    if let Some(controller) = cgroup.controller_of::<MemController>() {
-        if let MaxValue::Value(max_mem) = controller
-            .get_mem()
-            .map_err(io::Error::other)?
-            .max
-            .unwrap_or(MaxValue::Max)
-            && max_mem >= 0
-            && ram.is_none_or(|ram| ram > max_mem.unsigned_abs())
-        {
-            *ram = Some(max_mem.unsigned_abs());
-        }
-        // For some reason, controller.memswap_v2 creates a parse error if swap is unlimited, resulting in a error message and return value of 0.
-        let memory_swap_max =
-            fs::read_to_string(cgroup_absolute_path(cgroup).join("memory.swap.max"))
-                .inspect_err(|err| error!("failed to read swap limit: {err:?}"))?;
-        if let MaxValue::Value(max_swap) = parse_max_value(&memory_swap_max)
-            .inspect_err(|err| error!("failed to parse swap limit: {err:?}"))
-            .map_err(io::Error::other)?
-            && max_swap >= 0
-            && swap.is_none_or(|swap| swap > max_swap.unsigned_abs())
-        {
-            *swap = Some(max_swap.unsigned_abs());
-        }
+    match (mem, mem_max) {
+        (None, u64::MAX) => {}
+        (mem @ None, max) => *mem = Some(max),
+        (Some(current), max) => *current = (*current).min(max),
+    }
+    match (swap, swap_max) {
+        (None, u64::MAX) => {}
+        (swap @ None, max) => *swap = Some(max),
+        (Some(current), max) => *current = (*current).min(max),
     }
 
     Ok(())
 }
 
-fn usage_time(stat: &str) -> Result<(u64, Instant), io::Error> {
+async fn usage_time<'a>(
+    conn: &zbus::Connection,
+    id: CgroupIdentifier<'a>,
+) -> Result<(CgroupIdentifier<'a>, u64, Instant), zbus::Error> {
+    let proxy = SliceProxy::new(conn, systemd_unit_path(id.clone())).await?;
+
+    let usage = proxy.cpu_usage_n_sec().await?.saturating_div(1000);
+
     let time = Instant::now();
-    for line in stat.lines() {
-        if let Some(value) = line.strip_prefix("usage_usec ") {
-            return Ok((value.parse().map_err(io::Error::other)?, time));
-        }
-    }
-    Err(io::Error::new(
-        ErrorKind::InvalidData,
-        "usage_usec not found",
-    ))
+
+    Ok((id, usage, time))
 }

@@ -9,7 +9,7 @@ use zelus::service;
 pub trait ResourceService {
     /// Gets resource information
     #[route("/resource", method = GET)]
-    #[error(sql::failure <- [sql:*], (Resource, "Unable to retrieve the resource info", INTERNAL_SERVER_ERROR))]
+    #[error(sql::failure <- [sql:*], (Resource, "Unable to retrieve the resource info", INTERNAL_SERVER_ERROR) <- [io:*])]
     async fn resource_info(&self) -> Result<ResourceResponse, _>;
 }
 
@@ -28,12 +28,15 @@ pub struct ResourceResponse {
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct ResourceSubset {
     pub mem_limit: Option<u64>,
+    pub mem_limit_effective: Option<u64>,
     pub mem_used: u64,
     pub mem_allocated: u64,
     pub swap_limit: Option<u64>,
+    pub swap_limit_effective: Option<u64>,
     pub swap_used: u64,
     pub swap_allocated: u64,
     pub cpu_limit: Option<f64>,
+    pub cpu_limit_effective: Option<f64>,
     pub cpu_used: f64,
     pub cpu_allocated: f64,
 }

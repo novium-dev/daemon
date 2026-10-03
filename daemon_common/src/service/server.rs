@@ -4,6 +4,7 @@ use crate::service::error_storage_patch_failed::FromStoragePatchFailed;
 use crate::service::files::task::StorageTask;
 #[cfg(doc)]
 use crate::service::group::GroupService;
+use crate::service::group::error_group_invalid_name;
 use crate::service::server::task::ServerTask;
 use crate::task::TaskDescriptor;
 use crate::user::*;
@@ -45,7 +46,7 @@ pub trait ServerService {
     /// A empty group string counts as no group.
     /// See [`GroupService::configure_group`] for group conditions.
     #[route("", method = PUT)]
-    #[error(server::{image_different, image_missing_tag}, storage::location_not_found, sql::failure <- [sql:*])]
+    #[error(server::{image_different, image_missing_tag}, storage::location_not_found, group::invalid_name <- [sql:check], sql::failure <- [sql:*])]
     #[example("examples/server.create.json")]
     async fn create_server(
         &self,
@@ -62,7 +63,7 @@ pub trait ServerService {
     /// A empty group string counts as no group.
     /// See [`GroupService::configure_group`] for group conditions.
     #[route("/{server_id}", method = PATCH)]
-    #[error(server::{not_found, image_different, image_missing_tag}, sql::failure <- [sql:*])]
+    #[error(server::{not_found, image_different, image_missing_tag}, group::invalid_name <- [sql:check], sql::failure <- [sql:*])]
     #[example("examples/server.update.json")]
     async fn update_server(
         &self,

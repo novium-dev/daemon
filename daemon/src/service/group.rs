@@ -6,7 +6,7 @@ use daemon_common::service::group::{
 use sqlx::query;
 use tracing::error;
 
-use crate::{Daemon, DaemonExtra};
+use crate::{Daemon, DaemonExtra, init::DaemonInitError};
 
 #[async_trait]
 impl<T: DaemonExtra> GroupService for Daemon<T> {
@@ -22,7 +22,10 @@ impl<T: DaemonExtra> GroupService for Daemon<T> {
         .await
         .inspect_err(|err| error!("Failed to configure group: {err:?}"))?;
 
-        self.sync_cgroups::<ConfigureGroupError>().await?;
+        let daemon = self.clone();
+        drop(tokio::task::spawn(async move {
+            let _ = daemon.sync_cgroups::<DaemonInitError>().await;
+        }));
 
         Ok(())
     }
@@ -33,7 +36,10 @@ impl<T: DaemonExtra> GroupService for Daemon<T> {
             .await
             .inspect_err(|err| error!("Failed to delete group: {err:?}"))?;
 
-        self.sync_cgroups::<DeleteGroupError>().await?;
+        let daemon = self.clone();
+        drop(tokio::task::spawn(async move {
+            let _ = daemon.sync_cgroups::<DaemonInitError>().await;
+        }));
 
         Ok(())
     }

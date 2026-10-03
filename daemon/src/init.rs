@@ -4,8 +4,9 @@ use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
-use crate::{Daemon, DaemonExtra, WithUserKey, cgroups, ctlsock, schedule, sql, storage};
+use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, schedule, sql, storage};
 use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
+use bollard::plugin::SystemInfoCgroupDriverEnum;
 use bollard::query_parameters::{
     InspectNetworkOptions, KillContainerOptions, ListContainersOptions,
 };
@@ -45,10 +46,10 @@ pub enum DaemonInitError {
     Sql(#[from] sqlx::Error),
     #[error("init docker error: {0}")]
     Docker(#[from] bollard::errors::Error),
-    #[error("init cgroup error: {0}")]
-    Cgroup(#[from] cgroups_rs::fs::error::Error),
-    #[error("init cgroup error: Cgroup Controller `{0}` not available")]
-    CgroupControllerMissing(cgroups_rs::fs::Controllers),
+    #[error("init dbus error: {0}")]
+    Dbus(#[from] zbus::Error),
+    #[error("init docker cgroup error: Cgroup driver isn't systemd")]
+    DockerCgroupModeInvalid,
 }
 
 impl Daemon<()> {
@@ -120,6 +121,8 @@ impl<T: DaemonExtra> Daemon<T> {
             bollard::Docker::connect_with_local_defaults()
                 .inspect_err(|err| error!("Failed to connect to docker: {err:?}"))?
         };
+
+        let docker_info = docker.info().await?;
 
         match docker
             .inspect_network(
@@ -210,6 +213,10 @@ impl<T: DaemonExtra> Daemon<T> {
             }
         }
 
+        info!("Establishing DBUS Connection...");
+
+        let dbus = zbus::Connection::system().await?;
+
         info!("Establishing Database Connection...");
         let conn = {
             loop {
@@ -231,10 +238,6 @@ impl<T: DaemonExtra> Daemon<T> {
             }
         };
 
-        info!("Initializing CGroups...");
-
-        let (cgroup_system, cgroup_server) = cgroups::init(&config).await?;
-
         let config = Arc::new(config);
         let daemon = Self {
             config: Arc::clone(&config),
@@ -247,9 +250,7 @@ impl<T: DaemonExtra> Daemon<T> {
             schedule_task: Arc::default(),
             schedules: Arc::default(),
             docker: Arc::new(docker),
-            cgroup_lock: Arc::default(),
-            cgroup_system: Arc::new(cgroup_system),
-            cgroup_server: Arc::new(cgroup_server),
+            dbus,
             runtime_dir,
             started: Instant::now(),
             conn: Arc::new(conn),
@@ -267,6 +268,12 @@ impl<T: DaemonExtra> Daemon<T> {
 
         info!("Initializing CGroups...");
 
+        if !matches!(
+            docker_info.cgroup_driver,
+            Some(SystemInfoCgroupDriverEnum::SYSTEMD),
+        ) {
+            return Err(DaemonInitError::DockerCgroupModeInvalid);
+        }
         daemon.sync_cgroups::<DaemonInitError>().await?;
 
         info!("Running schedules...");

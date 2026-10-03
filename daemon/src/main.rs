@@ -104,7 +104,7 @@ fn main() {
         .get_matches();
 
     if !matches.get_flag("skip-capability-setup") {
-        cap_setup();
+        fsuid_setup();
     }
 
     rustls::crypto::aws_lc_rs::default_provider()
@@ -260,9 +260,10 @@ async fn run(database_url: Url, runtime_dir: PathBuf) {
     clippy::missing_const_for_fn,
     reason = "function performs non-const Linux capability setup behind cfg"
 )]
-fn cap_setup() {
+fn fsuid_setup() {
     #[cfg(target_os = "linux")]
     {
+        use nix::unistd::{Gid, Uid};
         use std::os::unix::fs::MetadataExt as _;
         if std::fs::metadata("/proc/self/")
             .expect("Unable to retrieve uid of /proc/self/")
@@ -274,31 +275,14 @@ fn cap_setup() {
         capctl::prctl::set_keepcaps(true).expect("Unable to keep capabilities after setuid");
         let mut capstate =
             capctl::CapState::get_current().expect("Unable to retrieve current capabilities");
-        capstate.permitted.add(capctl::Cap::NET_BIND_SERVICE);
         capstate.permitted.add(capctl::Cap::DAC_OVERRIDE);
-        capstate.permitted.add(capctl::Cap::FOWNER);
-        capstate.permitted.add(capctl::Cap::CHOWN);
-        capstate.permitted.add(capctl::Cap::SYS_CHROOT);
-        capstate.permitted.add(capctl::Cap::SYS_ADMIN);
-        capstate
-            .set_current()
-            .expect("Unable to set permitted capabilities");
 
-        capctl::cap_set_ids(
-            Some(u32::from(common::CONTAINER_DEFAULT_UID)),
-            Some(u32::from(common::CONTAINER_DEFAULT_GID)),
-            None,
-        )
-        .expect("Unable to setuid current process");
+        nix::unistd::setfsuid(Uid::from_raw(u32::from(common::CONTAINER_DEFAULT_UID)));
+        nix::unistd::setfsgid(Gid::from_raw(u32::from(common::CONTAINER_DEFAULT_UID)));
 
         let mut capstate =
             capctl::CapState::get_current().expect("Unable to retrieve current capabilities");
-        capstate.effective.add(capctl::Cap::NET_BIND_SERVICE);
         capstate.effective.add(capctl::Cap::DAC_OVERRIDE);
-        capstate.effective.add(capctl::Cap::FOWNER);
-        capstate.effective.add(capctl::Cap::CHOWN);
-        capstate.effective.add(capctl::Cap::SYS_CHROOT);
-        capstate.effective.add(capctl::Cap::SYS_ADMIN);
         capstate
             .set_current()
             .expect("Unable to set effective capabilities");

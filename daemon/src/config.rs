@@ -35,8 +35,6 @@ pub struct DaemonConfig {
     pub mounts: Vec<MountPoint>,
     #[serde(default)]
     pub limit: LimitConfig,
-    #[serde(default)]
-    pub cgroup: CgroupConfig,
 }
 
 impl DaemonConfig {
@@ -61,24 +59,6 @@ pub struct MountPoint {
     pub src: String,
     pub dest: String,
     pub mode: String,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct CgroupConfig {
-    #[serde(default = "default_cgroup_suffix")]
-    pub suffix: String,
-}
-
-impl Default for CgroupConfig {
-    fn default() -> Self {
-        Self {
-            suffix: default_cgroup_suffix(),
-        }
-    }
-}
-
-fn default_cgroup_suffix() -> String {
-    ".slice".to_owned()
 }
 
 #[derive(Clone, Serialize, Deserialize)]

@@ -883,10 +883,13 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
     }
     if let Some(group) = &group {
         if !group.is_empty() {
-            query!("INSERT IGNORE INTO `groups` (`name`) VALUES (?)", group)
-                .execute(&mut **tx)
-                .await
-                .inspect_err(|err| error!("Unable to insert group: {err:?}"))?;
+            query!(
+                "INSERT INTO `groups` (`name`) VALUES (?) ON DUPLICATE KEY UPDATE `name` = `name`",
+                group
+            )
+            .execute(&mut **tx)
+            .await
+            .inspect_err(|err| error!("Unable to insert group: {err:?}"))?;
             // Do NOT sync here
         }
 

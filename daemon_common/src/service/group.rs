@@ -6,18 +6,17 @@ define_path_variable!(group_name "A group name");
 
 define_error!(group {
     invalid_name ( "Group name does not match regex" BAD_REQUEST ),
-    failure ( "Failed to apply changes to system" INTERNAL_SERVER_ERROR ),
 });
 
 #[service(path = "/group/{group_name}", tag = "group")]
 pub trait GroupService {
     /// Configure group.
     ///
-    /// Every group name must match the regex `^[A-Za-z0-9_-]{1,64}$`.
+    /// Every group name must match the regex `^([A-Za-z0-9_]+(-[A-Za-z0-9_]+){0,15}){1,200}$`.
     /// If the group does not exist, it will be created.
     /// A group will be automatically deleted if it has no server and no custom configuration.
     #[route("", method = PATCH)]
-    #[error(group::{failure <- [io:*], invalid_name <- [sql:check]}, sql::failure <- [sql:*])]
+    #[error(group::invalid_name <- [sql:check], sql::failure <- [sql:*])]
     #[example("examples/group.configure.json")]
     async fn configure_group(
         &self,
@@ -32,6 +31,6 @@ pub trait GroupService {
     /// This is equal to removing resource constraints and removing this group from all known
     /// servers.
     #[route("", method = DELETE)]
-    #[error(group::failure <- [io:*], sql::failure <- [sql:*])]
+    #[error(sql::failure <- [sql:*])]
     async fn delete_group(&self, group_name: String) -> Result<(), _>;
 }

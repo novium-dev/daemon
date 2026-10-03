@@ -1,4 +1,4 @@
-use crate::cgroups::{cgroup_absolute_path, cgroup_absolute_path_by_name};
+use crate::cgroup::{CgroupIdentifier, systemd_slice_handle};
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::watcher::attach;
@@ -6,7 +6,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::sync::task::{AnyTaskRwLockWriteGuard, TaskOwnedRwLockReadGuard};
 use crate::utils::from_mib;
-use crate::{Daemon, DaemonExtra, ServerData, cgroups, utils};
+use crate::{Daemon, DaemonExtra, ServerData, cgroup, utils};
 use bollard::Docker;
 use bollard::models::{
     ContainerCreateBody, EndpointSettings, HostConfig, NetworkingConfig, PortBinding,
@@ -25,6 +25,7 @@ use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::task::ServerTask;
 use num_traits::cast::FromPrimitive as _;
 use ringbuffer::RingBuffer as _;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
@@ -42,6 +43,7 @@ pub enum ServerStartError {
     PatchFailed,
     QuotaReached,
     AlreadyRunning,
+    DBus(#[from] zbus::Error),
     Sql(#[from] sqlx::Error), // only if queued
     NotFound,
     MathError,
@@ -254,11 +256,6 @@ impl FetchedServer {
             .map(from_mib)
             .map(|ram| i64::try_from(ram).unwrap_or(i64::MAX));
 
-        let cgroup = self.group.as_deref().map_or_else(
-            || cgroup_absolute_path(&daemon.cgroup_server),
-            |group| cgroup_absolute_path_by_name(&daemon.config.cgroup, group),
-        );
-
         docker
             .create_container(
                 Some(CreateContainerOptions {
@@ -312,10 +309,12 @@ impl FetchedServer {
                         cap_add: Some(self.cap_add.iter().cloned().collect()),
                         cap_drop: Some(self.cap_drop.iter().cloned().collect()),
 
-                        cpu_period: self.cpu.map(|_| cgroups::CPU_PERIOD),
+                        cpu_period: self
+                            .cpu
+                            .and_then(|_| i64::try_from(cgroup::CPU_PERIOD).ok()),
                         cpu_quota: if let Some(cpu) = self.cpu {
                             Some(
-                                i64::from_f64((f64::from(cpu) * cgroups::CPU_PERIOD_F).round())
+                                i64::from_f64((f64::from(cpu) * cgroup::CPU_PERIOD_F).round())
                                     .ok_or(ServerStartError::MathError)?,
                             )
                         } else {
@@ -337,12 +336,12 @@ impl FetchedServer {
                             server_data.size.0.load(Ordering::Relaxed) as usize,
                         ]),
 
-                        cgroup_parent: Some(cgroup.into_string().map_err(|osstr| {
-                            io::Error::new(
-                                ErrorKind::InvalidFilename,
-                                format!("cgroup path is invalid: {}", osstr.display()),
-                            )
-                        })?),
+                        cgroup_parent: Some(systemd_slice_handle(
+                            self.group
+                                .as_deref()
+                                .map(Cow::Borrowed)
+                                .map_or(CgroupIdentifier::Server, CgroupIdentifier::Group),
+                        )),
                         ..HostConfig::default()
                     }),
                     ..ContainerCreateBody::default()
