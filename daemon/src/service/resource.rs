@@ -156,7 +156,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
     }
 }
 
-fn stat_to_storage_usage(path: String, stat: &StatVfs) -> StorageUsageEntry {
+const fn stat_to_storage_usage(path: String, stat: &StatVfs) -> StorageUsageEntry {
     StorageUsageEntry {
         path,
         total: stat.f_frsize.saturating_mul(stat.f_blocks) >> 20u64,
