@@ -56,9 +56,18 @@ impl<T: DaemonExtra> Daemon<T> {
         self.cgroup_apply_limit::<E>(CgroupIdentifier::Server, self.config.limit)
             .await?;
 
-        for (name, limit) in groups {
-            self.cgroup_apply_limit::<E>(CgroupIdentifier::Group(Cow::Owned(name)), limit)
+        for (name, limit) in &groups {
+            self.cgroup_apply_limit::<E>(CgroupIdentifier::Group(Cow::Borrowed(name)), *limit)
                 .await?;
+            for entry in groups_flat(name.clone()) {
+                if !groups.contains_key(&entry) {
+                    self.cgroup_apply_limit::<E>(
+                        CgroupIdentifier::Group(Cow::Owned(entry)),
+                        LimitConfig::default(),
+                    )
+                    .await?;
+                }
+            }
         }
 
         Ok(())

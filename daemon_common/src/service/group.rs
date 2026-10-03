@@ -13,8 +13,10 @@ pub trait GroupService {
     /// Configure group.
     ///
     /// Every group name must match the regex `^([A-Za-z0-9_]+(-[A-Za-z0-9_]+){0,15}){1,200}$`.
-    /// If the group does not exist, it will be created.
+    /// If the group does not exist, it will be created (including parents).
     /// A group will be automatically deleted if it has no server and no custom configuration.
+    /// Subgroups are separated using '-', e.g. "group1-group2".
+    /// All limits of group1 will apply to group2, even if group2 has higher limits.
     #[route("", method = PATCH)]
     #[error(group::invalid_name <- [sql:check], sql::failure <- [sql:*])]
     #[example("examples/group.configure.json")]

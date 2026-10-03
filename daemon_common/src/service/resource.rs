@@ -21,8 +21,7 @@ pub struct ResourceResponse {
     pub system: ResourceSubset,
     pub server: ResourceSubset,
     pub groups: HashMap<String, ResourceSubset>,
-    pub storages: HashMap<String, StorageUsage>,
-    pub backups: HashMap<String, StorageUsage>,
+    pub storage: StorageUsage,
 }
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
@@ -43,7 +42,14 @@ pub struct ResourceSubset {
 
 #[derive(Serialize, Deserialize, utoipa::ToSchema)]
 pub struct StorageUsage {
+    pub server: HashMap<String, StorageUsageEntry>,
+    pub backup: HashMap<String, StorageUsageEntry>,
+}
+
+#[derive(Serialize, Deserialize, utoipa::ToSchema)]
+pub struct StorageUsageEntry {
+    pub path: String,
+    pub free: u64,
     pub available: u64,
     pub total: u64,
-    pub filesystem: String,
 }

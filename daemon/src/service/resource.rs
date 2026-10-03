@@ -3,11 +3,12 @@ use crate::cgroup::{CgroupIdentifier, groups_flat, systemd_unit_path};
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use core::time::Duration;
-use daemon_common::service::resource::ResourceService;
 use daemon_common::service::resource::resource_service_error::ResourceInfoError;
 use daemon_common::service::resource::{ResourceResponse, ResourceSubset};
+use daemon_common::service::resource::{ResourceService, StorageUsage, StorageUsageEntry};
 use num_traits::ToPrimitive as _;
 use procfs::{CpuInfo, Current as _, Meminfo};
+use rustix::fs::{StatVfs, statvfs};
 use sqlx::types::BigDecimal;
 use sqlx::{query, query_scalar};
 use std::borrow::Cow;
@@ -93,6 +94,45 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             );
         }
 
+        let mut storage_server_set = JoinSet::new();
+        let mut backup_server_set = JoinSet::new();
+
+        for (id, entry) in &self.config.storage {
+            let id = id.clone();
+            let path = entry.path().clone();
+            if !tokio::fs::try_exists(&path).await.inspect_err(|err| {
+                error!("Server storage {id:?} stat failed (try_exists): {err:?}");
+            })? {
+                tokio::fs::create_dir_all(&path).await.inspect_err(|err| {
+                    error!("Server storage {id:?} stat failed (create_dir_all): {err:?}");
+                })?;
+            }
+            storage_server_set.spawn_blocking(move || {
+                let stat = statvfs(&path).inspect_err(|err| {
+                    error!("Server storage {id:?} stat failed (statvfs): {err:?}");
+                })?;
+                Ok::<_, io::Error>((id, stat_to_storage_usage(path, &stat)))
+            });
+        }
+
+        for (id, entry) in &self.config.backup {
+            let id = id.clone();
+            let path = entry.path().clone();
+            if !tokio::fs::try_exists(&path).await.inspect_err(|err| {
+                error!("Backup storage {id:?} stat failed (try_exists): {err:?}");
+            })? {
+                tokio::fs::create_dir_all(&path).await.inspect_err(|err| {
+                    error!("Backup storage {id:?} stat failed (create_dir_all): {err:?}");
+                })?;
+            }
+            backup_server_set.spawn_blocking(move || {
+                let stat = statvfs(&path).inspect_err(|err| {
+                    error!("Backup storage {id:?} stat failed (statvfs): {err:?}");
+                })?;
+                Ok::<_, io::Error>((id, stat_to_storage_usage(path, &stat)))
+            });
+        }
+
         Ok(ResourceResponse {
             cpu_count: u32::try_from(cpu.num_cores()).unwrap_or_default(),
             mem_total: mem.mem_total,
@@ -100,9 +140,28 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
             system,
             server,
             groups,
-            backups: HashMap::new(),  // TODO
-            storages: HashMap::new(), // TODO
+            storage: StorageUsage {
+                backup: backup_server_set
+                    .join_all()
+                    .await
+                    .into_iter()
+                    .collect::<Result<_, _>>()?,
+                server: storage_server_set
+                    .join_all()
+                    .await
+                    .into_iter()
+                    .collect::<Result<_, _>>()?,
+            },
         })
+    }
+}
+
+fn stat_to_storage_usage(path: String, stat: &StatVfs) -> StorageUsageEntry {
+    StorageUsageEntry {
+        path,
+        total: stat.f_frsize.saturating_mul(stat.f_blocks) >> 20u64,
+        free: stat.f_frsize.saturating_mul(stat.f_bfree) >> 20u64,
+        available: stat.f_frsize.saturating_mul(stat.f_bavail) >> 20u64,
     }
 }
 
