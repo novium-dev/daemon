@@ -6,6 +6,7 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
 use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, schedule, sql, storage};
 use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
+#[cfg(target_os = "linux")]
 use bollard::plugin::SystemInfoCgroupDriverEnum;
 use bollard::query_parameters::{
     InspectNetworkOptions, KillContainerOptions, ListContainersOptions,
@@ -122,7 +123,13 @@ impl<T: DaemonExtra> Daemon<T> {
                 .inspect_err(|err| error!("Failed to connect to docker: {err:?}"))?
         };
 
-        let docker_info = docker.info().await?;
+        #[cfg(target_os = "linux")]
+        if !matches!(
+            docker.info().await?.cgroup_driver,
+            Some(SystemInfoCgroupDriverEnum::SYSTEMD),
+        ) {
+            return Err(DaemonInitError::DockerCgroupModeInvalid);
+        }
 
         match docker
             .inspect_network(
@@ -213,8 +220,10 @@ impl<T: DaemonExtra> Daemon<T> {
             }
         }
 
+        #[cfg(target_os = "linux")]
         info!("Establishing DBUS Connection...");
 
+        #[cfg(target_os = "linux")]
         let dbus = zbus::Connection::system().await?;
 
         info!("Establishing Database Connection...");
@@ -250,6 +259,7 @@ impl<T: DaemonExtra> Daemon<T> {
             schedule_task: Arc::default(),
             schedules: Arc::default(),
             docker: Arc::new(docker),
+            #[cfg(target_os = "linux")]
             dbus,
             runtime_dir,
             started: Instant::now(),
@@ -268,12 +278,6 @@ impl<T: DaemonExtra> Daemon<T> {
 
         info!("Initializing CGroups...");
 
-        if !matches!(
-            docker_info.cgroup_driver,
-            Some(SystemInfoCgroupDriverEnum::SYSTEMD),
-        ) {
-            return Err(DaemonInitError::DockerCgroupModeInvalid);
-        }
         daemon.sync_cgroups::<DaemonInitError>().await?;
 
         info!("Running schedules...");

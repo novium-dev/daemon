@@ -7,6 +7,7 @@ use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 use crate::service::files::{
     FilesService, FilesServiceClientImpl, FilesServiceURL, FilesServiceUserKeyExtension,
 };
+use crate::service::group::{GroupService, GroupServiceClientImpl, GroupServiceURL};
 use crate::service::integrity::{
     IntegrityService, IntegrityServiceClientImpl, IntegrityServiceURL,
 };
@@ -124,7 +125,7 @@ where
     let (with_auth, without_auth) = framework_router!(T instance (with_auth,without_auth,) {
         ServerService, BackupService, FilesService, NetworkService,
         ResourceService, DatabaseService, ScheduleService, SetupService,
-        IntegrityService
+        IntegrityService, GroupService
     });
 
     let (_router, api) = utoipa_axum::router::OpenApiRouter::with_openapi(ApiDoc::openapi())
@@ -165,6 +166,7 @@ pub trait DaemonServices:
     + ScheduleService
     + SetupService
     + IntegrityService
+    + GroupService
 {
     fn id(&self) -> Uuid;
 }
@@ -178,6 +180,7 @@ pub trait DaemonServicesClientImpl:
     + ScheduleServiceClientImpl
     + SetupServiceClientImpl
     + IntegrityServiceClientImpl
+    + GroupServiceClientImpl
 {
 }
 
@@ -192,6 +195,7 @@ pub trait DaemonServicesURL:
     + ScheduleServiceURL
     + SetupServiceURL
     + IntegrityServiceURL
+    + GroupServiceURL
 {
 }
 

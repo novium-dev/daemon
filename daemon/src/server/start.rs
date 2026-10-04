@@ -1,4 +1,5 @@
-use crate::cgroup::{CgroupIdentifier, clamp_cpu_limit, systemd_slice_handle};
+use crate::cgroup::{CgroupIdentifier, GROUP_LABEL, cgroup_parent, clamp_cpu_limit};
+use crate::config::LimitConfig;
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::watcher::attach;
@@ -250,12 +251,23 @@ impl FetchedServer {
             .map(|(key, value)| format!("{key}={value}"))
             .collect();
 
-        let memory = self
+        let limit = daemon
+            .container_limits(
+                self.group.as_deref(),
+                LimitConfig {
+                    cpu: self.cpu,
+                    ram: self.ram,
+                    swap: self.swap,
+                },
+            )
+            .await?;
+
+        let memory = limit
             .ram
             .map(from_mib)
             .map(|ram| i64::try_from(ram).unwrap_or(i64::MAX));
 
-        let cpu = self.cpu.and_then(clamp_cpu_limit::<false>);
+        let cpu = limit.cpu.and_then(clamp_cpu_limit::<false>);
 
         docker
             .create_container(
@@ -278,6 +290,11 @@ impl FetchedServer {
                     attach_stdin: Some(true),
 
                     env: Some(env),
+
+                    labels: Some(HashMap::from([(
+                        GROUP_LABEL.to_owned(),
+                        self.group.clone().unwrap_or_default(),
+                    )])),
 
                     networking_config: Some(NetworkingConfig {
                         endpoints_config: Some(networks),
@@ -326,7 +343,7 @@ impl FetchedServer {
                         memory,
                         memory_swap: memory
                             .map(|memory| {
-                                self.swap.map(from_mib).map(|swap| {
+                                limit.swap.map(from_mib).map(|swap| {
                                     i64::try_from(swap)
                                         .unwrap_or(i64::MAX)
                                         .saturating_add(memory)
@@ -339,13 +356,13 @@ impl FetchedServer {
                             server_data.size.0.load(Ordering::Relaxed) as usize,
                         ]),
 
-                        cgroup_parent: Some(systemd_slice_handle(
+                        cgroup_parent: cgroup_parent(
                             &self
                                 .group
                                 .as_deref()
                                 .map(Cow::Borrowed)
                                 .map_or(CgroupIdentifier::Server, CgroupIdentifier::Group),
-                        )),
+                        ),
                         ..HostConfig::default()
                     }),
                     ..ContainerCreateBody::default()

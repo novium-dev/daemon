@@ -86,7 +86,6 @@ num-traits = "0.2.19"
 ringbuffer = "0.16.0"
 fs_extra = "1.3.0"
 xattr = "1.6.1"
-procfs = "0.18.0"
 
 bytes.workspace = true
 cron.workspace = true
@@ -95,6 +94,7 @@ sha2.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
 capctl = "0.2.4"
+procfs = "0.18.0"
 
 [dependencies.tokio]
 workspace = true
