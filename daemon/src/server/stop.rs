@@ -61,6 +61,7 @@ impl FetchedServer {
         {
             return Err(ServerStopError::NotRunning);
         }
+        server_data.stopping.store(true, Ordering::Relaxed);
         docker
             .kill_container(&Self::container_name(self.id), None::<KillContainerOptions>)
             .await

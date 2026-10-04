@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use std::{borrow::Cow, collections::HashMap, io};
 
+use num_traits::FromPrimitive as _;
 use sqlx::query;
 use tracing::error;
 use zbus_systemd::systemd1::UnitProxy;
 
 use crate::{Daemon, DaemonExtra, config::LimitConfig, utils::from_mib};
 
-pub const CPU_PERIOD: u64 = 100_000u64;
-pub const CPU_PERIOD_F: f64 = 100_000f64;
+const DEFAULT_CPU_PERIOD: u64 = 100_000u64;
+const USEC: u64 = 1_000_000u64;
+const USEC_F: f64 = 1_000_000f64;
 
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub enum CgroupIdentifier<'a> {
@@ -73,33 +75,50 @@ impl<T: DaemonExtra> Daemon<T> {
         Ok(())
     }
 
-    #[expect(clippy::cast_sign_loss, reason = "not possible")]
     async fn cgroup_apply_limit<E: From<zbus::Error>>(
         &self,
         id: CgroupIdentifier<'_>,
         limit: LimitConfig,
     ) -> Result<(), E> {
-        let unit = UnitProxy::new(&self.dbus, systemd_unit_path(id)).await?;
+        let unit = UnitProxy::new(&self.dbus, systemd_unit_path(&id))
+            .await
+            .inspect_err(|err| error!("Applying cgroup limits failed (proxy): {err:?}"))?;
 
-        let cpu_quota = limit.cpu.map_or(u64::MAX, |cpu| {
-            (f64::from(cpu.abs()) * f64::from(1_000_000i32)).round() as u64
-        });
+        let (cpu_quota, cpu_period) = limit
+            .cpu
+            .and_then(clamp_cpu_limit::<true>)
+            .unwrap_or((u64::MAX, DEFAULT_CPU_PERIOD));
 
-        let memory_max = limit.ram.map_or(u64::MAX, from_mib);
+        let memory_max = limit.ram.map_or(u64::MAX, from_mib).max(1);
         let swap_max = limit.swap.map_or(u64::MAX, from_mib);
 
         unit.set_properties(
             true,
             vec![
-                ("CPUQuotaPeriodUSec".to_owned(), CPU_PERIOD.into()),
+                ("CPUQuotaPeriodUSec".to_owned(), cpu_period.into()),
                 ("CPUQuotaPerSecUSec".to_owned(), cpu_quota.into()),
                 ("MemoryMax".to_owned(), memory_max.into()),
                 ("MemorySwapMax".to_owned(), swap_max.into()),
             ],
         )
-        .await?;
+        .await
+        .inspect_err(|err| error!("Applying cgroup limits failed (properties): {err:?}"))?;
 
         Ok(())
+    }
+}
+
+pub(crate) fn clamp_cpu_limit<const BASE_USEC: bool>(cpu: f32) -> Option<(u64, u64)> {
+    let quota = u64::from_f64((f64::from(cpu.abs()) * USEC_F).round())?.max(1000);
+    let period = if quota < 10000u64 {
+        USEC
+    } else {
+        DEFAULT_CPU_PERIOD
+    };
+    if BASE_USEC {
+        Some((quota, period))
+    } else {
+        Some(((quota.saturating_mul(period)).div_ceil(USEC), period))
     }
 }
 
@@ -117,7 +136,7 @@ pub(crate) fn groups_flat(name: String) -> Vec<String> {
 }
 
 #[inline]
-pub(crate) fn systemd_unit_path(id: CgroupIdentifier<'_>) -> String {
+pub(crate) fn systemd_unit_path(id: &CgroupIdentifier<'_>) -> String {
     format!(
         "/org/freedesktop/systemd1/unit/{}",
         systemd_slice_handle(id)
@@ -128,12 +147,63 @@ pub(crate) fn systemd_unit_path(id: CgroupIdentifier<'_>) -> String {
 }
 
 #[inline]
-pub(crate) fn systemd_slice_handle(group: CgroupIdentifier<'_>) -> String {
+pub(crate) fn systemd_slice_handle(group: &CgroupIdentifier<'_>) -> String {
     match group {
         CgroupIdentifier::Group(name) => {
             format!("{}-{name}.slice", crate::common::DAEMON_CGROUP_ROOT)
         }
         CgroupIdentifier::Server => format!("{}.slice", crate::common::DAEMON_CGROUP_ROOT),
         CgroupIdentifier::System => "-.slice".to_owned(),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    #[test]
+    fn clamp_cpu_limit() {
+        use super::*;
+
+        assert_eq!(
+            clamp_cpu_limit::<true>(1.0),
+            Some((USEC, DEFAULT_CPU_PERIOD))
+        );
+        assert_eq!(
+            clamp_cpu_limit::<false>(1.0),
+            Some((DEFAULT_CPU_PERIOD, DEFAULT_CPU_PERIOD))
+        );
+        assert_eq!(
+            clamp_cpu_limit::<true>(10000.0),
+            Some((10_000_000_000, DEFAULT_CPU_PERIOD))
+        );
+        assert_eq!(
+            clamp_cpu_limit::<false>(10000.0),
+            Some((1_000_000_000, DEFAULT_CPU_PERIOD))
+        );
+        assert_eq!(
+            clamp_cpu_limit::<true>(0.01),
+            Some((10000, DEFAULT_CPU_PERIOD))
+        );
+        assert_eq!(
+            clamp_cpu_limit::<false>(0.01),
+            Some((1000, DEFAULT_CPU_PERIOD))
+        );
+        assert_eq!(
+            clamp_cpu_limit::<false>(0.01),
+            Some((1000, DEFAULT_CPU_PERIOD))
+        );
+        assert_eq!(
+            clamp_cpu_limit::<false>(-0.01),
+            Some((1000, DEFAULT_CPU_PERIOD))
+        );
+        assert_eq!(clamp_cpu_limit::<false>(0.001), Some((1000, USEC)));
+        assert_eq!(clamp_cpu_limit::<true>(0.001), Some((1000, USEC)));
+        assert_eq!(clamp_cpu_limit::<false>(0.005), Some((5000, USEC)));
+        assert_eq!(clamp_cpu_limit::<true>(0.005), Some((5000, USEC)));
+        assert_eq!(clamp_cpu_limit::<true>(0.005_432), Some((5432, USEC)));
+        assert_eq!(clamp_cpu_limit::<false>(0.000_001), Some((1000, USEC)));
+        assert_eq!(clamp_cpu_limit::<true>(0.000_001), Some((1000, USEC)));
+        assert_eq!(clamp_cpu_limit::<true>(f32::MAX), None);
+        assert_eq!(clamp_cpu_limit::<true>(f32::INFINITY), None);
+        assert_eq!(clamp_cpu_limit::<true>(f32::NAN), None);
     }
 }

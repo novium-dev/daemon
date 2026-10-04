@@ -13,7 +13,7 @@ use sqlx::types::BigDecimal;
 use sqlx::{query, query_scalar};
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
-use std::{io, thread};
+use std::io;
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tracing::error;
@@ -35,14 +35,14 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
         .await
         .inspect_err(|err| error!("Failed to fetch resource allocation: {err:?}"))?
         .into_iter()
-        .filter_map(|row| row.group.map(|group| (group, (row.cpu.unwrap_or_default(), row.ram.unwrap_or_default(), row.swap.unwrap_or_default()))))
+        .map(|row| (row.group, (row.cpu.unwrap_or_default(), row.ram.unwrap_or_default(), row.swap.unwrap_or_default())))
         .collect::<HashMap<_, _>>();
 
         let mut groups = HashMap::with_capacity(names.len());
 
         let usage_prev = usage(&self.dbus, &names).await.map_err(resource_dbus_err)?;
 
-        thread::sleep(Duration::from_millis(200)); // Recommended time by sysinfo
+        tokio::time::sleep(Duration::from_millis(200)).await; // Recommended time by sysinfo
 
         let usage_now = usage(&self.dbus, &names).await.map_err(resource_dbus_err)?;
 
@@ -63,9 +63,12 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
         let swap_alloc: BigDecimal = allocation.values().map(|alloc| alloc.2.clone()).sum();
         let alloc = (cpu_alloc, ram_alloc, swap_alloc);
 
+        let mut limit_cache = HashMap::with_capacity(names.len().saturating_add(2));
+
         let system = new_resource_subset(
             &self.dbus,
             CgroupIdentifier::System,
+            &mut limit_cache,
             &usage_prev,
             &usage_now,
             &alloc,
@@ -76,6 +79,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
         let server = new_resource_subset(
             &self.dbus,
             CgroupIdentifier::Server,
+            &mut limit_cache,
             &usage_prev,
             &usage_now,
             &alloc,
@@ -85,12 +89,22 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
 
         for name in &names {
             let id = CgroupIdentifier::Group(Cow::Borrowed(name));
-            let alloc = allocation.get(name).cloned().unwrap_or_default();
+            let alloc = allocation
+                .get(&Some(name.to_owned()))
+                .cloned()
+                .unwrap_or_default();
             groups.insert(
                 name.to_owned(),
-                new_resource_subset(&self.dbus, id, &usage_prev, &usage_now, &alloc)
-                    .await
-                    .map_err(resource_dbus_err)?,
+                new_resource_subset(
+                    &self.dbus,
+                    id,
+                    &mut limit_cache,
+                    &usage_prev,
+                    &usage_now,
+                    &alloc,
+                )
+                .await
+                .map_err(resource_dbus_err)?,
             );
         }
 
@@ -135,8 +149,8 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
 
         Ok(ResourceResponse {
             cpu_count: u32::try_from(cpu.num_cores()).unwrap_or_default(),
-            mem_total: mem.mem_total,
-            swap_total: mem.swap_total,
+            mem_total: mem.mem_total >> 20u64,
+            swap_total: mem.swap_total >> 20u64,
             system,
             server,
             groups,
@@ -199,11 +213,12 @@ async fn usage<'a>(
 }
 
 #[expect(clippy::cast_precision_loss, reason = "cpu doesn't have to be precise")]
-async fn new_resource_subset(
+async fn new_resource_subset<'a>(
     conn: &zbus::Connection,
-    id: CgroupIdentifier<'_>,
-    cpu_usage_prev: &HashMap<CgroupIdentifier<'_>, (u64, Instant)>,
-    cpu_usage_new: &HashMap<CgroupIdentifier<'_>, (u64, Instant)>,
+    id: CgroupIdentifier<'a>,
+    limit_cache: &mut HashMap<CgroupIdentifier<'a>, (u64, u64, u64)>,
+    cpu_usage_prev: &HashMap<CgroupIdentifier<'a>, (u64, Instant)>,
+    cpu_usage_new: &HashMap<CgroupIdentifier<'a>, (u64, Instant)>,
     (alloc_cpu, alloc_ram, alloc_swap): &(f64, BigDecimal, BigDecimal),
 ) -> Result<ResourceSubset, zbus::Error> {
     let cpu_used = if let Some(cpu_prev) = cpu_usage_prev.get(&id)
@@ -223,6 +238,7 @@ async fn new_resource_subset(
     apply_limit(
         conn,
         id.clone(),
+        limit_cache,
         &mut cpu_limit,
         &mut mem_limit,
         &mut swap_limit,
@@ -233,10 +249,25 @@ async fn new_resource_subset(
     let mut mem_limit_effective = mem_limit;
     let mut swap_limit_effective = swap_limit;
 
+    if let CgroupIdentifier::Group(name) = &id {
+        for subgroup in groups_flat(name.to_string()) {
+            apply_limit(
+                conn,
+                CgroupIdentifier::Group(Cow::Owned(subgroup)),
+                limit_cache,
+                &mut cpu_limit_effective,
+                &mut mem_limit_effective,
+                &mut swap_limit_effective,
+            )
+            .await?;
+        }
+    }
+
     if !matches!(id, CgroupIdentifier::System) {
         apply_limit(
             conn,
             CgroupIdentifier::System,
+            limit_cache,
             &mut cpu_limit_effective,
             &mut mem_limit_effective,
             &mut swap_limit_effective,
@@ -247,6 +278,7 @@ async fn new_resource_subset(
         apply_limit(
             conn,
             CgroupIdentifier::Server,
+            limit_cache,
             &mut cpu_limit_effective,
             &mut mem_limit_effective,
             &mut swap_limit_effective,
@@ -254,7 +286,7 @@ async fn new_resource_subset(
         .await?;
     }
 
-    let proxy = SliceProxy::new(conn, systemd_unit_path(id)).await?;
+    let proxy = SliceProxy::new(conn, systemd_unit_path(&id)).await?;
 
     let mem_used = proxy.memory_current().await?;
     let swap_used = proxy.memory_swap_current().await?;
@@ -267,39 +299,56 @@ async fn new_resource_subset(
         mem_allocated: alloc_ram.to_u64().unwrap_or(u64::MAX),
         mem_limit: mem_limit.map(|limit| limit >> 20u32),
         mem_limit_effective: mem_limit_effective.map(|limit| limit >> 20u32),
-        mem_used: mem_used >> 20u32,
+        mem_used: if mem_used == u64::MAX {
+            0
+        } else {
+            mem_used >> 20u32
+        },
         swap_allocated: alloc_swap.to_u64().unwrap_or(u64::MAX),
         swap_limit: swap_limit.map(|limit| limit >> 20u32),
         swap_limit_effective: swap_limit_effective.map(|limit| limit >> 20u32),
-        swap_used: swap_used >> 20u32,
+        swap_used: if swap_used == u64::MAX {
+            0
+        } else {
+            swap_used >> 20u32
+        },
     })
 }
 
 #[inline]
-async fn apply_limit(
+async fn apply_limit<'a>(
     conn: &zbus::Connection,
-    id: CgroupIdentifier<'_>,
+    id: CgroupIdentifier<'a>,
+    cache: &mut HashMap<CgroupIdentifier<'a>, (u64, u64, u64)>,
     cpu: &mut Option<u64>,
     mem: &mut Option<u64>,
     swap: &mut Option<u64>,
 ) -> Result<(), zbus::Error> {
-    let proxy = SliceProxy::new(conn, systemd_unit_path(id)).await?;
+    let (cpu_quota, mem_max, swap_max) = if let Some(limit) = cache.get_mut(&id) {
+        limit
+    } else {
+        let proxy = SliceProxy::new(conn, systemd_unit_path(&id)).await?;
 
-    let cpu_quota = proxy.cpu_quota_per_sec_u_sec().await?;
-    let mem_max = proxy.memory_max().await?;
-    let swap_max = proxy.memory_swap_max().await?;
+        let cpu_quota = proxy.cpu_quota_per_sec_u_sec().await?;
+        let mem_max = proxy.memory_max().await?;
+        let swap_max = proxy.memory_swap_max().await?;
+        cache
+            .entry(id)
+            .insert_entry((cpu_quota, mem_max, swap_max))
+            .into_mut()
+    };
 
-    match (cpu, cpu_quota) {
+    match (cpu, *cpu_quota) {
         (None, u64::MAX) => {}
         (cpu @ None, quota) => *cpu = Some(quota),
         (Some(current), quota) => *current = (*current).min(quota),
     }
-    match (mem, mem_max) {
+    match (mem, *mem_max) {
         (None, u64::MAX) => {}
         (mem @ None, max) => *mem = Some(max),
         (Some(current), max) => *current = (*current).min(max),
     }
-    match (swap, swap_max) {
+    match (swap, *swap_max) {
         (None, u64::MAX) => {}
         (swap @ None, max) => *swap = Some(max),
         (Some(current), max) => *current = (*current).min(max),
@@ -312,7 +361,7 @@ async fn usage_time<'a>(
     conn: &zbus::Connection,
     id: CgroupIdentifier<'a>,
 ) -> Result<(CgroupIdentifier<'a>, u64, Instant), zbus::Error> {
-    let proxy = SliceProxy::new(conn, systemd_unit_path(id.clone())).await?;
+    let proxy = SliceProxy::new(conn, systemd_unit_path(&id)).await?;
 
     let usage = proxy.cpu_usage_n_sec().await?.saturating_div(1000);
 
