@@ -25,6 +25,7 @@ pub(crate) use zelus::error::{define_error, error};
 pub(crate) use zelus::service;
 use zelus::{define_header_variable, define_path_variable};
 
+use crate::service::group::{GroupService, GroupServiceClientImpl, GroupServiceURL};
 pub use zelus::framework_router;
 pub use zelus::responses::{FileResponse, WebsocketResponse};
 pub use zelus::sdk::ZelusClientImpl;
@@ -124,7 +125,7 @@ where
     let (with_auth, without_auth) = framework_router!(T instance (with_auth,without_auth,) {
         ServerService, BackupService, FilesService, NetworkService,
         ResourceService, DatabaseService, ScheduleService, SetupService,
-        IntegrityService
+        IntegrityService, GroupService
     });
 
     let (_router, api) = utoipa_axum::router::OpenApiRouter::with_openapi(ApiDoc::openapi())
@@ -165,6 +166,7 @@ pub trait DaemonServices:
     + ScheduleService
     + SetupService
     + IntegrityService
+    + GroupService
 {
     fn id(&self) -> Uuid;
 }
@@ -178,6 +180,7 @@ pub trait DaemonServicesClientImpl:
     + ScheduleServiceClientImpl
     + SetupServiceClientImpl
     + IntegrityServiceClientImpl
+    + GroupServiceClientImpl
 {
 }
 
@@ -192,6 +195,7 @@ pub trait DaemonServicesURL:
     + ScheduleServiceURL
     + SetupServiceURL
     + IntegrityServiceURL
+    + GroupServiceURL
 {
 }
 
