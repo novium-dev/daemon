@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-pub const LABEL_NAME: &str = "cloud.novium.daemon.server";
 pub const IMAGE_NAME: &str = "novium-daemon-image";
 pub const CONTAINER_PREFIX: &str = "novium-daemon_";
 
