@@ -1,4 +1,4 @@
-use crate::cgroup::{CgroupIdentifier, clamp_cpu_limit, systemd_slice_handle};
+use crate::cgroup::clamp_cpu_limit;
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::watcher::attach;
@@ -24,7 +24,6 @@ use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::task::ServerTask;
 use ringbuffer::RingBuffer as _;
-use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
@@ -340,12 +339,15 @@ impl FetchedServer {
                         ]),
 
                         #[cfg(target_os = "linux")]
-                        cgroup_parent: Some(systemd_slice_handle(
+                        cgroup_parent: Some(crate::cgroup::systemd_slice_handle(
                             &self
                                 .group
                                 .as_deref()
-                                .map(Cow::Borrowed)
-                                .map_or(CgroupIdentifier::Server, CgroupIdentifier::Group),
+                                .map(std::borrow::Cow::Borrowed)
+                                .map_or(
+                                    crate::cgroup::CgroupIdentifier::Server,
+                                    crate::cgroup::CgroupIdentifier::Group,
+                                ),
                         )),
                         ..HostConfig::default()
                     }),

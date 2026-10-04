@@ -4,6 +4,7 @@ use crate::server::FetchedServer;
 use crate::server::watcher::attach;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, StorageLockData, storage_read};
+use crate::utils::LinuxOnly;
 use crate::{Daemon, DaemonExtra, WithUserKey, ctlsock, schedule, sql, storage};
 use bollard::models::{Ipam, IpamConfig, NetworkCreateRequest};
 use bollard::plugin::SystemInfoCgroupDriverEnum;
@@ -213,11 +214,16 @@ impl<T: DaemonExtra> Daemon<T> {
             }
         }
 
-        #[cfg(target_os = "linux")]
-        info!("Establishing DBUS Connection...");
-
-        #[cfg(target_os = "linux")]
-        let dbus = zbus::Connection::system().await?;
+        let dbus = {
+            #[cfg(target_os = "linux")]
+            {
+                info!("Establishing DBUS Connection...");
+                let dbus = zbus::Connection::system().await?;
+                LinuxOnly::from(dbus)
+            }
+            #[cfg(not(target_os = "linux"))]
+            LinuxOnly::default()
+        };
 
         info!("Establishing Database Connection...");
         let conn = {
@@ -252,7 +258,6 @@ impl<T: DaemonExtra> Daemon<T> {
             schedule_task: Arc::default(),
             schedules: Arc::default(),
             docker: Arc::new(docker),
-            #[cfg(target_os = "linux")]
             dbus,
             runtime_dir,
             started: Instant::now(),

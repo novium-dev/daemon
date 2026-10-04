@@ -13,6 +13,7 @@ use sha2::{Digest as _, Sha256};
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
 use std::io;
+use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
@@ -309,5 +310,55 @@ impl<
         Self: Sized,
     {
         A::send_ping()
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct LinuxOnly<T> {
+    #[cfg(target_os = "linux")]
+    inner: T,
+}
+
+#[cfg(not(target_os = "linux"))]
+impl<T> Default for LinuxOnly<T> {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl<T> From<T> for LinuxOnly<T> {
+    fn from(value: T) -> Self {
+        Self { inner: value }
+    }
+}
+
+impl<T> Deref for LinuxOnly<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        #[cfg(target_os = "linux")]
+        {
+            &self.inner
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            unreachable!()
+        }
+    }
+}
+
+impl<T> DerefMut for LinuxOnly<T> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        #[cfg(target_os = "linux")]
+        {
+            &mut self.inner
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            unreachable!()
+        }
     }
 }

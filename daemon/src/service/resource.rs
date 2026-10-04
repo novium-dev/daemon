@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::cgroup::{CgroupIdentifier, groups_flat, systemd_unit_path};
+use crate::utils::LinuxOnly;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use core::time::Duration;
@@ -7,7 +8,6 @@ use daemon_common::service::resource::resource_service_error::ResourceInfoError;
 use daemon_common::service::resource::{ResourceResponse, ResourceSubset};
 use daemon_common::service::resource::{ResourceService, StorageUsage, StorageUsageEntry};
 use num_traits::ToPrimitive as _;
-use procfs::{CpuInfo, Current as _, Meminfo};
 use rustix::fs::{StatVfs, statvfs};
 use sqlx::types::BigDecimal;
 use sqlx::{query, query_scalar};
@@ -49,6 +49,8 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
         let (cpu_count, mem_total, swap_total) = {
             #[cfg(target_os = "linux")]
             {
+                use procfs::{CpuInfo, Current as _, Meminfo};
+
                 let (cpu, mem) =
                     tokio::task::spawn_blocking(|| (CpuInfo::current(), Meminfo::current()))
                         .await
@@ -202,7 +204,7 @@ fn resource_dbus_err(err: zbus::Error) -> io::Error {
 }
 
 async fn usage<'a>(
-    dbus: &zbus::Connection,
+    dbus: &LinuxOnly<zbus::Connection>,
     groups: &'a HashSet<String>,
 ) -> Result<HashMap<CgroupIdentifier<'a>, (u64, Instant)>, zbus::Error> {
     let mut set = JoinSet::new();
@@ -231,7 +233,7 @@ async fn usage<'a>(
 
 #[expect(clippy::cast_precision_loss, reason = "cpu doesn't have to be precise")]
 async fn new_resource_subset<'a>(
-    conn: &zbus::Connection,
+    conn: &LinuxOnly<zbus::Connection>,
     id: CgroupIdentifier<'a>,
     limit_cache: &mut HashMap<CgroupIdentifier<'a>, (u64, u64, u64)>,
     cpu_usage_prev: &HashMap<CgroupIdentifier<'a>, (u64, Instant)>,
@@ -340,7 +342,7 @@ async fn new_resource_subset<'a>(
 
 #[inline]
 async fn apply_limit<'a>(
-    conn: &zbus::Connection,
+    conn: &LinuxOnly<zbus::Connection>,
     id: CgroupIdentifier<'a>,
     cache: &mut HashMap<CgroupIdentifier<'a>, (u64, u64, u64)>,
     cpu: &mut Option<u64>,
@@ -386,7 +388,7 @@ async fn apply_limit<'a>(
 }
 
 async fn usage_time<'a>(
-    conn: &zbus::Connection,
+    conn: &LinuxOnly<zbus::Connection>,
     id: CgroupIdentifier<'a>,
 ) -> Result<(CgroupIdentifier<'a>, u64, Instant), zbus::Error> {
     let usage = if cfg!(target_os = "linux") {

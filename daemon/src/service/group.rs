@@ -17,7 +17,7 @@ impl<T: DaemonExtra> GroupService for Daemon<T> {
         ram: Option<u32>,
         swap: Option<u32>,
     ) -> Result<(), ConfigureGroupError> {
-        if !cfg!(target_os = "linux") {
+        if cfg!(not(target_os = "linux")) {
             return Ok(());
         }
 
@@ -35,7 +35,7 @@ impl<T: DaemonExtra> GroupService for Daemon<T> {
     }
 
     async fn delete_group(&self, group_name: String) -> Result<(), DeleteGroupError> {
-        if !cfg!(target_os = "linux") {
+        if cfg!(not(target_os = "linux")) {
             return Ok(());
         }
 

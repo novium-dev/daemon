@@ -38,6 +38,10 @@ impl<T: DaemonExtra> Daemon<T> {
         .await
         .inspect_err(|err| error!("Failed to cleanup groups in database: {err:?}"))?;
 
+        if cfg!(not(target_os = "linux")) {
+            return Ok(());
+        }
+
         let groups: HashMap<_, _> = query!("SELECT * FROM `groups`")
             .fetch_all(&mut *conn)
             .await
