@@ -279,7 +279,8 @@ impl<T: DaemonExtra> Daemon<T> {
         if !matches!(
             docker_info.cgroup_driver,
             Some(SystemInfoCgroupDriverEnum::SYSTEMD),
-        ) {
+        ) && cfg!(target_os = "linux")
+        {
             return Err(DaemonInitError::DockerCgroupModeInvalid);
         }
         daemon.sync_cgroups::<DaemonInitError>().await?;

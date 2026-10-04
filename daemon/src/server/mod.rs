@@ -41,6 +41,7 @@ pub struct FetchedServer {
     pub uid: Option<u16>,
     pub gid: Option<u16>,
 
+    #[cfg_attr(not(target_os = "linux"), expect(dead_code))]
     pub group: Option<String>,
 
     pub stop_command: Option<String>,
