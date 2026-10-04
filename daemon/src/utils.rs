@@ -317,19 +317,23 @@ impl<
 pub(crate) struct LinuxOnly<T> {
     #[cfg(target_os = "linux")]
     inner: T,
+    _p: PhantomData<T>,
 }
 
 #[cfg(not(target_os = "linux"))]
 impl<T> Default for LinuxOnly<T> {
     fn default() -> Self {
-        Self {}
+        Self { _p: PhantomData }
     }
 }
 
 #[cfg(target_os = "linux")]
 impl<T> From<T> for LinuxOnly<T> {
     fn from(value: T) -> Self {
-        Self { inner: value }
+        Self {
+            inner: value,
+            _p: PhantomData,
+        }
     }
 }
 

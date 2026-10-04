@@ -47,7 +47,6 @@ use crate::storage::StorageIdentifier;
 use crate::storage::sync::StorageTokens;
 use crate::sync::task::TaskRwLock;
 use crate::utils::ChannelWriteData;
-#[cfg(target_os = "linux")]
 use crate::utils::LinuxOnly;
 pub use daemon_common as common;
 use daemon_common::key::{DaemonKey, DaemonRootKey};
