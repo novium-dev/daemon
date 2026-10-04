@@ -19,7 +19,7 @@ pub(crate) const DEFAULT_CPU_PERIOD: u64 = 100_000u64;
 const USEC: u64 = 1_000_000u64;
 const USEC_F: f64 = 1_000_000f64;
 
-pub(crate) const GROUP_LABEL: &str = "dev.novium.group";
+pub(crate) const GROUP_LABEL: &str = "world.novium.group";
 
 pub(crate) type Allocation = HashMap<Option<String>, (f64, BigDecimal, BigDecimal)>;
 

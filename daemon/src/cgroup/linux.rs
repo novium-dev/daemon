@@ -109,6 +109,10 @@ impl<T: DaemonExtra> Daemon<T> {
         Ok(())
     }
 
+    #[expect(
+        clippy::unused_async,
+        reason = "same signature as the macOS variant, cgroups enforce group limits here"
+    )]
     pub(crate) async fn container_limits(
         &self,
         _group: Option<&str>,
@@ -203,6 +207,10 @@ impl<T: DaemonExtra> Daemon<T> {
     }
 }
 
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "same signature as the macOS variant, which has no cgroup parent"
+)]
 pub(crate) fn cgroup_parent(id: &CgroupIdentifier<'_>) -> Option<String> {
     Some(systemd_slice_handle(id))
 }
