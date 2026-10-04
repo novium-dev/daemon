@@ -17,6 +17,10 @@ impl<T: DaemonExtra> GroupService for Daemon<T> {
         ram: Option<u32>,
         swap: Option<u32>,
     ) -> Result<(), ConfigureGroupError> {
+        if !cfg!(target_os = "linux") {
+            return Ok(());
+        }
+
         query!("INSERT INTO `groups` (`name`, `cpu`, `ram`, `swap`) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE `cpu` = ?, `ram` = ?, `swap` = ?", group_name, cpu, ram, swap, cpu, ram, swap)
         .execute(&*self.conn)
         .await
@@ -31,6 +35,10 @@ impl<T: DaemonExtra> GroupService for Daemon<T> {
     }
 
     async fn delete_group(&self, group_name: String) -> Result<(), DeleteGroupError> {
+        if !cfg!(target_os = "linux") {
+            return Ok(());
+        }
+
         query!("DELETE FROM `groups` WHERE `name` = ?", group_name)
             .execute(&*self.conn)
             .await

@@ -213,8 +213,10 @@ impl<T: DaemonExtra> Daemon<T> {
             }
         }
 
+        #[cfg(target_os = "linux")]
         info!("Establishing DBUS Connection...");
 
+        #[cfg(target_os = "linux")]
         let dbus = zbus::Connection::system().await?;
 
         info!("Establishing Database Connection...");
@@ -250,6 +252,7 @@ impl<T: DaemonExtra> Daemon<T> {
             schedule_task: Arc::default(),
             schedules: Arc::default(),
             docker: Arc::new(docker),
+            #[cfg(target_os = "linux")]
             dbus,
             runtime_dir,
             started: Instant::now(),

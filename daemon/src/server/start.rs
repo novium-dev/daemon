@@ -339,6 +339,7 @@ impl FetchedServer {
                             server_data.size.0.load(Ordering::Relaxed) as usize,
                         ]),
 
+                        #[cfg(target_os = "linux")]
                         cgroup_parent: Some(systemd_slice_handle(
                             &self
                                 .group

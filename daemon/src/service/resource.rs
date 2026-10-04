@@ -46,17 +46,34 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
 
         let usage_now = usage(&self.dbus, &names).await.map_err(resource_dbus_err)?;
 
-        let (cpu, mem) = tokio::task::spawn_blocking(|| (CpuInfo::current(), Meminfo::current()))
-            .await
-            .inspect_err(|err| error!("failed to access cpu and mem info (task): {err:?}"))
-            .map_err(io::Error::from)?;
+        let (cpu_count, mem_total, swap_total) = {
+            #[cfg(target_os = "linux")]
+            {
+                let (cpu, mem) =
+                    tokio::task::spawn_blocking(|| (CpuInfo::current(), Meminfo::current()))
+                        .await
+                        .inspect_err(|err| {
+                            error!("failed to access cpu and mem info (task): {err:?}");
+                        })
+                        .map_err(io::Error::from)?;
 
-        let cpu = cpu
-            .inspect_err(|err| error!("failed to access cpu info: {err:?}"))
-            .map_err(io::Error::other)?;
-        let mem = mem
-            .inspect_err(|err| error!("failed to access mem info: {err:?}"))
-            .map_err(io::Error::other)?;
+                let cpu = cpu
+                    .inspect_err(|err| error!("failed to access cpu info: {err:?}"))
+                    .map_err(io::Error::other)?;
+                let mem = mem
+                    .inspect_err(|err| error!("failed to access mem info: {err:?}"))
+                    .map_err(io::Error::other)?;
+
+                (
+                    u32::try_from(cpu.num_cores()).unwrap_or_default(),
+                    mem.mem_total,
+                    mem.swap_total,
+                )
+            }
+
+            #[cfg(not(target_os = "linux"))]
+            (0, 0, 0)
+        };
 
         let cpu_alloc = allocation.values().map(|alloc| alloc.0).sum();
         let ram_alloc: BigDecimal = allocation.values().map(|alloc| alloc.1.clone()).sum();
@@ -148,9 +165,9 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
         }
 
         Ok(ResourceResponse {
-            cpu_count: u32::try_from(cpu.num_cores()).unwrap_or_default(),
-            mem_total: mem.mem_total >> 20u64,
-            swap_total: mem.swap_total >> 20u64,
+            cpu_count,
+            mem_total: mem_total >> 20u64,
+            swap_total: swap_total >> 20u64,
             system,
             server,
             groups,
@@ -286,10 +303,16 @@ async fn new_resource_subset<'a>(
         .await?;
     }
 
-    let proxy = SliceProxy::new(conn, systemd_unit_path(&id)).await?;
+    let (mem_used, swap_used) = if cfg!(target_os = "linux") {
+        let proxy = SliceProxy::new(conn, systemd_unit_path(&id)).await?;
 
-    let mem_used = proxy.memory_current().await?;
-    let swap_used = proxy.memory_swap_current().await?;
+        (
+            proxy.memory_current().await?,
+            proxy.memory_swap_current().await?,
+        )
+    } else {
+        (0, 0)
+    };
 
     Ok(ResourceSubset {
         cpu_used,
@@ -326,7 +349,7 @@ async fn apply_limit<'a>(
 ) -> Result<(), zbus::Error> {
     let (cpu_quota, mem_max, swap_max) = if let Some(limit) = cache.get_mut(&id) {
         limit
-    } else {
+    } else if cfg!(target_os = "linux") {
         let proxy = SliceProxy::new(conn, systemd_unit_path(&id)).await?;
 
         let cpu_quota = proxy.cpu_quota_per_sec_u_sec().await?;
@@ -335,6 +358,11 @@ async fn apply_limit<'a>(
         cache
             .entry(id)
             .insert_entry((cpu_quota, mem_max, swap_max))
+            .into_mut()
+    } else {
+        cache
+            .entry(id)
+            .insert_entry((u64::MAX, u64::MAX, u64::MAX))
             .into_mut()
     };
 
@@ -361,9 +389,13 @@ async fn usage_time<'a>(
     conn: &zbus::Connection,
     id: CgroupIdentifier<'a>,
 ) -> Result<(CgroupIdentifier<'a>, u64, Instant), zbus::Error> {
-    let proxy = SliceProxy::new(conn, systemd_unit_path(&id)).await?;
+    let usage = if cfg!(target_os = "linux") {
+        let proxy = SliceProxy::new(conn, systemd_unit_path(&id)).await?;
 
-    let usage = proxy.cpu_usage_n_sec().await?.saturating_div(1000);
+        proxy.cpu_usage_n_sec().await?.saturating_div(1000)
+    } else {
+        0
+    };
 
     let time = Instant::now();
 
