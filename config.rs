@@ -49,3 +49,5 @@ pub const DAEMON_DEFAULT_RUNTIME_DIR: &str = "/private/tmp/novium_daemon";
 
 #[cfg(not(target_os = "macos"))]
 pub const DAEMON_DEFAULT_RUNTIME_DIR: &str = "/run/novium_daemon";
+
+pub const DAEMON_CGROUP_ROOT: &str = "novium_daemon";

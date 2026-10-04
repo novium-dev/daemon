@@ -49,6 +49,7 @@ rustls.workspace = true
 axum-server.workspace = true
 axum-extra.workspace = true
 axum.workspace = true
+itertools.workspace = true
 tower-http.workspace = true
 base64.workspace = true
 tracing.workspace = true
@@ -85,6 +86,8 @@ num-traits = "0.2.19"
 ringbuffer = "0.16.0"
 fs_extra = "1.3.0"
 xattr = "1.6.1"
+procfs = "0.18.0"
+
 bytes.workspace = true
 cron.workspace = true
 chrono-tz.workspace = true
@@ -96,6 +99,10 @@ capctl = "0.2.4"
 [dependencies.tokio]
 workspace = true
 features = ["full"]
+
+[dependencies.tokio-stream]
+version = "0.1"
+features = ["fs"]
 
 [dependencies.anyhow]
 version = "1.0.104"
@@ -129,21 +136,33 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.63.0"
+version = "0.63.3"
 
 [dependencies.russh-sftp]
-version = "2.4.0"
+version = "3.0.1"
 
 [dependencies.rustix]
-version = "1.1.4"
+version = "1.1.5"
 features = ["thread", "fs"]
 
+[dependencies.zbus]
+version = "5.19.0"
+features = ["tokio"]
+
+[dependencies.zbus_systemd]
+version = "0.26200.0"
+features = ["systemd1"]
+
+[dependencies.nix]
+version = "0.31.3"
+features = ["fs", "user"]
+
 [dependencies.zstd]
-version = "0.13.3"
+version = "0.14.0"
 features = []
 
 [dependencies.flate2]
-version = "1.1.9"
+version = "1.1.10"
 features = ["zlib"]
 
 [dependencies.bzip2]

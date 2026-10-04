@@ -10,7 +10,7 @@ use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use core::error::Error;
 use core::net::{IpAddr, Ipv6Addr, SocketAddr};
 use core::time::Duration;
-use daemon::config::MountPoint;
+use daemon::config::{LimitConfig, MountPoint};
 use daemon::internal::middleware;
 use daemon::key::{DaemonCertResolver, TlsAcceptor};
 use daemon_common::key::rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
@@ -181,6 +181,7 @@ fn node_to_daemon_config(
             .map(|(name, backup)| (name.clone(), backup_storage_to_entry(name, backup)))
             .collect(),
         network: NetworkConfig::default(),
+        limit: LimitConfig::default(),
         mounts,
     }
 }

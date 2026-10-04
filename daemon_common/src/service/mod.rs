@@ -33,6 +33,7 @@ pub use zelus::types::{DataStream, JsonVec};
 pub mod backup;
 pub mod database;
 pub mod files;
+pub mod group;
 pub mod integrity;
 pub mod network;
 pub mod resource;

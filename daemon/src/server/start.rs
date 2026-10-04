@@ -1,3 +1,4 @@
+use crate::cgroup::{CgroupIdentifier, clamp_cpu_limit, systemd_slice_handle};
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::server::FetchedServer;
 use crate::server::watcher::attach;
@@ -22,8 +23,8 @@ use daemon_common::service::error_storage_patch_failed::FromStoragePatchFailed;
 use daemon_common::service::error_storage_quota_reached::FromStorageQuotaReached;
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::task::ServerTask;
-use num_traits::cast::FromPrimitive as _;
 use ringbuffer::RingBuffer as _;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::io;
 use std::io::ErrorKind;
@@ -41,6 +42,7 @@ pub enum ServerStartError {
     PatchFailed,
     QuotaReached,
     AlreadyRunning,
+    DBus(#[from] zbus::Error),
     Sql(#[from] sqlx::Error), // only if queued
     NotFound,
     MathError,
@@ -111,6 +113,8 @@ impl FetchedServer {
         let mut buffer = buffer.lock().await;
         buffer.clear();
         Self::log(&server_data.sender, &mut buffer, "Preparing Server...");
+
+        daemon.sync_cgroups::<ServerStartError>().await?;
 
         let image = self
             .clone()
@@ -251,6 +255,8 @@ impl FetchedServer {
             .map(from_mib)
             .map(|ram| i64::try_from(ram).unwrap_or(i64::MAX));
 
+        let cpu = self.cpu.and_then(clamp_cpu_limit::<false>);
+
         docker
             .create_container(
                 Some(CreateContainerOptions {
@@ -304,12 +310,16 @@ impl FetchedServer {
                         cap_add: Some(self.cap_add.iter().cloned().collect()),
                         cap_drop: Some(self.cap_drop.iter().cloned().collect()),
 
-                        cpu_period: self.cpu.map(|_| 100_000i64),
-                        cpu_quota: if let Some(cpu) = self.cpu {
+                        cpu_period: if let Some((_quota, period)) = cpu {
                             Some(
-                                i64::from_f64((f64::from(cpu) * 100_000.0f64).round())
-                                    .ok_or(ServerStartError::MathError)?,
+                                i64::try_from(period)
+                                    .map_err(|_err| ServerStartError::MathError)?,
                             )
+                        } else {
+                            None
+                        },
+                        cpu_quota: if let Some((quota, _period)) = cpu {
+                            Some(i64::try_from(quota).map_err(|_err| ServerStartError::MathError)?)
                         } else {
                             None
                         },
@@ -329,12 +339,26 @@ impl FetchedServer {
                             server_data.size.0.load(Ordering::Relaxed) as usize,
                         ]),
 
+                        cgroup_parent: Some(systemd_slice_handle(
+                            &self
+                                .group
+                                .as_deref()
+                                .map(Cow::Borrowed)
+                                .map_or(CgroupIdentifier::Server, CgroupIdentifier::Group),
+                        )),
                         ..HostConfig::default()
                     }),
                     ..ContainerCreateBody::default()
                 },
             )
             .await
+            .inspect_err(|_err| {
+                Self::log(
+                    &server_data.sender,
+                    &mut buffer,
+                    "Container creation failed",
+                );
+            })
             .map_err(ServerStartError::Docker)?;
 
         Self::log(&server_data.sender, &mut buffer, "Starting Server...");
@@ -345,6 +369,9 @@ impl FetchedServer {
                 None::<StartContainerOptions>,
             )
             .await
+            .inspect_err(|_err| {
+                Self::log(&server_data.sender, &mut buffer, "Container start failed");
+            })
             .map_err(ServerStartError::Docker)?;
 
         drop(buffer);

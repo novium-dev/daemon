@@ -33,6 +33,8 @@ pub struct DaemonConfig {
     #[serde(default)]
     pub network: NetworkConfig,
     pub mounts: Vec<MountPoint>,
+    #[serde(default)]
+    pub limit: LimitConfig,
 }
 
 impl DaemonConfig {
@@ -178,6 +180,13 @@ impl TlsConfig {
 #[expect(clippy::empty_structs_with_brackets, reason = "not yet implemented")]
 pub struct NetworkConfig {
     // TODO: Assign dedicated ipv6 address to container, see #312
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize, Default)]
+pub struct LimitConfig {
+    pub cpu: Option<f32>,
+    pub ram: Option<u32>,
+    pub swap: Option<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

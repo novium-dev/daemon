@@ -8,12 +8,12 @@ reqwest.git = "https://github.com/0xIO32/reqwest.git"
 [workspace.lints.rust]
 unused = { level = "deny", priority = -1 }
 private_bounds = "allow"
-deprecated = "warn"
-nonstandard-style = "deny"
-let-underscore = "allow"
-refining-impl-trait = "deny"
-keyword-idents = "deny"
-future-incompatible = "deny"
+deprecated = "deny"
+nonstandard_style = { level = "deny", priority = -1 }
+let_underscore = { level = "allow", priority = -1 }
+refining_impl_trait = { level = "deny", priority = -1 }
+keyword_idents = { level = "deny", priority = -1 }
+future_incompatible = { level = "deny", priority = -1 }
 
 [workspace.lints.clippy]
 correctness = { level = "deny", priority = -1 }
@@ -52,7 +52,7 @@ wildcard_imports = "allow"
 impl_trait_in_params = "allow"
 float_arithmetic = "allow"
 single_match_else = "allow"
-missing-assert-message = "allow"
+missing_assert_message = "allow"
 
 significant_drop_in_scrutinee = "forbid"
 
@@ -142,7 +142,6 @@ lossy_float_literal = "deny"
 map_err_ignore = "deny"
 map_with_unused_argument_over_ranges = "deny"
 mem_forget = "deny"
-missing_assert_message = "deny"
 missing_asserts_for_indexing = "deny"
 mixed_read_write_in_expression = "forbid"
 modulo_arithmetic = "deny"
@@ -196,12 +195,12 @@ little_endian_bytes = "deny"
 [workspace.dependencies]
 bollard = "0.21.1"
 libc = "0.2"
-toml = "1.1.4"
+toml = "1.1.6"
 xmltree = "0.12.0"
 base64 = "0.23.1"
 rand_core = "0.10.1"
-rand = "0.10.2"
-chacha20 = "0.10.1"
+rand = "0.10.3"
+chacha20 = "0.10.2"
 signal-hook = "0.4.4"
 termion = "4.0.6"
 http = "1.5.0"
@@ -220,7 +219,7 @@ tower-layer = "0.3.3"
 pastey = "0.2.3"
 itertools = "0.15.0"
 arc-swap = "1.9.2"
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 lazy-regex = "3.6.1"
 sha2 = "0.11.0"
 
@@ -234,7 +233,7 @@ default-features = false
 features = ["error", "sqlx", "io"]
 
 [workspace.dependencies.rustls]
-version = "0.23.43"
+version = "0.23.45"
 #default-features = false
 #features = [
 #  "ring",
@@ -244,7 +243,7 @@ version = "0.23.43"
 #]
 
 [workspace.dependencies.tokio-rustls]
-version = "0.26.4"
+version = "0.26.6"
 #default-features = false
 #features = ["ring", "tls12", "logging"]
 
@@ -253,7 +252,7 @@ git = "https://github.com/0xIO32/reqwest.git"
 features = ["http2", "json", "stream", "zstd"]
 
 [workspace.dependencies.sentry]
-version = "0.49.1"
+version = "0.49.3"
 default-features = false
 features = [
 	"backtrace",
@@ -278,7 +277,7 @@ version = "0.10.4"
 features = ["serde"]
 
 [workspace.dependencies.bitflags]
-version = "2.13.1"
+version = "2.13.2"
 features = ["serde"]
 
 [workspace.dependencies.serde]
@@ -308,7 +307,7 @@ version = "0.12.6"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.clap]
-version = "4.6.6"
+version = "4.6.7"
 features = ["color", "env", "cargo"]
 
 [workspace.dependencies.utoipa]

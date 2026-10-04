@@ -9,6 +9,7 @@ mod sql;
 mod ssh;
 mod storage;
 
+mod cgroup;
 mod ctlsock;
 pub mod init;
 mod integrity;
@@ -70,6 +71,7 @@ where
     pub(crate) schedule_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) schedules: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerScheduleData>>>>>,
     pub(crate) docker: Arc<Docker>,
+    pub(crate) dbus: zbus::Connection,
     pub(crate) conn: Arc<Pool<MySql>>,
     pub(crate) runtime_dir: PathBuf,
     pub(crate) client: Arc<Client>,
