@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 pub mod config;
+#[cfg(feature = "databases")]
 mod database;
 mod server;
 

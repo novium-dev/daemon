@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 // Credits go to https://github.com/Drako/mysql-plugin-api for finding out, how mariadb plugins work in rust
 
+// The plugin relies on Linux-only APIs (e.g. SO_PEERCRED) and is never built on macOS
+#![cfg(target_os = "linux")]
 #![expect(clippy::print_stdout, reason = "no logger available here")]
 #![expect(
     clippy::trivially_copy_pass_by_ref,
@@ -13,10 +15,8 @@
 
 mod constants;
 mod r#macro;
-#[cfg(target_os = "linux")]
 mod plugin;
 mod types;
-#[cfg(target_os = "linux")]
 mod wrapper;
 
 include!("../../config.rs");

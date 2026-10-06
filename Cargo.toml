@@ -1,5 +1,6 @@
 [workspace]
 members = ["daemon", "daemon_common", "daemon_mariadb_plugin"]
+default-members = ["daemon", "daemon_common"]
 resolver = "3"
 
 [patch.crates-io]

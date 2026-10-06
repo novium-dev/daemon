@@ -6,6 +6,7 @@ use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use axum_server::{Handle, Server};
 use core::time::Duration;
 use daemon_common::service::backup::BackupService;
+#[cfg(feature = "databases")]
 use daemon_common::service::database::DatabaseService;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::framework_router;
@@ -27,6 +28,7 @@ use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
 
 mod backup;
+#[cfg(feature = "databases")]
 mod database;
 mod files;
 mod group;
@@ -44,9 +46,16 @@ impl<T: DaemonExtra> Daemon<T> {
         #[openapi()]
         struct ApiDoc;
 
+        #[cfg(feature = "databases")]
         let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
             ServerService, BackupService, FilesService, NetworkService,
             ResourceService, DatabaseService, ScheduleService, SetupService,
+            IntegrityService, GroupService
+        });
+        #[cfg(not(feature = "databases"))]
+        let (router, router_user) = framework_router!(Self self (with_auth,without_auth,) {
+            ServerService, BackupService, FilesService, NetworkService,
+            ResourceService, ScheduleService, SetupService,
             IntegrityService, GroupService
         });
         let router = router.into_openapi();

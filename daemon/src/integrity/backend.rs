@@ -103,6 +103,7 @@ impl Check for BackendRecords {
             }
         }
 
+        #[cfg(feature = "databases")]
         if let Some(ref wanted) = expected.databases {
             let actual: HashSet<u32> =
                 query_scalar!(r#"SELECT `id` AS `id: u32` FROM `databases`"#)

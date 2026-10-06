@@ -7,6 +7,7 @@ pub mod builder;
 
 use crate::sdk::builder::WithUserKey;
 use crate::service::backup::BackupServiceClientImpl;
+#[cfg(feature = "databases")]
 use crate::service::database::DatabaseServiceClientImpl;
 use crate::service::files::FilesServiceClientImpl;
 use crate::service::group::GroupServiceClientImpl;
@@ -60,6 +61,7 @@ impl<T: DaemonSDKExtra + Send + Sync> BackupServiceClientImpl for DaemonSDK<T> {
 impl<T: DaemonSDKExtra + Send + Sync> FilesServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> NetworkServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> ResourceServiceClientImpl for DaemonSDK<T> {}
+#[cfg(feature = "databases")]
 impl<T: DaemonSDKExtra + Send + Sync> DatabaseServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> ScheduleServiceClientImpl for DaemonSDK<T> {}
 impl<T: DaemonSDKExtra + Send + Sync> SetupServiceClientImpl for DaemonSDK<T> {}

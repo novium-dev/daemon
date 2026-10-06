@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use axum::http::HeaderValue;
 use axum_server::Server;
 use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
-use core::error::Error;
 use core::net::{IpAddr, Ipv6Addr, SocketAddr};
 use core::time::Duration;
 use daemon::config::{LimitConfig, MountPoint};
@@ -25,12 +24,10 @@ use reqwest::blocking::Client;
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, CertificateSigningRequestDer};
 use rustls::server::WebPkiClientVerifier;
-use sqlx::{Connection as _, MySqlConnection, QueryBuilder, query_scalar};
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
-use tokio::runtime::Handle;
 use tracing::{info, warn};
 use url::Url;
 use utoipa_axum::router::OpenApiRouter;
@@ -73,9 +70,12 @@ pub(crate) fn setup(
 
     test_host(&config, &root, &temp_key, Uuid::nil());
 
+    #[cfg(feature = "databases")]
     if !skip_mariadb_plugin {
         ensure_mariadb_plugin(database_url.as_str());
     }
+    #[cfg(not(feature = "databases"))]
+    let _ = skip_mariadb_plugin;
 
     let request = config_to_register_request(
         temp_key
@@ -223,7 +223,12 @@ fn backup_storage_to_entry(name: &str, backup: &BackupStorage) -> BackupEntry {
 }
 
 /// Installs the `MariaDB` authentication plugin into the configured database if it is missing.
+#[cfg(feature = "databases")]
 fn ensure_mariadb_plugin(mysql: &str) {
+    use core::error::Error;
+    use sqlx::{Connection as _, MySqlConnection, QueryBuilder, query_scalar};
+    use tokio::runtime::Handle;
+
     Handle::current()
         .block_on(async {
             let mut conn = MySqlConnection::connect(mysql).await?;

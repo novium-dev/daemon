@@ -10,10 +10,12 @@ use crate::server::stop::ServerStopError;
 use crate::service::server::exec::exec_websocket_handle;
 use crate::service::server::stats::stats_websocket_handle;
 use crate::service::server::terminal::terminal_websocket_handle;
+#[cfg(feature = "databases")]
+use crate::sql;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageError, storage_lock, storage_read_timeout};
 use crate::utils::server_required;
-use crate::{Daemon, DaemonExtra, sql, storage};
+use crate::{Daemon, DaemonExtra, storage};
 use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
 use base64::Engine as _;
@@ -125,6 +127,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
                 }
                 let mut conn = daemon.conn.acquire().await?;
 
+                #[cfg(feature = "databases")]
                 sql::drop_user(format!("server_{server_id}"), "%")
                     .prepare(&mut *conn)
                     .await?
