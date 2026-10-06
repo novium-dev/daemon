@@ -6,12 +6,10 @@ use crate::config::{
 use async_trait::async_trait;
 use axum::http::HeaderValue;
 use axum_server::Server;
-use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use core::net::{IpAddr, Ipv6Addr, SocketAddr};
 use core::time::Duration;
 use daemon::config::{LimitConfig, MountPoint};
 use daemon::internal::middleware;
-use daemon::key::{DaemonCertResolver, TlsAcceptor};
 use daemon_common::key::rcgen::{PKCS_ECDSA_P256_SHA256, PKCS_RSA_SHA256};
 use daemon_common::key::{DaemonKey, DaemonRootKey};
 use daemon_common::node::{
@@ -21,9 +19,7 @@ use daemon_common::service::framework_router;
 use daemon_common::service::setup::SetupService;
 use daemon_common::service::setup::setup_service_error::ConfigError;
 use reqwest::blocking::Client;
-use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, CertificateSigningRequestDer};
-use rustls::server::WebPkiClientVerifier;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -31,7 +27,7 @@ use std::thread;
 use tracing::{info, warn};
 use url::Url;
 use utoipa_axum::router::OpenApiRouter;
-use uuid::Uuid;
+use zelus_keys::server::{CertResolver, TlsAcceptor, server_config};
 
 pub(crate) fn setup(
     skip_mariadb_plugin: bool,
@@ -68,7 +64,7 @@ pub(crate) fn setup(
         DaemonKey::new_request(&keypair).expect("failed to build certificate signing request");
     let temp_key = Arc::new(DaemonKey::new_temp(&keypair).expect("failed to build temporary key"));
 
-    test_host(&config, &root, &temp_key, Uuid::nil());
+    test_host(&config, &root, &temp_key);
 
     #[cfg(feature = "databases")]
     if !skip_mariadb_plugin {
@@ -264,7 +260,7 @@ fn config_to_register_request(
     }
 }
 
-fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonKey>, uuid: Uuid) {
+fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonKey>) {
     #[derive(Clone)]
     struct ConnectionTestWrapper;
 
@@ -275,17 +271,8 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
         }
     }
 
-    let mut rustls = ServerConfig::builder()
-        .with_client_cert_verifier(
-            WebPkiClientVerifier::builder(Arc::clone(&root.cert_store))
-                .allow_unauthenticated()
-                .allow_unknown_revocation_status()
-                .build()
-                .expect("failed to build client certificate verifier"),
-        )
-        .with_cert_resolver(Arc::new(DaemonCertResolver(Arc::clone(key), None, uuid)));
-    rustls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-    let rustls = RustlsConfig::from_config(Arc::new(rustls));
+    let rustls =
+        server_config(root, CertResolver::new(key)).expect("failed to build the tls config");
 
     for listener in config.listeners.clone() {
         let (router,) = framework_router!(ConnectionTestWrapper ConnectionTestWrapper (default,) { SetupService });
@@ -298,7 +285,7 @@ fn test_host(config: &DaemonConfig, root: &Arc<DaemonRootKey>, key: &Arc<DaemonK
 
         tokio::task::spawn(
             Server::bind(listener)
-                .acceptor(TlsAcceptor(RustlsAcceptor::new(rustls.clone())))
+                .acceptor(TlsAcceptor::new(rustls.clone()))
                 .serve(router.into_make_service()),
         );
     }

@@ -121,6 +121,10 @@ features = ["axum"]
 version = "3.4.6"
 features = ["tokio1"]
 
+[dependencies.zelus_keys]
+workspace = true
+features = ["server"]
+
 [dependencies.daemon_common]
 workspace = true
 features = ["docker", "service", "ssh", "keys"]

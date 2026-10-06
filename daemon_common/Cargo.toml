@@ -14,19 +14,7 @@ crate-type = ["rlib", "staticlib"]
 [features]
 ssh = ["backend", "dep:serde"]
 docker = ["dep:bollard", "dep:tokio", "tokio/fs", "dep:lazy-regex"]
-keys = [
-    "dep:ed25519-dalek",
-    "dep:x509-parser",
-    "dep:thiserror",
-    "dep:pem",
-    "dep:rustls",
-    "dep:time",
-    "dep:rcgen",
-    "dep:rand",
-    "dep:rand_core",
-    "dep:chacha20",
-    "dep:pkcs8",
-]
+keys = ["dep:zelus_keys", "dep:ed25519-dalek", "dep:rustls"]
 service = [
     "dep:zelus",
     "dep:cron",
@@ -65,34 +53,19 @@ bitflags.workspace = true
 url.workspace = true
 uuid.workspace = true
 
+[dependencies.zelus_keys]
+workspace = true
+optional = true
+
 [dependencies.zelus]
 workspace = true
 optional = true
 
-[dependencies.rand]
-workspace = true
-optional = true
 
-[dependencies.rand_core]
-workspace = true
-optional = true
 
-[dependencies.chacha20]
-workspace = true
-optional = true
 
-[dependencies.pkcs8]
-workspace = true
-optional = true
 
-[dependencies.x509-parser]
-version = "0.18.1"
-default-features = false
-features = ["verify-aws"]
-optional = true
 
-[dependencies.asn1-rs]
-version = "0.7.2"
 
 [dependencies.bollard]
 workspace = true
@@ -139,21 +112,12 @@ optional = true
 workspace = true
 optional = true
 
-[dependencies.rcgen]
-workspace = true
-optional = true
 
-[dependencies.thiserror]
-workspace = true
-optional = true
 
 [dependencies.crc64]
 version = "2.0.0"
 optional = true
 
-[dependencies.pem]
-version = "4.0.0"
-optional = true
 
 [dependencies.rustls]
 workspace = true
@@ -203,9 +167,6 @@ optional = true
 workspace = true
 optional = true
 
-[dependencies.time]
-version = "0.3.55"
-optional = true
 
 [dependencies.json-patch]
 version = "4.2.0"

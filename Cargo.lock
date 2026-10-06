@@ -1430,6 +1430,7 @@ dependencies = [
  "xattr",
  "zbus",
  "zbus_systemd",
+ "zelus_keys",
  "zip 8.6.0",
  "zstd 0.14.0",
 ]
@@ -1438,12 +1439,10 @@ dependencies = [
 name = "daemon_common"
 version = "0.1.0"
 dependencies = [
- "asn1-rs",
  "axum",
  "base64 0.23.1",
  "bitflags 2.13.2",
  "bollard",
- "chacha20",
  "chrono",
  "chrono-tz",
  "crc64",
@@ -1454,11 +1453,6 @@ dependencies = [
  "java-properties",
  "json-patch",
  "lazy-regex",
- "pem",
- "pkcs8",
- "rand 0.10.3",
- "rand_core 0.10.1",
- "rcgen",
  "reqwest",
  "rust-ini",
  "rustls",
@@ -1466,8 +1460,6 @@ dependencies = [
  "serde_json",
  "serde_yaml_ng",
  "sha2 0.11.0",
- "thiserror",
- "time",
  "tokio",
  "tokio-util",
  "toml",
@@ -1476,9 +1468,9 @@ dependencies = [
  "utoipa",
  "utoipa-axum",
  "uuid",
- "x509-parser",
  "xmltree",
  "zelus",
+ "zelus_keys",
 ]
 
 [[package]]
@@ -1794,7 +1786,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3138,7 +3130,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -3954,7 +3946,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4392,7 +4384,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -4461,7 +4453,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -5432,7 +5424,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6235,7 +6227,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -6668,7 +6660,6 @@ dependencies = [
 [[package]]
 name = "zelus"
 version = "0.1.0"
-source = "git+https://github.com/0xIO32/zelus.git#b3a46be6f13d0ce14a8e160ab34030ee843dba33"
 dependencies = [
  "async-trait",
  "axum",
@@ -6696,9 +6687,29 @@ dependencies = [
 ]
 
 [[package]]
+name = "zelus_keys"
+version = "0.1.0"
+dependencies = [
+ "asn1-rs",
+ "axum",
+ "axum-server",
+ "ed25519-dalek",
+ "futures-util",
+ "pem",
+ "rcgen",
+ "rustls",
+ "thiserror",
+ "time",
+ "tokio",
+ "tokio-rustls",
+ "tower-layer",
+ "uuid",
+ "x509-parser",
+]
+
+[[package]]
 name = "zelus_macros"
 version = "0.1.0"
-source = "git+https://github.com/0xIO32/zelus.git#b3a46be6f13d0ce14a8e160ab34030ee843dba33"
 dependencies = [
  "convert_case",
  "either",

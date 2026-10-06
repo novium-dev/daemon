@@ -1,8 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use crate::key::{DaemonCertResolver, TlsAcceptor};
 use crate::{Daemon, DaemonExtra};
 use axum::Router;
-use axum_server::tls_rustls::{RustlsAcceptor, RustlsConfig};
 use axum_server::{Handle, Server};
 use core::time::Duration;
 use daemon_common::service::backup::BackupService;
@@ -17,8 +15,6 @@ use daemon_common::service::resource::ResourceService;
 use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::setup::SetupService;
-use rustls::ServerConfig;
-use rustls::server::WebPkiClientVerifier;
 use std::sync::Arc;
 use tokio::sync::broadcast::error::RecvError;
 use tower_http::compression::CompressionLayer;
@@ -26,6 +22,7 @@ use tower_http::trace::TraceLayer;
 use tracing::{error, info};
 use utoipa::OpenApi;
 use utoipa_axum::router::OpenApiRouter;
+use zelus_keys::server::{CertResolver, TlsAcceptor, server_config};
 
 mod backup;
 #[cfg(feature = "databases")]
@@ -107,20 +104,7 @@ impl<T: DaemonExtra> Daemon<T> {
             None
         };
 
-        let mut rustls = ServerConfig::builder()
-            .with_client_cert_verifier(
-                WebPkiClientVerifier::builder(Arc::clone(&self.root.cert_store))
-                    .allow_unauthenticated()
-                    .allow_unknown_revocation_status()
-                    .build()?,
-            )
-            .with_cert_resolver(Arc::new(DaemonCertResolver(
-                Arc::clone(&self.key),
-                tls,
-                self.key.id,
-            )));
-        rustls.alpn_protocols = vec![b"h2".to_vec(), b"http/1.1".to_vec()];
-        let rustls = RustlsConfig::from_config(Arc::new(rustls));
+        let rustls = server_config(&self.root, CertResolver::new(&self.key).with_fallback(tls))?;
 
         let handle = Handle::new();
         let mut server_task = self.server_task.lock().await;
@@ -130,7 +114,7 @@ impl<T: DaemonExtra> Daemon<T> {
             let rustls = rustls.clone();
             server_task.spawn(async move {
                 let _ = Server::bind(listener)
-                    .acceptor(TlsAcceptor(RustlsAcceptor::new(rustls.clone())))
+                    .acceptor(TlsAcceptor::new(rustls.clone()))
                     .handle(handle)
                     .serve(router.into_make_service())
                     .await

@@ -5,7 +5,7 @@ pub mod files;
 #[cfg(feature = "service")]
 pub mod integrity;
 #[cfg(feature = "keys")]
-pub mod key;
+pub use zelus_keys as key;
 #[cfg(feature = "sdk")]
 pub mod sdk;
 

@@ -40,9 +40,6 @@ pub const DAEMON_BACKUP_PROTECTED_XATTR: &str = "user.novium_daemon.backup_prote
 pub const BRIDGE_DEFAULT_IPV6_PREFIX: &str = "fdcb:c049:22d3:a::/64";
 pub const BRIDGE_INTERNET_IPV6_PREFIX: &str = "fdcb:c049:22d3:b::/64";
 
-pub const DAEMON_ROOT_KEY_COMMON_NAME: &str = "Novium CA";
-pub const DAEMON_BACKEND_KEY_COMMON_NAME: &str = "Novium Backend";
-
 #[cfg(target_os = "macos")]
 pub const DAEMON_DEFAULT_RUNTIME_DIR: &str = "/private/tmp/novium_daemon";
 
