@@ -24,16 +24,16 @@ section = "database"
 [lib]
 crate-type = ["cdylib", "rlib"]
 
-[dependencies]
+[target.'cfg(target_os = "linux")'.dependencies]
 libc.workspace = true
 bollard.workspace = true
 constcat = "0.6.1"
 
-[dependencies.tokio]
+[target.'cfg(target_os = "linux")'.dependencies.tokio]
 workspace = true
 features = ["rt-multi-thread"]
 
-[dependencies.daemon_common]
+[target.'cfg(target_os = "linux")'.dependencies.daemon_common]
 workspace = true
 features = ["docker"]
 
