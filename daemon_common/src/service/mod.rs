@@ -2,6 +2,7 @@
 use crate::service::backup::{
     BackupService, BackupServiceClientImpl, BackupServiceURL, BackupServiceUserKeyExtension,
 };
+#[cfg(feature = "databases")]
 use crate::service::database::{DatabaseService, DatabaseServiceClientImpl, DatabaseServiceURL};
 use crate::service::error_storage_quota_reached::FromStorageQuotaReached;
 use crate::service::files::{
@@ -32,6 +33,7 @@ pub use zelus::sdk::ZelusClientImpl;
 pub use zelus::types::{DataStream, JsonVec};
 
 pub mod backup;
+#[cfg(feature = "databases")]
 pub mod database;
 pub mod files;
 pub mod group;
@@ -122,9 +124,16 @@ where
     #[openapi()]
     struct ApiDoc;
 
+    #[cfg(feature = "databases")]
     let (with_auth, without_auth) = framework_router!(T instance (with_auth,without_auth,) {
         ServerService, BackupService, FilesService, NetworkService,
         ResourceService, DatabaseService, ScheduleService, SetupService,
+        IntegrityService, GroupService
+    });
+    #[cfg(not(feature = "databases"))]
+    let (with_auth, without_auth) = framework_router!(T instance (with_auth,without_auth,) {
+        ServerService, BackupService, FilesService, NetworkService,
+        ResourceService, ScheduleService, SetupService,
         IntegrityService, GroupService
     });
 
@@ -156,13 +165,41 @@ where
     out
 }
 
+/// Services that only exist with the `databases` feature.
+#[cfg(feature = "databases")]
+pub trait DaemonOptionalServices: DatabaseService {}
+#[cfg(feature = "databases")]
+impl<T: DatabaseService> DaemonOptionalServices for T {}
+#[cfg(not(feature = "databases"))]
+pub trait DaemonOptionalServices {}
+#[cfg(not(feature = "databases"))]
+impl<T> DaemonOptionalServices for T {}
+
+#[cfg(feature = "databases")]
+pub trait DaemonOptionalServicesClientImpl: DatabaseServiceClientImpl {}
+#[cfg(feature = "databases")]
+impl<T: DatabaseServiceClientImpl> DaemonOptionalServicesClientImpl for T {}
+#[cfg(not(feature = "databases"))]
+pub trait DaemonOptionalServicesClientImpl {}
+#[cfg(not(feature = "databases"))]
+impl<T> DaemonOptionalServicesClientImpl for T {}
+
+#[cfg(feature = "databases")]
+pub trait DaemonOptionalServicesURL: DatabaseServiceURL {}
+#[cfg(feature = "databases")]
+impl<T: DatabaseServiceURL> DaemonOptionalServicesURL for T {}
+#[cfg(not(feature = "databases"))]
+pub trait DaemonOptionalServicesURL {}
+#[cfg(not(feature = "databases"))]
+impl<T> DaemonOptionalServicesURL for T {}
+
 pub trait DaemonServices:
     ServerService
     + BackupService
     + FilesService
     + NetworkService
     + ResourceService
-    + DatabaseService
+    + DaemonOptionalServices
     + ScheduleService
     + SetupService
     + IntegrityService
@@ -176,7 +213,7 @@ pub trait DaemonServicesClientImpl:
     + FilesServiceClientImpl
     + NetworkServiceClientImpl
     + ResourceServiceClientImpl
-    + DatabaseServiceClientImpl
+    + DaemonOptionalServicesClientImpl
     + ScheduleServiceClientImpl
     + SetupServiceClientImpl
     + IntegrityServiceClientImpl
@@ -191,7 +228,7 @@ pub trait DaemonServicesURL:
     + FilesServiceURL
     + NetworkServiceURL
     + ResourceServiceURL
-    + DatabaseServiceURL
+    + DaemonOptionalServicesURL
     + ScheduleServiceURL
     + SetupServiceURL
     + IntegrityServiceURL

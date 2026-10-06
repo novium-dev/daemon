@@ -2,6 +2,7 @@
 mod backend;
 mod backup;
 mod config;
+#[cfg(feature = "databases")]
 mod database;
 mod docker;
 pub mod schema;
@@ -83,9 +84,13 @@ const CHECKS: &[&dyn Check] = &[
     &docker::DockerReachable,
     &docker::DockerContainers,
     &docker::DockerNetworks,
+    #[cfg(feature = "databases")]
     &database::MariadbDatabases,
+    #[cfg(feature = "databases")]
     &database::MariadbUsers,
+    #[cfg(feature = "databases")]
     &database::MariadbGrants,
+    #[cfg(feature = "databases")]
     &database::MariadbProxyGrants,
     &backend::BackendRecords,
     &config::ConfigPaths,

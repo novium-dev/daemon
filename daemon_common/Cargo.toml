@@ -55,9 +55,10 @@ service = [
     "tokio-util/io-util",
 ]
 backend = ["dep:serde"]
+databases = ["service"]
 sdk = ["service", "keys", "dep:reqwest", "dep:either", "dep:http"]
-default = ["service", "keys", "backend"]
-ci = ["default"]
+default = ["service", "keys", "backend", "databases"]
+ci = ["service", "keys", "backend"]
 
 [dependencies]
 bitflags.workspace = true

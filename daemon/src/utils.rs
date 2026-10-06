@@ -17,7 +17,7 @@ use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
-use tracing::{error, warn};
+use tracing::warn;
 
 /// The IANA timezone name of the host, e.g. `Europe/Berlin`.
 ///
@@ -102,6 +102,7 @@ pub fn to_mib(bytes: impl Into<u64>) -> u64 {
     bytes.into() >> 20u32 // >>20 == /0x0010_0000
 }
 
+#[cfg(feature = "databases")]
 pub async fn database<E: From<sqlx::Error>>(
     conn: impl Executor<'_, Database = MySql> + Copy,
     database_id: u32,
@@ -113,13 +114,13 @@ pub async fn database<E: From<sqlx::Error>>(
     )
     .fetch_optional(conn)
     .await
-    .inspect_err(|err| error!("Unable to resolve database: {:?}", err))?
+    .inspect_err(|err| tracing::error!("Unable to resolve database: {:?}", err))?
     else {
         return Ok(None);
     };
 
     Ok(Some(database.fetched(conn).await.inspect_err(|err| {
-        error!("Unable to fetch database: {err:?}");
+        tracing::error!("Unable to fetch database: {err:?}");
     })?))
 }
 
