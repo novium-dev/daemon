@@ -229,7 +229,7 @@ path = "daemon_common"
 default-features = false
 
 [workspace.dependencies.zelus_keys]
-git = "https://git2.novium.world/hosting/zelus_keys.git"
+git = "ssh://git@git-ssh.novium.world/hosting/zelus_keys.git"
 default-features = false
 
 [workspace.dependencies.zelus]
