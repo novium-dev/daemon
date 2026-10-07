@@ -181,7 +181,7 @@ jobs:
           IMAGE="$REGISTRY/${GITHUB_REPOSITORY}"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-8)"
           docker info
-          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login "$REGISTRY" -u "${{ secrets.REGISTRY_USER }}" --password-stdin
           docker pull "$IMAGE:latest" || true
           docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from "$IMAGE:latest" --tag "$IMAGE:$SHORT_SHA" --tag "$IMAGE:latest" .
           docker push "$IMAGE:$SHORT_SHA"
