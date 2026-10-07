@@ -123,7 +123,7 @@ features = ["tokio1"]
 
 [dependencies.zelus_keys]
 workspace = true
-features = ["server"]
+features = ["setup"]
 
 [dependencies.daemon_common]
 workspace = true
@@ -134,7 +134,6 @@ version = "0.4.46"
 
 [dependencies.reqwest]
 workspace = true
-features = ["blocking"]
 
 [dependencies.url]
 workspace = true
