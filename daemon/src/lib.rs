@@ -14,7 +14,6 @@ mod cgroup;
 mod ctlsock;
 pub mod init;
 mod integrity;
-pub mod key;
 mod network;
 mod schedule;
 mod service;

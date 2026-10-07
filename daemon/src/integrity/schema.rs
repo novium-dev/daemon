@@ -7,11 +7,13 @@ use daemon_common::integrity::{
 use sqlx::{AssertSqlSafe, MySql, Pool, Row as _, query, query_scalar};
 
 pub async fn dump(conn: &Pool<MySql>) -> Result<IntegritySchema, sqlx::Error> {
-    let database: String = query_scalar("SELECT DATABASE()").fetch_one(conn).await?;
+    let database = query_scalar!(r#"SELECT DATABASE() AS "database!: String""#)
+        .fetch_one(conn)
+        .await?;
 
-    let names: Vec<String> = query_scalar(
-        "SELECT TABLE_NAME FROM information_schema.TABLES \
-         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME",
+    let names = query_scalar!(
+        r#"SELECT TABLE_NAME AS "name!: String" FROM information_schema.TABLES
+           WHERE TABLE_SCHEMA = DATABASE() AND TABLE_TYPE = 'BASE TABLE' ORDER BY TABLE_NAME"#
     )
     .fetch_all(conn)
     .await?;

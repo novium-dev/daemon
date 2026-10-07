@@ -137,7 +137,7 @@ fn main() {
         sentry
     };
 
-    main0(matches);
+    main0(&matches);
 
     // Ensure it gets dropped, only after the daemon exists
     #[cfg(all(feature = "sentry", not(debug_assertions)))]
@@ -145,7 +145,7 @@ fn main() {
 }
 
 #[tokio::main]
-async fn main0(matches: ArgMatches) {
+async fn main0(matches: &ArgMatches) {
     let config_needs_setup = match fs::read_to_string("config.toml").await {
         Ok(contents) => contents.trim().is_empty(),
         Err(err) => {
@@ -164,31 +164,28 @@ async fn main0(matches: ArgMatches) {
         .clone();
 
     if config_needs_setup {
-        tokio::task::spawn_blocking(move || {
-            let skip_mariadb_plugin = matches.get_flag("skip-mariadb-plugin");
+        let skip_mariadb_plugin = matches.get_flag("skip-mariadb-plugin");
 
-            let setup_url = matches
-                .get_one::<String>("setup-url")
-                .expect("setup-url is required for setup");
+        let setup_url = matches
+            .get_one::<String>("setup-url")
+            .expect("setup-url is required for setup");
 
-            let setup_token = matches
-                .get_one::<String>("setup-token")
-                .expect("setup-token is required for setup");
+        let setup_token = matches
+            .get_one::<String>("setup-token")
+            .expect("setup-token is required for setup");
 
-            let port = *matches
-                .get_one::<u16>("port")
-                .expect("port is required for setup");
+        let port = *matches
+            .get_one::<u16>("port")
+            .expect("port is required for setup");
 
-            setup::setup(
-                skip_mariadb_plugin,
-                setup_url,
-                setup_token,
-                &database_url,
-                port,
-            );
-        })
-        .await
-        .expect("Setup failed");
+        setup::setup(
+            skip_mariadb_plugin,
+            setup_url,
+            setup_token,
+            &database_url,
+            port,
+        )
+        .await;
     } else {
         let runtime_dir = matches
             .get_one::<String>("runtime-dir")
@@ -235,7 +232,8 @@ async fn run(database_url: Url, runtime_dir: PathBuf) {
     let root = DaemonRootKey::parse(&root)
         .expect("Unable to parse daemon root key (daemon_root.pem)")
         .0;
-    let key = DaemonKey::parse(&root, &key).expect("Unable to parse daemon key (daemon.pem)");
+    let key = DaemonKey::parse(&root, &key, daemon_common::DAEMON_KEY_PREFIX)
+        .expect("Unable to parse daemon key (daemon.pem)");
 
     info!("Starting Daemon on version {GIT_HASH}");
 

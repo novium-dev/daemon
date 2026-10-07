@@ -228,6 +228,10 @@ sha2 = "0.11.0"
 path = "daemon_common"
 default-features = false
 
+[workspace.dependencies.zelus_keys]
+git = "https://git2.novium.world/hosting/zelus_keys.git"
+default-features = false
+
 [workspace.dependencies.zelus]
 git = "https://github.com/0xIO32/zelus.git"
 default-features = false

@@ -260,10 +260,15 @@ mod tests {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
         let root_keypair = KeyPair::generate().expect("root keypair");
-        let root = DaemonRootKey::new(&root_keypair, None).expect("root key");
+        let root = DaemonRootKey::new(&root_keypair, crate::DAEMON_ROOT_KEY_COMMON_NAME, None)
+            .expect("root key");
         let backend_keypair = KeyPair::generate().expect("backend keypair");
         let backend = root
-            .new_backend_key(&root_keypair, &backend_keypair)
+            .new_backend_key(
+                &root_keypair,
+                &backend_keypair,
+                crate::DAEMON_BACKEND_KEY_COMMON_NAME,
+            )
             .expect("backend key");
 
         (Arc::new(root), Arc::new(backend))
