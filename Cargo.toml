@@ -229,8 +229,7 @@ path = "daemon_common"
 default-features = false
 
 [workspace.dependencies.zelus_keys]
-git = "https://github.com/0xIO32/zelus.git"
-branch = "feat/zelus-keys"
+git = "https://git2.novium.world/hosting/zelus_keys.git"
 default-features = false
 
 [workspace.dependencies.zelus]

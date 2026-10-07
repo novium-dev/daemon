@@ -6690,7 +6690,7 @@ dependencies = [
 [[package]]
 name = "zelus_keys"
 version = "0.1.0"
-source = "git+https://github.com/0xIO32/zelus.git?branch=feat%2Fzelus-keys#627e212c46db2d2b646d3b25c3bac5edf70512c4"
+source = "git+https://git2.novium.world/hosting/zelus_keys.git#83e681449491d5e0d67f2dccfbd0b715d9cf0c58"
 dependencies = [
  "asn1-rs",
  "axum",
