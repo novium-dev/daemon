@@ -6660,6 +6660,7 @@ dependencies = [
 [[package]]
 name = "zelus"
 version = "0.1.0"
+source = "git+https://github.com/0xIO32/zelus.git?branch=feat%2Fzelus-keys#627e212c46db2d2b646d3b25c3bac5edf70512c4"
 dependencies = [
  "async-trait",
  "axum",
@@ -6689,6 +6690,7 @@ dependencies = [
 [[package]]
 name = "zelus_keys"
 version = "0.1.0"
+source = "git+https://github.com/0xIO32/zelus.git?branch=feat%2Fzelus-keys#627e212c46db2d2b646d3b25c3bac5edf70512c4"
 dependencies = [
  "asn1-rs",
  "axum",
@@ -6713,6 +6715,7 @@ dependencies = [
 [[package]]
 name = "zelus_macros"
 version = "0.1.0"
+source = "git+https://github.com/0xIO32/zelus.git?branch=feat%2Fzelus-keys#627e212c46db2d2b646d3b25c3bac5edf70512c4"
 dependencies = [
  "convert_case",
  "either",
