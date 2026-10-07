@@ -50,12 +50,12 @@ jobs:
     container:
       image: rust:1.98.0-alpine
     services:
-      db:
+      clippy-db:
         image: mariadb:latest
         env:
           MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
     env:
-      DAEMON_DATABASE_URL: "mysql://root@db/daemon"
+      DAEMON_DATABASE_URL: "mysql://root@clippy-db/daemon"
       CARGO_HOME: ${{ github.workspace }}/.cargo_home
       LLVM_CONFIG_PATH: /tmp/llvm-config-static.sh
       RUSTFLAGS: "-C opt-level=0 -C linker=clang-22 -C link-arg=-fuse-ld=lld"
@@ -82,7 +82,7 @@ jobs:
           rustc --version && cargo --version
           mkdir -p crates/sqlx-cli .cargo_home
           RUSTFLAGS="-C opt-level=0" cargo install --color always --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
-          until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
+          until mariadb-admin ping --host clippy-db --user root --skip-ssl-verify-server-cert; do sleep 1; done
           crates/sqlx-cli/bin/sqlx database create --database-url "$DAEMON_DATABASE_URL"
           crates/sqlx-cli/bin/sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
       - uses: actions/cache@v4
@@ -102,12 +102,12 @@ jobs:
     container:
       image: rust:1.98.0-alpine
     services:
-      db:
+      test-db:
         image: mariadb:latest
         env:
           MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
     env:
-      DAEMON_DATABASE_URL: "mysql://root@db/daemon"
+      DAEMON_DATABASE_URL: "mysql://root@test-db/daemon"
       CARGO_HOME: ${{ github.workspace }}/.cargo_home
       LLVM_CONFIG_PATH: /tmp/llvm-config-static.sh
       RUSTFLAGS: "-C opt-level=0 -C linker=clang-22 -C link-arg=-fuse-ld=lld"
@@ -134,7 +134,7 @@ jobs:
           rustc --version && cargo --version
           mkdir -p crates/sqlx-cli .cargo_home
           RUSTFLAGS="-C opt-level=0" cargo install --color always --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
-          until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
+          until mariadb-admin ping --host test-db --user root --skip-ssl-verify-server-cert; do sleep 1; done
           crates/sqlx-cli/bin/sqlx database create --database-url "$DAEMON_DATABASE_URL"
           crates/sqlx-cli/bin/sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
       - uses: actions/cache@v4
