@@ -64,7 +64,7 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          apk add --no-cache nodejs openssh-client musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+          apk add --no-cache nodejs openssh-client musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
           echo '#!/bin/ash' > /tmp/llvm-config-static.sh
           echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-22 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-22 "$@"; fi' >> /tmp/llvm-config-static.sh
           chmod +x /tmp/llvm-config-static.sh
