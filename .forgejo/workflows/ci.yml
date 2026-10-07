@@ -175,7 +175,7 @@ jobs:
     env:
       DOCKER_HOST: unix:///var/run/docker.sock
     steps:
-      - run: apk add --no-cache nodejs git
+      - run: apk add --no-cache nodejs git openssh-client
       - uses: actions/checkout@v4
       - name: Build and push image
         run: |
@@ -187,8 +187,12 @@ jobs:
           # The builder persists on the host, so its local layer cache is reused across runs too.
           docker buildx inspect ci-builder >/dev/null 2>&1 || docker buildx create --name ci-builder --driver docker-container
           docker buildx use ci-builder
+          # Forward the deploy key into the build for private git dependencies
+          eval "$(ssh-agent -s)"
+          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" | ssh-add -
           docker buildx build \
             --cache-from "type=registry,ref=$IMAGE:buildcache" \
             --cache-to "type=registry,ref=$IMAGE:buildcache,mode=max,image-manifest=true,oci-mediatypes=true" \
+            --ssh default \
             --tag "$IMAGE:$SHORT_SHA" --tag "$IMAGE:latest" \
             --push .
