@@ -1,0 +1,188 @@
+name: ci
+
+on:
+  push:
+    branches: [dev, prod]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  fmt:
+    runs-on: docker
+    container:
+      image: rust:1.98.0-alpine
+    env:
+      RUSTFLAGS: "-C opt-level=0"
+    steps:
+      - run: apk add --no-cache nodejs git
+      - uses: actions/checkout@v4
+      - run: rustup component add rustfmt
+      - run: cargo fmt --check --all --verbose
+
+  deny:
+    runs-on: docker
+    container:
+      image: rust:1.98.0-alpine
+    env:
+      RUSTFLAGS: "-C opt-level=0"
+    steps:
+      - run: apk add --no-cache nodejs git openssh-client musl-dev
+      - uses: actions/checkout@v4
+      - name: Set up deploy key for private git dependencies
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan git-ssh.novium.world >> ~/.ssh/known_hosts
+      - uses: actions/cache@v4
+        with:
+          path: crates/cargo-deny
+          key: rust-cache-cargo-deny-default
+      - run: cargo install --color always --verbose cargo-deny --root crates/cargo-deny
+      - run: crates/cargo-deny/bin/cargo-deny check
+
+  clippy:
+    runs-on: docker
+    container:
+      image: rust:1.98.0-alpine
+    services:
+      db:
+        image: mariadb:latest
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
+    env:
+      DAEMON_DATABASE_URL: "mysql://root@db/daemon"
+      CARGO_HOME: ${{ github.workspace }}/.cargo_home
+      LLVM_CONFIG_PATH: /tmp/llvm-config-static.sh
+      RUSTFLAGS: "-C opt-level=0 -C linker=clang-22 -C link-arg=-fuse-ld=lld"
+    steps:
+      - name: Install build dependencies
+        run: |
+          apk add --no-cache nodejs openssh-client libxml2-utils musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+          echo '#!/bin/ash' > /tmp/llvm-config-static.sh
+          echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-22 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-22 "$@"; fi' >> /tmp/llvm-config-static.sh
+          chmod +x /tmp/llvm-config-static.sh
+      - uses: actions/checkout@v4
+      - name: Set up deploy key for private git dependencies
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan git-ssh.novium.world >> ~/.ssh/known_hosts
+      - uses: actions/cache@v4
+        with:
+          path: crates/sqlx-cli
+          key: rust-cache-cli
+      - name: Set up database
+        run: |
+          rustc --version && cargo --version
+          mkdir -p crates/sqlx-cli .cargo_home
+          RUSTFLAGS="-C opt-level=0" cargo install --color always --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
+          until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
+          crates/sqlx-cli/bin/sqlx database create --database-url "$DAEMON_DATABASE_URL"
+          crates/sqlx-cli/bin/sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cargo_home/
+            target/
+          key: rust-cache-clippy-${{ github.ref_name }}
+          restore-keys: |
+            rust-cache-clippy-dev
+            rust-cache-clippy-
+      - run: rustup component add clippy
+      - run: cargo clippy --color always --verbose --no-default-features --features ci --no-deps
+
+  test:
+    runs-on: docker
+    container:
+      image: rust:1.98.0-alpine
+    services:
+      db:
+        image: mariadb:latest
+        env:
+          MARIADB_ALLOW_EMPTY_ROOT_PASSWORD: "1"
+    env:
+      DAEMON_DATABASE_URL: "mysql://root@db/daemon"
+      CARGO_HOME: ${{ github.workspace }}/.cargo_home
+      LLVM_CONFIG_PATH: /tmp/llvm-config-static.sh
+      RUSTFLAGS: "-C opt-level=0 -C linker=clang-22 -C link-arg=-fuse-ld=lld"
+    steps:
+      - name: Install build dependencies
+        run: |
+          apk add --no-cache nodejs openssh-client libxml2-utils musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+          echo '#!/bin/ash' > /tmp/llvm-config-static.sh
+          echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-22 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-22 "$@"; fi' >> /tmp/llvm-config-static.sh
+          chmod +x /tmp/llvm-config-static.sh
+      - uses: actions/checkout@v4
+      - name: Set up deploy key for private git dependencies
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan git-ssh.novium.world >> ~/.ssh/known_hosts
+      - uses: actions/cache@v4
+        with:
+          path: crates/sqlx-cli
+          key: rust-cache-cli
+      - name: Set up database
+        run: |
+          rustc --version && cargo --version
+          mkdir -p crates/sqlx-cli .cargo_home
+          RUSTFLAGS="-C opt-level=0" cargo install --color always --no-default-features --features mysql,rustls sqlx-cli --root crates/sqlx-cli
+          until mariadb-admin ping --host db --user root --skip-ssl-verify-server-cert; do sleep 1; done
+          crates/sqlx-cli/bin/sqlx database create --database-url "$DAEMON_DATABASE_URL"
+          crates/sqlx-cli/bin/sqlx migrate run --database-url "$DAEMON_DATABASE_URL" --source "daemon/migrations"
+      - uses: actions/cache@v4
+        with:
+          path: |
+            .cargo_home/
+            target/
+          key: rust-cache-test-${{ github.ref_name }}
+          restore-keys: |
+            rust-cache-test-dev
+            rust-cache-test-
+      - name: Run tests with coverage
+        run: |
+          curl -L https://github.com/mozilla/grcov/releases/latest/download/grcov-x86_64-unknown-linux-musl.tar.bz2 | tar jxf -
+          RUSTC_BOOTSTRAP=1 RUSTFLAGS="$RUSTFLAGS -C instrument-coverage" LLVM_PROFILE_FILE="coverage.profraw" cargo test --color always --verbose --target x86_64-unknown-linux-musl --no-default-features --features ci
+          ./grcov . --llvm-path /usr/lib/llvm22/bin/ --binary-path ./target/debug/ -s . -t cobertura --branch --ignore-not-existing --ignore "*cargo*" -o coverage.xml
+          xmllint --xpath "concat('Coverage - ', 100 * string(//coverage/@line-rate), '%')" coverage.xml
+      - uses: actions/upload-artifact@v3
+        if: always()
+        with:
+          name: coverage
+          path: coverage.xml
+          retention-days: 7
+
+  deploy_daemon:
+    # Auto deploy on push to prod, manual deploy from dev via workflow_dispatch
+    if: >-
+      (github.event_name == 'push' && github.ref == 'refs/heads/prod') ||
+      (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev')
+    needs: [clippy, deny, test, fmt]
+    runs-on: docker
+    container:
+      image: docker:latest
+      volumes:
+        - /var/run/docker.sock:/var/run/docker.sock
+    env:
+      DOCKER_HOST: unix:///var/run/docker.sock
+    steps:
+      - run: apk add --no-cache nodejs git
+      - uses: actions/checkout@v4
+      - name: Build and push image
+        run: |
+          REGISTRY="${GITHUB_SERVER_URL#*://}"
+          IMAGE="$REGISTRY/${GITHUB_REPOSITORY}"
+          SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-8)"
+          docker info
+          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+          docker pull "$IMAGE:latest" || true
+          docker build --build-arg BUILDKIT_INLINE_CACHE=1 --cache-from "$IMAGE:latest" --tag "$IMAGE:$SHORT_SHA" --tag "$IMAGE:latest" .
+          docker push "$IMAGE:$SHORT_SHA"
+          docker push "$IMAGE:latest"
