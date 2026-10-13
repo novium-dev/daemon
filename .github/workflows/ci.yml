@@ -33,14 +33,8 @@ jobs:
     container:
       image: rust:1.98.0-alpine
     steps:
-      - run: apk add --no-cache nodejs git openssh-client curl
+      - run: apk add --no-cache nodejs git curl
       - uses: actions/checkout@v4
-      - name: Set up deploy key for private git dependencies
-        run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
       - name: Install cargo-deny (prebuilt)
         run: |
           curl -sSfL "https://github.com/EmbarkStudios/cargo-deny/releases/download/${CARGO_DENY_VERSION}/cargo-deny-${CARGO_DENY_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
@@ -64,17 +58,11 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          apk add --no-cache nodejs openssh-client musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+          apk add --no-cache nodejs musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
           echo '#!/bin/ash' > /tmp/llvm-config-static.sh
           echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-22 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-22 "$@"; fi' >> /tmp/llvm-config-static.sh
           chmod +x /tmp/llvm-config-static.sh
       - uses: actions/checkout@v4
-      - name: Set up deploy key for private git dependencies
-        run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
       - uses: actions/cache@v4
         with:
           path: crates/sqlx-cli
@@ -117,18 +105,12 @@ jobs:
     steps:
       - name: Install build dependencies
         run: |
-          apk add --no-cache nodejs openssh-client libxml2-utils musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
+          apk add --no-cache nodejs libxml2-utils musl-dev ncurses-dev ncurses-static zlib-dev zlib-static zstd-dev zstd-static llvm22-static llvm22-dev clang22 clang22-static lld22 git mariadb-client curl btrfs-progs-dev --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
           echo '#!/bin/ash' > /tmp/llvm-config-static.sh
           echo 'if [[ "$1" == "--libs" ]]; then echo "$(/usr/bin/llvm-config-22 "$@" "--link-static")" "-lzstd"; else /usr/bin/llvm-config-22 "$@"; fi' >> /tmp/llvm-config-static.sh
           chmod +x /tmp/llvm-config-static.sh
           curl -sSfL "https://github.com/mozilla/grcov/releases/download/${GRCOV_VERSION}/grcov-x86_64-unknown-linux-musl.tar.bz2" | tar jx -C /usr/local/bin
       - uses: actions/checkout@v4
-      - name: Set up deploy key for private git dependencies
-        run: |
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
-          chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan github.com >> ~/.ssh/known_hosts
       - uses: actions/cache@v4
         with:
           path: crates/sqlx-cli
@@ -183,12 +165,8 @@ jobs:
           # The builder persists on the host, so its local layer cache is reused across runs too.
           docker buildx inspect ci-builder >/dev/null 2>&1 || docker buildx create --name ci-builder --driver docker-container
           docker buildx use ci-builder
-          # Forward the deploy key into the build for private git dependencies
-          eval "$(ssh-agent -s)"
-          printf '%s\n' "${{ secrets.DEPLOY_KEY }}" | ssh-add -
           docker buildx build \
             --cache-from "type=registry,ref=$IMAGE:buildcache" \
             --cache-to "type=registry,ref=$IMAGE:buildcache,mode=max,image-manifest=true,oci-mediatypes=true" \
-            --ssh default \
             --tag "$IMAGE:$SHORT_SHA" --tag "$IMAGE:latest" \
             --push .

@@ -22,7 +22,7 @@ unknown-git = "deny"
 allow-git = [
   "https://github.com/0xIO32/zelus.git",
   "https://github.com/0xIO32/reqwest.git",
-  "ssh://git@github.com/novium-dev/zelus_keys.git",
+  "https://github.com/novium-dev/zelus_keys.git",
   "https://github.com/rustls/hyper-rustls.git?rev=5e9b69b4128abfc147e8b6fa55977eac4c3f575c",
   "https://github.com/acatton/serde-yaml-ng.git?rev=3628102977f3ec9e02b95ef32fcec30b3df91390",
   "https://github.com/fussybeaver/bollard.git?rev=dca659509a12544cabe418c7832f1ac741c88d2c",

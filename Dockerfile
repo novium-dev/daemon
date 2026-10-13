@@ -2,9 +2,6 @@
 FROM lukemathwalker/cargo-chef:latest-rust-1.98.0-alpine AS chef
 WORKDIR /work
 
-# Host key for private git dependencies (fetched via forwarded SSH agent, see --mount=type=ssh)
-RUN mkdir -p /root/.ssh && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > /root/.ssh/known_hosts
-
 ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C link-arg=-Wl,--icf=safe -C linker-plugin-lto -C lto=thin -C embed-bitcode"
 ENV RUSTFLAGS="-C linker=clang-22 -C link-arg=-fuse-ld=lld $FLAGS"
 
@@ -34,7 +31,7 @@ COPY --from=planner /work/recipe.json recipe.json
 
 ARG PREPARE_FEATURES="ci"
 
-RUN --mount=type=ssh cargo chef cook --release --recipe-path recipe.json --no-default-features --features "$PREPARE_FEATURES" --bin daemon --target x86_64-unknown-linux-musl
+RUN cargo chef cook --release --recipe-path recipe.json --no-default-features --features "$PREPARE_FEATURES" --bin daemon --target x86_64-unknown-linux-musl
 
 COPY --from=utils /usr/local/cargo/bin/cargo-sqlx /usr/local/cargo/bin/cargo-sqlx
 COPY --from=mariadb /var/lib/mysql /var/lib/mysql
@@ -43,7 +40,7 @@ COPY . .
 ARG FEATURES="ci"
 
 # build
-RUN --mount=type=ssh FEATURES="$FEATURES" ./scripts/docker/build_daemon.sh
+RUN FEATURES="$FEATURES" ./scripts/docker/build_daemon.sh
 
 FROM alpine:latest AS runtime
 
