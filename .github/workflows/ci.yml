@@ -19,7 +19,7 @@ env:
 
 jobs:
   fmt:
-    runs-on: docker
+    runs-on: ubuntu-latest
     container:
       image: rust:1.98.0-alpine
     steps:
@@ -29,7 +29,7 @@ jobs:
       - run: cargo fmt --check --all
 
   deny:
-    runs-on: docker
+    runs-on: ubuntu-latest
     container:
       image: rust:1.98.0-alpine
     steps:
@@ -40,7 +40,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan git-ssh.novium.world >> ~/.ssh/known_hosts
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
       - name: Install cargo-deny (prebuilt)
         run: |
           curl -sSfL "https://github.com/EmbarkStudios/cargo-deny/releases/download/${CARGO_DENY_VERSION}/cargo-deny-${CARGO_DENY_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
@@ -48,7 +48,7 @@ jobs:
       - run: cargo-deny check
 
   clippy:
-    runs-on: docker
+    runs-on: ubuntu-latest
     container:
       image: rust:1.98.0-alpine
     services:
@@ -74,7 +74,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan git-ssh.novium.world >> ~/.ssh/known_hosts
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
       - uses: actions/cache@v4
         with:
           path: crates/sqlx-cli
@@ -98,7 +98,7 @@ jobs:
       - run: cargo clippy --no-default-features --features ci --no-deps
 
   test:
-    runs-on: docker
+    runs-on: ubuntu-latest
     container:
       image: rust:1.98.0-alpine
     services:
@@ -128,7 +128,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "${{ secrets.DEPLOY_KEY }}" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan git-ssh.novium.world >> ~/.ssh/known_hosts
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
       - uses: actions/cache@v4
         with:
           path: crates/sqlx-cli
@@ -154,7 +154,7 @@ jobs:
         run: |
           grcov profraw --llvm-path /usr/lib/llvm22/bin/ --binary-path ./target/x86_64-unknown-linux-musl/debug/ -s . -t cobertura --branch --ignore-not-existing --ignore "*cargo*" -o coverage.xml
           xmllint --xpath "concat('Coverage - ', 100 * string(//coverage/@line-rate), '%')" coverage.xml
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: coverage
@@ -167,22 +167,18 @@ jobs:
       (github.event_name == 'push' && github.ref == 'refs/heads/prod') ||
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/dev')
     needs: [clippy, deny, test, fmt]
-    runs-on: docker
-    container:
-      image: docker:latest
-      volumes:
-        - /var/run/docker.sock:/var/run/docker.sock
-    env:
-      DOCKER_HOST: unix:///var/run/docker.sock
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     steps:
-      - run: apk add --no-cache nodejs git openssh-client
       - uses: actions/checkout@v4
       - name: Build and push image
         run: |
-          REGISTRY="registry.novium.world"
-          IMAGE="$REGISTRY/${GITHUB_REPOSITORY}"
+          REGISTRY="ghcr.io"
+          IMAGE="$REGISTRY/${GITHUB_REPOSITORY,,}"
           SHORT_SHA="$(echo "$GITHUB_SHA" | cut -c1-8)"
-          echo "${{ secrets.REGISTRY_TOKEN }}" | docker login "$REGISTRY" -u "${{ secrets.REGISTRY_USER }}" --password-stdin
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
           # docker-container driver can export the cache of all stages (inline cache only covers the final one).
           # The builder persists on the host, so its local layer cache is reused across runs too.
           docker buildx inspect ci-builder >/dev/null 2>&1 || docker buildx create --name ci-builder --driver docker-container

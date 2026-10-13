@@ -3,7 +3,7 @@ FROM lukemathwalker/cargo-chef:latest-rust-1.98.0-alpine AS chef
 WORKDIR /work
 
 # Host key for private git dependencies (fetched via forwarded SSH agent, see --mount=type=ssh)
-RUN mkdir -p /root/.ssh && echo "git-ssh.novium.world ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBPS0cpItg26j3t/ZqMNl+7PY2GwdqVEx4r4pNJMfwf7NvccvVJubH9bD8DHtqVXsBGLtF38SDVb7ycE+7j0TgdE=" > /root/.ssh/known_hosts
+RUN mkdir -p /root/.ssh && echo "github.com ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBEmKSENjQEezOmxkZMy7opKgwFB9nkt5YRrYMjNuG5N87uRgg6CLrbo5wAdT/y6v0mKV0U2w0WZ2YB/++Tpockg=" > /root/.ssh/known_hosts
 
 ARG FLAGS="-C debuginfo=0 -C codegen-units=1 -C opt-level=3 -C link-arg=-Wl,--icf=safe -C linker-plugin-lto -C lto=thin -C embed-bitcode"
 ENV RUSTFLAGS="-C linker=clang-22 -C link-arg=-fuse-ld=lld $FLAGS"
