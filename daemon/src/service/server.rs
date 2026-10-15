@@ -209,7 +209,7 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
             InternalServerState::Running(_, _)
                 | InternalServerState::Restarting(_)
                 | InternalServerState::Stopping(_)
-                | InternalServerState::Unhealthy(_, _)
+                | InternalServerState::Degraded(_, _)
                 | InternalServerState::Starting(_, _)
         ) {
             let mut stream = self.docker.stats(

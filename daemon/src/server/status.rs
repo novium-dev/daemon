@@ -132,7 +132,7 @@ impl FetchedServer {
                     )
                     | None => InternalServerState::Running(created, healthcheck),
                     Some(HealthStatusEnum::UNHEALTHY) => {
-                        InternalServerState::Unhealthy(created, healthcheck)
+                        InternalServerState::Degraded(created, healthcheck)
                     }
                 }
             } else {
@@ -150,7 +150,7 @@ pub enum InternalServerState {
 
     // Health-check enabled
     Starting(i64, Option<String>),
-    Unhealthy(i64, Option<String>),
+    Degraded(i64, Option<String>),
 
     Running(i64, Option<String>),
 
@@ -198,7 +198,7 @@ impl InternalServerState {
             | Self::Running(time, _)
             | Self::Starting(time, _)
             | Self::Stopping(time)
-            | Self::Unhealthy(time, _) => Some(*time),
+            | Self::Degraded(time, _) => Some(*time),
             _ => None,
         }
     }
@@ -208,7 +208,7 @@ impl InternalServerState {
             label: self.to_string(),
             healthcheck: match self {
                 Self::Starting(_, healthcheck)
-                | Self::Unhealthy(_, healthcheck)
+                | Self::Degraded(_, healthcheck)
                 | Self::Running(_, healthcheck) => healthcheck,
                 _ => &None,
             }
@@ -226,7 +226,7 @@ impl Display for InternalServerState {
         formatter.write_str(match self {
             Self::Stopped => "Stopped",
             Self::Starting(_, _) => "Starting",
-            Self::Unhealthy(_, _) => "Unhealthy",
+            Self::Degraded(_, _) => "Degraded",
             Self::Running(_, _) => "Running",
             Self::Stopping(_) => "Stopping",
             Self::Restarting(_) => "Restarting",

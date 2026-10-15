@@ -91,7 +91,7 @@ async fn run(
     let running = match FetchedServer::state(server_id, &HashSet::new(), &daemon.docker, server_data).await {
         Ok(
             InternalServerState::Running(_, _)
-            | InternalServerState::Unhealthy(_, _)
+            | InternalServerState::Degraded(_, _)
             | InternalServerState::Starting(_, _)
             | InternalServerState::Restarting(_)
             | InternalServerState::Stopping(_)
