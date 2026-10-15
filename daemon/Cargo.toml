@@ -140,7 +140,7 @@ workspace = true
 features = ["serde"]
 
 [dependencies.russh]
-version = "0.63.3"
+version = "0.64.1"
 
 [dependencies.russh-sftp]
 version = "3.0.1"
@@ -162,7 +162,7 @@ version = "0.31.3"
 features = ["fs", "user"]
 
 [dependencies.zstd]
-version = "0.14.0"
+version = "0.14.2"
 features = []
 
 [dependencies.flate2]
@@ -180,7 +180,7 @@ features = []
 version = "1.28.1"
 
 [dependencies.zip]
-version = "8.6.0"
+version = "9.0.3"
 default-features = false
 features = ["deflate-flate2", "deflate64", "bzip2", "zstd"]
 

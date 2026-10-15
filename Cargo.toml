@@ -196,13 +196,13 @@ little_endian_bytes = "deny"
 [workspace.dependencies]
 bollard = "0.21.1"
 libc = "0.2"
-toml = "1.1.6"
+toml = "1.1.8"
 xmltree = "0.12.0"
 base64 = "0.23.1"
 rand_core = "0.10.1"
 rand = "0.10.3"
 chacha20 = "0.10.2"
-signal-hook = "0.4.4"
+signal-hook = "0.4.5"
 termion = "4.0.6"
 http = "1.5.0"
 async-trait = "0.1"
@@ -215,14 +215,14 @@ futures = "0.3.34"
 anyhow = "1.0.104"
 bytes = "1.12.1"
 futures-util = "0.3.34"
-either = "1.18.0"
+either = "1.19.0"
 tower-layer = "0.3.3"
 pastey = "0.2.3"
 itertools = "0.15.0"
 arc-swap = "1.9.2"
 thiserror = "2.0.21"
-lazy-regex = "3.6.1"
-sha2 = "0.11.0"
+lazy-regex = "3.6.2"
+sha2 = "0.11.1"
 
 [workspace.dependencies.daemon_common]
 path = "daemon_common"
@@ -238,7 +238,7 @@ default-features = false
 features = ["error", "sqlx", "io"]
 
 [workspace.dependencies.rustls]
-version = "0.23.45"
+version = "0.23.46"
 #default-features = false
 #features = [
 #  "ring",
@@ -294,10 +294,10 @@ version = "1.0"
 features = ["preserve_order"]
 
 [workspace.dependencies.tokio]
-version = "1.53.1"
+version = "1.53.3"
 
 [workspace.dependencies.tokio-util]
-version = "0.7.19"
+version = "0.7.20"
 
 [workspace.dependencies.axum-server]
 version = "0.8.0"
@@ -327,7 +327,7 @@ version = "0.5.3"
 features = ["full"]
 
 [workspace.dependencies.tower-http]
-version = "0.7.0"
+version = "0.7.1"
 features = [
 	"cors",
 	"auth",
@@ -354,7 +354,7 @@ version = "0.4.45"
 features = ["serde"]
 
 [workspace.dependencies.uuid]
-version = "1.25.0"
+version = "1.28.0"
 features = ["serde", "v4"]
 
 [workspace.dependencies.pkcs8]
@@ -370,11 +370,11 @@ version = "2.5.8"
 features = ["serde"]
 
 [workspace.dependencies.indexmap]
-version = "2.14.0"
+version = "2.14.2"
 features = ["serde"]
 
 [workspace.dependencies.rcgen]
-version = "0.14.9"
+version = "0.14.10"
 default-features = false
 features = ["crypto", "pem", "x509-parser", "aws_lc_rs"]
 
