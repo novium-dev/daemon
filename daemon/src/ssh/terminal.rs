@@ -6,12 +6,22 @@ use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
 use async_trait::async_trait;
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::ssh::DaemonBackendAuthServer;
-use russh::server::{Msg, Session};
+use russh::server::{Handle, Msg, Session};
 use russh::{ChannelId, ChannelStream};
 use std::io::{self, ErrorKind};
 use std::sync::Arc;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tracing::debug;
+
+/// Ctrl+C. Detaches the SSH session instead of being sent to the server
+const DETACH_BYTE: u8 = 0x03;
+
+pub(crate) struct SshTerminal {
+    stream: ChannelStream<Msg>,
+    buffer: [u8; 2048],
+    handle: Handle,
+    channel_id: ChannelId,
+}
 
 impl<T: DaemonExtra> DaemonSSHHandler<T> {
     pub(crate) async fn ssh_terminal(
@@ -85,7 +95,12 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
                 };
                 tokio::task::spawn(new_session(
                     internal_server_id,
-                    (channel.into_stream(), [0u8; 2048]),
+                    SshTerminal {
+                        stream: channel.into_stream(),
+                        buffer: [0u8; 2048],
+                        handle: session.handle(),
+                        channel_id,
+                    },
                     TerminalData {
                         sender,
                         attach_write,
@@ -105,10 +120,10 @@ impl<T: DaemonExtra> DaemonSSHHandler<T> {
 
 #[async_trait]
 impl ChannelAdapter<Result<usize, io::Error>, Result<(), io::Error>, Result<(), io::Error>>
-    for (ChannelStream<Msg>, [u8; 2048])
+    for SshTerminal
 {
     async fn read(&mut self) -> Result<usize, io::Error> {
-        self.0.read(&mut self.1).await
+        self.stream.read(&mut self.buffer).await
     }
 
     fn read_transform(&mut self, data: Result<usize, io::Error>) -> Result<Vec<u8>, ChannelError>
@@ -116,11 +131,16 @@ impl ChannelAdapter<Result<usize, io::Error>, Result<(), io::Error>, Result<(), 
         Self: Sized,
     {
         match data {
-            Ok(size) => Ok(self
-                .1
-                .get(0..size)
-                .ok_or_else(|| ChannelError::IO(io::Error::other("Bug: Size larger than buffer")))?
-                .to_vec()),
+            Ok(size) => {
+                let data = self.buffer.get(0..size).ok_or_else(|| {
+                    ChannelError::IO(io::Error::other("Bug: Size larger than buffer"))
+                })?;
+                if data.contains(&DETACH_BYTE) {
+                    debug!("Detaching SSH terminal session");
+                    return Err(ChannelError::Closed);
+                }
+                Ok(data.to_vec())
+            }
             Err(err) if err.kind() == ErrorKind::UnexpectedEof => Err(ChannelError::Closed),
             Err(err) => Err(ChannelError::IO(err)),
         }
@@ -128,7 +148,7 @@ impl ChannelAdapter<Result<usize, io::Error>, Result<(), io::Error>, Result<(), 
 
     async fn write(&mut self, data: ChannelWriteData) -> Result<(), io::Error> {
         if let ChannelWriteData::Terminal(data) = data {
-            self.0.write_all(&data).await
+            self.stream.write_all(&data).await
         } else {
             Ok(())
         }
@@ -142,11 +162,13 @@ impl ChannelAdapter<Result<usize, io::Error>, Result<(), io::Error>, Result<(), 
     }
 
     async fn flush(&mut self) -> Result<(), io::Error> {
-        self.0.flush().await
+        self.stream.flush().await
     }
 
     async fn close(mut self) {
-        let _ = self.0.shutdown().await;
+        let _ = self.stream.shutdown().await;
+        let _ = self.handle.exit_status_request(self.channel_id, 0).await;
+        let _ = self.handle.close(self.channel_id).await;
     }
 
     fn send_ping() -> bool
