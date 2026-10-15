@@ -13,8 +13,8 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt as _, AsyncWriteExt as _};
 use tracing::debug;
 
-/// Ctrl+C. Detaches the SSH session instead of being sent to the server
-const DETACH_BYTE: u8 = 0x03;
+/// Ctrl+D. Detaches the SSH session instead of being sent to the server
+const DETACH_BYTE: u8 = 0x04;
 
 pub(crate) struct SshTerminal {
     stream: ChannelStream<Msg>,
