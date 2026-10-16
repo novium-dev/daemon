@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+use crate::config::StorageEntry;
 use crate::files::{IntoFileEntry as _, storage_path};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::format::ArchiveFormat;
-use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
 use crate::{Daemon, DaemonExtra};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -44,7 +45,19 @@ pub async fn stat_file<
         },
     )
     .await?;
-    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
+    let result = stat_file_locked::<E>(id, &storage, &tokens, path).await;
+    drop(lock);
+    result
+}
+
+/// Cancel safe, the caller holds the storage lock
+pub(super) async fn stat_file_locked<E: From<io::Error> + FromFileNotFound>(
+    id: StorageIdentifier,
+    storage: &StorageEntry,
+    tokens: &StorageTokens,
+    path: String,
+) -> Result<FileEntry, E> {
+    let (storage, _, path) = storage_path(id, storage, path, tokens).await?;
     let metadata = storage
         .symlink_metadata(&path)
         .await
@@ -93,7 +106,6 @@ pub async fn stat_file<
     }
 
     let relative_path = path.join(filename.clone());
-    drop(lock);
     Ok(metadata.into_fileentry(
         filename,
         relative_path.to_string_lossy().to_string(),

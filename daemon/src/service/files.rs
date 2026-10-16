@@ -2,23 +2,26 @@ use std::collections::HashSet;
 
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::files::{
-    chmod_file, chown_file, copy_file, create_archive, delete_file, download_file, list_files,
-    mkdir_file, rename_file, stat_file, symlink_file, unpack_archive, watch_files, wipe,
-    write_file, write_file_by_template, write_file_by_url,
+    chmod_file, chown_file, copy_file, create_archive, delete_file, download_file, file_operations,
+    list_files, mkdir_file, rename_file, stat_file, symlink_file, unpack_archive, watch_files,
+    wipe, write_file, write_file_by_template, write_file_by_url, write_files_by_url,
 };
 use crate::storage::StorageIdentifier;
 use crate::{Daemon, DaemonExtra};
 use async_trait::async_trait;
 use axum::extract::WebSocketUpgrade;
-use daemon_common::service::files::FileEntry;
 use daemon_common::service::files::FilesService;
 use daemon_common::service::files::files_service_error::{
     ServerChmodError, ServerChownError, ServerCopyFileError, ServerCreateArchiveError,
     ServerCreateDirectoryError, ServerDeleteFileError, ServerDownloadFileError,
-    ServerDownloadFileUserError, ServerListFilesError, ServerRenameFileError, ServerStatFileError,
-    ServerSymlinkError, ServerUnpackArchiveError, ServerUploadFileError, ServerUploadFileUserError,
-    ServerWatchFilesError, ServerWatchFilesUserError, ServerWriteFileByTemplateError,
-    ServerWriteFileByUrlError, WipeServerError,
+    ServerDownloadFileUserError, ServerFileOperationsError, ServerListFilesError,
+    ServerRenameFileError, ServerStatFileError, ServerSymlinkError, ServerUnpackArchiveError,
+    ServerUploadFileError, ServerUploadFileUserError, ServerWatchFilesError,
+    ServerWatchFilesUserError, ServerWriteFileByTemplateError, ServerWriteFileByUrlError,
+    ServerWriteFilesByUrlError, WipeServerError,
+};
+use daemon_common::service::files::{
+    FileEntry, FileOperationBatch, FileOperationResult, UrlWriteBatch, UrlWriteResult,
 };
 use daemon_common::service::server::ServerFileWrite;
 use daemon_common::service::{DataStream, FileResponse, WebsocketResponse};
@@ -131,6 +134,24 @@ impl<T: DaemonExtra> FilesService for Daemon<T> {
     ) -> Result<(), ServerWriteFileByUrlError> {
         let storage = StorageIdentifier::Primary(server_id);
         write_file_by_url(self, storage, path, url).await
+    }
+
+    async fn server_write_files_by_url(
+        &self,
+        server_id: u32,
+        batch: UrlWriteBatch,
+    ) -> Result<Vec<UrlWriteResult>, ServerWriteFilesByUrlError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        write_files_by_url(self, storage, batch).await
+    }
+
+    async fn server_file_operations(
+        &self,
+        server_id: u32,
+        batch: FileOperationBatch,
+    ) -> Result<Vec<FileOperationResult>, ServerFileOperationsError> {
+        let storage = StorageIdentifier::Primary(server_id);
+        file_operations(self, storage, batch).await
     }
 
     async fn server_write_file_by_template(

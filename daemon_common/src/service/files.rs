@@ -226,6 +226,34 @@ pub trait FilesService {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, _>;
 
+    /// Writes many files from urls in one call
+    ///
+    /// Runs the same write as `GET /url` for every file, up to `parallel` at a time, so a
+    /// caller with many files needs one request instead of one per file. Every file gets its
+    /// own result at the same index, one failed download does not stop the others.
+    #[route("/url/batch", method = POST)]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
+    async fn server_write_files_by_url(
+        &self,
+        server_id: u32,
+        batch: UrlWriteBatch,
+    ) -> Result<Vec<UrlWriteResult>, _>;
+
+    /// Runs many file operations in one call
+    ///
+    /// Runs the operations in order, each one exactly like its own route (`/list`, `/stat`,
+    /// `DELETE /file`, `/rename`, `/copy`, `/mkdir`), so a caller with many operations needs
+    /// one request instead of one per operation. Every operation gets its own result at the
+    /// same index. With `stop_on_error` the remaining operations are skipped after the first
+    /// failure.
+    #[route("/batch", method = POST)]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
+    async fn server_file_operations(
+        &self,
+        server_id: u32,
+        batch: FileOperationBatch,
+    ) -> Result<Vec<FileOperationResult>, _>;
+
     /// Deletes all files
     #[route("/wipe", method = GET)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
@@ -345,4 +373,115 @@ pub enum FilesWatchResponseEntry {
         index: usize,
         offset: i64,
     },
+}
+
+error!(
+    BatchOperationError,
+    storage::{failure <- [io:*], quota_reached <- [io:QuotaExceeded]},
+    file::{
+        not_found <- [io:NotFound],
+        sandbox_violated <- [io:PermissionDenied],
+        already_exists <- [io:AlreadyExists],
+        not_directory <- [io:NotADirectory],
+        is_directory <- [io:IsADirectory]
+    },
+    http_request::{failed, not_success, read_failed}
+);
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UrlWrite {
+    pub path: String,
+    #[schema(value_type = String)]
+    pub url: Url,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UrlWriteBatch {
+    pub files: Vec<UrlWrite>,
+    #[serde(default)]
+    pub parallel: Option<u8>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum FileOperation {
+    List {
+        path: String,
+    },
+    Stat {
+        path: String,
+    },
+    Delete {
+        path: String,
+        #[serde(default)]
+        recursive: bool,
+    },
+    Rename {
+        from: String,
+        to: String,
+    },
+    Copy {
+        from: String,
+        to: String,
+    },
+    Mkdir {
+        path: String,
+        #[serde(default)]
+        recursive: bool,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FileOperationBatch {
+    pub operations: Vec<FileOperation>,
+    #[serde(default)]
+    pub stop_on_error: bool,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FileOperationFailure {
+    StorageFailure,
+    QuotaReached,
+    NotFound,
+    SandboxViolated,
+    AlreadyExists,
+    NotDirectory,
+    IsDirectory,
+    HttpRequestFailed,
+    HttpRequestNotSuccess,
+    HttpRequestReadFailed,
+    Skipped,
+}
+
+impl From<BatchOperationError> for FileOperationFailure {
+    fn from(value: BatchOperationError) -> Self {
+        match value {
+            BatchOperationError::StorageFailure | BatchOperationError::Communication(_) => {
+                Self::StorageFailure
+            }
+            BatchOperationError::StorageQuotaReached => Self::QuotaReached,
+            BatchOperationError::FileNotFound => Self::NotFound,
+            BatchOperationError::FileSandboxViolated => Self::SandboxViolated,
+            BatchOperationError::FileAlreadyExists => Self::AlreadyExists,
+            BatchOperationError::FileNotDirectory => Self::NotDirectory,
+            BatchOperationError::FileIsDirectory => Self::IsDirectory,
+            BatchOperationError::HttpRequestFailed => Self::HttpRequestFailed,
+            BatchOperationError::HttpRequestNotSuccess => Self::HttpRequestNotSuccess,
+            BatchOperationError::HttpRequestReadFailed => Self::HttpRequestReadFailed,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UrlWriteResult {
+    pub path: String,
+    pub error: Option<FileOperationFailure>,
+}
+
+#[derive(Clone, Default, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FileOperationResult {
+    pub error: Option<FileOperationFailure>,
+    pub entry: Option<FileEntry>,
+    pub entries: Option<Vec<FileEntry>>,
 }
