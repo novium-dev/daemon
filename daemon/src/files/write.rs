@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+use crate::config::StorageEntry;
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
 use crate::utils::storage_parent_ino;
 use crate::{Daemon, DaemonExtra, StorageNotification};
 use cap_async_std::fs::{Dir, MetadataExt as _, OpenOptions};
@@ -223,18 +224,39 @@ pub async fn write_file_by_url<
         },
     )
     .await?;
-    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
+    let result =
+        write_file_by_url_locked::<E>(daemon, id, &storage, &tokens, &notify, path, url).await;
+    drop(lock);
+    result
+}
+
+/// Cancel safe, the caller holds the storage lock
+pub(super) async fn write_file_by_url_locked<
+    E: From<io::Error>
+        + FromHttpRequestFailed
+        + FromHttpRequestNotSuccess
+        + FromHttpRequestReadFailed
+        + Send
+        + 'static,
+>(
+    daemon: &Daemon<impl DaemonExtra>,
+    id: StorageIdentifier,
+    storage: &StorageEntry,
+    tokens: &StorageTokens,
+    notify: &Sender<StorageNotification>,
+    path: String,
+    url: Url,
+) -> Result<(), E> {
+    let (storage, _, path) = storage_path(id, storage, path, tokens).await?;
     tokio::task::spawn(write_file_by_url0::<E>(
         daemon.clone(),
         storage,
         path,
-        notify,
+        notify.clone(),
         url,
     ))
     .await
-    .map_err(<io::Error as From<JoinError>>::from)??;
-    drop(lock);
-    Ok(())
+    .map_err(<io::Error as From<JoinError>>::from)?
 }
 
 #[inline(always)]

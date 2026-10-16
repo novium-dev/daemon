@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+use crate::config::StorageEntry;
 use crate::files::storage_path;
 use crate::storage::StorageIdentifier;
-use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
 use crate::utils::storage_parent_ino;
 use crate::{Daemon, DaemonExtra, StorageNotification};
 use cap_async_std::fs::MetadataExt as _;
@@ -11,6 +12,7 @@ use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::task::{FileOperationKind, StorageTask};
 use std::io;
 use std::io::ErrorKind;
+use tokio::sync::broadcast::Sender;
 use tracing::{debug, error, warn};
 
 /// Cancel safe
@@ -43,8 +45,22 @@ pub async fn rename_file<
         },
     )
     .await?;
-    let (storage_from, _, path_from) = storage_path(id, &storage, from, &tokens).await?;
-    let (storage_to, _, path_to) = storage_path(id, &storage, to, &tokens).await?;
+    let result = rename_file_locked::<E>(id, &storage, &tokens, &notify, from, to).await;
+    drop(lock);
+    result
+}
+
+/// Cancel safe, the caller holds the storage lock
+pub(super) async fn rename_file_locked<E: From<io::Error>>(
+    id: StorageIdentifier,
+    storage: &StorageEntry,
+    tokens: &StorageTokens,
+    notify: &Sender<StorageNotification>,
+    from: String,
+    to: String,
+) -> Result<(), E> {
+    let (storage_from, _, path_from) = storage_path(id, storage, from, tokens).await?;
+    let (storage_to, _, path_to) = storage_path(id, storage, to, tokens).await?;
 
     let from_parent_ino = storage_parent_ino(&storage_from, &path_from).await;
     let to_parent_ino = storage_parent_ino(&storage_to, &path_to).await;
@@ -84,6 +100,5 @@ pub async fn rename_file<
                 warn!("Rename was successful, but unable to trigger storage notification: {err:?}");
             });
     }
-    drop(lock);
     Ok(())
 }

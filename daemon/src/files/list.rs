@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+use crate::config::StorageEntry;
 use crate::files::{IntoFileEntry as _, storage_path};
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::format::ArchiveFormat;
-use crate::storage::sync::{StorageLockData, storage_read_timeout};
+use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
 use crate::{Daemon, DaemonExtra};
 use daemon_common::service::error_storage_failure::FromStorageFailure;
 use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
@@ -43,7 +44,19 @@ pub async fn list_files<
         },
     )
     .await?;
-    let (storage, _, path) = storage_path(id, &storage, path, &tokens).await?;
+    let result = list_files_locked::<E>(id, &storage, &tokens, path).await;
+    drop(lock);
+    result
+}
+
+/// Cancel safe, the caller holds the storage lock
+pub(super) async fn list_files_locked<E: From<io::Error>>(
+    id: StorageIdentifier,
+    storage: &StorageEntry,
+    tokens: &StorageTokens,
+    path: String,
+) -> Result<Vec<FileEntry>, E> {
+    let (storage, _, path) = storage_path(id, storage, path, tokens).await?;
     let read_dir = storage
         .read_dir(&path)
         .await
@@ -97,6 +110,5 @@ pub async fn list_files<
             archive,
         ));
     }
-    drop(lock);
     Ok(files)
 }
