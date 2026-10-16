@@ -228,9 +228,9 @@ pub trait FilesService {
 
     /// Writes many files from urls in one call
     ///
-    /// Takes the storage lock once and runs the same write as `GET /url` for every file, up to
-    /// `parallel` at a time. Every file gets its own result at the same index, one failed
-    /// download does not stop the others.
+    /// Runs the same write as `GET /url` for every file, up to `parallel` at a time, so a
+    /// caller with many files needs one request instead of one per file. Every file gets its
+    /// own result at the same index, one failed download does not stop the others.
     #[route("/url/batch", method = POST)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
     async fn server_write_files_by_url(
@@ -241,10 +241,11 @@ pub trait FilesService {
 
     /// Runs many file operations in one call
     ///
-    /// Takes the storage lock once and runs the operations in order, each one exactly like its
-    /// own route (`/list`, `/stat`, `DELETE /file`, `/rename`, `/copy`, `/mkdir`). Every
-    /// operation gets its own result at the same index. With `stop_on_error` the remaining
-    /// operations are skipped after the first failure.
+    /// Runs the operations in order, each one exactly like its own route (`/list`, `/stat`,
+    /// `DELETE /file`, `/rename`, `/copy`, `/mkdir`), so a caller with many operations needs
+    /// one request instead of one per operation. Every operation gets its own result at the
+    /// same index. With `stop_on_error` the remaining operations are skipped after the first
+    /// failure.
     #[route("/batch", method = POST)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
     async fn server_file_operations(
