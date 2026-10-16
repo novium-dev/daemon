@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 mod archive;
+mod batch;
 mod chmod;
 mod chown;
 mod copy;
@@ -19,6 +20,7 @@ use crate::storage::sync::StorageTokens;
 use crate::storage::{STORAGE_TOKEN_MAGIC, StorageIdentifier};
 use crate::utils::path_relative;
 pub use archive::{create_archive, unpack_archive};
+pub use batch::{file_operations, write_files_by_url};
 use cap_async_std::ambient_authority;
 use cap_async_std::fs::{Dir, FileTypeExt as _, Metadata, MetadataExt as _};
 pub use chmod::chmod_file;

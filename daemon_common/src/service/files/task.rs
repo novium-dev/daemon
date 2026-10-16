@@ -64,7 +64,9 @@ pub enum FileOperationKind {
     Symlink,
     Write,
     WriteByUrl,
+    WriteByUrlBatch,
     WriteByTemplate,
+    Batch,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]

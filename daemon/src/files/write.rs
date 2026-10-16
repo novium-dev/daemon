@@ -286,7 +286,7 @@ async fn write_file_by_url0<
         .map_err(|_err| <E as FromHttpRequestReadFailed>::from())?
     {
         writer
-            .write(&chunk)
+            .write_all(&chunk)
             .await
             .inspect_err(|err| match err.kind() {
                 ErrorKind::QuotaExceeded => debug!("Failed to write file by url: {err:?}"),

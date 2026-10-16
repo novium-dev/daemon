@@ -226,6 +226,36 @@ pub trait FilesService {
         verify: UserSignature,
     ) -> Result<WebsocketResponse, _>;
 
+    /// Downloads many files from urls in one call
+    ///
+    /// The storage lock is taken once for the whole batch. Missing parent directories are
+    /// created and up to `parallel` files are downloaded at the same time, each retried up to
+    /// `attempts` times. A file is first written to `<path>.part` and only moved to `path`
+    /// once it is verified, so it is either complete or absent. With `sha512` the hash decides
+    /// (a wrong declared `size` is tolerated), otherwise `size` must match when given.
+    /// Every file gets its own result, one failed download does not stop the others.
+    #[route("/url/batch", method = POST)]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
+    async fn server_write_files_by_url(
+        &self,
+        server_id: u32,
+        batch: UrlWriteBatch,
+    ) -> Result<Vec<UrlWriteResult>, _>;
+
+    /// Runs many file operations in one call
+    ///
+    /// The operations run in order under a single storage lock and each one gets its own
+    /// result at the same index. Deleting a missing path counts as success, moves and copies
+    /// create missing parent directories, and copying a directory merges it into the target.
+    /// With `stop_on_error` the remaining operations are skipped after the first failure.
+    #[route("/batch", method = POST)]
+    #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
+    async fn server_file_operations(
+        &self,
+        server_id: u32,
+        batch: FileOperationBatch,
+    ) -> Result<Vec<FileOperationResult>, _>;
+
     /// Deletes all files
     #[route("/wipe", method = GET)]
     #[error(storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
@@ -345,4 +375,95 @@ pub enum FilesWatchResponseEntry {
         index: usize,
         offset: i64,
     },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UrlWrite {
+    pub path: String,
+    #[schema(value_type = String)]
+    pub url: Url,
+    #[serde(default)]
+    pub size: Option<u64>,
+    #[serde(default)]
+    pub sha512: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UrlWriteBatch {
+    pub files: Vec<UrlWrite>,
+    #[serde(default)]
+    pub parallel: Option<u8>,
+    #[serde(default)]
+    pub attempts: Option<u8>,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum UrlWriteFailure {
+    RequestFailed,
+    NotSuccess,
+    ReadFailed,
+    SizeMismatch,
+    HashMismatch,
+    QuotaReached,
+    NotFound,
+    SandboxViolated,
+    IsDirectory,
+    Io,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct UrlWriteResult {
+    pub path: String,
+    pub error: Option<UrlWriteFailure>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum FileOperation {
+    Delete {
+        path: String,
+        #[serde(default)]
+        recursive: bool,
+    },
+    Move {
+        from: String,
+        to: String,
+        #[serde(default)]
+        overwrite: bool,
+    },
+    Copy {
+        from: String,
+        to: String,
+        #[serde(default)]
+        overwrite: bool,
+    },
+    Mkdir {
+        path: String,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FileOperationBatch {
+    pub operations: Vec<FileOperation>,
+    #[serde(default)]
+    pub stop_on_error: bool,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum FileOperationFailure {
+    NotFound,
+    AlreadyExists,
+    SandboxViolated,
+    IsDirectory,
+    NotDirectory,
+    QuotaReached,
+    Skipped,
+    Io,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, utoipa::ToSchema)]
+pub struct FileOperationResult {
+    pub error: Option<FileOperationFailure>,
 }
