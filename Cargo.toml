@@ -219,7 +219,7 @@ either = "1.19.0"
 tower-layer = "0.3.3"
 pastey = "0.2.3"
 itertools = "0.15.0"
-arc-swap = "1.9.2"
+arc-swap = "1.9.3"
 thiserror = "2.0.21"
 lazy-regex = "3.6.2"
 sha2 = "0.11.1"
@@ -295,7 +295,7 @@ version = "1.0"
 features = ["preserve_order"]
 
 [workspace.dependencies.tokio]
-version = "1.53.3"
+version = "1.54.1"
 
 [workspace.dependencies.tokio-util]
 version = "0.7.20"
@@ -355,7 +355,7 @@ version = "0.4.45"
 features = ["serde"]
 
 [workspace.dependencies.uuid]
-version = "1.28.0"
+version = "1.29.0"
 features = ["serde", "v4"]
 
 [workspace.dependencies.pkcs8]

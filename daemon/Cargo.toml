@@ -163,7 +163,7 @@ version = "0.31.3"
 features = ["fs", "user"]
 
 [dependencies.zstd]
-version = "0.14.2"
+version = "0.14.3"
 features = []
 
 [dependencies.flate2]
@@ -174,14 +174,14 @@ features = ["zlib"]
 version = "0.6.1"
 
 [dependencies.liblzma]
-version = "0.4.8"
+version = "0.4.9"
 features = []
 
 [dependencies.lz4]
 version = "1.28.1"
 
 [dependencies.zip]
-version = "9.0.3"
+version = "9.1.0"
 default-features = false
 features = ["deflate-flate2", "deflate64", "bzip2", "zstd"]
 
