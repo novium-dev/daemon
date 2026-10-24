@@ -118,6 +118,11 @@ impl FetchedServer {
                 image
                     .repo_tags
                     .into_iter()
+                    .map(|tag| {
+                        tag.strip_prefix("localhost/")
+                            .map(String::from)
+                            .unwrap_or(tag)
+                    })
                     .find(|tag| required.contains_key(tag))
             })
             .collect();
