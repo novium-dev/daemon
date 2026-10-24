@@ -1,4 +1,4 @@
-FROM rust:latest AS build
+FROM rust:1.99.0 AS build
 
 RUN apt update \
 	&& apt upgrade -y \

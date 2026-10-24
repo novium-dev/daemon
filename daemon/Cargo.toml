@@ -35,10 +35,10 @@ btrfs = []
 sentry = ["dep:sentry"]
 databases = ["daemon_common/databases"]
 
-default = ["sentry", "btrfs", "databases", "bindgen/runtime"]
+default = ["sentry", "btrfs", "databases"]
 full = ["default"]
 full_bypass = ["full", "ssh_debug_auth_bypass"]
-ci = ["sentry", "btrfs", "bindgen/static"]
+ci = ["sentry", "btrfs"]
 
 [dependencies]
 libc.workspace = true
@@ -111,6 +111,7 @@ features = ["std"]
 
 [dependencies.sentry]
 workspace = true
+features = ["rustls"]
 optional = true
 
 [dependencies.utoipa-swagger-ui]
@@ -184,7 +185,13 @@ version = "9.0.3"
 default-features = false
 features = ["deflate-flate2", "deflate64", "bzip2", "zstd"]
 
-[build-dependencies.bindgen]
-version = "0.72.1"
+[build-dependencies]
+syn = "3" # See https://github.com/rust-lang/rust-bindgen/issues/3448
+
+[target.'cfg(not(target_env = "musl"))'.build-dependencies.bindgen]
+version = "0.73.2"
+
+[target.'cfg(target_env = "musl")'.build-dependencies.bindgen]
+version = "0.73.2"
 default-features = false
-features = ["logging", "prettyplease"]
+features = ["logging", "prettyplease", "static"]

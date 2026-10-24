@@ -51,10 +51,7 @@ RUN mkdir -p /var/lib/novium_daemon && chown 25335:25335 /var/lib/novium_daemon
 WORKDIR /var/lib/novium_daemon
 
 STOPSIGNAL SIGINT
-
 EXPOSE 443
-
-RUN apk add --no-cache vim --repository=https://dl-cdn.alpinelinux.org/alpine/edge/main
 
 # Copy the binary directly to bin directory (/bin)
 COPY --from=builder /work/target/x86_64-unknown-linux-musl/release/daemon /bin/daemon
