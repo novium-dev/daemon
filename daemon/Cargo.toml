@@ -150,11 +150,11 @@ version = "1.1.5"
 features = ["thread", "fs"]
 
 [dependencies.zbus]
-version = "5.19.0"
+version = "6.1.0"
 features = ["tokio"]
 
 [dependencies.zbus_systemd]
-version = "0.26200.0"
+version = "0.26201.0"
 features = ["systemd1"]
 
 [dependencies.nix]

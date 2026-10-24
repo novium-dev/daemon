@@ -234,6 +234,7 @@ default-features = false
 
 [workspace.dependencies.zelus]
 git = "https://github.com/0xIO32/zelus.git"
+rev = "b3a46be6f13d0ce14a8e160ab34030ee843dba33"
 default-features = false
 features = ["error", "sqlx", "io"]
 
