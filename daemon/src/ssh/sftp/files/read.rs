@@ -2,8 +2,10 @@
 use crate::ssh::sftp::FileHandle;
 use russh_sftp::protocol::StatusCode;
 use std::io;
-use std::io::{ErrorKind, SeekFrom};
-use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _};
+use std::io::ErrorKind;
+use std::mem::ManuallyDrop;
+use std::os::fd::{AsRawFd as _, FromRawFd as _};
+use std::os::unix::fs::FileExt as _;
 use tracing::{debug, error};
 
 pub async fn read(handle: &mut FileHandle, offset: u64, len: u32) -> Result<Vec<u8>, StatusCode> {
@@ -30,10 +32,14 @@ async fn read_regular(
     offset: u64,
     len: u32,
 ) -> Result<Vec<u8>, io::Error> {
-    file.seek(SeekFrom::Start(offset)).await?;
-    let mut buf = vec![0; len as usize];
+    // SAFETY: The fd is open. It is not owned, but we won't close it.
+    let std = ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(file.as_raw_fd()) });
 
-    let read = file.read(&mut buf).await?;
-    buf.resize(read, 0u8);
-    Ok(buf)
+    tokio::task::spawn_blocking(move || {
+        let mut buf = vec![0; len as usize];
+        let read = std.read_at(&mut buf, offset)?;
+        buf.truncate(read);
+        Ok(buf)
+    })
+    .await?
 }

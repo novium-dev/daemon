@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use crate::ssh::sftp::FileHandle;
 use russh_sftp::protocol::StatusCode;
-use std::io;
-use std::io::SeekFrom;
-use tokio::io::{AsyncSeekExt as _, AsyncWriteExt as _};
+use std::os::fd::{AsRawFd as _, FromRawFd as _};
+use std::os::unix::fs::FileExt as _;
+use std::{io, mem::ManuallyDrop};
 use tracing::{debug, error};
 
 pub async fn write(handle: &mut FileHandle, offset: u64, data: Vec<u8>) -> Result<(), StatusCode> {
@@ -24,7 +24,9 @@ async fn write_regular(
     offset: u64,
     data: Vec<u8>,
 ) -> Result<(), io::Error> {
-    file.seek(SeekFrom::Start(offset)).await?;
-    file.write_all(&data).await?;
+    // SAFETY: The fd is open. It is not owned, but we won't close it.
+    let std = ManuallyDrop::new(unsafe { std::fs::File::from_raw_fd(file.as_raw_fd()) });
+
+    tokio::task::spawn_blocking(move || std.write_all_at(&data, offset)).await??;
     Ok(())
 }
