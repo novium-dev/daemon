@@ -191,7 +191,7 @@ pub const __USE_ISOC99: u32 = 1;
 pub const __USE_ISOC95: u32 = 1;
 pub const __USE_POSIX_IMPLICITLY: u32 = 1;
 pub const _POSIX_SOURCE: u32 = 1;
-pub const _POSIX_C_SOURCE: u32 = 200809;
+pub const _POSIX_C_SOURCE: u32 = 202405;
 pub const __USE_POSIX: u32 = 1;
 pub const __USE_POSIX2: u32 = 1;
 pub const __USE_POSIX199309: u32 = 1;
@@ -199,6 +199,7 @@ pub const __USE_POSIX199506: u32 = 1;
 pub const __USE_XOPEN2K: u32 = 1;
 pub const __USE_XOPEN2K8: u32 = 1;
 pub const _ATFILE_SOURCE: u32 = 1;
+pub const __USE_XOPEN2K24: u32 = 1;
 pub const __WORDSIZE: u32 = 64;
 pub const __WORDSIZE_TIME64_COMPAT32: u32 = 1;
 pub const __SYSCALL_WORDSIZE: u32 = 64;
@@ -212,7 +213,7 @@ pub const __GLIBC_USE_DEPRECATED_SCANF: u32 = 0;
 pub const __GLIBC_USE_C23_STRTOL: u32 = 0;
 pub const __GNU_LIBRARY__: u32 = 6;
 pub const __GLIBC__: u32 = 2;
-pub const __GLIBC_MINOR__: u32 = 41;
+pub const __GLIBC_MINOR__: u32 = 43;
 pub const _SYS_CDEFS_H: u32 = 1;
 pub const __glibc_c99_flexarr_available: u32 = 1;
 pub const __LDOUBLE_REDIRECTS_TO_FLOAT128_ABI: u32 = 0;
@@ -335,7 +336,6 @@ pub const __SIZEOF_PTHREAD_RWLOCKATTR_T: u32 = 8;
 pub const __SIZEOF_PTHREAD_BARRIERATTR_T: u32 = 4;
 pub const _THREAD_MUTEX_INTERNAL_H: u32 = 1;
 pub const __PTHREAD_MUTEX_HAVE_PREV: u32 = 1;
-pub const __PTHREAD_RWLOCK_ELISION_EXTRA: u32 = 0;
 pub const __ONCE_FLAG_INIT: u32 = 0;
 pub const __have_pthread_attr_t: u32 = 1;
 pub const _ALLOCA_H: u32 = 1;
@@ -892,7 +892,9 @@ pub struct _IO_FILE {
     pub _freeres_buf: *mut ::std::os::raw::c_void,
     pub _prevchain: *mut *mut _IO_FILE,
     pub _mode: ::std::os::raw::c_int,
-    pub _unused2: [::std::os::raw::c_char; 20usize],
+    pub _unused3: ::std::os::raw::c_int,
+    pub _total_written: __uint64_t,
+    pub _unused2: [::std::os::raw::c_char; 8usize],
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -946,7 +948,10 @@ const _: () = {
     ["Offset of field: _IO_FILE::_prevchain"]
         [::std::mem::offset_of!(_IO_FILE, _prevchain) - 184usize];
     ["Offset of field: _IO_FILE::_mode"][::std::mem::offset_of!(_IO_FILE, _mode) - 192usize];
-    ["Offset of field: _IO_FILE::_unused2"][::std::mem::offset_of!(_IO_FILE, _unused2) - 196usize];
+    ["Offset of field: _IO_FILE::_unused3"][::std::mem::offset_of!(_IO_FILE, _unused3) - 196usize];
+    ["Offset of field: _IO_FILE::_total_written"]
+        [::std::mem::offset_of!(_IO_FILE, _total_written) - 200usize];
+    ["Offset of field: _IO_FILE::_unused2"][::std::mem::offset_of!(_IO_FILE, _unused2) - 208usize];
 };
 impl Default for _IO_FILE {
     fn default() -> Self {
@@ -1295,7 +1300,7 @@ pub struct __pthread_mutex_s {
     pub __nusers: ::std::os::raw::c_uint,
     pub __kind: ::std::os::raw::c_int,
     pub __spins: ::std::os::raw::c_short,
-    pub __elision: ::std::os::raw::c_short,
+    pub __glibc_reserved: ::std::os::raw::c_short,
     pub __list: __pthread_list_t,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
@@ -1314,8 +1319,8 @@ const _: () = {
         [::std::mem::offset_of!(__pthread_mutex_s, __kind) - 16usize];
     ["Offset of field: __pthread_mutex_s::__spins"]
         [::std::mem::offset_of!(__pthread_mutex_s, __spins) - 20usize];
-    ["Offset of field: __pthread_mutex_s::__elision"]
-        [::std::mem::offset_of!(__pthread_mutex_s, __elision) - 22usize];
+    ["Offset of field: __pthread_mutex_s::__glibc_reserved"]
+        [::std::mem::offset_of!(__pthread_mutex_s, __glibc_reserved) - 22usize];
     ["Offset of field: __pthread_mutex_s::__list"]
         [::std::mem::offset_of!(__pthread_mutex_s, __list) - 24usize];
 };
@@ -1339,8 +1344,7 @@ pub struct __pthread_rwlock_arch_t {
     pub __pad4: ::std::os::raw::c_uint,
     pub __cur_writer: ::std::os::raw::c_int,
     pub __shared: ::std::os::raw::c_int,
-    pub __rwelision: ::std::os::raw::c_schar,
-    pub __pad1: [::std::os::raw::c_uchar; 7usize],
+    pub __pad1: ::std::os::raw::c_ulong,
     pub __pad2: ::std::os::raw::c_ulong,
     pub __flags: ::std::os::raw::c_uint,
 }
@@ -1365,10 +1369,8 @@ const _: () = {
         [::std::mem::offset_of!(__pthread_rwlock_arch_t, __cur_writer) - 24usize];
     ["Offset of field: __pthread_rwlock_arch_t::__shared"]
         [::std::mem::offset_of!(__pthread_rwlock_arch_t, __shared) - 28usize];
-    ["Offset of field: __pthread_rwlock_arch_t::__rwelision"]
-        [::std::mem::offset_of!(__pthread_rwlock_arch_t, __rwelision) - 32usize];
     ["Offset of field: __pthread_rwlock_arch_t::__pad1"]
-        [::std::mem::offset_of!(__pthread_rwlock_arch_t, __pad1) - 33usize];
+        [::std::mem::offset_of!(__pthread_rwlock_arch_t, __pad1) - 32usize];
     ["Offset of field: __pthread_rwlock_arch_t::__pad2"]
         [::std::mem::offset_of!(__pthread_rwlock_arch_t, __pad2) - 40usize];
     ["Offset of field: __pthread_rwlock_arch_t::__flags"]
@@ -2760,7 +2762,7 @@ impl Default for btrfs_ioctl_search_args {
 pub struct btrfs_ioctl_search_args_v2 {
     pub key: btrfs_ioctl_search_key,
     pub buf_size: __u64,
-    pub buf: __IncompleteArrayField<__u64>,
+    pub buf: __IncompleteArrayField<__u8>,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
@@ -3438,7 +3440,7 @@ impl Default for btrfs_ioctl_get_subvol_rootref_args {
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 pub struct btrfs_ioctl_encoded_io_args {
-    pub iov: *mut iovec,
+    pub iov: *const iovec,
     pub iovcnt: ::std::os::raw::c_ulong,
     pub offset: __s64,
     pub flags: __u64,
