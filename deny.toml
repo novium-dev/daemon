@@ -47,5 +47,8 @@ allow = [
 [advisories]
 unmaintained = "workspace"
 ignore = [
+	"RUSTSEC-2026-0369", # zip
+	"RUSTSEC-2026-0368", # zip
+	"RUSTSEC-2026-0367", # zip
     "RUSTSEC-2023-0071", # TODO: Marvin side-channel attack on rsa@0.9.8
 ]
