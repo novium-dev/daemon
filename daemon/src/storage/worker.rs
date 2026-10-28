@@ -4,11 +4,11 @@ use crate::server::FetchedServer;
 use crate::server::status::InternalServerState;
 use crate::server::stop::ServerStopError;
 use crate::storage::StorageIdentifier;
+use crate::storage::scan::ScanError;
 use crate::utils::ChannelWriteData;
 use crate::{Daemon, DaemonExtra, StorageData};
 use core::sync::atomic::{AtomicI64, Ordering};
 use core::time::Duration;
-use daemon_common::service::files::task::StorageTask;
 use daemon_common::service::server::ServerStats;
 use daemon_common::service::server::task::ServerTask;
 use sqlx::query;
@@ -157,11 +157,19 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
 
         if !quota && last.elapsed().unwrap_or_default() > crate::common::STORAGE_SCAN_INTERVAL {
             last = SystemTime::now();
-            for (id, (server_id, path, _, _, _, data, _)) in &storages {
-                let Ok(_read_guard) = data.lock.try_read(StorageTask::Scan) else {
+            let sizes = super::scan::scan_all(
+                &storages
+                    .iter()
+                    .map(|(id, (_, path, _, _, _, data, _))| {
+                        (*id, path.clone(), Arc::clone(&data.lock))
+                    })
+                    .collect::<Vec<_>>(),
+            );
+            for (id, result) in sizes {
+                let Some((server_id, _, _, _, _, data, _)) = storages.get(&id) else {
                     continue;
                 };
-                match fs_extra::dir::get_size(path) {
+                match result {
                     Ok(size_unsigned) => {
                         let size = if size_unsigned > i64::MAX.unsigned_abs() {
                             -1
@@ -205,7 +213,10 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
                             }
                         }
                     }
-                    Err(err) => {
+                    Err(ScanError::Interrupted) => {
+                        // Storage is used exclusively, retry on the next scan
+                    }
+                    Err(ScanError::IO(err)) => {
                         warn!("Failed to scan directory size for {id:?}: {err:?}");
                     }
                 }

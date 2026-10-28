@@ -3,6 +3,7 @@ pub mod archive;
 pub mod backup;
 #[cfg(feature = "btrfs")]
 pub mod btrfs;
+pub mod scan;
 pub mod sync;
 pub mod worker;
 
