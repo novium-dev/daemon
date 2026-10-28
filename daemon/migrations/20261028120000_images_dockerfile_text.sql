@@ -1,0 +1,2 @@
+ALTER TABLE `images`
+	MODIFY COLUMN `dockerfile` MEDIUMTEXT NOT NULL;

@@ -793,7 +793,7 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
                 }
             }
             query!(
-                "INSERT IGNORE INTO `images` (`id`, `dockerfile`, `default_tag`) VALUES (?, ?, ?)",
+                "INSERT INTO `images` (`id`, `dockerfile`, `default_tag`) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE `dockerfile` = VALUES(`dockerfile`)",
                 image_id,
                 image.dockerfile(),
                 &image.default_tag
