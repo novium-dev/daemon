@@ -2,6 +2,7 @@ use crate::files::{IntoFileEntry as _, storage_path_root};
 use crate::storage::archive::format::ArchiveFormat;
 use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
 use crate::storage::{STORAGE_TOKEN_MAGIC, StorageIdentifier};
+use crate::utils::path_relative;
 use crate::{Daemon, DaemonExtra, StorageNotification};
 use arc_swap::ArcSwap;
 use axum::extract::WebSocketUpgrade;
@@ -78,7 +79,7 @@ async fn handle_websocket(
 
     let mut initial_data = Vec::with_capacity(2);
 
-    let (current_fd, mut current_path) = match root.open_dir(requested_path).await {
+    let (current_fd, mut current_path) = match root.open_dir(path_relative(&requested_path)).await {
         Ok(path) => {
             let current_path = match resolve_current_path(&root, &path).await {
                 Ok(path) => path,
@@ -445,7 +446,9 @@ async fn handle_work_directory_change(
     current_list: &mut IndexMap<u64, FileEntry>,
 ) -> Result<Vec<FilesWatchResponseEntry>, io::Error> {
     if requested_path.starts_with('/') {
-        current_fd.store(Arc::new(root.open_dir(requested_path).await?));
+        current_fd.store(Arc::new(
+            root.open_dir(path_relative(&requested_path)).await?,
+        ));
     } else {
         let mut path = &*requested_path;
         let mut dir = Dir::clone(&current_fd.load());
