@@ -88,7 +88,7 @@ fn lower_priority() {
         );
     }
     // SAFETY: On linux the nice value is per thread, so this only affects the calling thread.
-    if unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 19) } < 0 {
+    if unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 19) } < 0i32 {
         warn!(
             "Unable to lower cpu priority of storage scan: {:?}",
             io::Error::last_os_error()

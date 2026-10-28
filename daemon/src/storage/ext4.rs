@@ -22,7 +22,7 @@ use crate::utils;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::fd::AsRawFd as _;
-use std::os::unix::fs::OpenOptionsExt as _;
+use std::os::unix::fs::{FileTypeExt as _, OpenOptionsExt as _};
 use std::path::Path;
 
 const PRJQUOTA: libc::c_int = 2;
@@ -152,7 +152,12 @@ pub fn assign_project(dir: &Path, project: u32) -> io::Result<()> {
             let file_type = entry.file_type()?;
             // Symlinks and special files cannot be opened to assign them, but
             // they are tiny and anything created later inherits the project.
-            if !file_type.is_dir() && !file_type.is_file() {
+            if file_type.is_symlink()
+                || file_type.is_fifo()
+                || file_type.is_socket()
+                || file_type.is_block_device()
+                || file_type.is_char_device()
+            {
                 continue;
             }
             let path = entry.path();
@@ -218,7 +223,8 @@ mod tests {
     use std::path::PathBuf;
 
     /// Needs `EXT4_QUOTA_TEST_DIR` pointing to a directory on an ext4 filesystem
-    /// mounted with `prjquota`, and `CAP_SYS_ADMIN`.
+    /// mounted with `prjquota`, and `CAP_SYS_ADMIN` without `CAP_SYS_RESOURCE`
+    /// (which bypasses quota limits).
     #[test]
     #[ignore = "requires an ext4 filesystem with project quotas"]
     fn enforces_project_quota() {
