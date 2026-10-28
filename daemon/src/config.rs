@@ -81,6 +81,10 @@ pub enum StorageEntry {
         path: String,
         quota: bool,
     },
+    /// Directory on ext4 with project quotas (mounted with `prjquota`).
+    #[cfg(target_os = "linux")]
+    #[serde(rename = "ext4")]
+    Ext4 { path: String },
 }
 
 impl StorageEntry {
@@ -90,6 +94,8 @@ impl StorageEntry {
             Self::Directory { path } => path,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { path, .. } => path,
+            #[cfg(target_os = "linux")]
+            Self::Ext4 { path } => path,
         }
     }
 
@@ -99,6 +105,9 @@ impl StorageEntry {
             Self::Directory { .. } => ServerStorage::Directory,
             #[cfg(feature = "btrfs")]
             Self::Btrfs { group, .. } => ServerStorage::Btrfs(group.clone()),
+            // Behaves like a plain directory for backups and the backend
+            #[cfg(target_os = "linux")]
+            Self::Ext4 { .. } => ServerStorage::Directory,
         }
     }
 }

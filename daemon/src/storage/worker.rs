@@ -119,7 +119,7 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
         };
 
         #[cfg_attr(
-            not(feature = "btrfs"),
+            not(any(feature = "btrfs", target_os = "linux")),
             expect(unused_mut, reason = "only used currently with btrfs enabled")
         )]
         let mut quota = false;
@@ -152,6 +152,25 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
                 };
                 let size = i64::try_from(*size).unwrap_or(-1);
                 data.value.0.store(size, Ordering::Relaxed);
+            }
+        }
+        #[cfg(target_os = "linux")]
+        if let StorageEntry::Ext4 { path } = storage_entry {
+            quota = true;
+            match std::fs::File::open(path) {
+                Ok(fs) => {
+                    for (id, (_, _, _, _, _, data, _)) in &storages {
+                        match super::ext4::usage(&fs, id.project_id()) {
+                            Ok(size) => {
+                                data.value
+                                    .0
+                                    .store(i64::try_from(size).unwrap_or(-1), Ordering::Relaxed);
+                            }
+                            Err(err) => warn!("Unable to retrieve ext4 quota of {id:?}: {err:?}"),
+                        }
+                    }
+                }
+                Err(err) => warn!("Unable to open ext4 storage {storage_id}: {err:?}"),
             }
         }
 
