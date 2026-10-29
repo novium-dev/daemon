@@ -72,27 +72,22 @@ fn lower_priority() {
     const IOPRIO_CLASS_SHIFT: libc::c_long = 13;
     const CALLING_THREAD: libc::c_long = 0;
 
-    // SAFETY: Only changes the scheduling priority of the calling thread (who = 0).
-    if unsafe {
+    // No wrapper exists for ioprio_set
+    // SAFETY: Only takes integers and changes the io priority of the calling thread
+    let result = nix::errno::Errno::result(unsafe {
         libc::syscall(
             libc::SYS_ioprio_set,
             IOPRIO_WHO_PROCESS,
             CALLING_THREAD,
             IOPRIO_CLASS_IDLE << IOPRIO_CLASS_SHIFT,
         )
-    } < 0
-    {
-        warn!(
-            "Unable to lower io priority of storage scan: {:?}",
-            io::Error::last_os_error()
-        );
+    });
+    if let Err(err) = result {
+        warn!("Unable to lower io priority of storage scan: {err:?}");
     }
-    // SAFETY: On linux the nice value is per thread, so this only affects the calling thread.
-    if unsafe { libc::setpriority(libc::PRIO_PROCESS, 0, 19) } < 0i32 {
-        warn!(
-            "Unable to lower cpu priority of storage scan: {:?}",
-            io::Error::last_os_error()
-        );
+    // On linux the nice value is per thread, so this only affects the calling thread
+    if let Err(err) = rustix::process::setpriority_process(None, 19) {
+        warn!("Unable to lower cpu priority of storage scan: {err:?}");
     }
 }
 

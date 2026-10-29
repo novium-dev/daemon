@@ -9,16 +9,9 @@
 //! Requires a filesystem created with `-O quota,project` (or enabled later with
 //! `tune2fs -O quota,project`) and mounted with `prjquota`.
 
-#![allow(
-    clippy::cast_possible_wrap,
-    reason = "ioctl can differ on different platform, for example u64 on glibc and i32 on musl"
-)]
-#![allow(
-    clippy::cast_lossless,
-    reason = "ioctl can differ on different platform, for example u64 on glibc and i32 on musl"
-)]
-
 use crate::utils;
+use nix::errno::Errno;
+use nix::sys::statfs::{EXT4_SUPER_MAGIC, fstatfs};
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::fd::AsRawFd as _;
@@ -28,8 +21,6 @@ use std::path::Path;
 const PRJQUOTA: libc::c_int = 2;
 /// Unit of `dqb_bhardlimit` and `dqb_bsoftlimit`.
 const QIF_DQBLKSIZE: u64 = 1024;
-const FS_IOC_FSGETXATTR: u32 = 0x801C_581F;
-const FS_IOC_FSSETXATTR: u32 = 0x401C_5820;
 const FS_XFLAG_PROJINHERIT: u32 = 0x0000_0200;
 
 #[repr(C)]
@@ -43,6 +34,9 @@ struct FsXAttr {
     pad: [u8; 8],
 }
 
+nix::ioctl_read!(fs_get_xattr, b'X', 31, FsXAttr);
+nix::ioctl_write_ptr!(fs_set_xattr, b'X', 32, FsXAttr);
+
 fn open(path: &Path) -> io::Result<File> {
     OpenOptions::new()
         .read(true)
@@ -52,17 +46,8 @@ fn open(path: &Path) -> io::Result<File> {
 
 fn get_xattr(file: &File) -> io::Result<FsXAttr> {
     let mut attr = FsXAttr::default();
-    // SAFETY: attr is a valid fsxattr, which FS_IOC_FSGETXATTR writes to
-    if unsafe {
-        libc::ioctl(
-            file.as_raw_fd(),
-            FS_IOC_FSGETXATTR as _,
-            core::ptr::from_mut(&mut attr),
-        )
-    } < 0i32
-    {
-        return Err(io::Error::last_os_error());
-    }
+    // SAFETY: attr is a valid fsxattr for the kernel to write to
+    unsafe { fs_get_xattr(file.as_raw_fd(), &raw mut attr) }?;
     Ok(attr)
 }
 
@@ -78,20 +63,13 @@ fn set_project(file: &File, project: u32, inherit: bool) -> io::Result<()> {
     }
     attr.projid = project;
     attr.xflags = flags;
-    // SAFETY: attr is a valid fsxattr, which FS_IOC_FSSETXATTR reads from
-    if unsafe {
-        libc::ioctl(
-            file.as_raw_fd(),
-            FS_IOC_FSSETXATTR as _,
-            core::ptr::from_ref(&attr),
-        )
-    } < 0i32
-    {
-        return Err(io::Error::last_os_error());
-    }
+    // SAFETY: attr is a valid fsxattr for the kernel to read from
+    unsafe { fs_set_xattr(file.as_raw_fd(), &raw const attr) }?;
     Ok(())
 }
 
+/// No wrapper exists for `quotactl_fd`, unlike `quotactl` it does not need
+/// the block device of the filesystem.
 fn quotactl(
     file: &File,
     cmd: libc::c_int,
@@ -99,7 +77,7 @@ fn quotactl(
     quota: &mut libc::dqblk,
 ) -> io::Result<()> {
     // SAFETY: quota is a valid dqblk, which Q_GETQUOTA and Q_SETQUOTA expect
-    if unsafe {
+    Errno::result(unsafe {
         libc::syscall(
             libc::SYS_quotactl_fd,
             file.as_raw_fd(),
@@ -107,10 +85,7 @@ fn quotactl(
             project,
             core::ptr::from_mut(quota),
         )
-    } < 0
-    {
-        return Err(io::Error::last_os_error());
-    }
+    })?;
     Ok(())
 }
 
@@ -201,13 +176,8 @@ pub fn usage(fs: &File, project: u32) -> io::Result<u64> {
 /// Verifies that `path` is on ext4 with project quotas enabled.
 pub fn check(path: &Path) -> Result<(), String> {
     let file = open(path).map_err(|err| format!("Unable to open: {err}"))?;
-    // SAFETY: zeroed is a valid statfs, which fstatfs fills
-    let mut stat: libc::statfs = unsafe { core::mem::zeroed() };
-    // SAFETY: stat is a valid statfs
-    if unsafe { libc::fstatfs(file.as_raw_fd(), &raw mut stat) } < 0i32 {
-        return Err(format!("statfs failed: {}", io::Error::last_os_error()));
-    }
-    if i128::from(stat.f_type) != i128::from(libc::EXT4_SUPER_MAGIC) {
+    let stat = fstatfs(&file).map_err(|err| format!("statfs failed: {err}"))?;
+    if stat.filesystem_type() != EXT4_SUPER_MAGIC {
         return Err("the path is not on an ext4 filesystem".to_owned());
     }
     usage(&file, 0)

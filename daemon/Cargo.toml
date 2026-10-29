@@ -147,7 +147,7 @@ version = "3.0.1"
 
 [dependencies.rustix]
 version = "1.1.5"
-features = ["thread", "fs"]
+features = ["thread", "fs", "process"]
 
 [dependencies.zbus]
 version = "6.1.0"
@@ -159,7 +159,7 @@ features = ["systemd1"]
 
 [dependencies.nix]
 version = "0.31.3"
-features = ["fs", "user"]
+features = ["fs", "user", "ioctl"]
 
 [dependencies.zstd]
 version = "0.14.3"
