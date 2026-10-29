@@ -7,7 +7,6 @@ use bollard::query_parameters::{BuildImageOptions, ListImagesOptions};
 use cap_async_std::async_std::stream::StreamExt as _;
 use http_body_util::Full;
 use indexmap::IndexMap;
-use ringbuffer::AllocRingBuffer;
 use sqlx::{Executor, MySql, query, query_scalar};
 use std::collections::{HashMap, HashSet};
 use tar::{Builder, Header};
@@ -86,7 +85,6 @@ impl FetchedServer {
         &self,
         state: &Daemon<impl DaemonExtra>,
         docker: &Docker,
-        buffer: &mut AllocRingBuffer<u8>,
         server_data: &ServerData,
     ) -> Result<String, ServerStartError> {
         let required: IndexMap<_, _> = self
@@ -133,7 +131,12 @@ impl FetchedServer {
             .collect();
 
         if !missing.is_empty() {
-            Self::log(&server_data.sender, buffer, "Building Image...");
+            Self::log(
+                &server_data.sender,
+                &server_data.buffer,
+                "Building Image...",
+            )
+            .await;
 
             for (tag, image) in missing {
                 debug!("Building image {tag} for server {}...", self.id);
@@ -184,7 +187,12 @@ impl FetchedServer {
                         if !progress_map.is_empty() {
                             progress_map.clear();
                         }
-                        Self::console(&server_data.sender, buffer, stream.replace('\n', "\r\n"));
+                        Self::console(
+                            &server_data.sender,
+                            &server_data.buffer,
+                            stream.replace('\n', "\r\n"),
+                        )
+                        .await;
                     // It doesn't matter if there could be two \r after this
                     } else if let Some(id) = progress.id {
                         if !progress_map.contains_key(&id) {
@@ -243,7 +251,7 @@ impl FetchedServer {
                             msg += "\r\n";
                         }
                         if !last_progress.is_empty() {
-                            Self::console(&server_data.sender, buffer, msg);
+                            Self::console(&server_data.sender, &server_data.buffer, msg).await;
                         }
                     } else {
                         // No information about the progress, just do nothing

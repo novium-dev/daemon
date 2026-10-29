@@ -118,8 +118,7 @@ pub async fn watch(
             log = output.next() => {
                 match log {
                     Some(Ok(log)) => {
-                        let mut buffer = buffer.lock().await;
-                        FetchedServer::console(&sender, &mut buffer, log.to_string());
+                        FetchedServer::console(&sender, &buffer, log.to_string()).await;
                     },
                     Some(Err(_err)) => return,
                     None => break,
@@ -183,17 +182,16 @@ pub async fn watch(
             Duration::from_secs(1),
         ));
     }
-    let mut buffer = buffer.lock().await;
-    FetchedServer::console(&server_data.sender, &mut buffer, "\n".to_owned());
-    FetchedServer::log(&server_data.sender, &mut buffer, "Server stopped!");
+    FetchedServer::console(&server_data.sender, &buffer, "\n".to_owned()).await;
+    FetchedServer::log(&server_data.sender, &buffer, "Server stopped!").await;
     if failure_exceeded && !do_restart {
         FetchedServer::log(
             &server_data.sender,
-            &mut buffer,
+            &buffer,
             "Server crashed 3 times in a row. Server will not restart",
-        );
+        )
+        .await;
     }
-    drop(buffer);
     let disk = storage_value.0.load(Ordering::Relaxed);
     let disk_max = storage_value.1.load(Ordering::Relaxed);
     let _ = stats_sender.send(ChannelWriteData::Stats(
