@@ -76,12 +76,12 @@ pub async fn new_session<
     };
 
     let buffer = buffer.lock().await;
+    let mut recv = sender.subscribe();
     state
         .write(ChannelWriteData::Terminal(buffer.to_vec()))
         .await;
     drop(buffer);
 
-    let mut recv = sender.subscribe();
     let mut last_sent = Instant::now();
     let mut ping_sent = false;
 

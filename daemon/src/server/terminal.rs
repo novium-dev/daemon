@@ -7,6 +7,7 @@ use ringbuffer::AllocRingBuffer;
 use std::collections::HashSet;
 use termion::color;
 use termion::color::Fg;
+use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 
 impl FetchedServer {
@@ -14,26 +15,29 @@ impl FetchedServer {
         format!("{}[Daemon] ", Fg(color::Yellow))
     }
 
-    pub(crate) fn console(
+    pub(crate) async fn console(
         sender: &Sender<ChannelWriteData>,
-        buffer: &mut AllocRingBuffer<u8>,
+        buffer: &Mutex<AllocRingBuffer<u8>>,
         msg: String,
     ) {
         let bytes = msg.into_bytes();
+        let mut buffer = buffer.lock().await;
         buffer.extend(bytes.clone());
         let _ = sender.send(ChannelWriteData::Terminal(bytes));
+        drop(buffer);
     }
 
-    pub(crate) fn log(
+    pub(crate) async fn log(
         sender: &Sender<ChannelWriteData>,
-        buffer: &mut AllocRingBuffer<u8>,
+        buffer: &Mutex<AllocRingBuffer<u8>>,
         msg: &str,
     ) {
         Self::console(
             sender,
             buffer,
             format!("\r{}{}{}\r\n", Self::prefix(), msg, Fg(color::Reset)),
-        );
+        )
+        .await;
     }
 
     pub(crate) async fn update_exec_tty_size(

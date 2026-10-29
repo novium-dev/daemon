@@ -108,16 +108,19 @@ impl FetchedServer {
 
         Self::update_status(self.id, &self.locks, &docker, &server_data).await;
 
-        let buffer = Arc::clone(&server_data.buffer);
-        let mut buffer = buffer.lock().await;
-        buffer.clear();
-        Self::log(&server_data.sender, &mut buffer, "Preparing Server...");
+        server_data.buffer.lock().await.clear();
+        Self::log(
+            &server_data.sender,
+            &server_data.buffer,
+            "Preparing Server...",
+        )
+        .await;
 
         daemon.sync_cgroups::<ServerStartError>().await?;
 
         let image = self
             .clone()
-            .prepare_image(daemon, &docker, &mut buffer, &server_data)
+            .prepare_image(daemon, &docker, &server_data)
             .await?;
 
         let storage_path_buf = PathBuf::from(&storage_path);
@@ -232,7 +235,12 @@ impl FetchedServer {
             });
         }
 
-        Self::log(&server_data.sender, &mut buffer, "Creating Environment...");
+        Self::log(
+            &server_data.sender,
+            &server_data.buffer,
+            "Creating Environment...",
+        )
+        .await;
 
         let mut env: HashMap<String, String> = HashMap::from_iter([
             ("TERM".to_owned(), "xterm-256color".to_owned()),
@@ -256,7 +264,7 @@ impl FetchedServer {
 
         let cpu = self.cpu.and_then(clamp_cpu_limit::<false>);
 
-        docker
+        let created = docker
             .create_container(
                 Some(CreateContainerOptions {
                     name: Some(Self::container_name(self.id)),
@@ -354,30 +362,39 @@ impl FetchedServer {
                     ..ContainerCreateBody::default()
                 },
             )
-            .await
-            .inspect_err(|_err| {
-                Self::log(
-                    &server_data.sender,
-                    &mut buffer,
-                    "Container creation failed",
-                );
-            })
-            .map_err(ServerStartError::Docker)?;
+            .await;
+        if let Err(err) = created {
+            Self::log(
+                &server_data.sender,
+                &server_data.buffer,
+                "Container creation failed",
+            )
+            .await;
+            return Err(ServerStartError::Docker(err));
+        }
 
-        Self::log(&server_data.sender, &mut buffer, "Starting Server...");
+        Self::log(
+            &server_data.sender,
+            &server_data.buffer,
+            "Starting Server...",
+        )
+        .await;
 
-        docker
+        let started = docker
             .start_container(
                 &Self::container_name(self.id),
                 None::<StartContainerOptions>,
             )
-            .await
-            .inspect_err(|_err| {
-                Self::log(&server_data.sender, &mut buffer, "Container start failed");
-            })
-            .map_err(ServerStartError::Docker)?;
-
-        drop(buffer);
+            .await;
+        if let Err(err) = started {
+            Self::log(
+                &server_data.sender,
+                &server_data.buffer,
+                "Container start failed",
+            )
+            .await;
+            return Err(ServerStartError::Docker(err));
+        }
 
         let server_id = self.id;
         attach(
