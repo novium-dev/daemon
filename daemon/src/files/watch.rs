@@ -2,6 +2,7 @@ use crate::files::{IntoFileEntry as _, storage_path_root};
 use crate::storage::archive::format::ArchiveFormat;
 use crate::storage::sync::{StorageLockData, StorageTokens, storage_read_timeout};
 use crate::storage::{STORAGE_TOKEN_MAGIC, StorageIdentifier};
+use crate::utils::path_relative;
 use crate::{Daemon, DaemonExtra, StorageNotification};
 use arc_swap::ArcSwap;
 use axum::extract::WebSocketUpgrade;
@@ -78,7 +79,7 @@ async fn handle_websocket(
 
     let mut initial_data = Vec::with_capacity(2);
 
-    let (current_fd, mut current_path) = match root.open_dir(requested_path).await {
+    let (current_fd, mut current_path) = match root.open_dir(path_relative(&requested_path)).await {
         Ok(path) => {
             let current_path = match resolve_current_path(&root, &path).await {
                 Ok(path) => path,
@@ -445,7 +446,9 @@ async fn handle_work_directory_change(
     current_list: &mut IndexMap<u64, FileEntry>,
 ) -> Result<Vec<FilesWatchResponseEntry>, io::Error> {
     if requested_path.starts_with('/') {
-        current_fd.store(Arc::new(root.open_dir(requested_path).await?));
+        current_fd.store(Arc::new(
+            root.open_dir(path_relative(&requested_path)).await?,
+        ));
     } else {
         let mut path = &*requested_path;
         let mut dir = Dir::clone(&current_fd.load());
@@ -566,36 +569,45 @@ async fn handle_reload(
     } else {
         let mut entries = Vec::new();
 
-        for (index, (ino_new, entry_new)) in list.clone().into_iter().enumerate() {
-            if let Some((ino_current, entry_current)) = current_list.get_index_mut(index) {
-                if ino_new == *ino_current {
-                    if !entry_new.eq(entry_current) {
-                        entries.push(FilesWatchResponseEntry::Modify {
-                            index,
-                            entry: entry_new.clone(),
-                        });
-                        *entry_current = entry_new;
-                    }
-                    continue;
-                }
-                if !list.contains_key(ino_current) {
-                    entries.push(FilesWatchResponseEntry::Remove { index });
-                    current_list.shift_remove_index(index);
-                }
-                if let Some(old_index) = current_list.get_index_of(&ino_new) {
-                    entries.push(FilesWatchResponseEntry::Move {
-                        index: old_index,
-                        offset: i64::try_from(index)
-                            .map_err(io::Error::other)?
-                            .checked_sub(i64::try_from(old_index).map_err(io::Error::other)?)
-                            .expect("index - old_index underflowed"),
-                    });
-                    current_list.move_index(old_index, index);
-                    continue;
-                }
-            }
+        let removed = current_list
+            .keys()
+            .enumerate()
+            .filter(|(_, ino)| !list.contains_key(*ino))
+            .map(|(index, _)| index)
+            .collect::<Vec<_>>();
+        for index in removed.into_iter().rev() {
+            entries.push(FilesWatchResponseEntry::Remove { index });
+            current_list.shift_remove_index(index);
+        }
 
-            current_list.shift_insert(index, ino_new, entry_new);
+        for (index, (ino_new, entry_new)) in list.into_iter().enumerate() {
+            let Some(old_index) = current_list.get_index_of(&ino_new) else {
+                entries.push(FilesWatchResponseEntry::Add {
+                    index,
+                    entry: entry_new.clone(),
+                });
+                current_list.shift_insert(index, ino_new, entry_new);
+                continue;
+            };
+            if old_index != index {
+                entries.push(FilesWatchResponseEntry::Move {
+                    index: old_index,
+                    offset: i64::try_from(index)
+                        .map_err(io::Error::other)?
+                        .checked_sub(i64::try_from(old_index).map_err(io::Error::other)?)
+                        .expect("index - old_index underflowed"),
+                });
+                current_list.move_index(old_index, index);
+            }
+            if let Some((_, entry_current)) = current_list.get_index_mut(index)
+                && !entry_new.eq(entry_current)
+            {
+                entries.push(FilesWatchResponseEntry::Modify {
+                    index,
+                    entry: entry_new.clone(),
+                });
+                *entry_current = entry_new;
+            }
         }
 
         Ok(entries)
