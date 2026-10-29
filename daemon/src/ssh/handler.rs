@@ -10,9 +10,10 @@ use core::sync::atomic::{AtomicU16, Ordering};
 use daemon_common::node::BackendAuthServerPermissions;
 use daemon_common::service::files::task::StorageTask;
 use daemon_common::ssh::{DaemonBackendAuthResponse, DaemonBackendAuthServer};
-use russh::keys::PublicKey;
 use russh::keys::ssh_key::Fingerprint;
-use russh::server::{Auth, ChannelOpenHandle, Handler, Msg, Session};
+use russh::server::{
+    Auth, ChannelOpenHandle, Handler, Msg, PublicKeyOffer, Session, VerifiedPublicKey,
+};
 use russh::{Channel, ChannelId, Pty};
 use std::collections::HashMap;
 use std::io::ErrorKind;
@@ -92,7 +93,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
     async fn auth_publickey(
         &mut self,
         user: &str,
-        public_key: &PublicKey,
+        public_key: VerifiedPublicKey<'_>,
     ) -> Result<Auth, Self::Error> {
         #[cfg(feature = "ssh_debug_auth_bypass")]
         {
@@ -105,7 +106,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
         };
         match self
             .publickey_cache
-            .get_resolved(&self.daemon, ssh, user, public_key)
+            .get_resolved(&self.daemon, ssh, user, public_key.public_key)
             .await
             .inspect_err(|err| debug!("Publickey authentication failed: {err:?}"))
         {
@@ -129,7 +130,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
     async fn auth_publickey_offered(
         &mut self,
         user: &str,
-        public_key: &PublicKey,
+        offer: PublicKeyOffer<'_>,
     ) -> Result<Auth, Self::Error> {
         #[cfg(feature = "ssh_debug_auth_bypass")]
         {
@@ -142,7 +143,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
         };
         match self
             .publickey_cache
-            .get_resolved(&self.daemon, ssh, user, public_key)
+            .get_resolved(&self.daemon, ssh, user, offer.public_key)
             .await
             .inspect_err(|err| debug!("Publickey offered authentication failed: {err:?}"))
         {
