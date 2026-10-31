@@ -3,6 +3,9 @@ pub mod archive;
 pub mod backup;
 #[cfg(feature = "btrfs")]
 pub mod btrfs;
+#[cfg(target_os = "linux")]
+pub mod ext4;
+pub mod scan;
 pub mod sync;
 pub mod worker;
 
@@ -25,6 +28,14 @@ impl StorageIdentifier {
             Self::Primary(id) => PathBuf::from(format!("primary/{id}")),
         }
     }
+
+    /// Quota project id of this storage.
+    #[cfg(target_os = "linux")]
+    pub const fn project_id(self) -> u32 {
+        match self {
+            Self::Primary(id) => id,
+        }
+    }
 }
 
 /// Cancel safe (possible subvolume without quota, should correct itself after next storage access)
@@ -43,6 +54,12 @@ pub async fn prepare(
     {
         match &storage {
             StorageEntry::Directory { .. } => {
+                fs::create_dir_all(&dir)
+                    .await
+                    .inspect_err(|err| error!("Unable to create storage directory: {err:?}"))?;
+            }
+            #[cfg(target_os = "linux")]
+            StorageEntry::Ext4 { .. } => {
                 fs::create_dir_all(&dir)
                     .await
                     .inspect_err(|err| error!("Unable to create storage directory: {err:?}"))?;
@@ -85,6 +102,17 @@ pub async fn prepare(
     #[cfg(feature = "btrfs")]
     if let StorageEntry::Btrfs { quota: true, .. } = &storage {
         btrfs::apply_qgroup_limit(&dir, disk).await?;
+    }
+    #[cfg(target_os = "linux")]
+    if let StorageEntry::Ext4 { .. } = &storage {
+        let dir = dir.clone();
+        tokio::task::spawn_blocking(move || {
+            ext4::assign_project(&dir, id.project_id())?;
+            ext4::apply_limit(&dir, id.project_id(), disk)
+        })
+        .await
+        .map_err(io::Error::from)?
+        .inspect_err(|err| error!("Unable to apply ext4 project quota: {err:?}"))?;
     }
     value.1.store(
         disk.filter(|value| *value <= i64::MAX.unsigned_abs())
@@ -144,6 +172,15 @@ pub async fn delete(storage: &StorageEntry, id: StorageIdentifier) -> Result<(),
             .inspect_err(|err| error!("Unable to remove storage directory: {err:?}"))
             .map_err(io::Error::from)?
             .inspect_err(|err| error!("Unable to remove storage directory: {err:?}"))?;
+    }
+    #[cfg(target_os = "linux")]
+    if let StorageEntry::Ext4 { .. } = storage {
+        let project = id.project_id();
+        let _ = tokio::task::spawn_blocking(move || ext4::apply_limit(&base, project, None))
+            .await
+            .map_err(io::Error::from)
+            .and_then(|result| result)
+            .inspect_err(|err| error!("Unable to remove ext4 project quota limit: {err:?}"));
     }
     Ok(())
 }

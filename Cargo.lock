@@ -1320,7 +1320,6 @@ dependencies = [
  "ed25519-dalek",
  "either",
  "flate2",
- "fs_extra",
  "futures",
  "futures-util",
  "hex",

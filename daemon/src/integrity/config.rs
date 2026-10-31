@@ -86,7 +86,8 @@ impl Check for ConfigPaths {
         "Storage and backup directories are created on first use, so they may still be missing; \
          what matters is that the daemon could create them and write to them. A storage \
          configured as btrfs must really live on a btrfs filesystem, with quotas enabled where \
-         the config asks for them, and every configured bind mount source must already exist."
+         the config asks for them, one configured as ext4 on ext4 with project quotas \
+         enabled, and every configured bind mount source must already exist."
     }
 
     fn category(&self) -> IntegrityCategory {
@@ -103,6 +104,10 @@ impl Check for ConfigPaths {
                 #[cfg(feature = "btrfs")]
                 StorageEntry::Btrfs { path, quota, .. } => {
                     check_btrfs(&mut findings, "storage", name, path, *quota).await;
+                }
+                #[cfg(target_os = "linux")]
+                StorageEntry::Ext4 { path } => {
+                    check_ext4(&mut findings, name, path).await;
                 }
             }
         }
@@ -140,6 +145,31 @@ impl Check for ConfigPaths {
 
         Ok(findings)
     }
+}
+
+#[cfg(target_os = "linux")]
+async fn check_ext4(findings: &mut Vec<IntegrityFinding>, name: &str, path: &str) {
+    use crate::storage::ext4;
+
+    if !fs::symlink_metadata(path)
+        .await
+        .is_ok_and(|metadata| metadata.is_dir())
+    {
+        return;
+    }
+
+    let owned = PathBuf::from(path);
+    let problem = match tokio::task::spawn_blocking(move || ext4::check(&owned)).await {
+        Ok(Ok(())) => return,
+        Ok(Err(problem)) => problem,
+        Err(err) => format!("could not be probed: {err}"),
+    };
+    findings.push(
+        IntegrityFinding::error(format!(
+            "The storage {name} is configured as ext4, but {problem}"
+        ))
+        .with_subject(path),
+    );
 }
 
 #[cfg(feature = "btrfs")]
