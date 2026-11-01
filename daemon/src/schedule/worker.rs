@@ -32,12 +32,10 @@ pub async fn task(
     schedule: Schedule,
     timezone: impl TimeZone + Copy + Send + 'static,
 ) {
-    drop(tokio::task::spawn(async move {
-        while let Some(next) = determine_next_run(&schedule, &timezone) {
-            tokio::time::sleep_until(next).await;
-            run(daemon.clone(), server_id, &server_data, policy, &steps).await;
-        }
-    }));
+    while let Some(next) = determine_next_run(&schedule, &timezone) {
+        tokio::time::sleep_until(next).await;
+        run(daemon.clone(), server_id, &server_data, policy, &steps).await;
+    }
 }
 
 /// Runs a schedule's steps once, right now.
