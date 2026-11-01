@@ -126,7 +126,19 @@ fn main() {
 
     #[cfg(all(feature = "sentry", not(debug_assertions)))]
     let guard = {
-        reg.with(sentry::integrations::tracing::layer()).init();
+        use sentry::integrations::tracing::{BreadcrumbLayer, ErrorLayer, SpanLayer};
+        use tracing_subscriber::Layer as _;
+        use tracing_subscriber::filter::{LevelFilter, filter_fn};
+
+        reg.with(SpanLayer::new().with_filter(LevelFilter::INFO))
+            .with(BreadcrumbLayer::new().with_filter(filter_fn(|metadata| {
+                matches!(
+                    *metadata.level(),
+                    tracing::Level::WARN | tracing::Level::INFO
+                )
+            })))
+            .with(ErrorLayer::new().with_filter(LevelFilter::ERROR))
+            .init();
         let sentry = sentry::init((
             "https://79a1f560730aef34fdc4e4a3f3d9ce92@o4507044844404736.ingest.us.sentry.io/4508313795297280",
             sentry::ClientOptions::new().maybe_release(sentry::release_name!()),
