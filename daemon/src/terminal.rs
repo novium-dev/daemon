@@ -77,10 +77,10 @@ pub async fn new_session<
 
     let buffer = buffer.lock().await;
     let mut recv = sender.subscribe();
-    state
-        .write(ChannelWriteData::Terminal(buffer.to_vec()))
-        .await;
+    let history = buffer.to_vec();
+    // A slow client must not block the console while the history is written
     drop(buffer);
+    state.write(ChannelWriteData::Terminal(history)).await;
 
     let mut last_sent = Instant::now();
     let mut ping_sent = false;
@@ -208,5 +208,79 @@ pub async fn update_size(id: u32, docker: &Docker, server_data: &ServerData) {
             warn!("Failed to resize tty to {cols},{rows}: {err:?}");
         }
         break;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{TerminalData, TerminalSessionOrigin, new_session};
+    use crate::ServerData;
+    use crate::utils::{ChannelAdapter, ChannelError, ChannelWriteData};
+    use async_trait::async_trait;
+    use bollard::{API_DEFAULT_VERSION, Docker};
+    use core::future::pending;
+    use core::sync::atomic::AtomicU16;
+    use core::time::Duration;
+    use std::sync::Arc;
+    use tokio::sync::Notify;
+
+    /// A client that stopped reading, so every write hangs.
+    struct StalledClient(Arc<Notify>);
+
+    #[async_trait]
+    impl ChannelAdapter<(), (), ()> for StalledClient {
+        async fn read(&mut self) {
+            pending::<()>().await;
+        }
+
+        fn read_transform(&mut self, _data: ()) -> Result<Vec<u8>, ChannelError> {
+            Ok(Vec::new())
+        }
+
+        async fn write(&mut self, _data: ChannelWriteData) {
+            self.0.notify_one();
+            pending::<()>().await;
+        }
+
+        fn write_transform(&mut self, _data: ()) -> Result<(), ChannelError> {
+            Ok(())
+        }
+
+        async fn flush(&mut self) {}
+
+        async fn close(self) {}
+
+        fn send_ping() -> bool {
+            false
+        }
+    }
+
+    #[tokio::test]
+    async fn stalled_client_does_not_block_the_console() {
+        let server_data = Arc::new(ServerData::default());
+        let docker = Docker::connect_with_http("http://localhost:1", 1, API_DEFAULT_VERSION)
+            .expect("docker client");
+        let writing = Arc::new(Notify::new());
+
+        let session = tokio::task::spawn(new_session(
+            1,
+            StalledClient(Arc::clone(&writing)),
+            TerminalData {
+                sender: Arc::clone(&server_data.sender),
+                attach_write: Arc::clone(&server_data.attach_write),
+                cols: Arc::new(AtomicU16::new(0)),
+                rows: Arc::new(AtomicU16::new(0)),
+                origin: TerminalSessionOrigin::Web,
+                write: false,
+            },
+            Arc::new(docker),
+            Arc::clone(&server_data),
+        ));
+
+        writing.notified().await;
+        let buffer = tokio::time::timeout(Duration::from_secs(1), server_data.buffer.lock()).await;
+        assert!(buffer.is_ok(), "stalled client holds the terminal buffer");
+        drop(buffer);
+        session.abort();
     }
 }
