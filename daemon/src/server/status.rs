@@ -68,7 +68,7 @@ impl FetchedServer {
                 all: true,
                 filters: Some(HashMap::from([(
                     "name".to_owned(),
-                    vec![Self::container_name(id)],
+                    vec![format!("^/?{}$", Self::container_name(id))],
                 )])),
                 ..ListContainersOptions::default()
             }))
