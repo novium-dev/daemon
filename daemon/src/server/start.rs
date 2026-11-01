@@ -244,6 +244,7 @@ impl FetchedServer {
 
         let mut env: HashMap<String, String> = HashMap::from_iter([
             ("TERM".to_owned(), "xterm-256color".to_owned()),
+            ("LANG".to_owned(), "C.UTF-8".to_owned()),
             ("TZ".to_owned(), utils::host_timezone().to_owned()),
             (
                 "HOME".to_owned(),
