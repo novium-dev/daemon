@@ -216,7 +216,7 @@ pub trait FilesService {
     ) -> Result<WebsocketResponse, _>;
 
     /// A websocket for file updates in realtime (called by the user)
-    #[route(!"/user/files/{server_id}/watch", method = WS, query = [ path "The initial work directory path", verify, timestamp ])]
+    #[route(!"/user/files/{server_id}/watch", method = WS, query = [ path "The initial work directory path", verify, timestamp ], no_auth)]
     #[error(auth::{signature_invalid, signature_expired}, storage::{not_found, mutex_locked, failure <- [io:*]}, sql::failure <- [sql:*])]
     async fn server_watch_files_user(
         &self,
