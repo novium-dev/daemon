@@ -130,7 +130,7 @@ pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> 
         std::fs::create_dir_all(format!("/tmp/daemon_test_{node_id}"))
             .expect("failed to create tmp directory");
 
-        let runtime_dir = PathBuf::from(format!("/run/daemon_test_{node_id}"));
+        let runtime_dir = PathBuf::from(format!("/run/daemon_test/{node_id}"));
 
         let daemon = rt.block_on(async move {
             if MySql::database_exists(&config.database)

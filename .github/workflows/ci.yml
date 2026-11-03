@@ -89,7 +89,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: rust:1.98.0-alpine
-      options: -v /var/run/docker.sock:/var/run/docker.sock -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket --privileged
+      options: -v /run/daemon_test/:/run/daemon_test/ -v /var/run/docker.sock:/var/run/docker.sock -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket --privileged
     services:
       test-db:
         image: mariadb:latest
