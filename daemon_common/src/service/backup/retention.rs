@@ -386,7 +386,7 @@ mod tests {
                 protected,
             ]
         );
-        assert!(outcome.remove.is_empty());
+        assert_eq!(outcome.remove, [] as [i64; 0]);
     }
 
     #[test]
@@ -458,6 +458,6 @@ mod tests {
         }
         .apply(&list);
         assert!(outcome.keep.contains(&i64::MAX));
-        assert!(outcome.remove.is_empty());
+        assert_eq!(outcome.remove, [] as [i64; 0]);
     }
 }

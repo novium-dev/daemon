@@ -264,37 +264,3 @@ async fn run(database_url: Url, runtime_dir: PathBuf) {
 
     daemon.await_shutdown().await;
 }
-
-#[expect(clippy::allow_attributes, reason = "platform depending")]
-#[allow(
-    clippy::missing_const_for_fn,
-    reason = "function performs non-const Linux capability setup behind cfg"
-)]
-fn fsuid_setup() {
-    #[cfg(target_os = "linux")]
-    {
-        use nix::unistd::{Gid, Uid};
-        use std::os::unix::fs::MetadataExt as _;
-        if std::fs::metadata("/proc/self/")
-            .expect("Unable to retrieve uid of /proc/self/")
-            .uid()
-            != 0
-        {
-            return;
-        }
-        capctl::prctl::set_keepcaps(true).expect("Unable to keep capabilities after setuid");
-        let mut capstate =
-            capctl::CapState::get_current().expect("Unable to retrieve current capabilities");
-        capstate.permitted.add(capctl::Cap::DAC_OVERRIDE);
-
-        nix::unistd::setfsuid(Uid::from_raw(u32::from(common::CONTAINER_DEFAULT_UID)));
-        nix::unistd::setfsgid(Gid::from_raw(u32::from(common::CONTAINER_DEFAULT_UID)));
-
-        let mut capstate =
-            capctl::CapState::get_current().expect("Unable to retrieve current capabilities");
-        capstate.effective.add(capctl::Cap::DAC_OVERRIDE);
-        capstate
-            .set_current()
-            .expect("Unable to set effective capabilities");
-    }
-}

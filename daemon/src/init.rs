@@ -33,7 +33,6 @@ use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::task::{JoinError, JoinSet};
 use tracing::{debug, error, info, warn};
-use url::Url;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DaemonInitError {
@@ -70,29 +69,22 @@ impl Daemon<WithUserKey> {
         root: Arc<DaemonRootKey>,
         key: Arc<DaemonKey>,
         runtime_dir: PathBuf,
-        mut base_url: Url,
         user_key: SigningKey,
     ) -> Result<Self, DaemonInitError> {
-        crate::common::utils::base_url(&mut base_url);
-        Self::init_internal(
-            config,
-            root,
-            key,
-            runtime_dir,
-            WithUserKey { base_url, user_key },
-        )
-        .await
+        Self::init_internal(config, root, key, runtime_dir, WithUserKey { user_key }).await
     }
 }
 
 impl<T: DaemonExtra> Daemon<T> {
     async fn init_internal(
-        config: DaemonConfig,
+        mut config: DaemonConfig,
         root: Arc<DaemonRootKey>,
         key: Arc<DaemonKey>,
         runtime_dir: PathBuf,
         extra: T,
     ) -> Result<Self, DaemonInitError> {
+        crate::common::utils::base_url(&mut config.public_url);
+
         #[cfg(target_os = "macos")]
         {
             info!("==========================================================");
