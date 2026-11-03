@@ -118,6 +118,7 @@ impl FetchedServer {
                     .into_iter()
                     .map(|tag| {
                         tag.strip_prefix("localhost/")
+                            .map_or_else(|| tag.strip_prefix("docker.io/library/"), Some)
                             .map(String::from)
                             .unwrap_or(tag)
                     })
