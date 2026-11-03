@@ -31,7 +31,7 @@ use std::os::fd::OwnedFd;
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tracing::warn;
+use tracing::{error, warn};
 
 #[derive(Debug, thiserror::Error)]
 pub enum ServerStartError {
@@ -126,6 +126,7 @@ impl FetchedServer {
         let storage_path_buf = PathBuf::from(&storage_path);
         let storage = Dir::open_ambient_dir(&storage_path_buf, ambient_authority())
             .await
+            .inspect_err(|err| error!("Failed to open server storage: {err:?}"))
             .map_err(ServerStartError::IO)?;
         let storage2 = storage.clone();
         let _ = storage2.remove_dir_all(".tmp").await;
@@ -134,6 +135,7 @@ impl FetchedServer {
             .expect("Temporary directory creation task panicked")
             && err.kind() != ErrorKind::AlreadyExists
         {
+            error!("Failed to create .tmp directory: {err:?}");
             return Err(ServerStartError::IO(err));
         }
 
@@ -166,6 +168,7 @@ impl FetchedServer {
 
         let control_path = tokio::fs::canonicalize(daemon.runtime_dir.join("control.sock"))
             .await
+            .inspect_err(|err| error!("Failed to canoncialize control socket: {err:?}"))
             .map_err(ServerStartError::IO)?;
 
         binds.push(Self::bind(&control_path, "/control.sock").map_err(ServerStartError::IO)?);
@@ -180,6 +183,7 @@ impl FetchedServer {
 
         let machine_id_path = Self::write_machine_id(&daemon.runtime_dir, self.id)
             .await
+            .inspect_err(|err| error!("Failed to write machine id: {err:?}"))
             .map_err(ServerStartError::IO)?;
 
         binds.push(
