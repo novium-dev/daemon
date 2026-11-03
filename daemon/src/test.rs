@@ -19,13 +19,15 @@ use zelus_keys::{
 
 use crate::{
     Daemon, WithUserKey,
-    config::{DaemonConfig, LimitConfig, NetworkConfig, SSHConfig, SSHHostKey},
+    config::{
+        ArchiveCompression, BackupEntry, CompressionLevel, DaemonConfig, LimitConfig,
+        NetworkConfig, SSHConfig, SSHHostKey, StorageEntry,
+    },
     fsuid_setup,
 };
 
 pub(crate) struct Context {
     pub(crate) rt: tokio::runtime::Runtime,
-    #[expect(dead_code)]
     pub(crate) daemon: Daemon<WithUserKey>,
 }
 
@@ -94,8 +96,22 @@ pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> 
 
         let config = DaemonConfig {
             backend_url: backend_url.clone(),
-            backup: HashMap::new(),
-            storage: HashMap::new(),
+            backup: HashMap::from([(
+                "local".to_owned(),
+                BackupEntry::Archive {
+                    compression: ArchiveCompression::Zstd {
+                        level: CompressionLevel::Default,
+                    },
+                    path: format!("/tmp/daemon_test_{node_id}/backup"),
+                    order: Some(0),
+                },
+            )]),
+            storage: HashMap::from([(
+                "local".to_owned(),
+                StorageEntry::Directory {
+                    path: format!("/tmp/daemon_test_{node_id}/server"),
+                },
+            )]),
             database: format!("{}_test", env!("DATABASE_URL")),
             limit: LimitConfig::default(),
             listeners: HashSet::from([SocketAddr::new(
