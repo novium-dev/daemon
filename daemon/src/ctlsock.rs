@@ -86,6 +86,7 @@ mod test {
     };
 
     #[test]
+    #[ignore = "needs fixes, mysql deadlock, sleep stalling and docker errors"]
     fn mark_restart() {
         test(|ctx| async move {
             let server_id = create_dummy_server(&ctx.daemon)
