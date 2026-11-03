@@ -219,11 +219,14 @@ impl<T: DaemonExtra> ServerService for Daemon<T> {
                     one_shot: true,
                 }),
             );
-            match stream.try_next().await {
-                Ok(Some(response)) => stats = ServerStats::from(response),
-                Ok(None) => {}
-                Err(err) => {
+            match timeout(Duration::from_secs(5), stream.try_next()).await {
+                Ok(Ok(Some(response))) => stats = ServerStats::from(response),
+                Ok(Ok(None)) => {}
+                Ok(Err(err)) => {
                     warn!("Failed to retrieve container stats: {err:?}");
+                }
+                Err(err) => {
+                    warn!("Failed to retrieve container stats (timeout): {err}");
                 }
             }
         }

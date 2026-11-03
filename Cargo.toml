@@ -5,6 +5,7 @@ resolver = "3"
 
 [patch.crates-io]
 reqwest.git = "https://github.com/0xIO32/reqwest.git"
+bollard-stubs = { git = "https://github.com/0xIO32/bollard.git", branch = "podman_stopped" }
 
 [workspace.lints.rust]
 unused = { level = "deny", priority = -1 }
@@ -194,7 +195,6 @@ little_endian_bytes = "deny"
 
 
 [workspace.dependencies]
-bollard = "0.21.1"
 libc = "0.2"
 toml = "1.1.8"
 xmltree = "0.12.0"
@@ -237,6 +237,10 @@ git = "https://github.com/0xIO32/zelus.git"
 rev = "b3a46be6f13d0ce14a8e160ab34030ee843dba33"
 default-features = false
 features = ["error", "sqlx", "io"]
+
+[workspace.dependencies.bollard]
+git = "https://github.com/0xIO32/bollard.git"
+branch = "podman_stopped"
 
 [workspace.dependencies.rustls]
 version = "0.23.46"
