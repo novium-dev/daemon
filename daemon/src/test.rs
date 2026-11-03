@@ -1,3 +1,10 @@
+#![expect(clippy::panic)]
+#![expect(clippy::arithmetic_side_effects)]
+
+use daemon_common::service::server::{
+    ServerBuildImage, ServerBuildPayload, ServerNetworkPayload, ServerResourcePayload,
+    ServerService as _, server_service_error::CreateServerError,
+};
 use ed25519_dalek::SigningKey;
 use rustls::pki_types::PrivateKeyDer;
 use sqlx::MySql;
@@ -7,6 +14,7 @@ use std::{
     net::{IpAddr, Ipv6Addr, SocketAddr},
     path::PathBuf,
     sync::{Arc, OnceLock},
+    time::Duration,
 };
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
@@ -180,4 +188,65 @@ pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> 
 #[test]
 fn init() {
     test(|_ctx| std::future::ready(()));
+}
+
+pub(crate) fn create_dummy_server(
+    daemon: &Daemon<WithUserKey>,
+) -> impl Future<Output = Result<u32, CreateServerError>> + Send {
+    daemon.create_server(
+        "local".to_owned(),
+        ServerResourcePayload {
+            cpu: Some(1.0f32),
+            ram: Some(2048),
+            disk: None,
+            swap: Some(4096),
+        },
+        ServerBuildPayload {
+            backup_exclude: HashSet::new(),
+            cap_add: Vec::new(),
+            cap_drop: vec!["DAC_OVERRIDE".to_owned()],
+            environment: HashMap::new(),
+            files_write: HashMap::new(),
+            uid: None,
+            gid: None,
+            image: ServerBuildImage {
+                base: None,
+                args: HashMap::new(),
+                default_tag: Some("test-dummy-r1".to_owned()),
+                dockerfile:
+                    "FROM debian:latest\nENTRYPOINT [\"/bin/sh\", \"-c\", \"echo Hello World\"]"
+                        .to_owned(),
+                parents: Vec::new(),
+                tag: None,
+            },
+            stop_command: None,
+            stop_timeout: 30,
+        },
+        Vec::new(),
+        ServerNetworkPayload {
+            internet_access: false,
+            networks: Vec::new(),
+        },
+        String::new(),
+    )
+}
+
+pub(crate) async fn wait_server_stopped_delayed(
+    daemon: &Daemon<WithUserKey>,
+    server_id: u32,
+    timeout_sec: u32,
+) {
+    for _ in 0..timeout_sec {
+        tokio::time::sleep(Duration::from_millis(1000)).await;
+        if daemon
+            .server_status(server_id)
+            .await
+            .expect("failed to get server status")
+            .state
+            .start
+        {
+            return;
+        }
+    }
+    panic!("Stop timeout");
 }

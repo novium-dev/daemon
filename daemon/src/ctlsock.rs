@@ -74,3 +74,67 @@ async fn restart(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod test {
+    use std::collections::{HashMap, HashSet};
+
+    use daemon_common::service::{
+        files::FilesService as _,
+        server::{ServerBuildImage, ServerBuildPayload, ServerService as _},
+    };
+
+    use crate::test::{create_dummy_server, test, wait_server_stopped_delayed};
+
+    #[test]
+    fn mark_restart() {
+        test(|ctx| async move {
+            let server_id = create_dummy_server(&ctx.daemon)
+                .await
+                .expect("failed to create dummy server");
+
+            ctx.daemon
+                .update_server(
+                    server_id,
+                    None,
+                    Some(ServerBuildPayload {
+                        backup_exclude: HashSet::new(),
+                        cap_add: Vec::new(),
+                        cap_drop: Vec::new(),
+                        environment: HashMap::new(),
+                        files_write: HashMap::new(),
+                        uid: None,
+                        gid: None,
+                        stop_command: None,
+                        stop_timeout: 30 * 1000,
+                        image: ServerBuildImage {
+                            args: HashMap::new(),
+                            base: None,
+                            default_tag: Some("ctlsock-test-r1".to_owned()),
+                            dockerfile: "FROM alpine/curl:latest\nENTRYPOINT [\"/bin/sh\", \"-c\", \"(cat restart && touch success) || (curl --unix-socket /control.sock http://localhost/mark_restart && touch restart)\"]".to_owned(),
+                            parents: Vec::new(),
+                            tag: None,
+                        },
+                    }),
+                    None,
+                    None,
+                    None,
+                )
+                .await
+                .expect("failed to update server");
+
+            ctx.daemon
+                .start_server(server_id)
+                .await
+                .expect("failed to start server");
+
+            wait_server_stopped_delayed(&ctx.daemon, server_id, 120).await;
+            wait_server_stopped_delayed(&ctx.daemon, server_id, 30).await;
+
+            ctx.daemon
+                .server_stat_file(server_id, "success".to_owned())
+                .await
+                .expect("failed to stat success file");
+        });
+    }
+}

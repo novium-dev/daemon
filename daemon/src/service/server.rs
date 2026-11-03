@@ -911,14 +911,9 @@ async fn modify0<T: FromServerImageDifferent + FromServerImageMissingTag + From<
 
 #[cfg(test)]
 pub(crate) mod test {
-    use std::collections::{HashMap, HashSet};
+    use daemon_common::service::server::ServerService as _;
 
-    use daemon_common::service::server::{
-        ServerBuildImage, ServerBuildPayload, ServerNetworkPayload, ServerResourcePayload,
-        ServerService as _, server_service_error::CreateServerError,
-    };
-
-    use crate::{Daemon, DaemonExtra, test::test};
+    use crate::test::{create_dummy_server, test};
 
     #[test]
     fn create_server() {
@@ -937,46 +932,5 @@ pub(crate) mod test {
             assert!(status.tasks.server.is_empty());
             assert!(status.tasks.storage.is_empty());
         });
-    }
-
-    pub(crate) fn create_dummy_server(
-        daemon: &Daemon<impl DaemonExtra>,
-    ) -> impl Future<Output = Result<u32, CreateServerError>> + Send {
-        daemon.create_server(
-            "local".to_owned(),
-            ServerResourcePayload {
-                cpu: Some(1.0f32),
-                ram: Some(2048),
-                disk: None,
-                swap: Some(4096),
-            },
-            ServerBuildPayload {
-                backup_exclude: HashSet::new(),
-                cap_add: Vec::new(),
-                cap_drop: vec!["CAP_SYS_ADMIN".to_owned()],
-                environment: HashMap::new(),
-                files_write: HashMap::new(),
-                uid: None,
-                gid: None,
-                image: ServerBuildImage {
-                    base: None,
-                    args: HashMap::new(),
-                    default_tag: Some("test-dummy-r1".to_owned()),
-                    dockerfile:
-                        "FROM debian:latest\nENTRYPOINT [\"/bin/sh\", \"-c\", \"echo Hello World\"]"
-                            .to_owned(),
-                    parents: Vec::new(),
-                    tag: None,
-                },
-                stop_command: None,
-                stop_timeout: 30,
-            },
-            Vec::new(),
-            ServerNetworkPayload {
-                internet_access: false,
-                networks: Vec::new(),
-            },
-            String::new(),
-        )
     }
 }
