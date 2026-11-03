@@ -24,6 +24,7 @@ allow-git = [
   "https://github.com/0xIO32/reqwest.git",
   "https://github.com/novium-dev/zelus_keys.git",
   "https://github.com/acatton/serde-yaml-ng.git?rev=3628102977f3ec9e02b95ef32fcec30b3df91390",
+  "git+https://github.com/0xIO32/bollard.git?branch=podman_stopped",
 ]
 
 [licenses]
