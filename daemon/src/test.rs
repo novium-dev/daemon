@@ -46,6 +46,8 @@ const PORT_BACKEND_DUMMY: u16 = 30035;
 static CONTEXT: OnceLock<Context> = OnceLock::new();
 
 pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> + Send>(func: F) {
+    fsuid_setup();
+
     let ctx = CONTEXT.get_or_init(|| {
         rustls::crypto::aws_lc_rs::default_provider()
             .install_default()
@@ -63,8 +65,6 @@ pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> 
             ))
             .with(tracing_subscriber::fmt::layer())
             .init();
-
-        fsuid_setup();
 
         let ca = KeyPair::generate().expect("failed to generate daemon root keypair");
 
