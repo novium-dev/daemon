@@ -15,18 +15,17 @@ pub async fn identify_container_by_pid(
     use tokio::fs::File;
     use tokio::io::AsyncReadExt as _;
 
-    let regex = lazy_regex::regex!("docker-([a-z0-9]{64}).scope");
-
     let mut file = File::open(format!("/proc/{pid}/cgroup")).await?;
     let mut buf = String::new();
     file.read_to_string(&mut buf).await?;
-    let captures = regex.captures(&buf);
+    let captures = lazy_regex::regex_captures!("(?:docker|libpod)-([a-z0-9]{64}).scope", &buf);
     match captures {
-        None => Err(io::Error::other("Not in a docker cgroup")),
-        Some(captures) => {
-            let capture = &captures[1];
+        None => Err(io::Error::other(format!(
+            "Not in a docker/podman cgroup: {buf}"
+        ))),
+        Some((_, container_id)) => {
             let container = match docker
-                .inspect_container(capture, None::<InspectContainerOptions>)
+                .inspect_container(container_id, None::<InspectContainerOptions>)
                 .await
             {
                 Ok(container) => container,
