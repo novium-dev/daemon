@@ -1,5 +1,4 @@
 #![expect(clippy::panic)]
-#![expect(clippy::arithmetic_side_effects)]
 
 use daemon_common::service::server::{
     ServerBuildImage, ServerBuildPayload, ServerNetworkPayload, ServerResourcePayload,
@@ -12,10 +11,12 @@ use sqlx::migrate::MigrateDatabase as _;
 use std::{
     collections::{HashMap, HashSet},
     net::{IpAddr, Ipv6Addr, SocketAddr},
+    panic::Location,
     path::PathBuf,
     sync::{Arc, OnceLock},
     time::Duration,
 };
+use tracing::{Instrument as _, info_span};
 use tracing_subscriber::layer::SubscriberExt as _;
 use tracing_subscriber::util::SubscriberInitExt as _;
 use url::Url;
@@ -45,7 +46,10 @@ const PORT_BACKEND_DUMMY: u16 = 30035;
 
 static CONTEXT: OnceLock<Context> = OnceLock::new();
 
+#[track_caller]
 pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> + Send>(func: F) {
+    let location = Location::caller();
+
     fsuid_setup();
 
     let ctx = CONTEXT.get_or_init(|| {
@@ -182,7 +186,8 @@ pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> 
 
         Context { rt, daemon }
     });
-    ctx.rt.block_on(func(ctx));
+    ctx.rt
+        .block_on(func(ctx).instrument(info_span!("test", location = location.to_string())));
 }
 
 #[test]
@@ -237,7 +242,7 @@ pub(crate) async fn wait_server_stopped_delayed(
     timeout_sec: u32,
 ) {
     for _ in 0..timeout_sec {
-        tokio::time::sleep(Duration::from_millis(1000)).await;
+        tokio::time::sleep(Duration::from_secs(1)).await;
         if daemon
             .server_status(server_id)
             .await

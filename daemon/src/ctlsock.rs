@@ -79,12 +79,11 @@ async fn restart(
 mod test {
     use std::collections::{HashMap, HashSet};
 
+    use crate::test::{create_dummy_server, test, wait_server_stopped_delayed};
     use daemon_common::service::{
         files::FilesService as _,
         server::{ServerBuildImage, ServerBuildPayload, ServerService as _},
     };
-
-    use crate::test::{create_dummy_server, test, wait_server_stopped_delayed};
 
     #[test]
     fn mark_restart() {
