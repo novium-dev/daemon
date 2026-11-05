@@ -12,6 +12,7 @@ use http_body_util::Full;
 use indexmap::IndexMap;
 use sqlx::{Executor, MySql, Pool, query, query_scalar};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use tar::{Builder, Header};
 use termion::clear;
 use tracing::{debug, info, warn};
@@ -294,11 +295,12 @@ enum ImageCleanupError {
 }
 
 /// Periodically removes daemon images that have not been used for [`IMAGE_UNUSED_DAYS`].
-pub async fn run_cleanup(docker: &Docker, conn: &Pool<MySql>) -> ! {
+#[expect(clippy::infinite_loop, reason = "runs until the task is cancelled")]
+pub async fn run_cleanup(docker: Arc<Docker>, conn: Arc<Pool<MySql>>) {
     let mut interval = tokio::time::interval(IMAGE_CLEANUP_INTERVAL);
     loop {
         interval.tick().await;
-        if let Err(err) = cleanup_unused_images(docker, conn).await {
+        if let Err(err) = cleanup_unused_images(&docker, &conn).await {
             warn!("Failed to clean up unused images: {err:?}");
         }
     }
