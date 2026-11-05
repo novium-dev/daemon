@@ -3,7 +3,9 @@ use crate::server::start::ServerStartError;
 use crate::server::{FetchedServer, Server};
 use crate::{Daemon, DaemonExtra, ServerData};
 use bollard::Docker;
-use bollard::query_parameters::{BuildImageOptions, ListImagesOptions, RemoveImageOptions};
+use bollard::query_parameters::{
+    BuildImageOptions, ListImagesOptions, PruneImagesOptions, RemoveImageOptions,
+};
 use cap_async_std::async_std::stream::StreamExt as _;
 use core::time::Duration;
 use http_body_util::Full;
@@ -359,5 +361,14 @@ async fn cleanup_unused_images(
             .execute(conn)
             .await?;
     }
+
+    docker
+        .prune_images(Some(PruneImagesOptions {
+            filters: Some(HashMap::from([(
+                "dangling".to_owned(),
+                vec!["true".to_owned()],
+            )])),
+        }))
+        .await?;
     Ok(())
 }
