@@ -65,7 +65,7 @@ fn signed_basic_auth(
         "Basic {}",
         BASE64_STANDARD.encode(format!("{user}:{password}"))
     );
-    let timestamp = chrono::Utc::now().timestamp();
+    let timestamp = chrono::Utc::now().timestamp_millis();
     let message = format!("{SIGNATURE_CONTEXT}\n{timestamp}\n{authorization}");
 
     let signer = daemon

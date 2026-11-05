@@ -102,7 +102,7 @@ impl UserSignature {
             &self.0,
         )
         .map_err(|_err| <E as FromAuthSignatureInvalid>::from())?;
-        let unix = Utc::now().timestamp();
+        let unix = Utc::now().timestamp_millis();
         if timestamp.saturating_add(Self::THRESHOLD) <= unix {
             return Err(<E as FromAuthSignatureExpired>::from());
         }

@@ -203,14 +203,14 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
         rows: Option<u16>,
         write: bool,
     ) -> Url {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_millis();
         let signature =
             UserSignature::new_terminal(self.key(), timestamp, self.node_id(), server_id, write);
         self.server_terminal_user_url(server_id, cols, rows, write, timestamp, signature)
     }
 
     fn server_stats_user_url_signed(&self, server_id: u32) -> Url {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_millis();
         let signature = UserSignature::new_stats(self.key(), timestamp, self.node_id(), server_id);
         self.server_stats_user_url(server_id, timestamp, signature)
     }
@@ -222,7 +222,7 @@ impl<T: ServerServiceURL + UserKeyProvider> ServerServiceUserKeyExtension for T 
         rows: Option<u16>,
         command: JsonVec<String>,
     ) -> Url {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_millis();
         let signature =
             UserSignature::new_exec(self.key(), timestamp, self.node_id(), server_id, &command);
         self.exec_server_interactive_user_url(server_id, cols, rows, command, timestamp, signature)

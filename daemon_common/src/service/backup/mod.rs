@@ -176,7 +176,7 @@ impl<T: BackupServiceURL + UserKeyProvider> BackupServiceUserKeyExtension for T 
         backup_storage: String,
         backup_id: i64,
     ) -> Url {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_millis();
         let signature = UserSignature::new_server_backup_download(
             self.key(),
             timestamp,
@@ -195,7 +195,7 @@ impl<T: BackupServiceURL + UserKeyProvider> BackupServiceUserKeyExtension for T 
     }
 
     fn server_download_realtime_user_url_signed(&self, server_id: u32, compression: String) -> Url {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_millis();
         let signature = UserSignature::new_server_realtime_download(
             self.key(),
             timestamp,

@@ -252,7 +252,7 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
         path: String,
         limit: Option<u64>,
     ) -> Url {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_millis();
         let signature = UserSignature::new_server_file_download(
             self.key(),
             timestamp,
@@ -264,7 +264,7 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
     }
 
     fn server_upload_file_user_url_signed(&self, server_id: u32, path: String) -> Url {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_millis();
         let signature = UserSignature::new_server_file_upload(
             self.key(),
             timestamp,
@@ -276,7 +276,7 @@ impl<T: FilesServiceURL + UserKeyProvider> FilesServiceUserKeyExtension for T {
     }
 
     fn server_watch_files_user_url_signed(&self, server_id: u32, path: Option<String>) -> Url {
-        let timestamp = Utc::now().timestamp();
+        let timestamp = Utc::now().timestamp_millis();
         let signature =
             UserSignature::new_server_watch_files(self.key(), timestamp, self.node_id(), server_id);
         self.server_watch_files_user_url(server_id, path, timestamp, signature)
