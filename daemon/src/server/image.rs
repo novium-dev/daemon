@@ -3,15 +3,29 @@ use crate::server::start::ServerStartError;
 use crate::server::{FetchedServer, Server};
 use crate::{Daemon, DaemonExtra, ServerData};
 use bollard::Docker;
-use bollard::query_parameters::{BuildImageOptions, ListImagesOptions};
+use bollard::query_parameters::{
+    BuildImageOptions, ListImagesOptions, PruneImagesOptions, RemoveImageOptions,
+};
 use cap_async_std::async_std::stream::StreamExt as _;
+use core::time::Duration;
 use http_body_util::Full;
 use indexmap::IndexMap;
-use sqlx::{Executor, MySql, query, query_scalar};
+use sqlx::{Executor, MySql, Pool, query, query_scalar};
 use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use tar::{Builder, Header};
 use termion::clear;
-use tracing::debug;
+use tracing::{debug, info, warn};
+
+const IMAGE_UNUSED_DAYS: u32 = 30;
+const IMAGE_CLEANUP_INTERVAL: Duration = Duration::from_hours(1);
+
+fn normalize_tag(tag: String) -> String {
+    tag.strip_prefix("localhost/")
+        .map_or_else(|| tag.strip_prefix("docker.io/library/"), Some)
+        .map(String::from)
+        .unwrap_or(tag)
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct BuildImage {
@@ -110,18 +124,17 @@ impl FetchedServer {
             .await
             .map_err(ServerStartError::Docker)?;
 
+        for tag in required.keys() {
+            mark_image_used(&state.conn, tag).await?;
+        }
+
         let present: HashSet<String> = images
             .into_iter()
             .filter_map(|image| {
                 image
                     .repo_tags
                     .into_iter()
-                    .map(|tag| {
-                        tag.strip_prefix("localhost/")
-                            .map_or_else(|| tag.strip_prefix("docker.io/library/"), Some)
-                            .map(String::from)
-                            .unwrap_or(tag)
-                    })
+                    .map(normalize_tag)
                     .find(|tag| required.contains_key(tag))
             })
             .collect();
@@ -262,4 +275,102 @@ impl FetchedServer {
         }
         Ok(format!("{}:{}", crate::common::IMAGE_NAME, self.build.tag))
     }
+}
+
+async fn mark_image_used(conn: &Pool<MySql>, tag: &str) -> Result<(), sqlx::Error> {
+    query!(
+        "INSERT INTO `image_usage` (`tag`) VALUES (?) ON DUPLICATE KEY UPDATE `last_used` = CURRENT_TIMESTAMP",
+        tag
+    )
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+#[error(transparent)]
+enum ImageCleanupError {
+    Docker(#[from] bollard::errors::Error),
+    Sql(#[from] sqlx::Error),
+}
+
+/// Periodically removes daemon images that have not been used for [`IMAGE_UNUSED_DAYS`].
+#[expect(clippy::infinite_loop, reason = "runs until the task is cancelled")]
+pub async fn run_cleanup(docker: Arc<Docker>, conn: Arc<Pool<MySql>>) {
+    let mut interval = tokio::time::interval(IMAGE_CLEANUP_INTERVAL);
+    loop {
+        interval.tick().await;
+        if let Err(err) = cleanup_unused_images(&docker, &conn).await {
+            warn!("Failed to clean up unused images: {err:?}");
+        }
+    }
+}
+
+async fn cleanup_unused_images(
+    docker: &Docker,
+    conn: &Pool<MySql>,
+) -> Result<(), ImageCleanupError> {
+    let prefix = format!("{}:", crate::common::IMAGE_NAME);
+    let present: HashSet<String> = docker
+        .list_images(None::<ListImagesOptions>)
+        .await?
+        .into_iter()
+        .flat_map(|image| image.repo_tags)
+        .map(normalize_tag)
+        .filter(|tag| tag.starts_with(&prefix))
+        .collect();
+
+    // Images built before usage tracking existed start their retention period now.
+    for tag in &present {
+        query!("INSERT IGNORE INTO `image_usage` (`tag`) VALUES (?)", tag)
+            .execute(conn)
+            .await?;
+    }
+
+    let stale = query_scalar!(
+        "SELECT `tag` FROM `image_usage` WHERE `last_used` < NOW() - INTERVAL ? DAY",
+        IMAGE_UNUSED_DAYS
+    )
+    .fetch_all(conn)
+    .await?;
+
+    for tag in stale {
+        if present.contains(&tag) {
+            match docker
+                .remove_image(&tag, None::<RemoveImageOptions>, None)
+                .await
+            {
+                Ok(_)
+                | Err(bollard::errors::Error::DockerResponseServerError {
+                    status_code: 404, ..
+                }) => {
+                    info!("Removed image {tag} (unused for {IMAGE_UNUSED_DAYS} days)");
+                }
+                Err(bollard::errors::Error::DockerResponseServerError {
+                    status_code: 409, ..
+                }) => {
+                    // Still referenced by a container, so it is in use
+                    mark_image_used(conn, &tag).await?;
+                    continue;
+                }
+                Err(err) => {
+                    warn!("Failed to remove unused image {tag}: {err:?}");
+                    continue;
+                }
+            }
+        }
+        query!("DELETE FROM `image_usage` WHERE `tag` = ?", tag)
+            .execute(conn)
+            .await?;
+    }
+
+    docker
+        .prune_images(Some(PruneImagesOptions {
+            filters: Some(HashMap::from([(
+                "dangling".to_owned(),
+                vec!["true".to_owned()],
+            )])),
+        }))
+        .await?;
+    Ok(())
 }

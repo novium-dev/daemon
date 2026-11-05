@@ -289,6 +289,15 @@ impl<T: DaemonExtra> Daemon<T> {
                 .map(|_result| ()),
         );
 
+        daemon
+            .server_task_cancellable
+            .lock()
+            .await
+            .spawn(crate::server::image::run_cleanup(
+                Arc::clone(&daemon.docker),
+                Arc::clone(&daemon.conn),
+            ));
+
         storage::worker::run(daemon.clone()).await;
 
         Ok(daemon)
