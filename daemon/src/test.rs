@@ -126,6 +126,7 @@ pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> 
             )]),
             database: format!("{}_test", env!("DATABASE_URL")),
             limit: LimitConfig::default(),
+            metrics: None,
             listeners: HashSet::from([SocketAddr::new(
                 IpAddr::V6(Ipv6Addr::LOCALHOST),
                 PORT_HTTPS,

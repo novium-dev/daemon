@@ -161,6 +161,7 @@ fn node_to_daemon_config(
             .collect(),
         network: NetworkConfig::default(),
         limit: LimitConfig::default(),
+        metrics: None,
         mounts,
     }
 }

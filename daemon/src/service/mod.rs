@@ -121,6 +121,9 @@ impl<T: DaemonExtra> Daemon<T> {
                     .inspect_err(|_err| error!("Failed to serve https server!"));
             });
         }
+        if let Some(metrics) = &self.config.metrics {
+            self.serve_metrics(metrics, &handle, &mut server_task);
+        }
         let mut recv = self.shutdown_channel.subscribe();
         tokio::task::spawn(async move {
             loop {

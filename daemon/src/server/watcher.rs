@@ -128,7 +128,9 @@ pub async fn watch(
                 if let Some(Ok(stats)) = stats {
                     let disk = storage_value.0.load(Ordering::Relaxed);
                     let disk_max = storage_value.1.load(Ordering::Relaxed);
-                    let _ = stats_sender.send(ChannelWriteData::Stats(<ContainerStatsResponse as Into<ServerStats>>::into(stats).with_disk(if disk == -1 { None } else { Some(crate::utils::to_mib(disk.unsigned_abs())) }).with_max(cpu_max, ram_max, swap_max, if disk_max == -1 { None } else { Some(disk_max.unsigned_abs()) })));
+                    let stats = <ContainerStatsResponse as Into<ServerStats>>::into(stats).with_disk(if disk == -1 { None } else { Some(crate::utils::to_mib(disk.unsigned_abs())) }).with_max(cpu_max, ram_max, swap_max, if disk_max == -1 { None } else { Some(disk_max.unsigned_abs()) });
+                    server_data.last_stats.store(Arc::new(stats));
+                    let _ = stats_sender.send(ChannelWriteData::Stats(stats));
                 }
             }
             _elapsed = tokio::time::sleep_until(next) => {
@@ -194,24 +196,24 @@ pub async fn watch(
     }
     let disk = storage_value.0.load(Ordering::Relaxed);
     let disk_max = storage_value.1.load(Ordering::Relaxed);
-    let _ = stats_sender.send(ChannelWriteData::Stats(
-        ServerStats::default()
-            .with_disk(if disk == -1 {
+    let stopped_stats = ServerStats::default()
+        .with_disk(if disk == -1 {
+            None
+        } else {
+            Some(crate::utils::to_mib(disk.unsigned_abs()))
+        })
+        .with_max(
+            cpu_max,
+            ram_max,
+            swap_max,
+            if disk_max == -1 {
                 None
             } else {
-                Some(crate::utils::to_mib(disk.unsigned_abs()))
-            })
-            .with_max(
-                cpu_max,
-                ram_max,
-                swap_max,
-                if disk_max == -1 {
-                    None
-                } else {
-                    Some(disk_max.unsigned_abs())
-                },
-            ),
-    ));
+                Some(disk_max.unsigned_abs())
+            },
+        );
+    server_data.last_stats.store(Arc::new(stopped_stats));
+    let _ = stats_sender.send(ChannelWriteData::Stats(stopped_stats));
     drop(storage_stats_guard);
     if !do_restart {
         tokio::time::sleep(Duration::from_secs(1)).await;

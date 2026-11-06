@@ -35,6 +35,9 @@ pub struct DaemonConfig {
     pub mounts: Vec<MountPoint>,
     #[serde(default)]
     pub limit: LimitConfig,
+    /// Prometheus exporter, disabled if not set.
+    #[serde(default)]
+    pub metrics: Option<MetricsConfig>,
 }
 
 impl DaemonConfig {
@@ -287,4 +290,12 @@ where
         seq.serialize_element(value.to_str().map_err(S::Error::custom)?)?;
     }
     seq.end()
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct MetricsConfig {
+    /// Plain HTTP listeners serving `/metrics`.
+    pub listeners: HashSet<SocketAddr>,
+    /// Optional bearer token required to scrape.
+    pub token: Option<String>,
 }

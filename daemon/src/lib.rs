@@ -14,6 +14,7 @@ mod cgroup;
 mod ctlsock;
 pub mod init;
 mod integrity;
+mod metrics;
 mod network;
 mod schedule;
 mod service;
@@ -24,12 +25,14 @@ mod test;
 mod utils;
 mod websocket;
 
+use arc_swap::ArcSwap;
 use bollard::Docker;
 use core::pin::Pin;
 use core::sync::atomic::AtomicI64;
 use core::sync::atomic::AtomicU16;
 use core::sync::atomic::{AtomicBool, AtomicU8};
 use daemon_common::service::files::task::StorageTask;
+use daemon_common::service::server::ServerStats;
 use daemon_common::service::server::task::ServerTask;
 use ed25519_dalek::SigningKey;
 use reqwest::Client;
@@ -171,6 +174,8 @@ pub(crate) struct ServerData {
     pub(crate) sessions: Arc<Mutex<HashMap<uuid::Uuid, terminal::TerminalSession>>>,
     pub(crate) stop_command: Mutex<Option<String>>,
     pub(crate) failure_counter: AtomicU8,
+    /// Latest container stats, used by the metrics exporter.
+    pub(crate) last_stats: ArcSwap<ServerStats>,
 }
 
 #[derive(Default)]
@@ -195,6 +200,7 @@ impl Default for ServerData {
             ))),
             stop_command: Mutex::default(),
             failure_counter: AtomicU8::new(0),
+            last_stats: ArcSwap::from_pointee(ServerStats::default()),
         }
     }
 }
