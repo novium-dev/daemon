@@ -81,6 +81,9 @@ impl<T: DaemonExtra> Daemon<T> {
         #[cfg(not(debug_assertions))]
         let _ = api;
 
+        // Unauthenticated liveness probe for uptime monitors.
+        router = router.route("/health", axum::routing::get(|| async { "OK" }));
+
         router = router.layer(TraceLayer::new_for_http());
 
         #[cfg(feature = "sentry")]
