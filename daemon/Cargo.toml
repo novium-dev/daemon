@@ -114,7 +114,7 @@ features = ["rustls"]
 optional = true
 
 [dependencies.utoipa-swagger-ui]
-version = "9.0.2"
+version = "10"
 features = ["axum"]
 
 [dependencies.cap-async-std]

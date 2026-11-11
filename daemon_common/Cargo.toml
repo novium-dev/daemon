@@ -169,7 +169,7 @@ optional = true
 
 
 [dependencies.json-patch]
-version = "4.2.0"
+git = "https://github.com/0xIO32/json-patch.git"
 features = ["utoipa"]
 
 [dependencies.tokio-util]

@@ -5,7 +5,7 @@ resolver = "3"
 
 [patch.crates-io]
 reqwest.git = "https://github.com/0xIO32/reqwest.git"
-bollard-stubs = { git = "https://github.com/0xIO32/bollard.git", branch = "podman_stopped" }
+bollard-stubs = { git = "https://github.com/fussybeaver/bollard.git", rev = "427d06d010589379896015f1386ecf0105b548a3" }
 
 [workspace.lints.rust]
 unused = { level = "deny", priority = -1 }
@@ -234,13 +234,12 @@ default-features = false
 
 [workspace.dependencies.zelus]
 git = "https://github.com/0xIO32/zelus.git"
-rev = "b3a46be6f13d0ce14a8e160ab34030ee843dba33"
 default-features = false
 features = ["error", "sqlx", "io"]
 
 [workspace.dependencies.bollard]
-git = "https://github.com/0xIO32/bollard.git"
-branch = "podman_stopped"
+git = "https://github.com/fussybeaver/bollard.git"
+rev = "427d06d010589379896015f1386ecf0105b548a3"
 
 [workspace.dependencies.rustls]
 version = "0.23.46"
@@ -321,11 +320,11 @@ version = "4.6.7"
 features = ["color", "env", "cargo"]
 
 [workspace.dependencies.utoipa]
-version = "5.5.0"
+version = "6"
 features = ["macros", "preserve_path_order", "url", "chrono"]
 
 [workspace.dependencies.utoipa-axum]
-version = "0.2.0"
+version = "0.3"
 
 [workspace.dependencies.tower]
 version = "0.5.3"

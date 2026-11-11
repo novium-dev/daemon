@@ -22,9 +22,10 @@ unknown-git = "deny"
 allow-git = [
   "https://github.com/0xIO32/zelus.git",
   "https://github.com/0xIO32/reqwest.git",
+  "https://github.com/0xIO32/json-patch.git",
   "https://github.com/novium-dev/zelus_keys.git",
   "https://github.com/acatton/serde-yaml-ng.git?rev=3628102977f3ec9e02b95ef32fcec30b3df91390",
-  "git+https://github.com/0xIO32/bollard.git?branch=podman_stopped",
+  "https://github.com/fussybeaver/bollard.git?rev=427d06d010589379896015f1386ecf0105b548a3",
 ]
 
 [licenses]
@@ -48,9 +49,5 @@ allow = [
 [advisories]
 unmaintained = "workspace"
 ignore = [
-	"RUSTSEC-2026-0369", # zip
-	"RUSTSEC-2026-0368", # zip
-	"RUSTSEC-2026-0367", # zip
-	"RUSTSEC-2026-0429", # zip
     "RUSTSEC-2023-0071", # TODO: Marvin side-channel attack on rsa@0.9.8
 ]
