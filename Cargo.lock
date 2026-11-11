@@ -2637,7 +2637,7 @@ dependencies = [
 [[package]]
 name = "json-patch"
 version = "5.0.0"
-source = "git+https://github.com/0xIO32/json-patch.git#718f9a94a6283287fac145cbbda060faf85722a2"
+source = "git+https://github.com/idubrov/json-patch.git?rev=2523b73cbf419ffd69e79c88fb4fe584e80fe53d#2523b73cbf419ffd69e79c88fb4fe584e80fe53d"
 dependencies = [
  "jsonptr",
  "serde",
