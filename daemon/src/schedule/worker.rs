@@ -71,10 +71,8 @@ fn determine_next_run(schedule: &Schedule, timezone: &(impl TimeZone + Copy)) ->
         .map(|time| time.signed_duration_since(Utc::now()))
         .as_ref()
         .map(TimeDelta::to_std)
-        .map(Result::ok)
-        .unwrap_or_default()
-        .map(|duration| Instant::now().checked_add(duration))
-        .unwrap_or_default()
+        .map_or_default(Result::ok)
+        .map_or_default(|duration| Instant::now().checked_add(duration))
 }
 
 // Ensure this function is cancel-safe

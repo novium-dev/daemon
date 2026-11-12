@@ -336,15 +336,13 @@ impl FetchedServer {
                             None
                         },
                         memory,
-                        memory_swap: memory
-                            .map(|memory| {
-                                self.swap.map(from_mib).map(|swap| {
-                                    i64::try_from(swap)
-                                        .unwrap_or(i64::MAX)
-                                        .saturating_add(memory)
-                                })
+                        memory_swap: memory.map_or_default(|memory| {
+                            self.swap.map(from_mib).map(|swap| {
+                                i64::try_from(swap)
+                                    .unwrap_or(i64::MAX)
+                                    .saturating_add(memory)
                             })
-                            .unwrap_or_default(),
+                        }),
 
                         console_size: Some(vec![
                             server_data.size.1.load(Ordering::Relaxed) as usize,

@@ -169,10 +169,6 @@ async fn handle_websocket(
             ping_sent = true;
             last_sent = Instant::now();
         }
-        #[expect(
-            clippy::integer_division_remainder_used,
-            reason = "probably caused by tokio macro"
-        )]
         {
             tokio::select! {
                 _timeout = tokio::time::sleep(Duration::from_secs(10)) => {}

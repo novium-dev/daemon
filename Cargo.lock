@@ -1324,7 +1324,6 @@ dependencies = [
  "http-body-util",
  "iana-time-zone",
  "indexmap",
- "itertools",
  "lazy-regex",
  "libc",
  "liblzma",

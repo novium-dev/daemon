@@ -199,7 +199,6 @@ libc = "0.2"
 toml = "1.1.8"
 xmltree = "0.12.0"
 base64 = "0.23.1"
-rand_core = "0.10.1"
 rand = "0.10.3"
 chacha20 = "0.10.2"
 signal-hook = "0.4.5"
@@ -212,13 +211,10 @@ hex = "0.4.3"
 java-properties = "2.0.0"
 ini = { package = "rust-ini", version = "0.21.3" }
 futures = "0.3.34"
-anyhow = "1.0.104"
 bytes = "1.12.1"
 futures-util = "0.3.34"
 either = "1.19.0"
 tower-layer = "0.3.3"
-pastey = "0.2.3"
-itertools = "0.15.0"
 arc-swap = "1.9.3"
 thiserror = "2.0.21"
 lazy-regex = "3.6.2"
@@ -326,10 +322,6 @@ features = ["macros", "preserve_path_order", "url", "chrono"]
 [workspace.dependencies.utoipa-axum]
 version = "0.3"
 
-[workspace.dependencies.tower]
-version = "0.5.3"
-features = ["full"]
-
 [workspace.dependencies.tower-http]
 version = "0.7.1"
 features = [
@@ -376,11 +368,6 @@ features = ["serde"]
 [workspace.dependencies.indexmap]
 version = "2.14.2"
 features = ["serde"]
-
-[workspace.dependencies.rcgen]
-version = "0.14.10"
-default-features = false
-features = ["crypto", "pem", "x509-parser", "aws_lc_rs"]
 
 [workspace.dependencies.serde_yaml_ng]
 git = "https://github.com/acatton/serde-yaml-ng"

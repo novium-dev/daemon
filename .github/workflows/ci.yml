@@ -21,7 +21,7 @@ jobs:
   fmt:
     runs-on: ubuntu-latest
     container:
-      image: rust:1.98.0-alpine
+      image: rust:alpine
     steps:
       - run: apk add --no-cache nodejs git
       - uses: actions/checkout@v4
@@ -31,7 +31,7 @@ jobs:
   deny:
     runs-on: ubuntu-latest
     container:
-      image: rust:1.98.0-alpine
+      image: rust:alpine
     steps:
       - run: apk add --no-cache nodejs git curl
       - uses: actions/checkout@v4
@@ -44,7 +44,7 @@ jobs:
   clippy:
     runs-on: ubuntu-latest
     container:
-      image: rust:1.98.0-alpine
+      image: rust:alpine
     services:
       clippy-db:
         image: mariadb:latest
@@ -54,7 +54,7 @@ jobs:
       DAEMON_DATABASE_URL: "mysql://root@clippy-db/daemon"
       CARGO_HOME: ${{ github.workspace }}/.cargo_home
       LLVM_CONFIG_PATH: /tmp/llvm-config-static.sh
-      RUSTFLAGS: "-C opt-level=0 -C linker=clang-22 -C link-arg=-fuse-ld=lld"
+      RUSTFLAGS: "-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld"
     steps:
       - name: Install build dependencies
         run: |
@@ -88,7 +88,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     container:
-      image: rust:1.98.0-alpine
+      image: rust:alpine
       options: -v /run/daemon_test/:/run/daemon_test/ -v /var/run/docker.sock:/var/run/docker.sock -v /var/run/dbus/system_bus_socket:/var/run/dbus/system_bus_socket --privileged --pid host
     services:
       test-db:
@@ -99,7 +99,7 @@ jobs:
       DAEMON_DATABASE_URL: "mysql://root@test-db/daemon"
       CARGO_HOME: ${{ github.workspace }}/.cargo_home
       LLVM_CONFIG_PATH: /tmp/llvm-config-static.sh
-      RUSTFLAGS: "-C opt-level=0 -C linker=clang-22 -C link-arg=-fuse-ld=lld -C instrument-coverage"
+      RUSTFLAGS: "-C opt-level=0 -C linker=clang -C link-arg=-fuse-ld=lld -C instrument-coverage"
       RUSTC_BOOTSTRAP: "1"
       # One file per process/binary, otherwise test binaries overwrite each other
       LLVM_PROFILE_FILE: ${{ github.workspace }}/profraw/%p-%m.profraw

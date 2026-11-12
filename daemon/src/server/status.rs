@@ -85,10 +85,8 @@ impl FetchedServer {
                 .await?;
             let created = inspect
                 .created
-                .map(|time| DateTime::parse_from_rfc3339(&time).ok())
-                .unwrap_or_default()
-                .map(|time| time.to_utc().timestamp_millis())
-                .unwrap_or_default();
+                .map_or_default(|time| DateTime::parse_from_rfc3339(&time).ok())
+                .map_or_default(|time| time.to_utc().timestamp_millis());
 
             let Some(state) = inspect.state else {
                 return Err(bollard::errors::Error::IOError {
@@ -116,10 +114,8 @@ impl FetchedServer {
                 let healthcheck = health
                     .log
                     .as_mut()
-                    .map(Vec::pop)
-                    .unwrap_or_default()
-                    .map(|result| result.output)
-                    .unwrap_or_default();
+                    .map_or_default(Vec::pop)
+                    .map_or_default(|result| result.output);
 
                 match health.status {
                     Some(HealthStatusEnum::STARTING) => {
