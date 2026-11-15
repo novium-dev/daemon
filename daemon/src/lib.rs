@@ -8,7 +8,7 @@ mod server;
 mod files;
 mod sql;
 mod ssh;
-mod storage;
+pub mod storage;
 
 mod cgroup;
 mod ctlsock;

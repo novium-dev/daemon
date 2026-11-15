@@ -12,10 +12,11 @@ use daemon_common::service::server::{ServerStats, TasksData};
 use sha2::{Digest as _, Sha256};
 use sqlx::{Executor, MySql, Pool, query_as};
 use std::collections::HashMap;
-use std::io;
+use std::io::{self, ErrorKind};
 use std::ops::{Deref, DerefMut};
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, LazyLock};
+use tokio::fs::ReadDir;
 use tokio::sync::Mutex;
 use tracing::warn;
 
@@ -365,5 +366,13 @@ impl<T> DerefMut for LinuxOnly<T> {
         {
             unreachable!()
         }
+    }
+}
+
+pub async fn read_dir_opt(target_dir: &Path) -> Result<Option<ReadDir>, io::Error> {
+    match tokio::fs::read_dir(target_dir).await {
+        Ok(read_dir) => Ok(Some(read_dir)),
+        Err(err) if err.kind() == ErrorKind::NotFound => Ok(None),
+        Err(err) => Err(err),
     }
 }

@@ -6,7 +6,7 @@ use crate::config::{
 use async_trait::async_trait;
 use axum::http::HeaderValue;
 use core::net::{IpAddr, Ipv6Addr, SocketAddr};
-use daemon::config::{LimitConfig, MountPoint};
+use daemon::config::{BackupBackendEntry, LimitConfig, MountPoint, StorageBackendEntry};
 use daemon::internal::middleware;
 use daemon_common::DAEMON_KEY_PREFIX;
 use daemon_common::node::{
@@ -168,37 +168,54 @@ fn node_to_daemon_config(
 
 fn server_storage_to_entry(name: &str, storage: &ServerStorage) -> StorageEntry {
     match storage {
-        ServerStorage::Directory => StorageEntry::Directory {
+        ServerStorage::Directory => StorageEntry {
             path: format!("./storages/{name}"),
+            backend: StorageBackendEntry::Directory,
         },
         #[cfg(feature = "btrfs")]
-        ServerStorage::Btrfs(group) => StorageEntry::Btrfs {
-            group: group.clone(),
+        ServerStorage::Btrfs(group) => StorageEntry {
+            backend: StorageBackendEntry::Btrfs {
+                backend: daemon::storage::btrfs::BtrfsStorageBackend {
+                    group: group.clone(),
+                    quota: true,
+                },
+            },
             path: format!("./storages/{name}"),
-            quota: true,
         },
+        #[cfg(not(feature = "btrfs"))]
+        ServerStorage::Btrfs(_) => panic!("BTRFS support not compiled-in"),
     }
 }
 
 fn backup_storage_to_entry(name: &str, backup: &BackupStorage) -> BackupEntry {
     match backup {
-        BackupStorage::Archive => BackupEntry::Archive {
-            compression: ArchiveCompression::Zstd {
-                level: CompressionLevel::Best,
+        BackupStorage::Archive => BackupEntry {
+            backend: BackupBackendEntry::Archive {
+                backend: daemon::storage::archive::ArchiveBackupBackend {
+                    compression: ArchiveCompression::Zstd {
+                        level: CompressionLevel::Best,
+                    },
+                },
             },
             path: format!("./backups/{name}"),
             order: Some(0),
         },
         #[cfg(feature = "btrfs")]
-        BackupStorage::Btrfs(group) => BackupEntry::Btrfs {
-            jit_compression: ArchiveCompression::Zstd {
-                level: CompressionLevel::Best,
+        BackupStorage::Btrfs(group) => BackupEntry {
+            backend: BackupBackendEntry::Btrfs {
+                backend: daemon::storage::btrfs::BtrfsBackupBackend {
+                    jit_compression: ArchiveCompression::Zstd {
+                        level: CompressionLevel::Best,
+                    },
+                    group: group.clone(),
+                    quota: true,
+                },
             },
             path: format!("./backups/{name}"),
-            group: group.clone(),
-            quota: true,
             order: Some(0),
         },
+        #[cfg(not(feature = "btrfs"))]
+        BackupStorage::Btrfs(_) => panic!("BTRFS support not compiled-in"),
     }
 }
 
