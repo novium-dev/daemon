@@ -1,5 +1,9 @@
+#[cfg(target_os = "linux")]
+use crate::storage;
 // SPDX-License-Identifier: AGPL-3.0-only
+use crate::storage::StorageBackend;
 pub use crate::storage::archive::compression::{ArchiveCompression, CompressionLevel};
+use crate::storage::backup::BackupBackend;
 use axum::http::HeaderValue;
 use core::net::SocketAddr;
 use daemon_common::node::{BackendNodeConfig, BackupStorage, ServerStorage};
@@ -12,6 +16,7 @@ use rustls::sign::CertifiedKey;
 use serde::{Deserialize, Serialize, de, ser};
 use std::collections::{HashMap, HashSet};
 use std::io;
+use std::ops::Deref;
 use std::path::PathBuf;
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -73,93 +78,107 @@ pub struct SSHConfig {
 }
 
 #[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "method")]
-pub enum StorageEntry {
-    #[serde(rename = "directory")]
-    Directory { path: String },
+pub struct StorageEntry {
+    pub path: String,
+    #[serde(flatten)]
+    pub backend: StorageBackendEntry,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "method", rename_all = "snake_case")]
+pub enum StorageBackendEntry {
+    Directory,
     #[cfg(feature = "btrfs")]
-    #[serde(rename = "btrfs")]
     Btrfs {
-        group: String,
-        path: String,
-        quota: bool,
+        #[serde(flatten)]
+        backend: storage::btrfs::BtrfsStorageBackend,
     },
     /// Directory on ext4 with project quotas (mounted with `prjquota`).
     #[cfg(target_os = "linux")]
-    #[serde(rename = "ext4")]
-    Ext4 { path: String },
+    Ext4,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+pub struct BackupEntry {
+    pub path: String,
+    pub order: Option<i8>,
+    #[serde(flatten)]
+    pub backend: BackupBackendEntry,
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(tag = "method", rename_all = "snake_case")]
+pub enum BackupBackendEntry {
+    Archive {
+        #[serde(flatten)]
+        backend: storage::archive::ArchiveBackupBackend,
+    },
+    #[cfg(feature = "btrfs")]
+    Btrfs {
+        #[serde(flatten)]
+        backend: storage::btrfs::BtrfsBackupBackend,
+    },
 }
 
 impl StorageEntry {
     #[must_use]
-    pub const fn path(&self) -> &String {
-        match self {
-            Self::Directory { path } => path,
-            #[cfg(feature = "btrfs")]
-            Self::Btrfs { path, .. } => path,
-            #[cfg(target_os = "linux")]
-            Self::Ext4 { path } => path,
-        }
-    }
-
-    #[must_use]
+    #[cfg_attr(
+        not(feature = "btrfs"),
+        expect(clippy::missing_const_for_fn, reason = "btrfs requires clone")
+    )]
     pub fn as_server_storage(&self) -> ServerStorage {
-        match self {
-            Self::Directory { .. } => ServerStorage::Directory,
+        match &self.backend {
+            StorageBackendEntry::Directory => ServerStorage::Directory,
             #[cfg(feature = "btrfs")]
-            Self::Btrfs { group, .. } => ServerStorage::Btrfs(group.clone()),
+            StorageBackendEntry::Btrfs {
+                backend: storage::btrfs::BtrfsStorageBackend { group, .. },
+            } => ServerStorage::Btrfs(group.clone()),
             // Behaves like a plain directory for backups and the backend
             #[cfg(target_os = "linux")]
-            Self::Ext4 { .. } => ServerStorage::Directory,
+            StorageBackendEntry::Ext4 => ServerStorage::Directory,
         }
     }
 }
 
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(tag = "method")]
-pub enum BackupEntry {
-    #[serde(rename = "archive")]
-    Archive {
-        compression: ArchiveCompression,
-        path: String,
-        order: Option<i8>,
-    },
-    #[cfg(feature = "btrfs")]
-    #[serde(rename = "btrfs")]
-    Btrfs {
-        jit_compression: ArchiveCompression,
-        path: String,
-        group: String,
-        quota: bool,
-        order: Option<i8>,
-    },
+impl Deref for StorageBackendEntry {
+    type Target = dyn StorageBackend;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Directory => &storage::directory::DirectoryStorageBackend,
+            #[cfg(feature = "btrfs")]
+            Self::Btrfs { backend } => backend,
+            #[cfg(target_os = "linux")]
+            Self::Ext4 => &storage::ext4::Ext4StorageBackend,
+        }
+    }
 }
 
 impl BackupEntry {
     #[must_use]
-    pub const fn path(&self) -> &String {
-        match self {
-            Self::Archive { path, .. } => path,
-            #[cfg(feature = "btrfs")]
-            Self::Btrfs { path, .. } => path,
-        }
-    }
-
-    #[must_use]
-    pub const fn order(&self) -> Option<i8> {
-        match self {
-            Self::Archive { order, .. } => *order,
-            #[cfg(feature = "btrfs")]
-            Self::Btrfs { order, .. } => *order,
-        }
-    }
-
-    #[must_use]
+    #[cfg_attr(
+        not(feature = "btrfs"),
+        expect(clippy::missing_const_for_fn, reason = "btrfs requires clone")
+    )]
     pub fn as_backup_storage(&self) -> BackupStorage {
-        match self {
-            Self::Archive { .. } => BackupStorage::Archive,
+        match &self.backend {
+            BackupBackendEntry::Archive { .. } => BackupStorage::Archive,
             #[cfg(feature = "btrfs")]
-            Self::Btrfs { group, .. } => BackupStorage::Btrfs(group.clone()),
+            BackupBackendEntry::Btrfs {
+                backend: storage::btrfs::BtrfsBackupBackend { group, .. },
+            } => BackupStorage::Btrfs(group.clone()),
+        }
+    }
+}
+
+impl Deref for BackupBackendEntry {
+    type Target = dyn BackupBackend;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Archive { backend } => backend,
+            #[cfg(feature = "btrfs")]
+            Self::Btrfs { backend } => backend,
         }
     }
 }

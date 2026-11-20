@@ -9,19 +9,86 @@
 //! Requires a filesystem created with `-O quota,project` (or enabled later with
 //! `tune2fs -O quota,project`) and mounted with `prjquota`.
 
+use crate::storage::directory::DirectoryStorageBackend;
+use crate::storage::worker::{ApplyQuotaToken, ResolvedStorage, apply_quotas};
+use crate::storage::{StorageBackend, StorageIdentifier};
 use crate::utils;
+use async_trait::async_trait;
 use nix::errno::Errno;
 use nix::sys::statfs::{EXT4_SUPER_MAGIC, fstatfs};
+use std::collections::HashMap;
 use std::fs::{self, File, OpenOptions};
 use std::io;
 use std::os::fd::AsRawFd as _;
 use std::os::unix::fs::{FileTypeExt as _, OpenOptionsExt as _};
 use std::path::Path;
+use tracing::error;
 
 const PRJQUOTA: libc::c_int = 2;
 /// Unit of `dqb_bhardlimit` and `dqb_bsoftlimit`.
 const QIF_DQBLKSIZE: u64 = 1024;
 const FS_XFLAG_PROJINHERIT: u32 = 0x0000_0200;
+
+pub struct Ext4StorageBackend;
+
+#[async_trait]
+impl StorageBackend for Ext4StorageBackend {
+    async fn create(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        target: &Path,
+    ) -> Result<(), io::Error> {
+        DirectoryStorageBackend.delete(id, base, target).await
+    }
+
+    async fn apply_quota(
+        &self,
+        id: StorageIdentifier,
+        _base: &Path,
+        target: &Path,
+        limit: Option<u64>,
+    ) -> Result<bool, io::Error> {
+        let target = target.to_owned();
+        tokio::task::spawn_blocking(move || {
+            assign_project(&target, id.project_id())?;
+            apply_limit(&target, id.project_id(), limit)
+        })
+        .await
+        .map_err(io::Error::from)?
+        .inspect_err(|err| error!("Unable to apply ext4 project quota: {err:?}"))?;
+        Ok(true)
+    }
+
+    async fn delete(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        target: &Path,
+    ) -> Result<(), io::Error> {
+        DirectoryStorageBackend.delete(id, base, target).await?;
+
+        let base = base.to_owned();
+        tokio::task::spawn_blocking(move || apply_limit(&base, id.project_id(), None))
+            .await
+            .map_err(io::Error::from)
+            .and_then(|result| result)
+            .inspect_err(|err| error!("Unable to remove ext4 project quota limit: {err:?}"))?;
+
+        Ok(())
+    }
+
+    fn quota_usage<'a>(
+        &self,
+        base: &Path,
+        storages: &'a HashMap<StorageIdentifier, ResolvedStorage>,
+    ) -> Result<Option<ApplyQuotaToken<'a>>, io::Error> {
+        let fs = File::open(base)?;
+        Ok(Some(apply_quotas(storages, |id, _| {
+            usage(&fs, id.project_id())
+        })))
+    }
+}
 
 #[repr(C)]
 #[derive(Default)]
@@ -108,7 +175,7 @@ const fn empty_quota() -> libc::dqblk {
 /// Only walks the directory if `dir` itself is not assigned yet, for example
 /// when an existing directory storage is switched to ext4. The directory
 /// itself is assigned last, so an interrupted walk is retried.
-pub fn assign_project(dir: &Path, project: u32) -> io::Result<()> {
+fn assign_project(dir: &Path, project: u32) -> io::Result<()> {
     let root = open(dir)?;
     let attr = get_xattr(&root)?;
     if attr.projid == project && attr.xflags & FS_XFLAG_PROJINHERIT != 0 {
@@ -153,7 +220,7 @@ pub fn assign_project(dir: &Path, project: u32) -> io::Result<()> {
 /// Sets the space limit of `project`. `None` removes the limit.
 ///
 /// `path` may be any directory on the filesystem.
-pub fn apply_limit(path: &Path, project: u32, disk: Option<u64>) -> io::Result<()> {
+fn apply_limit(path: &Path, project: u32, disk: Option<u64>) -> io::Result<()> {
     let limit = disk.map_or(0, |mib| utils::from_mib(mib).div_ceil(QIF_DQBLKSIZE));
     let mut quota = libc::dqblk {
         dqb_bhardlimit: limit,
@@ -167,14 +234,14 @@ pub fn apply_limit(path: &Path, project: u32, disk: Option<u64>) -> io::Result<(
 /// Returns the bytes used by `project`.
 ///
 /// `fs` may be any opened directory on the filesystem.
-pub fn usage(fs: &File, project: u32) -> io::Result<u64> {
+fn usage(fs: &File, project: u32) -> io::Result<u64> {
     let mut quota = empty_quota();
     quotactl(fs, libc::Q_GETQUOTA, project, &mut quota)?;
     Ok(quota.dqb_curspace)
 }
 
 /// Verifies that `path` is on ext4 with project quotas enabled.
-pub fn check(path: &Path) -> Result<(), String> {
+pub(crate) fn check(path: &Path) -> Result<(), String> {
     let file = open(path).map_err(|err| format!("Unable to open: {err}"))?;
     let stat = fstatfs(&file).map_err(|err| format!("statfs failed: {err}"))?;
     if stat.filesystem_type() != EXT4_SUPER_MAGIC {
