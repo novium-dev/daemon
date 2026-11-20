@@ -66,16 +66,10 @@ pub async fn symlink_file<
             warn!("Symlink was successful, but unable to trigger storage notification: {err:?}");
         })
     {
-        let _ = notify
-            .send(StorageNotification::Create {
-                parent_inode,
-                inode,
-            })
-            .inspect_err(|err| {
-                warn!(
-                    "Symlink was successful, but unable to trigger storage notification: {err:?}"
-                );
-            });
+        let _ = notify.send(StorageNotification::Create {
+            parent_inode,
+            inode,
+        });
     }
 
     drop(lock);

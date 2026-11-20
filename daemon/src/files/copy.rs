@@ -67,14 +67,10 @@ pub async fn copy_file<
             warn!("Copy was successful, but unable to trigger storage notification: {err:?}");
         })
     {
-        let _ = notify
-            .send(StorageNotification::Create {
-                parent_inode,
-                inode,
-            })
-            .inspect_err(|err| {
-                warn!("Copy was successful, but unable to trigger storage notification: {err:?}");
-            });
+        let _ = notify.send(StorageNotification::Create {
+            parent_inode,
+            inode,
+        });
     }
 
     drop(lock);

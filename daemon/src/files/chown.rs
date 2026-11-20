@@ -66,26 +66,17 @@ pub async fn chown_file<
     .map_err(Errno::raw_os_error)
     .map_err(io::Error::from_raw_os_error)?;
 
-    let _ = notify
-        .send(StorageNotification::Update {
-            parent_inode: parent_ino
-                .inspect_err(|err| {
-                    warn!(
-                        "Chmod was successful, but unable to trigger storage notification: {err:?}"
-                    );
-                })
-                .ok(),
-            inode: ino
-                .inspect_err(|err| {
-                    warn!(
-                        "Chmod was successful, but unable to trigger storage notification: {err:?}"
-                    );
-                })
-                .ok(),
-        })
-        .inspect_err(|err| {
-            warn!("Chmod was successful, but unable to trigger storage notification: {err:?}");
-        });
-
+    let _ = notify.send(StorageNotification::Update {
+        parent_inode: parent_ino
+            .inspect_err(|err| {
+                warn!("Chmod was successful, but unable to trigger storage notification: {err:?}");
+            })
+            .ok(),
+        inode: ino
+            .inspect_err(|err| {
+                warn!("Chmod was successful, but unable to trigger storage notification: {err:?}");
+            })
+            .ok(),
+    });
     Ok(())
 }

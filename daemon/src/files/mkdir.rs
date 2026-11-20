@@ -75,14 +75,10 @@ pub async fn mkdir_file<
             warn!("Mkdir was successful, but unable to trigger storage notification: {err:?}");
         })
     {
-        let _ = notify
-            .send(StorageNotification::Create {
-                parent_inode,
-                inode,
-            })
-            .inspect_err(|err| {
-                warn!("Mkdir was successful, but unable to trigger storage notification: {err:?}");
-            });
+        let _ = notify.send(StorageNotification::Create {
+            parent_inode,
+            inode,
+        });
     }
 
     drop(lock);

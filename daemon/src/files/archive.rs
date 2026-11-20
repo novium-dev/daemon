@@ -153,8 +153,10 @@ pub async fn unpack_archive<
             );
         })
     {
-        let _ = notify.send(StorageNotification::Create { parent_inode, inode })
-            .inspect_err(|err| warn!("Archive unpack was successful, but unable to trigger storage notification: {err:?}"));
+        let _ = notify.send(StorageNotification::Create {
+            parent_inode,
+            inode,
+        });
     }
 
     drop(lock);

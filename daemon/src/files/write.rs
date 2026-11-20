@@ -86,27 +86,18 @@ pub async fn write_file<
             _ => error!("Failed to write file: {err:?}"),
         })?;
 
-    let _ = notify
-        .send(StorageNotification::Update {
-            parent_inode: parent_ino
-                .inspect_err(|err| {
-                    warn!(
-                        "Write was successful, but unable to trigger storage notification: {err:?}"
-                    );
-                })
-                .ok(),
-            inode: ino
-                .inspect_err(|err| {
-                    warn!(
-                        "Write was successful, but unable to trigger storage notification: {err:?}"
-                    );
-                })
-                .ok(),
-        })
-        .inspect_err(|err| {
-            warn!("Write was successful, but unable to trigger storage notification: {err:?}");
-        });
-
+    let _ = notify.send(StorageNotification::Update {
+        parent_inode: parent_ino
+            .inspect_err(|err| {
+                warn!("Write was successful, but unable to trigger storage notification: {err:?}");
+            })
+            .ok(),
+        inode: ino
+            .inspect_err(|err| {
+                warn!("Write was successful, but unable to trigger storage notification: {err:?}");
+            })
+            .ok(),
+    });
     drop(lock);
     Ok(())
 }
@@ -181,9 +172,7 @@ pub async fn write_file_by_template<
         , inode: ino
             .inspect_err(|err| warn!("Write by template was successful, but unable to trigger storage notification: {err:?}"))
             .ok()
-    })
-            .inspect_err(|err| warn!("Write by template was successful, but unable to trigger storage notification: {err:?}"));
-
+    });
     drop(lock);
     Ok(())
 }
@@ -302,8 +291,7 @@ async fn write_file_by_url0<
         , inode: ino
             .inspect_err(|err| warn!("Write by url was successful, but unable to trigger storage notification: {err:?}"))
             .ok()
-    })
-            .inspect_err(|err| warn!("Write by url was successful, but unable to trigger storage notification: {err:?}"));
+    });
 
     Ok(())
 }

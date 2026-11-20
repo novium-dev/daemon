@@ -74,15 +74,11 @@ pub async fn rename_file<
             warn!("Rename was successful, but unable to trigger storage notification: {err:?}");
         })
     {
-        let _ = notify
-            .send(StorageNotification::Rename {
-                from_parent_inode,
-                to_parent_inode,
-                inode,
-            })
-            .inspect_err(|err| {
-                warn!("Rename was successful, but unable to trigger storage notification: {err:?}");
-            });
+        let _ = notify.send(StorageNotification::Rename {
+            from_parent_inode,
+            to_parent_inode,
+            inode,
+        });
     }
     drop(lock);
     Ok(())

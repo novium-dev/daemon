@@ -69,15 +69,11 @@ pub async fn delete_file<
             warn!("Delete was successful, but unable to trigger storage notification: {err:?}");
         })
     {
-        let _ = notify
-            .send(StorageNotification::Delete {
-                parent_inode,
-                inode,
-                dir: recursive,
-            })
-            .inspect_err(|err| {
-                warn!("Delete was successful, but unable to trigger storage notification: {err:?}");
-            });
+        let _ = notify.send(StorageNotification::Delete {
+            parent_inode,
+            inode,
+            dir: recursive,
+        });
     }
 
     drop(lock);
