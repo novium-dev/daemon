@@ -206,12 +206,14 @@ pub async fn create_archive<
     // check for path errors, before we create the archive.
     let mut sources_processed = Vec::with_capacity(sources.len());
     for source in sources {
-        let (_, src_storage_path, src_path) = storage_path(id, &storage, source, &tokens).await?;
+        let (src_dir, src_storage_path, src_path) =
+            storage_path(id, &storage, source, &tokens).await?;
+        let is_dir = src_dir.metadata(&src_path).await?.is_dir();
         // Every source keeps its own name inside the archive, otherwise archiving more than one
         // directory would merge their contents together. The storage root has no name, so its
         // contents end up at the archive root.
         let name = src_path.file_name().unwrap_or_default().to_owned();
-        sources_processed.push((PathBuf::from(name), src_storage_path, src_path));
+        sources_processed.push((PathBuf::from(name), src_storage_path, src_path, is_dir));
     }
 
     let exclude = Arc::new(exclude);
@@ -235,7 +237,7 @@ pub async fn create_archive<
 async fn create_archive0<E: From<io::Error>>(
     storage: Dir,
     path: PathBuf,
-    sources: Vec<(PathBuf, PathBuf, PathBuf)>,
+    sources: Vec<(PathBuf, PathBuf, PathBuf, bool)>,
     exclude: Arc<HashSet<String>>,
     compression: ArchiveCompression,
     notify: Sender<StorageNotification>,
@@ -266,22 +268,28 @@ async fn create_archive0<E: From<io::Error>>(
             .inspect_err(|err| error!("Failed to create archive (create_encoder): {err:?}"))?,
     );
 
-    for (name, src_storage_path, src_path) in sources {
-        let (archive_return, ()) = archive
-            .append_dir_all_sandboxed(
-                src_storage_path,
-                name,
-                src_path,
-                Arc::clone(&exclude),
-                (),
-                false,
-                false,
-            )
-            .await
-            .inspect_err(|err| match err.kind() {
-                ErrorKind::QuotaExceeded => debug!("Failed to create archive (append): {err:?}"),
-                _ => error!("Failed to create archive (append): {err:?}"),
-            })?;
+    for (name, src_storage_path, src_path, is_dir) in sources {
+        let result = if is_dir {
+            archive
+                .append_dir_all_sandboxed(
+                    src_storage_path,
+                    name,
+                    src_path,
+                    Arc::clone(&exclude),
+                    (),
+                    false,
+                    false,
+                )
+                .await
+        } else {
+            archive
+                .append_path_sandboxed(src_storage_path, name, src_path, ())
+                .await
+        };
+        let (archive_return, ()) = result.inspect_err(|err| match err.kind() {
+            ErrorKind::QuotaExceeded => debug!("Failed to create archive (append): {err:?}"),
+            _ => error!("Failed to create archive (append): {err:?}"),
+        })?;
         archive = archive_return;
     }
 

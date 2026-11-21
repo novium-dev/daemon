@@ -81,6 +81,21 @@ pub trait TarSandboxedAppendExt {
     ) -> Result<(Self, T), Error>
     where
         Self: Sized;
+
+    async fn append_path_sandboxed<
+        P: AsRef<Path>,
+        F: AsRef<Path>,
+        E: AsRef<Path>,
+        T: Send + 'static,
+    >(
+        self,
+        chroot_dst: P,
+        path: F,
+        target_dst: E,
+        lock: T,
+    ) -> Result<(Self, T), Error>
+    where
+        Self: Sized;
 }
 
 impl<R: Read + Send + 'static> ArchiveSandboxedUnpackExt for Archive<R> {
@@ -231,6 +246,42 @@ impl<W: Write + Send + 'static> TarSandboxedAppendExt for Builder<W> {
         })
         .join()
         .expect("Archive create task panicked")
+    }
+
+    async fn append_path_sandboxed<
+        P: AsRef<Path>,
+        F: AsRef<Path>,
+        E: AsRef<Path>,
+        T: Send + 'static,
+    >(
+        mut self,
+        chroot_dst: P,
+        path: F,
+        target_dst: E,
+        lock: T,
+    ) -> Result<(Self, T), Error>
+    where
+        Self: Sized,
+    {
+        let chroot_dst = PathBuf::from(chroot_dst.as_ref());
+        let path = PathBuf::from(path.as_ref());
+        let target_dst = PathBuf::from(target_dst.as_ref());
+
+        tokio::task::spawn_blocking(move || {
+            thread::spawn(move || {
+                #[cfg(target_os = "linux")]
+                {
+                    chroot(chroot_dst)?;
+                };
+                #[cfg(target_os = "macos")]
+                let target_dst = chroot_path(&chroot_dst, &target_dst);
+                self.append_path_with_name(&target_dst, &path)?;
+                Ok((self, lock))
+            })
+            .join()
+            .expect("Archive create task panicked")
+        })
+        .await?
     }
 }
 
