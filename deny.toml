@@ -50,4 +50,6 @@ allow = [
 unmaintained = "workspace"
 ignore = [
     "RUSTSEC-2023-0071", # TODO: Marvin side-channel attack on rsa@0.9.8
+    "RUSTSEC-2026-0543", # chrono unmaintained
+    "RUSTSEC-2026-0555", # chrono-tz unmaintained
 ]
