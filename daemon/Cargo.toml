@@ -45,6 +45,7 @@ libc.workspace = true
 bollard.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+rayon.workspace = true
 toml.workspace = true
 rustls.workspace = true
 axum-server.workspace = true

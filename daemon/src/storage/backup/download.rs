@@ -1,14 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::archive::TarSandboxedAppendExt as _;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::format::ArchiveFormat;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::{Daemon, DaemonExtra};
-use axum_extra::headers::ContentLength;
 use axum_extra::response::Attachment;
-use chrono::{TimeZone as _, Utc};
 use daemon_common::service::backup::error_backup_storage_location_not_found::FromBackupStorageLocationNotFound;
 use daemon_common::service::error_compression_unsupported::FromCompressionUnsupported;
 use daemon_common::service::error_storage_failure::FromStorageFailure;
@@ -19,12 +16,11 @@ use daemon_common::service::{DataStream, FileResponse};
 use serde_json::json;
 use std::collections::HashSet;
 use std::io;
-use std::io::{ErrorKind, Write as _};
-use std::path::PathBuf;
+use std::io::Write as _;
+use std::path::{Path, PathBuf};
 use tar::Builder;
-use tokio::fs::File;
 use tokio_util::io::SyncIoBridge;
-use tracing::{debug, error};
+use tracing::debug;
 
 /// Cancel safe
 pub async fn backup_to_stream<
@@ -48,7 +44,6 @@ pub async fn backup_to_stream<
         .inspect_err(|_err| debug!("Backup storage does not exist: {backup_storage}"))?;
     let StorageLockData {
         lock,
-        #[cfg(feature = "btrfs")]
         backup_exclude,
         ..
     } = storage_read_timeout::<E>(
@@ -65,75 +60,13 @@ pub async fn backup_to_stream<
     )
     .await?;
 
-    let attachment = backup_to_stream0::<E>(
-        id,
-        backup_id,
-        backup,
-        #[cfg(feature = "btrfs")]
-        backup_exclude,
-    )
-    .await?;
+    let attachment = backup
+        .backend
+        .download(id, Path::new(&backup.path), backup_id, backup_exclude)
+        .await?;
     drop(lock);
 
     Ok(FileResponse::Axum(attachment))
-}
-
-/// Cancel safe
-#[inline(always)]
-async fn backup_to_stream0<E: From<io::Error>>(
-    id: StorageIdentifier,
-    backup_id: i64,
-    backup: &BackupEntry,
-    #[cfg(feature = "btrfs")] exclude: HashSet<String>,
-) -> Result<Attachment<DataStream>, E> {
-    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
-    match backup {
-        BackupEntry::Archive { compression, .. } => {
-            let target = target_dir.join(format!("{backup_id}.tar{}", compression.ext()));
-
-            let file = File::open(target).await.inspect_err(|err| {
-                if err.kind() == ErrorKind::NotFound {
-                    debug!("Failed to create a backup stream (open): {err:?}");
-                } else {
-                    error!("Failed to create a backup stream (open): {err:?}");
-                }
-            })?;
-            let length = file
-                .metadata()
-                .await
-                .inspect_err(|err| error!("Failed to create a backup stream (metadata): {err:?}"))?
-                .len();
-
-            Ok(
-                Attachment::new(DataStream::by_read(file, Some(ContentLength(length))))
-                    .content_type(ArchiveFormat::Tar(*compression).content_type())
-                    .filename(format!(
-                        "{}_{}.tar{}",
-                        filename(id),
-                        Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
-                        compression.ext()
-                    )),
-            )
-        }
-        #[cfg(feature = "btrfs")]
-        BackupEntry::Btrfs {
-            jit_compression, ..
-        } => {
-            let compression = *jit_compression;
-
-            let target = target_dir.join(backup_id.to_string());
-            Ok(
-                Attachment::new(stream_realtime1(compression, target, exclude).await)
-                    .content_type(ArchiveFormat::Tar(compression).content_type())
-                    .filename(format!(
-                        "{}_{}.tar{}",
-                        filename(id),
-                        Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
-                        compression.ext()
-                    )),
-            )
-        }
-    }
 }
 
 /// Cancel safe
@@ -173,11 +106,11 @@ pub async fn stream_realtime<
     Ok(FileResponse::Axum(
         Attachment::new(data)
             .content_type(ArchiveFormat::Tar(compression).content_type())
-            .filename(format!("{}.tar{}", filename(id), compression.ext())),
+            .filename(format!("{}.tar{}", backup_filename(id), compression.ext())),
     ))
 }
 
-fn filename(id: StorageIdentifier) -> String {
+pub fn backup_filename(id: StorageIdentifier) -> String {
     match id {
         StorageIdentifier::Primary(id) => format!("server_{id}"),
     }
@@ -194,11 +127,7 @@ fn stream_realtime0(
 }
 
 /// Cancel safe
-#[expect(
-    clippy::unused_async,
-    reason = "ensure it only gets called in an async context"
-)]
-async fn stream_realtime1(
+pub async fn stream_realtime1(
     compression: ArchiveCompression,
     target: PathBuf,
     exclude: HashSet<String>,

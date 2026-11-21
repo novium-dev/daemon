@@ -35,7 +35,7 @@ pub use rename::rename_file;
 pub use stat::stat_file;
 use std::io;
 use std::io::ErrorKind;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 pub use symlink::symlink_file;
 use tracing::error;
 use uuid::Uuid;
@@ -47,7 +47,7 @@ async fn storage_path_root(
     id: StorageIdentifier,
     storage: &StorageEntry,
 ) -> Result<(Dir, PathBuf), io::Error> {
-    let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
+    let base = Path::new(&storage.path).join(id.as_pathbuf());
     Ok((
         Dir::open_ambient_dir(&base, ambient_authority())
             .await
@@ -62,7 +62,7 @@ async fn storage_path(
     mut path: String,
     tokens: &StorageTokens,
 ) -> Result<(Dir, PathBuf, PathBuf), io::Error> {
-    let base = PathBuf::from(storage.path()).join(id.as_pathbuf());
+    let base = Path::new(&storage.path).join(id.as_pathbuf());
 
     let dir = if let Some(path_stripped) = path.strip_prefix(STORAGE_TOKEN_MAGIC)
         && let Some(index) = path_stripped.find(';')

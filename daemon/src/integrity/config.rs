@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 use super::{Check, CheckError, IntegrityContext};
-use crate::config::{BackupEntry, StorageEntry};
+use crate::config::BackupBackendEntry;
+use crate::config::StorageBackendEntry;
+#[cfg(feature = "btrfs")]
+use crate::storage;
 use async_trait::async_trait;
 use daemon_common::integrity::{IntegrityCategory, IntegrityFinding};
 use rustix::fs::{Access, access};
@@ -98,27 +101,31 @@ impl Check for ConfigPaths {
         let mut findings = Vec::new();
 
         for (name, storage) in &ctx.config.storage {
-            check_directory(&mut findings, "storage", name, storage.path()).await;
-            match storage {
-                StorageEntry::Directory { .. } => {}
+            check_directory(&mut findings, "storage", name, &storage.path).await;
+            match &storage.backend {
+                StorageBackendEntry::Directory => {}
                 #[cfg(feature = "btrfs")]
-                StorageEntry::Btrfs { path, quota, .. } => {
-                    check_btrfs(&mut findings, "storage", name, path, *quota).await;
+                StorageBackendEntry::Btrfs {
+                    backend: storage::btrfs::BtrfsStorageBackend { quota, .. },
+                } => {
+                    check_btrfs(&mut findings, "storage", name, &storage.path, *quota).await;
                 }
                 #[cfg(target_os = "linux")]
-                StorageEntry::Ext4 { path } => {
-                    check_ext4(&mut findings, name, path).await;
+                StorageBackendEntry::Ext4 => {
+                    check_ext4(&mut findings, name, &storage.path).await;
                 }
             }
         }
 
         for (name, backup) in &ctx.config.backup {
-            check_directory(&mut findings, "backup storage", name, backup.path()).await;
-            match backup {
-                BackupEntry::Archive { .. } => {}
+            check_directory(&mut findings, "backup storage", name, &backup.path).await;
+            match &backup.backend {
+                BackupBackendEntry::Archive { .. } => {}
                 #[cfg(feature = "btrfs")]
-                BackupEntry::Btrfs { path, quota, .. } => {
-                    check_btrfs(&mut findings, "backup storage", name, path, *quota).await;
+                BackupBackendEntry::Btrfs {
+                    backend: storage::btrfs::BtrfsBackupBackend { quota, .. },
+                } => {
+                    check_btrfs(&mut findings, "backup storage", name, &backup.path, *quota).await;
                 }
             }
         }

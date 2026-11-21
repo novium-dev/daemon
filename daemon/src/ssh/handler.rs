@@ -17,7 +17,7 @@ use russh::server::{
 use russh::{Channel, ChannelId, Pty};
 use std::collections::HashMap;
 use std::io::ErrorKind;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::Arc;
 use tracing::{debug, error};
 
@@ -367,8 +367,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                             )
                             .await
                             {
-                                let base =
-                                    PathBuf::from(storage.path()).join(identifier.as_pathbuf());
+                                let base = Path::new(&storage.path).join(identifier.as_pathbuf());
                                 match Dir::open_ambient_dir(&base, ambient_authority())
                                     .await
                                     .inspect_err(|err| {
@@ -409,7 +408,7 @@ impl<T: DaemonExtra> Handler for DaemonSSHHandler<T> {
                                     .await
                                 {
                                     let base =
-                                        PathBuf::from(backup.path()).join(identifier.as_pathbuf());
+                                        Path::new(&backup.path).join(identifier.as_pathbuf());
                                     if matches!(tokio::fs::try_exists(&base).await, Ok(false)) {
                                         let _ = tokio::fs::create_dir_all(&base).await;
                                     }

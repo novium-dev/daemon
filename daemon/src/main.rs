@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
+#![allow(clippy::panic)]
+
 pub(crate) mod setup;
 
 use crate::config::DaemonConfig;

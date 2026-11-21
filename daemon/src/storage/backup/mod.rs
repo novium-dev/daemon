@@ -1,14 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 mod create;
 mod delete;
-mod download;
+pub(crate) mod download;
 mod list;
 mod metadata;
 mod prune;
 mod restore;
 
+use async_trait::async_trait;
+use axum_extra::response::Attachment;
+use daemon_common::service::DataStream;
+use daemon_common::service::backup::BackupResponseEntry;
+use daemon_common::service::files::task::StorageTask;
+use std::collections::HashSet;
 use std::io;
 use std::os::fd::{AsRawFd, RawFd};
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicI64;
 use xattr::FileExt;
 
 pub use create::create_backup;
@@ -20,6 +29,67 @@ pub use list::list_backups;
 pub use metadata::update_backup;
 pub use prune::prune_backups;
 pub use restore::restore_backup;
+
+use crate::config::StorageEntry;
+use crate::storage::StorageIdentifier;
+use crate::sync::task::{TaskOwnedRwLockReadGuard, TaskOwnedRwLockWriteGuard};
+
+#[async_trait]
+#[expect(clippy::too_many_arguments)]
+pub trait BackupBackend {
+    fn target_path(&self, id: StorageIdentifier, base: &Path, backup_id: i64) -> PathBuf;
+
+    fn compatible(&self, storage: &StorageEntry) -> bool;
+
+    // Must be cancel safe
+    async fn list(
+        &self,
+        storage: &str,
+        id: StorageIdentifier,
+        base: &Path,
+        entries: &mut Vec<BackupResponseEntry>,
+    ) -> Result<(), io::Error>;
+
+    // Must be cancel safe
+    async fn create(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        backup_id: i64,
+        storage: &StorageEntry,
+        storage_target: &Path,
+        lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
+        exclude: HashSet<String>,
+    ) -> Result<TaskOwnedRwLockReadGuard<StorageTask, ()>, io::Error>;
+
+    // Must be cancel safe
+    async fn delete(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        backup_id: i64,
+    ) -> Result<(), io::Error>;
+
+    async fn restore(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        backup_id: i64,
+        storage: &StorageEntry,
+        storage_target: &Path,
+        lock: &mut TaskOwnedRwLockWriteGuard<StorageTask, ()>,
+        disk: Option<u64>,
+        value: Arc<(AtomicI64, AtomicI64)>,
+    ) -> Result<(), io::Error>;
+
+    async fn download(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        backup_id: i64,
+        exclude: HashSet<String>,
+    ) -> Result<Attachment<DataStream>, io::Error>;
+}
 
 struct RawFdContainer(RawFd);
 

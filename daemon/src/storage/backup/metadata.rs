@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::backup::BackupMetadataExt as _;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
@@ -12,7 +11,7 @@ use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::task::{BackupLocation, StorageTask};
 use std::io;
 use std::io::ErrorKind;
-use std::path::PathBuf;
+use std::path::Path;
 use tokio::fs::File;
 use tracing::{debug, error};
 
@@ -92,14 +91,9 @@ async fn open_for_update<
     )
     .await?;
 
-    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
-    let target = match backup {
-        BackupEntry::Archive { compression, .. } => {
-            target_dir.join(format!("{backup_id}.tar{}", compression.ext()))
-        }
-        #[cfg(feature = "btrfs")]
-        BackupEntry::Btrfs { .. } => target_dir.join(backup_id.to_string()),
-    };
+    let target = backup
+        .backend
+        .target_path(id, Path::new(&backup.path), backup_id);
     let file = File::open(target).await.inspect_err(|err| {
         if err.kind() == ErrorKind::NotFound {
             debug!("Failed to open a backup for an update: {err:?}");

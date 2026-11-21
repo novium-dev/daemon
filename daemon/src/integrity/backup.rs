@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use super::storage::{PRIMARY_DIR, entries, known_servers, subvolume_finding};
+use super::storage::{PRIMARY_DIR, entries, known_servers};
 use super::{Check, CheckError, IntegrityContext};
-use crate::config::BackupEntry;
+use crate::config::{BackupBackendEntry, BackupEntry};
+use crate::storage::archive::ArchiveBackupBackend;
 use crate::storage::archive::compression::ArchiveCompression;
 use crate::storage::archive::format::ArchiveFormat;
 use async_trait::async_trait;
@@ -25,10 +26,10 @@ async fn server_dirs(
     let mut out = Vec::new();
 
     for (name, backup) in &ctx.config.backup {
-        if archive_only && !matches!(backup, BackupEntry::Archive { .. }) {
+        if archive_only && !matches!(backup.backend, BackupBackendEntry::Archive { .. }) {
             continue;
         }
-        let root = PathBuf::from(backup.path()).join(PRIMARY_DIR);
+        let root = Path::new(&backup.path).join(PRIMARY_DIR);
         let Some(servers) = entries(&root).await? else {
             continue;
         };
@@ -80,8 +81,8 @@ impl Check for BackupNaming {
         let mut findings = Vec::new();
 
         for (name, backup) in &ctx.config.backup {
-            let root = PathBuf::from(backup.path());
-            let Some(top) = entries(&root).await? else {
+            let root = Path::new(&backup.path);
+            let Some(top) = entries(root).await? else {
                 continue;
             };
 
@@ -159,15 +160,17 @@ async fn check_backup_names(
 
     for (entry, path, is_dir) in backups {
         let subject = path.to_string_lossy().into_owned();
-        let named = match backup {
-            BackupEntry::Archive { compression, .. } => {
+        let named = match backup.backend {
+            BackupBackendEntry::Archive {
+                backend: ArchiveBackupBackend { compression },
+            } => {
                 entry
                     .strip_suffix(&format!(".tar{}", compression.ext()))
                     .is_some_and(|stem| stem.parse::<i64>().is_ok())
                     && !is_dir
             }
             #[cfg(feature = "btrfs")]
-            BackupEntry::Btrfs { .. } => entry.parse::<i64>().is_ok() && is_dir,
+            BackupBackendEntry::Btrfs { .. } => entry.parse::<i64>().is_ok() && is_dir,
         };
         if !named {
             findings.push(
@@ -212,7 +215,10 @@ impl Check for BackupCompression {
         let mut findings = Vec::new();
 
         for (target, backup) in dirs {
-            let BackupEntry::Archive { compression, .. } = backup else {
+            let BackupBackendEntry::Archive {
+                backend: ArchiveBackupBackend { compression },
+            } = backup.backend
+            else {
                 continue;
             };
             let expected = format!(".tar{}", compression.ext());
@@ -320,7 +326,10 @@ impl Check for BackupTrailer {
         let mut findings = Vec::new();
 
         for (target, backup) in dirs {
-            let BackupEntry::Archive { compression, .. } = backup else {
+            let BackupBackendEntry::Archive {
+                backend: ArchiveBackupBackend { compression },
+            } = backup.backend
+            else {
                 continue;
             };
             let expected = format!(".tar{}", compression.ext());
@@ -435,12 +444,12 @@ impl Check for BackupSubvolume {
         let mut checked = 0usize;
 
         for (name, backup) in &ctx.config.backup {
-            let BackupEntry::Btrfs { path, .. } = backup else {
+            let BackupBackendEntry::Btrfs { .. } = backup.backend else {
                 continue;
             };
             checked = checked.saturating_add(1usize);
 
-            let root = PathBuf::from(path).join(PRIMARY_DIR);
+            let root = Path::new(&backup.path).join(PRIMARY_DIR);
             let Some(servers) = entries(&root).await? else {
                 continue;
             };
@@ -459,7 +468,7 @@ impl Check for BackupSubvolume {
                     if !backup_is_dir || backup_entry.parse::<i64>().is_err() {
                         continue;
                     }
-                    subvolume_finding(
+                    super::storage::subvolume_finding(
                         &mut findings,
                         &target,
                         &format!("Backup {backup_entry} of server {server} in storage {name}"),

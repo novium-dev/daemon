@@ -29,10 +29,11 @@ use zelus_keys::{
 use crate::{
     Daemon, WithUserKey,
     config::{
-        ArchiveCompression, BackupEntry, CompressionLevel, DaemonConfig, LimitConfig,
-        NetworkConfig, SSHConfig, SSHHostKey, StorageEntry,
+        ArchiveCompression, BackupBackendEntry, BackupEntry, CompressionLevel, DaemonConfig,
+        LimitConfig, NetworkConfig, SSHConfig, SSHHostKey, StorageBackendEntry, StorageEntry,
     },
     fsuid_setup,
+    storage::archive::ArchiveBackupBackend,
 };
 
 pub(crate) struct Context {
@@ -110,9 +111,13 @@ pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> 
             backend_url: backend_url.clone(),
             backup: HashMap::from([(
                 "local".to_owned(),
-                BackupEntry::Archive {
-                    compression: ArchiveCompression::Zstd {
-                        level: CompressionLevel::Default,
+                BackupEntry {
+                    backend: BackupBackendEntry::Archive {
+                        backend: ArchiveBackupBackend {
+                            compression: ArchiveCompression::Zstd {
+                                level: CompressionLevel::Default,
+                            },
+                        },
                     },
                     path: format!("/tmp/daemon_test_{node_id}/backup"),
                     order: Some(0),
@@ -120,8 +125,9 @@ pub(crate) fn test<F: FnOnce(&'static Context) -> Fut, Fut: Future<Output = ()> 
             )]),
             storage: HashMap::from([(
                 "local".to_owned(),
-                StorageEntry::Directory {
+                StorageEntry {
                     path: format!("/tmp/daemon_test_{node_id}/server"),
+                    backend: StorageBackendEntry::Directory,
                 },
             )]),
             database: format!("{}_test", env!("DATABASE_URL")),

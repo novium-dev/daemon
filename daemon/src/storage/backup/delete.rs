@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-only
-use crate::config::BackupEntry;
 use crate::storage::StorageIdentifier;
 use crate::storage::sync::{StorageLockData, storage_read_timeout};
 use crate::{Daemon, DaemonExtra};
@@ -9,9 +8,8 @@ use daemon_common::service::error_storage_mutex_locked::FromStorageMutexLocked;
 use daemon_common::service::error_storage_not_found::FromStorageNotFound;
 use daemon_common::service::files::task::{BackupLocation, StorageTask};
 use std::io;
-use std::io::ErrorKind;
-use std::path::PathBuf;
-use tracing::{debug, error};
+use std::path::Path;
+use tracing::debug;
 
 /// Cancel safe
 pub async fn delete_backup<
@@ -47,31 +45,11 @@ pub async fn delete_backup<
     )
     .await?;
 
-    let target_dir = PathBuf::from(backup.path()).join(id.as_pathbuf());
-    match backup {
-        BackupEntry::Archive { compression, .. } => {
-            let target = target_dir.join(format!("{}.tar{}", backup_id, compression.ext()));
-            tokio::fs::remove_file(target).await.inspect_err(|err| {
-                if err.kind() == ErrorKind::NotFound {
-                    debug!("Failed to delete a backup (remove_file): {:?}", err);
-                } else {
-                    error!("Failed to delete a backup (remove_file): {:?}", err);
-                }
-            })?;
-        }
-        #[cfg(feature = "btrfs")]
-        BackupEntry::Btrfs { .. } => {
-            super::super::btrfs::remove_subvolume(&target_dir, &backup_id.to_string())
-                .await
-                .inspect_err(|err| {
-                    if err.kind() == ErrorKind::NotFound {
-                        debug!("Failed to delete a backup (delete_subvolume): {err:?}");
-                    } else {
-                        error!("Failed to delete a backup (delete_subvolume): {err:?}");
-                    }
-                })?;
-        }
-    }
+    backup
+        .backend
+        .delete(id, Path::new(&backup.path), backup_id)
+        .await?;
+
     drop(lock); // Ensure it gets dropped here and not earlier
     Ok(())
 }

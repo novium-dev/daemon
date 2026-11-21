@@ -132,7 +132,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
 
         for (id, entry) in &self.config.storage {
             let id = id.clone();
-            let path = entry.path().clone();
+            let path = entry.path.clone();
             if !tokio::fs::try_exists(&path).await.inspect_err(|err| {
                 error!("Server storage {id:?} stat failed (try_exists): {err:?}");
             })? {
@@ -150,7 +150,7 @@ impl<T: DaemonExtra> ResourceService for Daemon<T> {
 
         for (id, entry) in &self.config.backup {
             let id = id.clone();
-            let path = entry.path().clone();
+            let path = entry.path.clone();
             if !tokio::fs::try_exists(&path).await.inspect_err(|err| {
                 error!("Backup storage {id:?} stat failed (try_exists): {err:?}");
             })? {
