@@ -21,7 +21,6 @@ use std::time::SystemTime;
 use std::{io, thread};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
-use tokio::sync::broadcast::error::TryRecvError;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
 use tracing::{error, warn};
@@ -119,8 +118,7 @@ async fn resolve(
 
 pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry: &StorageEntry) {
     let mut last = SystemTime::UNIX_EPOCH;
-    let mut recv = daemon.shutdown_channel.subscribe();
-    while recv.try_recv() == Err(TryRecvError::Empty) {
+    while !daemon.shutdown_token.is_cancelled() {
         let Some(storages) =
             Handle::current().block_on(resolve(daemon, storage_id.to_owned(), storage_entry))
         else {

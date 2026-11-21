@@ -30,8 +30,8 @@ use std::sync::Arc;
 use std::time::Instant;
 use tokio::fs;
 use tokio::sync::Mutex;
-use tokio::sync::broadcast::Sender;
 use tokio::task::{JoinError, JoinSet};
+use tokio_util::sync::CancellationToken;
 use tracing::{debug, error, info, warn};
 
 #[derive(Debug, thiserror::Error)]
@@ -243,7 +243,7 @@ impl<T: DaemonExtra> Daemon<T> {
             config: Arc::clone(&config),
             servers: Arc::new(Mutex::new(servers)),
             storages: Arc::default(),
-            shutdown_channel: Arc::new(Sender::new(1)),
+            shutdown_token: CancellationToken::new(),
             server_task: Arc::default(),
             server_task_cancellable: Arc::default(),
             shutdown_task: Arc::default(),
@@ -311,7 +311,7 @@ impl<T: DaemonExtra> Daemon<T> {
 
     pub async fn shutdown(&self) {
         info!("Shutting daemon down...");
-        let _ = self.shutdown_channel.send(());
+        self.shutdown_token.cancel();
         debug!("Sent shutdown signal");
         self.server_task_cancellable.lock().await.shutdown().await;
         debug!("Cancelled server tasks... (if possible)");
@@ -360,8 +360,7 @@ impl<T: DaemonExtra> Daemon<T> {
     }
 
     pub async fn await_shutdown(&self) {
-        let mut recv = self.shutdown_channel.subscribe();
-        while recv.recv().await.is_err() {}
+        self.shutdown_token.cancelled().await;
         mem::take(&mut *self.shutdown_task.lock().await)
             .join_all()
             .await;

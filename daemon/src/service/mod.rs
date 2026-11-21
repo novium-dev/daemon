@@ -16,7 +16,6 @@ use daemon_common::service::schedule::ScheduleService;
 use daemon_common::service::server::ServerService;
 use daemon_common::service::setup::SetupService;
 use std::sync::Arc;
-use tokio::sync::broadcast::error::RecvError;
 use tower_http::compression::CompressionLayer;
 use tower_http::trace::TraceLayer;
 use tracing::{error, info};
@@ -127,24 +126,17 @@ impl<T: DaemonExtra> Daemon<T> {
         if let Some(metrics) = &self.config.metrics {
             self.serve_metrics(metrics, &handle, &mut server_task);
         }
-        let mut recv = self.shutdown_channel.subscribe();
+        let token = self.shutdown_token.clone();
         tokio::task::spawn(async move {
+            token.cancelled().await;
+            handle.graceful_shutdown(Some(Duration::from_secs(30)));
             loop {
-                match recv.recv().await {
-                    Err(RecvError::Lagged(_)) => {}
-                    Ok(()) | Err(RecvError::Closed) => {
-                        handle.graceful_shutdown(Some(Duration::from_secs(30)));
-                        loop {
-                            tokio::time::sleep(Duration::from_secs(1)).await;
-                            let count = handle.connection_count();
-                            if count == 0 {
-                                break;
-                            }
-                            info!("HTTP Connections still alive: {}", count);
-                        }
-                        break;
-                    }
+                tokio::time::sleep(Duration::from_secs(1)).await;
+                let count = handle.connection_count();
+                if count == 0 {
+                    break;
                 }
+                info!("HTTP Connections still alive: {}", count);
             }
         });
         Ok(())

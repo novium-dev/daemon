@@ -45,6 +45,7 @@ use tokio::io::AsyncWrite;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast::Sender;
 use tokio::task::{AbortHandle, JoinSet};
+use tokio_util::sync::CancellationToken;
 use url::Url;
 
 use crate::config::DaemonConfig;
@@ -73,7 +74,7 @@ where
     pub(crate) server_task_cancellable: Arc<Mutex<JoinSet<()>>>,
     pub(crate) server_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) shutdown_task: Arc<Mutex<JoinSet<()>>>,
-    pub(crate) shutdown_channel: Arc<Sender<()>>,
+    pub(crate) shutdown_token: CancellationToken,
     pub(crate) schedule_task: Arc<Mutex<JoinSet<()>>>,
     pub(crate) schedules: Arc<Mutex<HashMap<u32, Arc<Mutex<ServerScheduleData>>>>>,
     pub(crate) docker: Arc<Docker>,
