@@ -66,8 +66,8 @@ impl Check for StorageNaming {
         let mut findings = Vec::new();
 
         for (name, storage) in &ctx.config.storage {
-            let root = PathBuf::from(storage.path());
-            let Some(top) = entries(&root).await? else {
+            let root = Path::new(&storage.path);
+            let Some(top) = entries(root).await? else {
                 continue;
             };
 
@@ -158,18 +158,18 @@ impl Check for StorageSubvolume {
 
     #[cfg(feature = "btrfs")]
     async fn run(&self, ctx: &IntegrityContext) -> Result<Vec<IntegrityFinding>, CheckError> {
-        use crate::config::StorageEntry;
+        use crate::config::StorageBackendEntry;
 
         let mut findings = Vec::new();
         let mut checked = 0usize;
 
         for (name, storage) in &ctx.config.storage {
-            let StorageEntry::Btrfs { path, .. } = storage else {
+            let StorageBackendEntry::Btrfs { .. } = storage.backend else {
                 continue;
             };
             checked = checked.saturating_add(1usize);
 
-            let Some(servers) = entries(&PathBuf::from(path).join(PRIMARY_DIR)).await? else {
+            let Some(servers) = entries(&Path::new(&storage.path).join(PRIMARY_DIR)).await? else {
                 continue;
             };
 

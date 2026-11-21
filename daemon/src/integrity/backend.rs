@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use daemon_common::integrity::{IntegrityCategory, IntegrityFinding};
 use sqlx::query_scalar;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::Path;
 
 fn report_missing(
     findings: &mut Vec<IntegrityFinding>,
@@ -118,7 +118,7 @@ impl Check for BackendRecords {
         if let Some(ref wanted) = expected.storages {
             let mut actual = HashSet::new();
             for storage in ctx.config.storage.values() {
-                let root = PathBuf::from(storage.path()).join(PRIMARY_DIR);
+                let root = Path::new(&storage.path).join(PRIMARY_DIR);
                 let Some(found) = entries(&root).await? else {
                     continue;
                 };

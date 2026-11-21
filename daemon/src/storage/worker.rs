@@ -11,18 +11,32 @@ use core::sync::atomic::{AtomicI64, Ordering};
 use core::time::Duration;
 use daemon_common::service::server::ServerStats;
 use daemon_common::service::server::task::ServerTask;
+use rayon::iter::{IntoParallelRefIterator as _, ParallelIterator as _};
 use sqlx::query;
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::marker::PhantomData;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::thread;
 use std::time::SystemTime;
+use std::{io, thread};
 use tokio::runtime::Handle;
 use tokio::sync::broadcast::Sender;
 use tokio::sync::broadcast::error::TryRecvError;
 use tokio::task::JoinSet;
 use tokio::time::timeout;
-use tracing::warn;
+use tracing::{error, warn};
+
+pub struct ResolvedStorage {
+    server_id: Option<u32>,
+    pub path: PathBuf,
+    cpu_max: Option<f32>,
+    ram_max: Option<u32>,
+    swap_max: Option<u32>,
+    data: StorageData,
+    sender: Option<Arc<Sender<ChannelWriteData>>>,
+}
+
+pub struct ApplyQuotaToken<'a>(PhantomData<fn(&'a ()) -> &'a ()>);
 
 pub async fn run(daemon: Daemon<impl DaemonExtra>) {
     for (storage_id, storage_entry) in daemon.config.storage.clone() {
@@ -36,20 +50,7 @@ async fn resolve(
     daemon: &Daemon<impl DaemonExtra>,
     storage_id: String,
     storage_entry: &StorageEntry,
-) -> Option<
-    HashMap<
-        StorageIdentifier,
-        (
-            Option<u32>,
-            PathBuf,
-            Option<f32>,
-            Option<u32>,
-            Option<u32>,
-            StorageData,
-            Option<Arc<Sender<ChannelWriteData>>>,
-        ),
-    >,
-> {
+) -> Option<HashMap<StorageIdentifier, ResolvedStorage>> {
     type ResourceInfo = (Option<f32>, Option<u32>, Option<u32>, Option<u64>);
     let servers: HashMap<u32, ResourceInfo> = match query!(
         "SELECT `id`, `cpu`, `ram`, `swap`, `disk` FROM `servers` WHERE `storage` = ?",
@@ -69,15 +70,15 @@ async fn resolve(
         }
     };
     let mut available = HashMap::new();
-    for (id, (cpu, ram, swap, disk)) in servers {
+    for (id, (cpu_max, ram_max, swap_max, disk_max)) in servers {
         let identifier = StorageIdentifier::Primary(id);
-        let path = PathBuf::from(storage_entry.path()).join(identifier.as_pathbuf());
+        let path = Path::new(&storage_entry.path).join(identifier.as_pathbuf());
 
         if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
             continue;
         }
         let mut storages = daemon.storages.lock().await; // acquire lock multiple times, because the try_exists probably takes some time
-        let storage_data = storages
+        let data = storages
             .entry(identifier)
             .or_insert_with(|| StorageData {
                 lock: Arc::default(),
@@ -85,7 +86,8 @@ async fn resolve(
                 value: Arc::new((
                     AtomicI64::new(-1),
                     AtomicI64::new(
-                        disk.filter(|i| *i <= i64::MAX.unsigned_abs())
+                        disk_max
+                            .filter(|i| *i <= i64::MAX.unsigned_abs())
                             .map_or(-1, u64::cast_signed),
                     ),
                 )),
@@ -100,7 +102,15 @@ async fn resolve(
         let sender = server.map_or_else(|| None, |server| Some(Arc::clone(&server.stats_sender)));
         available.insert(
             identifier,
-            (Some(id), path, cpu, ram, swap, storage_data, sender),
+            ResolvedStorage {
+                server_id: Some(id),
+                path,
+                cpu_max,
+                ram_max,
+                swap_max,
+                data,
+                sender,
+            },
         );
     }
 
@@ -118,74 +128,29 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
             continue;
         };
 
-        #[cfg_attr(
-            not(any(feature = "btrfs", target_os = "linux")),
-            expect(unused_mut, reason = "only used currently with btrfs enabled")
-        )]
-        let mut quota = false;
-        #[cfg(feature = "btrfs")]
-        if let StorageEntry::Btrfs {
-            quota: true, path, ..
-        } = storage_entry
-        {
-            use std::fs::File;
-            use tracing::error;
-            quota = true;
-
-            let mut quotas = HashMap::new();
-            if let Err(err) = super::btrfs::search_quotas(File::open(path), &mut quotas) {
-                error!("Unable to retrieve quotas: {err:?}. Ensure quotas are enabled");
-            }
-
-            for (id, (_server_id, path, _, _, _, data, _)) in &storages {
-                let subvol = match super::btrfs::get_subvol_id(File::open(path)) {
-                    Ok(id) => id,
-                    Err(err) => {
-                        warn!("Unable to get subvolume id of {id:?}: {err:?}");
-                        continue;
-                    }
-                };
-                let Some(size) = quotas.get(&subvol) else {
-                    warn!("Quota missing for {id:?} (subvolid {subvol})");
-                    warn!("Retrived quotas: {quotas:?}");
-                    continue;
-                };
-                let size = i64::try_from(*size).unwrap_or(-1);
-                data.value.0.store(size, Ordering::Relaxed);
-            }
-        }
-        #[cfg(target_os = "linux")]
-        if let StorageEntry::Ext4 { path } = storage_entry {
-            quota = true;
-            match std::fs::File::open(path) {
-                Ok(fs) => {
-                    for (id, (_, _, _, _, _, data, _)) in &storages {
-                        match super::ext4::usage(&fs, id.project_id()) {
-                            Ok(size) => {
-                                data.value
-                                    .0
-                                    .store(i64::try_from(size).unwrap_or(-1), Ordering::Relaxed);
-                            }
-                            Err(err) => warn!("Unable to retrieve ext4 quota of {id:?}: {err:?}"),
-                        }
-                    }
-                }
-                Err(err) => warn!("Unable to open ext4 storage {storage_id}: {err:?}"),
-            }
-        }
+        let quota = matches!(
+            storage_entry
+                .backend
+                .quota_usage(Path::new(&storage_entry.path), &storages)
+                .inspect_err(|err| error!("Unable to retrieve quotas: {err:?}")),
+            Err(_) | Ok(Some(_))
+        );
 
         if !quota && last.elapsed().unwrap_or_default() > crate::common::STORAGE_SCAN_INTERVAL {
             last = SystemTime::now();
             let sizes = super::scan::scan_all(
                 &storages
                     .iter()
-                    .map(|(id, (_, path, _, _, _, data, _))| {
+                    .map(|(id, ResolvedStorage { path, data, .. })| {
                         (*id, path.clone(), Arc::clone(&data.lock))
                     })
                     .collect::<Vec<_>>(),
             );
             for (id, result) in sizes {
-                let Some((server_id, _, _, _, _, data, _)) = storages.get(&id) else {
+                let Some(ResolvedStorage {
+                    server_id, data, ..
+                }) = storages.get(&id)
+                else {
                     continue;
                 };
                 match result {
@@ -243,7 +208,19 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
         }
 
         let mut join = JoinSet::new();
-        for (_id, (server_id, _path, cpu_max, ram_max, swap_max, data, sender)) in storages {
+        for (
+            _id,
+            ResolvedStorage {
+                server_id,
+                cpu_max,
+                ram_max,
+                swap_max,
+                data,
+                sender,
+                ..
+            },
+        ) in storages
+        {
             let conn = Arc::clone(&daemon.conn);
             join.spawn(async move {
                 let stats_guard = timeout(Duration::from_millis(100), data.stats_lock.lock()).await;
@@ -281,4 +258,26 @@ pub fn watch(daemon: &Daemon<impl DaemonExtra>, storage_id: &str, storage_entry:
 
         thread::sleep(Duration::from_secs(30));
     }
+}
+
+pub fn apply_quotas<
+    'a,
+    F: Fn(StorageIdentifier, &'a ResolvedStorage) -> Result<u64, io::Error> + Send + Sync,
+>(
+    storages: &'a HashMap<StorageIdentifier, ResolvedStorage>,
+    get: F,
+) -> ApplyQuotaToken<'a> {
+    storages
+        .par_iter()
+        .for_each(|(id, storage)| match get(*id, storage) {
+            Ok(size) => {
+                let size = i64::try_from(size).unwrap_or(-1);
+                storage.data.value.0.store(size, Ordering::Relaxed);
+            }
+            Err(err) => {
+                warn!("Unable to get quota for {id:?}: {err:?}");
+            }
+        });
+
+    ApplyQuotaToken(PhantomData)
 }

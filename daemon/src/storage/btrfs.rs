@@ -10,17 +10,366 @@
 )]
 pub(crate) mod sys;
 
-use crate::utils;
+use crate::config::{ArchiveCompression, StorageBackendEntry, StorageEntry};
+use crate::storage::archive::format::ArchiveFormat;
+use crate::storage::backup::download::{backup_filename, stream_realtime1};
+use crate::storage::backup::{BackupBackend, BackupMetadataExt as _};
+use crate::storage::worker::{ApplyQuotaToken, ResolvedStorage, apply_quotas};
+use crate::storage::{StorageBackend, StorageIdentifier};
+use crate::sync::task::{TaskOwnedRwLockReadGuard, TaskOwnedRwLockWriteGuard};
+use crate::utils::{self, read_dir_opt};
+use async_trait::async_trait;
+use axum_extra::response::Attachment;
+use chrono::{TimeZone as _, Utc};
+use daemon_common::service::DataStream;
+use daemon_common::service::backup::BackupResponseEntry;
+use daemon_common::service::files::task::StorageTask;
 use libc::ioctl;
-use std::collections::HashMap;
+use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, HashSet};
+use std::fs::File as StdFile;
 use std::io;
 use std::io::ErrorKind;
 use std::os::fd::AsRawFd;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::AtomicI64;
 use sys::*;
 use tokio::fs::File;
+use tracing::{debug, error};
 
-pub fn get_subvol_id(file: Result<impl AsRawFd, io::Error>) -> io::Result<u64> {
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BtrfsStorageBackend {
+    pub group: String,
+    pub quota: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BtrfsBackupBackend {
+    pub group: String,
+    pub quota: bool,
+    pub jit_compression: ArchiveCompression,
+}
+
+#[async_trait]
+impl StorageBackend for BtrfsStorageBackend {
+    async fn create(
+        &self,
+        _id: StorageIdentifier,
+        _base: &Path,
+        target: &Path,
+    ) -> Result<(), io::Error> {
+        let Some(parent) = target.parent() else {
+            error!("Got path without parent: {}", target.display());
+            return Err(io::Error::other("Invalid path: No parent"));
+        };
+        tokio::fs::create_dir_all(parent).await.inspect_err(|err| {
+            error!("Unable to create parents of storage directory: {err:?}");
+        })?;
+        let Some(filename) = target.file_name() else {
+            error!("Missing final component in storage path");
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "No final component in storage path",
+            ));
+        };
+        let Some(filename) = filename.to_str() else {
+            error!("Final component in storage path is not utf8");
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "Final component in storage path is not utf8",
+            ));
+        };
+        new_subvolume(parent, filename).await.inspect_err(|err| {
+            error!("Unable to create subvolume of storage directory: {err:?}");
+        })?;
+        Ok(())
+    }
+
+    async fn apply_quota(
+        &self,
+        _id: StorageIdentifier,
+        _base: &Path,
+        target: &Path,
+        limit: Option<u64>,
+    ) -> Result<bool, io::Error> {
+        if self.quota {
+            apply_qgroup_limit(target, limit).await?;
+        }
+        Ok(self.quota)
+    }
+
+    async fn delete(
+        &self,
+        _id: StorageIdentifier,
+        _base: &Path,
+        target: &Path,
+    ) -> Result<(), io::Error> {
+        let Some(parent) = target.parent() else {
+            error!("Got path without parent: {}", target.display());
+            return Err(io::Error::other("Invalid path: No parent"));
+        };
+        let Some(filename) = target.file_name() else {
+            error!("Missing final component in storage path");
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "No final component in storage path",
+            ));
+        };
+        let Some(filename) = filename.to_str() else {
+            error!("Final component in storage path is not utf8");
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "Final component in storage path is not utf8",
+            ));
+        };
+        remove_subvolume(parent, filename)
+            .await
+            .inspect_err(|err| {
+                error!("Unable to remove subvolume of storage directory: {err:?}");
+            })?;
+        Ok(())
+    }
+
+    fn quota_usage<'a>(
+        &self,
+        base: &Path,
+        storages: &'a HashMap<StorageIdentifier, ResolvedStorage>,
+    ) -> Result<Option<ApplyQuotaToken<'a>>, io::Error> {
+        if !self.quota {
+            return Ok(None);
+        }
+
+        let mut quotas = HashMap::new();
+        super::btrfs::search_quotas(StdFile::open(base), &mut quotas)?;
+
+        Ok(Some(apply_quotas(storages, |id, storage| {
+            let subvol = super::btrfs::get_subvol_id(StdFile::open(&storage.path))?;
+            quotas.get(&subvol).copied().ok_or_else(|| {
+                io::Error::other(format!("No btrfs quota found: {id:?} (subvolid {subvol})"))
+            })
+        })))
+    }
+}
+
+#[async_trait]
+impl BackupBackend for BtrfsBackupBackend {
+    fn target_path(&self, id: StorageIdentifier, base: &Path, backup_id: i64) -> PathBuf {
+        let target_dir = base.join(id.as_pathbuf());
+        target_dir.join(backup_id.to_string())
+    }
+
+    fn compatible(&self, storage: &StorageEntry) -> bool {
+        matches!(storage,
+            StorageEntry {
+                backend: StorageBackendEntry::Btrfs { backend: BtrfsStorageBackend { group, .. } },
+                 ..
+            }
+            if group.eq(&self.group)
+        )
+    }
+
+    async fn list(
+        &self,
+        storage: &str,
+        id: StorageIdentifier,
+        base: &Path,
+        entries: &mut Vec<BackupResponseEntry>,
+    ) -> Result<(), io::Error> {
+        let target_dir = base.join(id.as_pathbuf());
+        let Some(mut readdir) = read_dir_opt(&target_dir)
+            .await
+            .inspect_err(|err| error!("Failed to list backups (read_dir): {err:?}"))?
+        else {
+            return Ok(());
+        };
+
+        let mut quotas = HashMap::new();
+        if self.quota {
+            quotas = tokio::task::spawn_blocking(move || {
+                if let Err(err) = search_quotas(std::fs::File::open(target_dir), &mut quotas) {
+                    error!("Unable to retrieve quotas: {err:?}. Ensure quotas are enabled");
+                }
+                quotas
+            })
+            .await
+            .inspect_err(|err| {
+                error!("Failed to list backups (retrieve quotas): {err:?}");
+            })
+            .map_err(io::Error::from)?;
+        }
+        while let Some(entry) = readdir
+            .next_entry()
+            .await
+            .inspect_err(|err| error!("Failed to list backups (next_entry): {err:?}"))?
+        {
+            let metadata = entry.metadata().await.inspect_err(|err| {
+                error!("Failed to list backups (metadata): {err:?}");
+            })?;
+            if !metadata.file_type().is_dir() {
+                continue;
+            }
+            let entry_path = entry.path();
+            let entry = entry.file_name().to_string_lossy().to_string();
+            let entry: Result<i64, _> = entry.parse();
+
+            let file = File::open(&entry_path)
+                .await
+                .inspect_err(|err| error!("Failed to list backups (open): {err:?}"))?;
+            let name = file.get_backup_name().await.inspect_err(|err| {
+                error!("Failed to list backups (get_name): {err:?}");
+            })?;
+            let protected = file.get_backup_protected().await.inspect_err(|err| {
+                error!("Failed to list backups (get_protected): {err:?}");
+            })?;
+            let size = if self.quota {
+                match tokio::task::spawn_blocking(move || get_subvol_id(Ok(file)))
+                    .await
+                    .inspect_err(|err| {
+                        error!("Failed to list backups (get_subvol_id): {err:?}");
+                    })
+                    .map_err(io::Error::from)?
+                {
+                    Ok(subvol) => quotas.get(&subvol).copied(),
+                    Err(err) => {
+                        error!(
+                            "Unable to retrieve subvolume id: {err:?} in {:?}. Ensure this backup is a subvolume and not a directory!",
+                            entry_path.to_string_lossy(),
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            if let Ok(entry) = entry {
+                entries.push(BackupResponseEntry {
+                    time: entry,
+                    storage: storage.to_owned(),
+                    size,
+                    name,
+                    protected,
+                });
+            }
+        }
+        Ok(())
+    }
+
+    async fn create(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        backup_id: i64,
+        _storage: &StorageEntry,
+        storage_target: &Path,
+        lock: TaskOwnedRwLockReadGuard<StorageTask, ()>,
+        _exclude: HashSet<String>,
+    ) -> Result<TaskOwnedRwLockReadGuard<StorageTask, ()>, io::Error> {
+        let target_dir = base.join(id.as_pathbuf());
+
+        if !tokio::fs::try_exists(&target_dir)
+            .await
+            .inspect_err(|err| error!("Backup creation failed (try_exists): {:?}", err))?
+        {
+            tokio::fs::create_dir_all(&target_dir)
+                .await
+                .inspect_err(|err| error!("Backup creation failed (create_dir_all): {:?}", err))?;
+        }
+
+        let subvol_fd = tokio::fs::File::open(storage_target)
+            .await
+            .inspect_err(|err| error!("Backup creation failed (open): {err:?}"))?;
+
+        new_snapshot(subvol_fd, &target_dir, &backup_id.to_string(), true)
+            .await
+            .inspect_err(|err| error!("Backup creation failed (snapshot): {err:?}"))?;
+        Ok(lock)
+    }
+
+    async fn delete(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        backup_id: i64,
+    ) -> Result<(), io::Error> {
+        let target_dir = base.join(id.as_pathbuf());
+        remove_subvolume(&target_dir, &backup_id.to_string())
+            .await
+            .inspect_err(|err| {
+                if err.kind() == ErrorKind::NotFound {
+                    debug!("Failed to delete a backup (delete_subvolume): {err:?}");
+                } else {
+                    error!("Failed to delete a backup (delete_subvolume): {err:?}");
+                }
+            })
+    }
+
+    async fn restore(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        backup_id: i64,
+        _storage: &StorageEntry,
+        storage_target: &Path,
+        _lock: &mut TaskOwnedRwLockWriteGuard<StorageTask, ()>,
+        _disk: Option<u64>,
+        _value: Arc<(AtomicI64, AtomicI64)>,
+    ) -> Result<(), io::Error> {
+        let target = self.target_path(id, base, backup_id);
+        let parent = storage_target.join("..");
+        let fd = tokio::fs::File::open(&target).await.inspect_err(|err| {
+            if err.kind() == ErrorKind::NotFound {
+                debug!("Failed to restore backup (open): {err:?}");
+            } else {
+                error!("Failed to restore backup (open): {err:?}");
+            }
+        })?;
+        let Some(filename) = storage_target.file_name() else {
+            error!("Missing final component in storage path");
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "No final component in storage path",
+            ));
+        };
+        let Some(filename) = filename.to_str() else {
+            error!("Final component in storage path is not utf8");
+            return Err(io::Error::new(
+                ErrorKind::InvalidData,
+                "Final component in storage path is not utf8",
+            ));
+        };
+        remove_subvolume(&parent, filename)
+            .await
+            .inspect_err(|err| error!("Failed to restore backup (delete_snapshot): {err:?}"))?;
+        new_snapshot(fd, &parent, filename, false)
+            .await
+            .inspect_err(|err| error!("Failed to restore backup (create_snapshot): {err:?}"))?;
+        Ok(())
+    }
+
+    async fn download(
+        &self,
+        id: StorageIdentifier,
+        base: &Path,
+        backup_id: i64,
+        exclude: HashSet<String>,
+    ) -> Result<Attachment<DataStream>, io::Error> {
+        let target = self.target_path(id, base, backup_id);
+        Ok(
+            Attachment::new(stream_realtime1(self.jit_compression, target, exclude).await)
+                .content_type(ArchiveFormat::Tar(self.jit_compression).content_type())
+                .filename(format!(
+                    "{}_{}.tar{}",
+                    backup_filename(id),
+                    Utc.timestamp_millis_opt(backup_id).unwrap().to_rfc3339(),
+                    self.jit_compression.ext()
+                )),
+        )
+    }
+}
+
+pub(crate) fn get_subvol_id(file: Result<impl AsRawFd, io::Error>) -> io::Result<u64> {
     let mut args = btrfs_ioctl_ino_lookup_args {
         treeid: 0,
         objectid: BTRFS_FIRST_FREE_OBJECTID.into(),
@@ -36,7 +385,7 @@ pub fn get_subvol_id(file: Result<impl AsRawFd, io::Error>) -> io::Result<u64> {
     Ok(args.treeid)
 }
 
-pub fn search_quotas(
+pub(crate) fn search_quotas(
     file: Result<impl AsRawFd, io::Error>,
     out: &mut HashMap<u64, u64>,
 ) -> Result<(), io::Error> {
@@ -136,7 +485,7 @@ pub fn search_quotas(
 }
 
 /// Cancel safe
-pub async fn apply_qgroup_limit(dir: &PathBuf, disk: Option<u64>) -> Result<(), io::Error> {
+async fn apply_qgroup_limit(target: &Path, disk: Option<u64>) -> Result<(), io::Error> {
     let args = btrfs_ioctl_qgroup_limit_args {
         qgroupid: 0,
         lim: btrfs_qgroup_limit {
@@ -152,7 +501,7 @@ pub async fn apply_qgroup_limit(dir: &PathBuf, disk: Option<u64>) -> Result<(), 
             max_exclusive: 0,
         },
     };
-    let file = File::open(&dir).await?;
+    let file = File::open(target).await?;
 
     // SAFETY: ioctl syscall, should always be safe
     let ret = tokio::task::spawn_blocking(move || unsafe {
@@ -176,7 +525,7 @@ fn key_in_range(key: &btrfs_key, sk: &btrfs_ioctl_search_key) -> bool {
 }
 
 /// Cancel safe
-pub async fn new_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
+async fn new_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
     let fd = tokio::fs::File::open(dir).await?;
 
     let mut ret = [0; 4040usize];
@@ -205,7 +554,7 @@ pub async fn new_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
 }
 
 /// Cancel safe
-pub async fn remove_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
+async fn remove_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
     let fd = tokio::fs::File::open(dir).await?;
 
     let mut ret = [0; 4040usize];
@@ -233,7 +582,7 @@ pub async fn remove_subvolume(dir: &Path, subvolname: &str) -> io::Result<()> {
     .await?
 }
 
-pub async fn new_snapshot(
+async fn new_snapshot(
     subvol_fd: tokio::fs::File,
     dir: &Path,
     snapshotname: &str,
