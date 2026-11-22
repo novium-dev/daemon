@@ -307,7 +307,9 @@ async fn handle_notification(
                 false
             };
             if (*current_ino == from_parent_inode || *current_ino == to_parent_inode) && !reload {
-                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
+                responses.extend(
+                    handle_reload(&current_fd.load(), current_path, current_list, false).await?,
+                );
             }
         }
         StorageNotification::Update {
@@ -317,12 +319,16 @@ async fn handle_notification(
             if parent_inode == Some(*current_ino)
                 || inode.is_some_and(|ino| current_list.contains_key(&ino))
             {
-                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
+                responses.extend(
+                    handle_reload(&current_fd.load(), current_path, current_list, false).await?,
+                );
             }
         }
         StorageNotification::Create { parent_inode, .. } => {
             if parent_inode == *current_ino {
-                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
+                responses.extend(
+                    handle_reload(&current_fd.load(), current_path, current_list, false).await?,
+                );
             }
         }
         StorageNotification::Delete {
@@ -343,7 +349,9 @@ async fn handle_notification(
                 false
             };
             if parent_inode == *current_ino && !reload {
-                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
+                responses.extend(
+                    handle_reload(&current_fd.load(), current_path, current_list, false).await?,
+                );
             }
         }
         StorageNotification::RenameFrom { parent_inode, .. } => {
@@ -356,7 +364,9 @@ async fn handle_notification(
                 );
             }
             if parent_inode == Some(*current_ino) && !reload {
-                handle_reload(&current_fd.load(), current_path, current_list, false).await?;
+                responses.extend(
+                    handle_reload(&current_fd.load(), current_path, current_list, false).await?,
+                );
             }
         }
     }
@@ -559,8 +569,9 @@ async fn handle_reload(
 ) -> Result<Vec<FilesWatchResponseEntry>, io::Error> {
     let list = resolve_list(current_fd, current_path).await?;
     if fresh {
+        *current_list = list;
         Ok(vec![FilesWatchResponseEntry::Reset {
-            data: list.into_values().collect(),
+            data: current_list.values().cloned().collect(),
         }])
     } else {
         let mut entries = Vec::new();
