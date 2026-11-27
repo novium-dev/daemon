@@ -252,6 +252,13 @@ async fn handle_websocket(
                         Some(Err(err)) => {
                             warn!("Channel disconnected with error: {err:?}");
                             drop(err);
+                            let response = FilesWatchResponse {
+                                data: vec![
+                                    FilesWatchResponseEntry::Error,
+                                ],
+                                token: format!("{STORAGE_TOKEN_MAGIC}{id};"),
+                            };
+                            let _ = socket.send(Message::Text(Utf8Bytes::from(serde_json::to_string(&response).expect("Unable to serialize watch responses")))).await;
                             let _ = socket.send(Message::Close(None)).await;
                             return;
                         },
@@ -400,7 +407,7 @@ async fn handle_command(
         FilesWatchCommand::WorkDirectory { path } => {
             match handle_work_directory_change(
                 root,
-                path,
+                &path,
                 current_fd,
                 current_ino,
                 current_path,
@@ -413,7 +420,7 @@ async fn handle_command(
                     if err.kind() == ErrorKind::NotFound
                         || err.kind() == ErrorKind::NotADirectory =>
                 {
-                    Vec::new()
+                    vec![FilesWatchResponseEntry::NotFound { path }]
                 }
                 Err(err) => return Err(err),
             }
@@ -445,7 +452,7 @@ async fn inode_in_path(
 
 async fn handle_work_directory_change(
     root: &Dir,
-    requested_path: String,
+    requested_path: &str,
     current_fd: &ArcSwap<Dir>,
     current_ino: &mut u64,
     current_path: &mut PathBuf,
@@ -453,10 +460,10 @@ async fn handle_work_directory_change(
 ) -> Result<Vec<FilesWatchResponseEntry>, io::Error> {
     if requested_path.starts_with('/') {
         current_fd.store(Arc::new(
-            root.open_dir(path_relative(&requested_path)).await?,
+            root.open_dir(path_relative(requested_path)).await?,
         ));
     } else {
-        let mut path = &*requested_path;
+        let mut path = requested_path;
         let mut dir = Dir::clone(&current_fd.load());
 
         let root_ino = root.dir_metadata().await?.ino();

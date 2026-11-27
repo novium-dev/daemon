@@ -345,4 +345,8 @@ pub enum FilesWatchResponseEntry {
         index: usize,
         offset: i64,
     },
+    NotFound {
+        path: String,
+    },
+    Error,
 }
