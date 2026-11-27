@@ -27,14 +27,14 @@ type DaemonAccess = (
 
 pub struct DaemonSftpSession {
     pub version: Option<u32>,
-    pub file_handles: HashMap<String, (FileHandle, Option<Sender<StorageNotification>>)>,
+    pub file_handles: HashMap<SftpHandle, (FileHandle, Option<Sender<StorageNotification>>)>,
     pub access: HashMap<Vec<String>, DaemonAccess>,
 }
 
 impl DaemonSftpSession {
     fn handle(
         &mut self,
-        handle: &String,
+        handle: &SftpHandle,
         permissions: BackendAuthServerPermissions,
     ) -> Result<(&mut FileHandle, Option<Sender<StorageNotification>>), StatusCode> {
         match self.file_handles.get_mut(handle) {

@@ -30,7 +30,7 @@ pub async fn mkdir(
                 _ => error!("Failed to mkdir: {err:?}"),
             })
             .map_err(sftp_err)?;
-        Ok((storage, path))
+        Ok::<_, StatusCode>((storage, path))
     })
     .await
     .inspect_err(|err| error!("Failed to mkdir, task failed: {err:?}"))

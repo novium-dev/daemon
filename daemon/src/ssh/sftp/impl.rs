@@ -45,8 +45,8 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         Ok(Version::new())
     }
 
-    async fn close(&mut self, id: u32, handle: String) -> Result<Status, Self::Error> {
-        debug!("Close {id} {handle}");
+    async fn close(&mut self, id: u32, handle: SftpHandle) -> Result<Status, Self::Error> {
+        debug!("Close {id} {:?}", handle.as_bytes());
         match self.file_handles.remove(&handle) {
             Some((handle, notify)) => {
                 close(handle, notify).await?;
@@ -79,7 +79,7 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
         }
 
         let handle = super::files::open(self, filename, options).await?;
-        debug!("Handle: {handle}");
+        debug!("Handle: {:?}", handle.as_bytes());
         Ok(Handle { id, handle })
     }
 
@@ -98,12 +98,12 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
             OpenOptions::new().custom_flags(libc::O_DIRECTORY),
         )
         .await?;
-        debug!("Handle: {handle}");
+        debug!("Handle: {:?}", handle.as_bytes());
         Ok(Handle { id, handle })
     }
 
-    async fn readdir(&mut self, id: u32, handle: String) -> Result<Name, Self::Error> {
-        debug!("ReadDir {id} {handle}");
+    async fn readdir(&mut self, id: u32, handle: SftpHandle) -> Result<Name, Self::Error> {
+        debug!("ReadDir {id} {:?}", handle.as_bytes());
         let (handle, _) = self.handle(&handle, BackendAuthServerPermissions::FILES_READ)?;
         Ok(Name {
             id,
@@ -114,11 +114,11 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn read(
         &mut self,
         id: u32,
-        handle: String,
+        handle: SftpHandle,
         offset: u64,
         len: u32,
     ) -> Result<Data, Self::Error> {
-        debug!("Read {id} {handle}");
+        debug!("Read {id} {:?}", handle.as_bytes());
         let (handle, _) = self.handle(&handle, BackendAuthServerPermissions::FILES_READ)?;
         super::files::read(handle, offset, len)
             .await
@@ -128,18 +128,18 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn write(
         &mut self,
         id: u32,
-        handle: String,
+        handle: SftpHandle,
         offset: u64,
         data: Vec<u8>,
     ) -> Result<Status, Self::Error> {
-        debug!("Write {} {}", id, handle);
+        debug!("Write {} {:?}", id, handle.as_bytes());
         let (handle, _) = self.handle(&handle, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::write(handle, offset, data).await?;
         Self::success(id)
     }
 
-    async fn fstat(&mut self, id: u32, handle: String) -> Result<Attrs, Self::Error> {
-        debug!("Fstat {} {}", id, handle);
+    async fn fstat(&mut self, id: u32, handle: SftpHandle) -> Result<Attrs, Self::Error> {
+        debug!("Fstat {} {:?}", id, handle.as_bytes());
         let (handle, _) = self.handle(&handle, BackendAuthServerPermissions::FILES_READ)?;
         super::files::fstat(handle)
             .await
@@ -149,10 +149,10 @@ impl russh_sftp::server::Handler for DaemonSftpSession {
     async fn fsetstat(
         &mut self,
         id: u32,
-        handle: String,
+        handle: SftpHandle,
         attrs: FileAttributes,
     ) -> Result<Status, Self::Error> {
-        debug!("Fsetstat {} {}", id, handle);
+        debug!("Fsetstat {} {:?}", id, handle.as_bytes());
         let (handle, notify) = self.handle(&handle, BackendAuthServerPermissions::FILES_WRITE)?;
         super::files::fsetstat(handle, attrs.permissions, attrs.size, notify).await?;
         Self::success(id)

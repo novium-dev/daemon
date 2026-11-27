@@ -18,12 +18,14 @@ pub async fn open(
     session: &mut DaemonSftpSession,
     path: String,
     options: &OpenOptions,
-) -> Result<String, StatusCode> {
+) -> Result<SftpHandle, StatusCode> {
     open_handle(session, path, options)
         .await
-        .map(|(name, handle, notify)| {
-            session.file_handles.insert(name.clone(), (handle, notify));
-            name
+        .map(|(sftp_handle, handle, notify)| {
+            session
+                .file_handles
+                .insert(sftp_handle.clone(), (handle, notify));
+            sftp_handle
         })
 }
 
@@ -31,7 +33,7 @@ pub async fn open_handle(
     session: &DaemonSftpSession,
     path: String,
     options: &OpenOptions,
-) -> Result<(String, FileHandle, Option<Sender<StorageNotification>>), StatusCode> {
+) -> Result<(SftpHandle, FileHandle, Option<Sender<StorageNotification>>), StatusCode> {
     let ResolvedPath {
         storage,
         temp_prefix,
@@ -41,7 +43,7 @@ pub async fn open_handle(
         None => open_internal(session, &temp_prefix).map(|(name, handle)| (name, handle, None)),
         Some((dir, permissions, notify)) => open_regular(dir, options, permissions, &temp_suffix)
             .await
-            .map(|(name, handle)| (name, handle, notify)),
+            .map(|(sftp_handle, handle)| (sftp_handle, handle, notify)),
     }
 }
 
@@ -49,7 +51,7 @@ pub async fn open_handle(
 fn open_internal(
     session: &DaemonSftpSession,
     path: &[String],
-) -> Result<(String, FileHandle), StatusCode> {
+) -> Result<(SftpHandle, FileHandle), StatusCode> {
     let mut entries = IndexSet::new();
     for entry in session.access.keys() {
         let Some(cmp) = entry.get(0..path.len()) else {
@@ -63,7 +65,7 @@ fn open_internal(
     }
     if entries.is_empty() {
         if path.is_empty() {
-            Ok(("empty".to_owned(), FileHandle::Empty))
+            Ok((SftpHandle::from(Vec::new()), FileHandle::Empty))
         } else {
             debug!("Tried to open non-existent virtual path: {path:?}");
             Err(StatusCode::NoSuchFile)
@@ -74,7 +76,7 @@ fn open_internal(
             .map(|name| (name, internal_directory_attributes()))
             .collect();
         Ok((
-            format!("internal_{}", Uuid::new_v4()),
+            SftpHandle::from(Uuid::new_v4().to_bytes_le().to_vec()),
             FileHandle::Internal(entries, false, BackendAuthServerPermissions::all()),
         ))
     }
@@ -86,7 +88,7 @@ async fn open_regular(
     options: &OpenOptions,
     permissions: BackendAuthServerPermissions,
     path_components: &[String],
-) -> Result<(String, FileHandle), StatusCode> {
+) -> Result<(SftpHandle, FileHandle), StatusCode> {
     let mut path = if path_components.is_empty() {
         PathBuf::from(".")
     } else {
@@ -133,5 +135,5 @@ async fn open_regular(
         let file = tokio::fs::File::from_std(std::fs::File::from(fd));
         (fd_num, FileHandle::RegularFile(file, permissions))
     };
-    Ok((fd.to_string(), handle))
+    Ok((SftpHandle::from(fd.to_le_bytes().to_vec()), handle))
 }

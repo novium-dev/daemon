@@ -192,17 +192,17 @@ alloc_instead_of_core = "deny"
 
 big_endian_bytes = "deny"
 host_endian_bytes = "deny"
-little_endian_bytes = "deny"
+little_endian_bytes = "allow"
 
 
 [workspace.dependencies]
 libc = "0.2"
-toml = "1.1.8"
+toml = "1"
 xmltree = "0.12.0"
 base64 = "0.23.1"
-rand = "0.10.3"
+rand = "0.10"
 chacha20 = "0.10.2"
-signal-hook = "0.4.5"
+signal-hook = "0.4"
 rayon = "1.12"
 termion = "4.0.6"
 http = "1.5.0"
@@ -213,14 +213,14 @@ hex = "0.4.3"
 java-properties = "2.0.0"
 ini = { package = "rust-ini", version = "0.21.3" }
 futures = "0.3.34"
-bytes = "1.12.1"
+bytes = "1.12"
 futures-util = "0.3.34"
 either = "1.19.0"
 tower-layer = "0.3.3"
-arc-swap = "1.9.3"
+arc-swap = "1.9"
 thiserror = "2.0.21"
 lazy-regex = "3.6.2"
-sha2 = "0.11.1"
+sha2 = "0.11"
 
 [workspace.dependencies.daemon_common]
 path = "daemon_common"
@@ -259,7 +259,7 @@ git = "https://github.com/0xIO32/reqwest.git"
 features = ["http2", "json", "stream", "zstd"]
 
 [workspace.dependencies.sentry]
-version = "0.49.5"
+version = "0.49"
 default-features = false
 features = [
 	"backtrace",
@@ -302,7 +302,7 @@ version = "1.54.1"
 version = "0.7.20"
 
 [workspace.dependencies.axum-server]
-version = "0.8.0"
+version = "0.9"
 features = ["tls-rustls"]
 
 [workspace.dependencies.axum]
@@ -314,7 +314,7 @@ version = "0.12.6"
 features = ["cookie", "typed-header"]
 
 [workspace.dependencies.clap]
-version = "4.6.7"
+version = "4.6"
 features = ["color", "env", "cargo"]
 
 [workspace.dependencies.utoipa]
@@ -336,7 +336,7 @@ features = [
 ]
 
 [workspace.dependencies.sqlx]
-version = "0.9.0"
+version = "0.9"
 features = [
 	"runtime-tokio",
 	"tls-rustls-aws-lc-rs",
@@ -352,7 +352,7 @@ version = "0.4.45"
 features = ["serde"]
 
 [workspace.dependencies.uuid]
-version = "1.29.0"
+version = "1.29"
 features = ["serde", "v4"]
 
 [workspace.dependencies.pkcs8]
@@ -364,7 +364,7 @@ version = "3.0.0"
 features = ["serde", "rand_core", "pkcs8", "pem"]
 
 [workspace.dependencies.url]
-version = "2.5.8"
+version = "2.5"
 features = ["serde"]
 
 [workspace.dependencies.indexmap]
