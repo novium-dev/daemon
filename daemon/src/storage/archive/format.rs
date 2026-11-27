@@ -66,18 +66,9 @@ impl ArchiveFormat {
             [0x42, 0x5A, 0x68, ..] => Self::Tar(ArchiveCompression::Bzip2 {
                 level: CompressionLevel::Default,
             }),
-            [0x75, 0x73, 0x74, 0x61, 0x72, 0x00, 0x30, 0x30]
-            | [0x75, 0x73, 0x74, 0x61, 0x72, 0x20, 0x20, 0x00] => {
-                Self::Tar(ArchiveCompression::None)
-            }
-            _ => {
-                read.seek(SeekFrom::Start(0))?;
-                return Ok(None);
-            }
+            _ => Self::Tar(ArchiveCompression::None),
         };
-        if let Self::Tar(compression) = format
-            && compression != ArchiveCompression::None
-        {
+        if let Self::Tar(compression) = format {
             read.seek(SeekFrom::Start(0))?;
             let mut decoder = compression.create_decoder(&mut read)?;
             decoder.read_exact(&mut [0; TAR_MAGIC_OFFSET as usize])?;
